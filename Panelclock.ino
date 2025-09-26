@@ -12,6 +12,14 @@
 #include <LittleFS.h>
 #include "webconfig.h"
 
+/*
+  IMPORTANT: Target hardware requirement
+
+  This firmware is intended to run on ESP32 boards with PSRAM (e.g. ESP32-S3 N8R8 or equivalent).
+  A runtime check only verifies presence of PSRAM (not size). If PSRAM is not detected the firmware
+  halts to avoid instability (HUB75 DMA framebuffers + LittleFS + WebServer require PSRAM).
+*/
+
 const char *ntpServer1 = "pool.ntp.org";
 const char *ntpServer2 = "time.nist.gov";
 const long gmtOffset_sec = 3600;
@@ -34,16 +42,21 @@ String stationname;
 String TankerkoenigApiKey = "";
 String TankstellenID = "";
 
-// Abfragetimer, laut Nutzungsbedingungen darf die API alle 5 Minuten abgefragt werden
+// Abfragetimer: danach wird der normale Intervall verwendet
 unsigned long lastTime = 0;
-// 6 Minuten (360000)
+// 6 Minuten (360000 ms) regulärer Abstand
 unsigned long timerDelay = 360000;
-// Um die ersten 5 Minuten zu ueberspringen
+// initial schnellerer Abfrage-Intervall (z.B. 5 Sekunden)
+unsigned long initialQueryDelay = 5000;
+// Flag: erste schnelle Abfrage noch nicht erfolgt
+bool firstFetchDone = false;
+
+// Um die ersten 5 Minuten zu ueberspringen (initial min/max init)
 bool skiptimer = true;
 
 String jsonBuffer;
 
-// RootCA von Tankerkoenig (wie vorher)
+// RootCA von Tankerkoenig
 const char *root_ca =
 "-----BEGIN CERTIFICATE-----\n"
 "MIIFazCCA1OgAwIBAgIRAIIQz7DSQONZRGPgu2OCiwAwDQYJKoZIhvcNAQELBQAw\n"
@@ -114,6 +127,95 @@ uint16_t RGB565(uint8_t r, uint8_t g, uint8_t b) {
   return ((r / 8) << 11) | ((g / 4) << 5) | (b / 8);
 }
 
+// helper: draw price with 3 decimals; third decimal rendered small & superscript
+static void drawPrice(int x, int baselineY, float price, uint16_t color) {
+  // Format to exactly 3 decimals
+  char buf[32];
+  // Use C formatting to avoid locale surprises
+  snprintf(buf, sizeof(buf), "%.3f", price);
+  String s = String(buf);
+  int dotPos = s.indexOf('.');
+  String mainPart;
+  String thirdDigit;
+  if (dotPos >= 0 && (int)s.length() >= dotPos + 4) {
+    // mainPart includes two decimals: up to dotPos+3 (exclusive)
+    mainPart = s.substring(0, dotPos + 3); // e.g. "1.45"
+    thirdDigit = s.substring(dotPos + 3, dotPos + 4); // e.g. "9"
+  } else {
+    // fallback: just show as-is
+    mainPart = s;
+    thirdDigit = "";
+  }
+
+  // Font metrics (fixed for these fonts):
+  const int MAIN_W = 6;  // u8g2_font_6x13_me approx width per char
+  const int SMALL_W = 4; // u8g2_font_tom_thumb_4x6_tf approx width per char
+  const int SMALL_SUPER_OFFSET = 6; // pixels to raise the small digit above baseline
+
+  // Draw main part (numbers with two decimals)
+  u8g2.setForegroundColor(color);
+  u8g2.setFont(u8g2_font_6x13_me);
+  u8g2.setCursor(x, baselineY);
+  u8g2.print(mainPart);
+
+  int wMain = mainPart.length() * MAIN_W;
+
+  // Draw third decimal as small, superscripted
+  if (thirdDigit.length() > 0) {
+    u8g2.setFont(u8g2_font_tom_thumb_4x6_tf);
+    u8g2.setCursor(x + wMain, baselineY - SMALL_SUPER_OFFSET);
+    u8g2.print(thirdDigit);
+  }
+
+  int wSmall = (thirdDigit.length() > 0) ? (thirdDigit.length() * SMALL_W) : 0;
+
+  // Draw euro sign aligned to main baseline (slightly separated)
+  u8g2.setFont(u8g2_font_6x13_me);
+  u8g2.setCursor(x + wMain + wSmall + 2, baselineY);
+  u8g2.print(" €");
+}
+
+// Computes ISO-8601 week number (1..53) for the given tm.
+static int isoWeekNumber(const struct tm &t) {
+  struct tm tmp = t; // make a modifiable copy
+  time_t tt = mktime(&tmp);
+  if (tt == (time_t)-1) return 0;
+  struct tm normalized;
+  localtime_r(&tt, &normalized);
+
+  // Convert Sunday(0)..Saturday(6) to ISO weekday 1..7
+  int wday = normalized.tm_wday == 0 ? 7 : normalized.tm_wday;
+
+  // Find Thursday of current week
+  int daysToThursday = 4 - wday;
+  time_t thursday_tt = tt + (time_t)daysToThursday * 24 * 3600;
+  struct tm thursday_tm;
+  localtime_r(&thursday_tt, &thursday_tm);
+
+  int isoYear = thursday_tm.tm_year + 1900;
+
+  // Jan 1 of isoYear
+  struct tm jan1 = {0};
+  jan1.tm_year = isoYear - 1900;
+  jan1.tm_mon = 0;
+  jan1.tm_mday = 1;
+  jan1.tm_hour = 0;
+  jan1.tm_min = 0;
+  jan1.tm_sec = 0;
+  time_t jan1_tt = mktime(&jan1);
+  if (jan1_tt == (time_t)-1) return 0;
+  struct tm jan1_tm;
+  localtime_r(&jan1_tt, &jan1_tm);
+  int jan1_wday = jan1_tm.tm_wday == 0 ? 7 : jan1_tm.tm_wday; // 1=Mon..7=Sun
+
+  // week1 starts on the Monday of the week that contains Jan 4:
+  int week1_monday_offset = (jan1_wday <= 4) ? (1 - jan1_wday) : (8 - jan1_wday);
+  time_t week1_monday_tt = jan1_tt + (time_t)week1_monday_offset * 24 * 3600;
+
+  int weekno = (int)((thursday_tt - week1_monday_tt) / (7 * 24 * 3600)) + 1;
+  return weekno;
+}
+
 void savePriceHistory() {
     StaticJsonDocument<512> doc;
     doc["e5Low"] = e5Low;
@@ -167,19 +269,26 @@ void loadPriceHistory() {
 }
 
 void printData() {
-  canvas.drawRect(0, 0, 191, 28, RGB565(50, 50, 50));
-  u8g2.setCursor(2, 24);
+  // enlarge top frame height by 2 pixels (was 28, now 30)
+  canvas.drawRect(0, 0, 191, 30, RGB565(50, 50, 50));
+
+  // Time: moved 1 pixel down (was y=24)
+  u8g2.setCursor(2, 25);
   u8g2.setFontMode(0);
   u8g2.setFontDirection(0);
   u8g2.setForegroundColor(MAGENTA);
   u8g2.setBackgroundColor(BLACK);
   u8g2.setFont(u8g2_font_fub20_tf);
   u8g2.print(&timeinfo, "%H:%M:%S");
+
+  // Date: moved 1 pixel down (was y=17)
   u8g2.setFont(u8g2_font_6x10_tf);
-  u8g2.setCursor(123, 17);
+  u8g2.setCursor(123, 18);
   u8g2.setForegroundColor(YELLOW);
   u8g2.print(&timeinfo, "%d.%m.%Y");
+
   u8g2.setForegroundColor(RGB565(0, 255, 0));
+  // Weekday label remains at y=9 (unchanged)
   u8g2.setCursor(123, 9);
   switch (timeinfo.tm_wday) {
     case 0: u8g2.print("Sonntag"); break;
@@ -191,9 +300,18 @@ void printData() {
     case 6: u8g2.print("Samstag"); break;
     default: break;
   }
-  u8g2.setCursor(123, 25);
+
+  // Day-of-year and KW: moved 2 pixels down (was y=25 -> now y=27)
+  u8g2.setCursor(123, 27);
   u8g2.setForegroundColor(CYAN);
-  u8g2.print(&timeinfo, "T:%j KW:%W");
+  u8g2.print(&timeinfo, "T:%j ");
+  {
+    char wkbuf[8];
+    int kw = isoWeekNumber(timeinfo);
+    if (kw < 1) kw = 1; // safety
+    snprintf(wkbuf, sizeof(wkbuf), "KW:%02d", kw);
+    u8g2.print(wkbuf);
+  }
 }
 
 String httpGETRequest(const char *serverName) {
@@ -230,7 +348,11 @@ void printTankstelle() {
   int e5farbe = WHITE;
   int e10farbe = WHITE;
   int dieselfarbe = WHITE;
-  if ((millis() - lastTime) > timerDelay || skiptimer == true) {
+
+  // choose effective delay: initialQueryDelay until firstFetchDone, otherwise timerDelay
+  unsigned long effectiveDelay = firstFetchDone ? timerDelay : initialQueryDelay;
+
+  if ((millis() - lastTime) > effectiveDelay || skiptimer == true) {
     if (WiFi.status() == WL_CONNECTED) {
       String serverPath = "https://creativecommons.tankerkoenig.de/json/detail.php?id=" + TankstellenID + "&apikey=" + TankerkoenigApiKey;
       jsonBuffer = httpGETRequest(serverPath.c_str());
@@ -257,10 +379,14 @@ void printTankstelle() {
       if (diesel < dieselLow) { dieselLow = diesel; }
       if (diesel > dieselHigh) { dieselHigh = diesel; }
       savePriceHistory();
+
+      // mark that initial fast fetch has occurred
+      firstFetchDone = true;
     }
     skiptimer = false;
     lastTime = millis();
   }
+
   if (e5Low != e5High) {
     diff = round(((e5High - e5) / (e5High - e5Low) * 100));
     if (diff <= 50) { rval = 255; gval = map(diff, 0, 50, 0, 255); }
@@ -279,62 +405,51 @@ void printTankstelle() {
     else { gval = 255; rval = map(diff, 50, 100, 255, 0); }
     dieselfarbe = RGB565(rval, gval, 0);
   }
+
   u8g2.setFontMode(1);
   u8g2.setForegroundColor(WHITE);
   u8g2.setFont(u8g2_font_8x13_tf);
-  u8g2.setCursor(40, 38);
+
+  // Benzinpreise heading: moved 2 pixels down (was y=38 -> now 40)
+  u8g2.setCursor(40, 40);
   u8g2.print("Benzinpreise");
+
   u8g2.setBackgroundColor(BLACK);
   u8g2.setFont(u8g2_font_tom_thumb_4x6_tf);
-  u8g2.setCursor(0, 45);
+
+  // Station name: moved 2 pixels down (was y=45 -> now 47)
+  u8g2.setCursor(0, 47);
   u8g2.setForegroundColor(RGB565(128, 128, 128));
   u8g2.print(stationname);
+
+  u8g2.setForegroundColor(YELLOW);
+  // Use drawPrice for amounts with superscript third decimal (baseline-aligned)
+  // E5: baseline y = 60
+  u8g2.setFont(u8g2_font_6x13_me);
+  u8g2.setCursor(2, 60);
+  u8g2.print("E5");
+  drawPrice(50, 60, e5Low, GREEN);
+  drawPrice(100, 60, e5, e5farbe);
+  drawPrice(150, 60, e5High, RED);
+
+  // E10: baseline y = 73
   u8g2.setForegroundColor(YELLOW);
   u8g2.setFont(u8g2_font_6x13_me);
-  u8g2.setCursor(2, 58);
-  u8g2.println("E5");
-  u8g2.setCursor(50, 58);
-  u8g2.setForegroundColor(GREEN);
-  u8g2.print(e5Low, 3);
-  u8g2.print(" €");
-  u8g2.setCursor(100, 58);
-  u8g2.setForegroundColor(e5farbe);
-  u8g2.print(e5, 3);
-  u8g2.print(" €");
-  u8g2.setCursor(150, 58);
-  u8g2.setForegroundColor(RED);
-  u8g2.print(e5High, 3);
-  u8g2.print(" €");
+  u8g2.setCursor(2, 73);
+  u8g2.print("E10");
+  drawPrice(50, 73, e10Low, GREEN);
+  drawPrice(100, 73, e10, e10farbe);
+  drawPrice(150, 73, e10High, RED);
+
+  // Diesel: baseline y = 86
   u8g2.setForegroundColor(YELLOW);
-  u8g2.setCursor(2, 71);
-  u8g2.println("E10");
-  u8g2.setCursor(50, 71);
-  u8g2.setForegroundColor(GREEN);
-  u8g2.print(e10Low, 3);
-  u8g2.print(" €");
-  u8g2.setCursor(100, 71);
-  u8g2.setForegroundColor(e10farbe);
-  u8g2.print(e10, 3);
-  u8g2.print(" €");
-  u8g2.setCursor(150, 71);
-  u8g2.setForegroundColor(RED);
-  u8g2.print(e10High, 3);
-  u8g2.print(" €");
-  u8g2.setForegroundColor(YELLOW);
-  u8g2.setCursor(2, 84);
-  u8g2.println("Diesel");
-  u8g2.setCursor(50, 84);
-  u8g2.setForegroundColor(GREEN);
-  u8g2.print(dieselLow, 3);
-  u8g2.print(" €");
-  u8g2.setCursor(100, 84);
-  u8g2.setForegroundColor(dieselfarbe);
-  u8g2.print(diesel, 3);
-  u8g2.print(" €");
-  u8g2.setCursor(150, 84);
-  u8g2.setForegroundColor(RED);
-  u8g2.print(dieselHigh, 3);
-  u8g2.print(" €");
+  u8g2.setFont(u8g2_font_6x13_me);
+  u8g2.setCursor(2, 86);
+  u8g2.print("Diesel");
+  drawPrice(50, 86, dieselLow, GREEN);
+  drawPrice(100, 86, diesel, dieselfarbe);
+  drawPrice(150, 86, dieselHigh, RED);
+
   u8g2.setForegroundColor(YELLOW);
 }
 
@@ -343,6 +458,30 @@ void getAllData() {
 }
 
 uint8_t oldsec = 61;
+
+// Show a short "connected" message and IP on the matrix panel and wait ~5s.
+// While waiting, service the config portal and OTA so device remains responsive.
+static void showIPOnPanel(const String &ip) {
+  if (!virtualDisp) return;
+
+  virtualDisp->clearScreen();
+  virtualDisp->setTextSize(2);
+  virtualDisp->setCursor(0, 0);
+  virtualDisp->println("WLAN");
+  virtualDisp->println("verbunden");
+
+  virtualDisp->setTextSize(1);
+  virtualDisp->println("");
+  virtualDisp->println(ip);
+
+  unsigned long start = millis();
+  while (millis() - start < 5000) {
+    handleConfigPortal();
+    ArduinoOTA.handle();
+    delay(10);
+  }
+  virtualDisp->clearScreen();
+}
 
 void printAll() {
   if (oldsec != timeinfo.tm_sec) {
@@ -371,7 +510,25 @@ void setup() {
 #define LAT 20
 #define OE 21
 
-  Serial.begin(9600);
+  Serial.begin(9600); // Baudrate
+
+  // --- PSRAM-Prüfung: nur Vorhandensein prüfen (direkt nach Serial.begin)
+  {
+    size_t psram_sz = 0;
+    #if defined(ESP_HAS_PSRAM) || defined(ESP32)
+      psram_sz = ESP.getPsramSize();
+    #endif
+    Serial.printf("PSRAM detected: %s\n", (psram_sz > 0) ? "yes" : "no");
+    if (psram_sz == 0) {
+      Serial.println();
+      Serial.println("********************************************************");
+      Serial.println("ERROR: PSRAM not detected. This firmware requires an ESP32 board with PSRAM.");
+      Serial.println("Recommended target: ESP32-S3 N8R8 (or equivalent) with PSRAM enabled.");
+      Serial.println("Halting to prevent runtime instability.");
+      Serial.println("********************************************************");
+      while (true) { delay(1000); } // stop here on unsupported hardware
+    }
+  }
 
   // --- LittleFS Initialisierung ---
   if (!LittleFS.begin(true)) {
@@ -394,7 +551,7 @@ void setup() {
 
   dma_display = new MatrixPanel_I2S_DMA(mxconfig);
   dma_display->begin();
-  dma_display->setBrightness8(80);
+  dma_display->setBrightness8(128);
   dma_display->clearScreen();
 
   virtualDisp = new VirtualMatrixPanel_T<PANEL_CHAIN_TYPE>(VDISP_NUM_ROWS, VDISP_NUM_COLS, PANEL_RES_X, PANEL_RES_Y);
@@ -451,6 +608,10 @@ void setup() {
           Serial.printf("Error[%u]: ", error);
         });
       ArduinoOTA.begin();
+
+      // Show connected message and IP on the matrix for 5 seconds
+      showIPOnPanel(WiFi.localIP().toString());
+
       virtualDisp->println("");
       virtualDisp->println(WiFi.localIP());
       Serial.print("Connected, IP: ");
@@ -466,18 +627,28 @@ void setup() {
 }
 
 void loop() {
-  // Wenn Konfig-Portal aktiv ist, bediene es
+  static int lastWiFiStatus = WL_DISCONNECTED;
+
+  // Falls das Konfig-Portal aktiv ist, bediene es
   handleConfigPortal();
 
-  // OTA
+  // OTA Handler (funktioniert nur wenn ArduinoOTA.begin() vorher aufgerufen wurde)
   ArduinoOTA.handle();
+
+  // Detect transition to connected to show IP on panel (if connection happens after boot)
+  int st = WiFi.status();
+  if (st == WL_CONNECTED && lastWiFiStatus != WL_CONNECTED) {
+    // show IP message for 5 seconds (services handled inside)
+    showIPOnPanel(WiFi.localIP().toString());
+  }
+  lastWiFiStatus = st;
 
   // Wenn verbunden, führe normale Logik aus
   if (WiFi.status() == WL_CONNECTED) {
     getAllData();
     printAll();
   } else {
-    // Portal/scan/connect reagieren lassen
+    // Optional: kurze Ruhe, damit Portal/Scan/Connect reagieren kann
     delay(50);
   }
   delay(50);
