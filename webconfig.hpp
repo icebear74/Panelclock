@@ -8,9 +8,6 @@
 #include <ArduinoJson.h>
 
 // Simple header-only webconfig for Panelclock
-// - Inline/static variables to avoid separate .cpp file
-// - Provides: deviceConfig, loadDeviceConfig(), saveDeviceConfig(),
-//   startConfigPortalIfNeeded(), handleConfigPortal()
 
 struct DeviceConfig {
   String ssid;
@@ -107,17 +104,16 @@ inline void _portal_handleSave() {
   } else {
     portalServer.send(500, "text/plain", "Fehler beim Speichern");
   }
-  // We keep the portal running so the user can see the confirmation
 }
 
-// Start a lightweight config portal if no wifi is configured.
+// Start a lightweight config portal if no wifi is configured or if forced.
 // This function is safe to call multiple times; it will only start the portal once.
-inline void startConfigPortalIfNeeded(unsigned long apTimeoutMs = 0) {
+inline void startConfigPortalIfNeeded(bool force = false) {
   // ensure config loaded
   loadDeviceConfig();
 
-  if (deviceConfig.ssid.length() > 0) {
-    // already configured -> do nothing
+  if (!force && deviceConfig.ssid.length() > 0) {
+    // already configured and not forced -> do nothing
     return;
   }
 

@@ -3,7 +3,21 @@
 
 #include <Arduino.h>
 #include <U8g2_for_Adafruit_GFX.h>
-#include <GFXcanvas.h> // ensure GFXcanvas16 type visible
+
+#if __has_include("gfxcanvas.h")
+  #include "gfxcanvas.h"
+#elif __has_include(<gfxcanvas.h>)
+  #include <gfxcanvas.h>
+#elif __has_include("GFXcanvas.h")
+  #include "GFXcanvas.h"
+#elif __has_include(<GFXcanvas.h>)
+  #include <GFXcanvas.h>
+#elif __has_include("Adafruit_GFX.h")
+  #include <Adafruit_GFX.h>
+#else
+  #error "gfxcanvas header not found. Please install the Adafruit GFX library (provides GFXcanvas16 / gfxcanvas.h)."
+#endif
+
 #include <time.h>
 
 // Header-only ClockModule: constructs with a reference to u8g2 and a GFXcanvas16

@@ -1,13 +1,7 @@
 /**
   Panelclock.ino
   Main firmware for the Panelclock project.
-
-  Uses:
-    - ClockModule.hpp (header-only)
-    - DataModule.hpp (header-only)
-  Contains:
-    - PSRAM copy logic for canvas buffers (heap_caps_malloc)
-    - networking/OTA/config portal hooks (reuses your existing webconfig)
+  (Modifiziert: Display-Selbsttest + mehr Serial-Debug + Config-Portal-Fallback + compose debug)
 */
 
 #include <Arduino.h>
@@ -147,13 +141,27 @@ void fetchStationDataIfNeeded() {
   }
 }
 
-// Compose & draw (with PSRAM copy if available)
+// Compose & draw (with PSRAM copy if available) with debug & manual test
 void composeAndDraw() {
   // draw into canvases using modules
   clockMod.setTime(timeinfo);
   clockMod.draw();
   dataMod.setData(stationname, e5, e10, diesel, e5Low, e5High, e10Low, e10High, dieselLow, dieselHigh);
   dataMod.draw();
+
+  // debug: print first few pixels of canvas buffers to serial
+  uint16_t *bufTime = canvasTime.getBuffer();
+  uint16_t *bufData = canvasData.getBuffer();
+  Serial.println("CanvasTime first pixels:");
+  for (int i = 0; i < 16; ++i) {
+    Serial.printf("%04X ", (uint16_t)bufTime[i]);
+  }
+  Serial.println();
+  Serial.println("CanvasData first pixels:");
+  for (int i = 0; i < 16; ++i) {
+    Serial.printf("%04X ", (uint16_t)bufData[i]);
+  }
+  Serial.println();
 
   // compute bytes
   psramBufTimeBytes = (size_t)canvasTime.width() * (size_t)canvasTime.height() * sizeof(uint16_t);
@@ -169,25 +177,58 @@ void composeAndDraw() {
     if (psramBufData) Serial.printf("PSRAM: allocated data buffer %u bytes\n", (unsigned)psramBufDataBytes);
   }
 
+  // Quick manual test: verify drawRGBBitmap works by drawing a solid test buffer (green/blue)
+  static bool manualTestDone = false;
+  if (!manualTestDone) {
+    size_t topPixels = (size_t)canvasTime.width() * (size_t)canvasTime.height();
+    size_t bottomPixels = (size_t)canvasData.width() * (size_t)canvasData.height();
+    size_t testPixels = max(topPixels, bottomPixels);
+    uint16_t *testBuf = (uint16_t*)malloc(testPixels * sizeof(uint16_t));
+    if (testBuf) {
+      // fill with green for top
+      uint16_t green = 0x07E0;
+      for (size_t i = 0; i < topPixels; ++i) testBuf[i] = green;
+      virtualDisp->clearScreen();
+      virtualDisp->setTextSize(1);
+      // draw to top area
+      virtualDisp->drawRGBBitmap(0, 0, testBuf, canvasTime.width(), canvasTime.height());
+      // fill with blue for bottom
+      uint16_t blue = 0x001F;
+      for (size_t i = 0; i < bottomPixels; ++i) testBuf[i] = blue;
+      virtualDisp->drawRGBBitmap(0, TIME_AREA_H, testBuf, canvasData.width(), canvasData.height());
+      free(testBuf);
+      Serial.println("Manual test buffer drawn (green top, blue bottom). Look at panel.");
+    } else {
+      Serial.println("Manual test buffer allocation failed.");
+    }
+    // wait a moment so you can see it, then continue with normal drawing
+    delay(1200);
+    manualTestDone = true;
+    virtualDisp->clearScreen();
+  }
+
+  // draw the real canvases
   if (psramBufTime) {
-    memcpy(psramBufTime, canvasTime.getBuffer(), psramBufTimeBytes);
+    memcpy(psramBufTime, bufTime, psramBufTimeBytes);
     virtualDisp->drawRGBBitmap(0, 0, psramBufTime, canvasTime.width(), canvasTime.height());
   } else {
-    virtualDisp->drawRGBBitmap(0, 0, canvasTime.getBuffer(), canvasTime.width(), canvasTime.height());
+    virtualDisp->drawRGBBitmap(0, 0, bufTime, canvasTime.width(), canvasTime.height());
   }
 
   if (psramBufData) {
-    memcpy(psramBufData, canvasData.getBuffer(), psramBufDataBytes);
+    memcpy(psramBufData, bufData, psramBufDataBytes);
     virtualDisp->drawRGBBitmap(0, TIME_AREA_H, psramBufData, canvasData.width(), canvasData.height());
   } else {
-    virtualDisp->drawRGBBitmap(0, TIME_AREA_H, canvasData.getBuffer(), canvasData.width(), canvasData.height());
+    virtualDisp->drawRGBBitmap(0, TIME_AREA_H, bufData, canvasData.width(), canvasData.height());
   }
 }
 
 uint8_t oldsec = 255;
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
+  delay(50);
+  Serial.println("=== Panelclock startup ===");
 
   if (!LittleFS.begin(true)) {
     Serial.println("LittleFS Mount Failed! Trying to format...");
@@ -221,6 +262,7 @@ void setup() {
 
   dma_display = new MatrixPanel_I2S_DMA(mxconfig);
   dma_display->begin();
+  // corrected: brightness is on dma_display
   dma_display->setBrightness8(128);
   dma_display->clearScreen();
 
@@ -229,26 +271,41 @@ void setup() {
 
   u8g2.begin(canvasTime);
 
-  virtualDisp->println("Starting...");
+  // --- QUICK DISPLAY SELF-TEST ---
+  Serial.println("Display self-test: writing test text...");
+  dma_display->setBrightness8(255);
+  virtualDisp->clearScreen();
+  virtualDisp->setTextSize(2);
+  virtualDisp->setCursor(0, 0);
+  virtualDisp->println("TEST");
+  virtualDisp->println("OK?");
+  delay(2000);
+  dma_display->setBrightness8(128);
+  virtualDisp->clearScreen();
+  Serial.println("Self-test done.");
+
+  // print object pointers & buffer info
+  Serial.printf("dma_display ptr: %p\n", (void*)dma_display);
+  Serial.printf("virtualDisp ptr: %p\n", (void*)virtualDisp);
+  Serial.printf("canvasTime buffer ptr: %p\n", (void*)canvasTime.getBuffer());
+  Serial.printf("canvasData buffer ptr: %p\n", (void*)canvasData.getBuffer());
+
   Serial.println("Display initialized.");
 
-  startConfigPortalIfNeeded();
-
+  // Attempt WiFi connect if config exists; if it fails start portal
   if (deviceConfig.ssid.length() > 0) {
+    Serial.printf("Have SSID configured: '%s' -> trying to connect\n", deviceConfig.ssid.c_str());
     WiFi.setHostname(deviceConfig.hostname.c_str());
     WiFi.begin(deviceConfig.ssid.c_str(), deviceConfig.password.c_str());
     int counter = 0;
-    while (WiFi.status() != WL_CONNECTED) {
+    while (WiFi.status() != WL_CONNECTED && counter < 40) {
       delay(500);
       if (virtualDisp) virtualDisp->print(".");
       counter++;
-      if (counter == 40) {
-        if (virtualDisp) virtualDisp->println("Wifi Err");
-        Serial.println("Wifi Connect Error, will keep config portal active if started.");
-        break;
-      }
     }
+
     if (WiFi.status() == WL_CONNECTED) {
+      Serial.print("Connected, IP: "); Serial.println(WiFi.localIP());
       TankerkoenigApiKey = deviceConfig.tankerApiKey;
       TankstellenID = deviceConfig.stationId;
       if (deviceConfig.otaPassword.length() > 0) ArduinoOTA.setPassword(deviceConfig.otaPassword.c_str());
@@ -259,9 +316,16 @@ void setup() {
         .onProgress([](unsigned int progress, unsigned int total){ Serial.printf("Progress: %u%%\r", (progress / (total / 100))); })
         .onError([](ota_error_t error){ Serial.printf("Error[%u]: ", error); });
       ArduinoOTA.begin();
+    } else {
+      Serial.println("WiFi connect failed -> starting config portal (AP mode).");
+      // Force portal even if SSID was present but connect failed
+      startConfigPortalIfNeeded(true);
+      Serial.print("AP IP: "); Serial.println(WiFi.softAPIP());
     }
   } else {
-    Serial.println("No WiFi configured; config portal should be active.");
+    Serial.println("No WiFi configured; starting config portal.");
+    startConfigPortalIfNeeded();
+    Serial.print("AP IP: "); Serial.println(WiFi.softAPIP());
   }
 
   configTime(3600, 3600, "pool.ntp.org", "time.nist.gov");
