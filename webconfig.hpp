@@ -9,8 +9,8 @@
 
 // Header-only webconfig for Panelclock
 // - verifies that config file is actually written (read-back verification)
-// - presents a dropdown of scanned WLANs in the portal so user can pick SSID
-// - keeps the simple save form and restarts on successful save+verify
+// - performs a WiFi scan in STA mode before starting the AP so the dropdown is populated
+// - adds serial debug output so it's visible whether AP started
 
 struct DeviceConfig {
   String ssid;
@@ -27,22 +27,14 @@ static WebServer portalServer(80);
 
 // Try to mount LittleFS if not mounted. Returns true if mounted.
 inline bool ensureLittleFSMounted() {
-  // LittleFS.begin(true) prints "Already Mounted" if already mounted; call guard to reduce noise
-  // There's no direct API for "is mounted", so just call begin() and return its value.
   return LittleFS.begin(true);
 }
 
 // Load deviceConfig from LittleFS (/device_config.json)
 inline void loadDeviceConfig() {
-  if (!ensureLittleFSMounted()) {
-    // keep defaults
-    return;
-  }
+  if (!ensureLittleFSMounted()) return;
   File f = LittleFS.open("/device_config.json", "r");
-  if (!f) {
-    // no config -> keep defaults
-    return;
-  }
+  if (!f) return;
   StaticJsonDocument<512> doc;
   DeserializationError err = deserializeJson(doc, f);
   f.close();
@@ -57,9 +49,7 @@ inline void loadDeviceConfig() {
 
 // Save deviceConfig to LittleFS (/device_config.json)
 inline bool saveDeviceConfig() {
-  if (!ensureLittleFSMounted()) {
-    return false;
-  }
+  if (!ensureLittleFSMounted()) return false;
   StaticJsonDocument<512> doc;
   doc["ssid"] = deviceConfig.ssid;
   doc["password"] = deviceConfig.password;
@@ -69,12 +59,8 @@ inline bool saveDeviceConfig() {
   doc["otaPassword"] = deviceConfig.otaPassword;
   File f = LittleFS.open("/device_config.json", "w");
   if (!f) return false;
-  if (serializeJson(doc, f) == 0) {
-    f.close();
-    return false;
-  }
+  if (serializeJson(doc, f) == 0) { f.close(); return false; }
   f.close();
-  // ensure file is visible to subsequent reads
   return true;
 }
 
@@ -87,38 +73,25 @@ inline bool verifySavedConfig() {
   DeserializationError err = deserializeJson(doc, f);
   f.close();
   if (err) return false;
-  // Compare key fields -- exact match required
   String ssid = String((const char*)(doc["ssid"] | ""));
   String passwd = String((const char*)(doc["password"] | ""));
   String host = String((const char*)(doc["hostname"] | ""));
   String tanker = String((const char*)(doc["tankerApiKey"] | ""));
   String station = String((const char*)(doc["stationId"] | ""));
   String ota = String((const char*)(doc["otaPassword"] | ""));
-  return (ssid == deviceConfig.ssid) &&
-         (passwd == deviceConfig.password) &&
-         (host == deviceConfig.hostname) &&
-         (tanker == deviceConfig.tankerApiKey) &&
-         (station == deviceConfig.stationId) &&
-         (ota == deviceConfig.otaPassword);
+  return (ssid == deviceConfig.ssid) && (passwd == deviceConfig.password) && (host == deviceConfig.hostname) && (tanker == deviceConfig.tankerApiKey) && (station == deviceConfig.stationId) && (ota == deviceConfig.otaPassword);
 }
 
 // Return HTML <option> list of scanned networks (ssid values escaped)
 inline String getNetworksOptionsHtml() {
   String html;
-  // Do a scan (blocking). This can take a couple seconds.
-  // Ensure WiFi in station mode for scanning; we keep current mode but call scan directly.
   int n = WiFi.scanNetworks();
-  if (n <= 0) {
-    html += "<option value=\"\">(keine Netzwerke gefunden)</option>";
-    return html;
-  }
+  if (n <= 0) { html += "<option value=\"\">(keine Netzwerke gefunden)</option>"; return html; }
   for (int i = 0; i < n; ++i) {
     String ssid = WiFi.SSID(i);
     int rssi = WiFi.RSSI(i);
     bool enc = WiFi.encryptionType(i) != WIFI_AUTH_OPEN;
-    // Escape single quotes in SSID for embedding in value=''
-    String esc = ssid;
-    esc.replace("'", "&#39;");
+    String esc = ssid; esc.replace("'", "&#39;");
     String label = esc + " (" + String(rssi) + " dBm";
     if (enc) label += ", gesichert";
     label += ")";
@@ -127,13 +100,11 @@ inline String getNetworksOptionsHtml() {
   return html;
 }
 
-// simple HTML form for portal; includes a SSID dropdown populated by scanned networks
 inline String portalPageHtml() {
   String html = "<!doctype html><html><head><meta charset='utf-8'><title>Panelclock Setup</title></head><body>";
   html += "<h2>Panelclock Konfiguration</h2>";
   html += "<form action=\"/save\" method=\"post\">";
   html += "WLAN SSID:<br>";
-  // include a dropdown filled by getNetworksOptionsHtml(); add a text input fallback
   html += "<select name='ssid_select' id='ssid_select' onchange=\"document.getElementById('ssid').value=this.value\">";
   html += "<option value=''>-- Netzwerk wählen --</option>";
   html += getNetworksOptionsHtml();
@@ -151,18 +122,10 @@ inline String portalPageHtml() {
   return html;
 }
 
-// Handler for GET /
-inline void _portal_handleRoot() {
-  String page = portalPageHtml();
-  portalServer.send(200, "text/html", page);
-}
+inline void _portal_handleRoot() { String page = portalPageHtml(); portalServer.send(200, "text/html", page); }
 
-// Handler for POST /save
 inline void _portal_handleSave() {
-  // If user selected from dropdown, prefer that value if provided
-  if (portalServer.hasArg("ssid_select") && portalServer.arg("ssid_select").length() > 0) {
-    deviceConfig.ssid = portalServer.arg("ssid_select");
-  }
+  if (portalServer.hasArg("ssid_select") && portalServer.arg("ssid_select").length() > 0) deviceConfig.ssid = portalServer.arg("ssid_select");
   if (portalServer.hasArg("ssid")) deviceConfig.ssid = portalServer.arg("ssid");
   if (portalServer.hasArg("password")) deviceConfig.password = portalServer.arg("password");
   if (portalServer.hasArg("hostname")) deviceConfig.hostname = portalServer.arg("hostname");
@@ -170,57 +133,49 @@ inline void _portal_handleSave() {
   if (portalServer.hasArg("stationId")) deviceConfig.stationId = portalServer.arg("stationId");
   if (portalServer.hasArg("otaPassword")) deviceConfig.otaPassword = portalServer.arg("otaPassword");
 
-  // attempt save
   bool ok = saveDeviceConfig();
-  if (!ok) {
-    portalServer.send(500, "text/plain", "Fehler: Konfigurationsdatei konnte nicht geschrieben werden (LittleFS Fehler).");
-    return;
-  }
-
-  // verify read-back
+  if (!ok) { portalServer.send(500, "text/plain", "Fehler: Konfigurationsdatei konnte nicht geschrieben werden (LittleFS Fehler).\n"); return; }
   bool verified = verifySavedConfig();
-  if (!verified) {
-    portalServer.send(500, "text/plain", "Fehler: Gespeicherte Konfiguration konnte nicht verifiziert werden. Schreib-/Leseproblem.");
-    return;
-  }
-
-  // success
+  if (!verified) { portalServer.send(500, "text/plain", "Fehler: Gespeicherte Konfiguration konnte nicht verifiziert werden. Schreib-/Leseproblem.\n"); return; }
   portalServer.send(200, "text/html", "<html><body><h3>Gespeichert</h3><p>Gerät startet neu...</p></body></html>");
   delay(600);
-  ESP.restart(); // reboot so new config takes effect immediately
+  ESP.restart();
 }
 
 // Start a lightweight config portal if no wifi is configured or if forced.
-// This function is safe to call multiple times; it will only start the portal once.
+// Performs scan in STA mode first to populate the dropdown and prints diagnostics
 inline void startConfigPortalIfNeeded(bool force = false) {
-  // ensure config loaded
   loadDeviceConfig();
+  if (!force && deviceConfig.ssid.length() > 0) return;
+  if (configPortalActive) { Serial.println("Config portal already active"); return; }
 
-  if (!force && deviceConfig.ssid.length() > 0) {
-    // already configured and not forced -> do nothing
-    return;
-  }
+  Serial.println("Starting config portal: scanning networks (STA mode)...");
+  // try a STA scan first to populate dropdown reliably
+  WiFi.mode(WIFI_STA);
+  delay(200);
+  int n = WiFi.scanNetworks();
+  Serial.printf("Scan result count: %d\n", n);
+  // small delay to let scan settle on some SDKs
+  delay(200);
 
-  if (configPortalActive) return;
-
-  // start AP for configuration
   const char *apName = "Panelclock-Setup";
+  Serial.println("Switching to AP+STA and starting softAP...");
   WiFi.mode(WIFI_AP_STA);
-  WiFi.softAP(apName);
+  bool ok = WiFi.softAP(apName);
+  if (!ok) {
+    Serial.println("Warning: WiFi.softAP() returned false");
+  }
+  IPAddress apIP = WiFi.softAPIP();
+  Serial.printf("softAP IP: %s\n", apIP.toString().c_str());
 
-  // setup webserver routes
   portalServer.on("/", HTTP_GET, _portal_handleRoot);
   portalServer.on("/save", HTTP_POST, _portal_handleSave);
   portalServer.onNotFound([](){ portalServer.send(404, "text/plain", "Not found"); });
-
   portalServer.begin();
   configPortalActive = true;
+  Serial.println("Config portal started; serve on / (webserver running)");
 }
 
-// call this regularly from loop() to serve portal requests
-inline void handleConfigPortal() {
-  if (!configPortalActive) return;
-  portalServer.handleClient();
-}
+inline void handleConfigPortal() { if (!configPortalActive) return; portalServer.handleClient(); }
 
 #endif // WEBCONFIG_HPP
