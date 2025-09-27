@@ -74,7 +74,7 @@ public:
       return;
     } else {
       u8g2.setForegroundColor(rgb565(128,128,128));
-      u8g2.setCursor(0, 47 - timeAreaH);
+      u8g2.setCursor(3, 47 - timeAreaH); // moved X to 3 so station name aligns with labels (E5/E10/Diesel)
       u8g2.print(stationname);
     }
 
