@@ -11,6 +11,9 @@
 // - verifies that config file is actually written (read-back verification)
 // - performs a WiFi scan in STA mode before starting the AP so the dropdown is populated
 // - adds serial debug output so it's visible whether AP started
+// - Behavior:
+//   * If no WiFi configured OR forced -> create softAP and start portal on AP interface
+//   * If WiFi is connected and not forced -> start portal on the STA (WiFi) interface (no AP created)
 
 struct DeviceConfig {
   String ssid;
@@ -152,14 +155,28 @@ inline void _portal_handleSave() {
   ESP.restart();
 }
 
-// Start a lightweight config portal if no wifi is configured or if forced.
-// Performs scan in STA mode first to populate the dropdown and prints diagnostics
+// Start a lightweight config portal.
+// Behavior:
+//  - If WiFi is connected and not forced => start webserver on STA interface (no AP)
+//  - Otherwise => start AP (softAP) and start portal there
 inline void startConfigPortalIfNeeded(bool force = false) {
   loadDeviceConfig();
-  if (!force && deviceConfig.ssid.length() > 0) return;
   if (configPortalActive) { Serial.println("Config portal already active"); return; }
 
-  Serial.println("Starting config portal: scanning networks (STA mode)...");
+  // If we're connected to WiFi and not forcing an AP, start the portal on the STA interface (no softAP)
+  if (!force && WiFi.status() == WL_CONNECTED) {
+    Serial.println("WiFi connected -> starting config portal on STA interface (no AP).");
+    portalServer.on("/", HTTP_GET, _portal_handleRoot);
+    portalServer.on("/save", HTTP_POST, _portal_handleSave);
+    portalServer.onNotFound([](){ portalServer.send(404, "text/plain", "Not found"); });
+    portalServer.begin();
+    configPortalActive = true;
+    Serial.printf("Config portal started on STA IP: %s\n", WiFi.localIP().toString().c_str());
+    return;
+  }
+
+  // Otherwise create AP and start portal there
+  Serial.println("Starting config portal (AP mode): scanning networks (STA mode) for dropdown...");
   WiFi.mode(WIFI_STA);
   delay(200);
   int n = WiFi.scanNetworks();
@@ -181,7 +198,7 @@ inline void startConfigPortalIfNeeded(bool force = false) {
   portalServer.onNotFound([](){ portalServer.send(404, "text/plain", "Not found"); });
   portalServer.begin();
   configPortalActive = true;
-  Serial.println("Config portal started; serve on / (webserver running)");
+  Serial.println("Config portal started on softAP; connect to the AP to configure.");
 }
 
 inline void handleConfigPortal() { if (!configPortalActive) return; portalServer.handleClient(); }

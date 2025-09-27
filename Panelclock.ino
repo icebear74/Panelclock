@@ -1,7 +1,7 @@
 /**
   Panelclock.ino
   Main firmware for the Panelclock project.
-  (Modifiziert: Display-Selbsttest + mehr Serial-Debug + Config-Portal-Fallback + compose debug)
+  (Updated: show startup greetings and connection IP on display for 5s before showing clock/data)
 */
 
 #include <Arduino.h>
@@ -57,8 +57,8 @@ static size_t psramBufDataBytes = 0;
 // runtime data (kept in main)
 String TankerkoenigApiKey = "";
 String TankstellenID = "";
-float diesel, e5, e10;
-float dieselLow, dieselHigh, e5Low, e5High, e10Low, e10High;
+float diesel = 0, e5 = 0, e10 = 0;
+float dieselLow = 99.999, dieselHigh = 0, e5Low = 99.999, e5High = 0, e10Low = 99.999, e10High = 0;
 String stationname;
 
 unsigned long lastTime = 0;
@@ -112,16 +112,58 @@ void loadPriceHistory() {
 void fetchStationDataIfNeeded() {
   unsigned long effectiveDelay = firstFetchDone ? timerDelay : initialQueryDelay;
   if ((millis() - lastTime) > effectiveDelay || skiptimer == true) {
+    // If API key or station missing -> set error for DataModule and keep showing clock
+    if (TankerkoenigApiKey.length() == 0 || TankstellenID.length() == 0) {
+      Serial.println("Tankerkoenig API key or station ID missing -> showing portal hint in data area.");
+      dataMod.setError("Fehler: API/Station fehlt");
+      // ensure some sane defaults for history so UI code doesn't break
+      if (!firstFetchDone) {
+        e5Low = e5High = e5;
+        e10Low = e10High = e10;
+        dieselLow = dieselHigh = diesel;
+      }
+      firstFetchDone = true;
+      skiptimer = false;
+      lastTime = millis();
+      return;
+    }
+
     if (WiFi.status() == WL_CONNECTED) {
       String serverPath = "https://creativecommons.tankerkoenig.de/json/detail.php?id=" + TankstellenID + "&apikey=" + TankerkoenigApiKey;
       String jsonBuffer = httpGETRequest(serverPath.c_str());
       StaticJsonDocument<1024> doc;
       DeserializationError error = deserializeJson(doc, jsonBuffer);
-      if (error) { Serial.print(F("deserializeJson() failed: " )); Serial.println(error.f_str()); return; }
+      if (error) {
+        Serial.print(F("deserializeJson() failed: " ));
+        Serial.println(error.f_str());
+        dataMod.setError("Fehler: JSON");
+        skiptimer = false;
+        lastTime = millis();
+        return;
+      }
       bool isOk = doc["ok"];
-      if (!isOk) { String msg = doc["message"]; Serial.println(msg); return; }
+      if (!isOk) {
+        String msg = doc["message"] | String("API error");
+        Serial.println("Tankerkoenig response not ok: " + msg);
+        dataMod.setError("API Fehler");
+        skiptimer = false;
+        lastTime = millis();
+        return;
+      }
       JsonObject station = doc["station"];
+      // protect against missing fields
+      if (!station.containsKey("e5") || !station.containsKey("e10") || !station.containsKey("diesel")) {
+        Serial.println("Tankerkoenig: station data incomplete");
+        dataMod.setError("API: unvollst. Daten");
+        skiptimer = false;
+        lastTime = millis();
+        return;
+      }
       e5 = station["e5"]; e10 = station["e10"]; diesel = station["diesel"]; stationname = station["name"].as<String>();
+
+      // clear any previous error and update data module
+      dataMod.setData(stationname, e5, e10, diesel, e5Low, e5High, e10Low, e10High, dieselLow, dieselHigh);
+
       if (skiptimer == true) {
         if (e5Low > e5High) e5Low = e5;
         if (e5High < e5Low) e5High = e5;
@@ -140,40 +182,40 @@ void fetchStationDataIfNeeded() {
 
       firstFetchDone = true;
     } else {
-      // WiFi not connected -- nothing to fetch
+      Serial.println("WiFi not connected, skipping station fetch");
+      dataMod.setError("Kein WLAN");
     }
     skiptimer = false;
     lastTime = millis();
   }
 }
 
-// Compose & draw (with PSRAM copy if available) with debug & manual test
+// draw the panel text lines (simple helper)
+static void showPanelMessage(const String &line1, const String &line2, uint8_t textSizeMain = 2, uint8_t textSizeSub = 1) {
+  if (!virtualDisp) return;
+  virtualDisp->clearScreen();
+  virtualDisp->setTextSize(textSizeMain);
+  virtualDisp->setCursor(0, 8);
+  virtualDisp->println(line1);
+  if (line2.length() > 0) {
+    virtualDisp->setTextSize(textSizeSub);
+    virtualDisp->println(line2);
+  }
+  // keep brightness as configured
+}
+
+// Compose & draw (with PSRAM copy if available)
 void composeAndDraw() {
   // draw into canvases using modules
   clockMod.setTime(timeinfo);
   clockMod.draw();
-  dataMod.setData(stationname, e5, e10, diesel, e5Low, e5High, e10Low, e10High, dieselLow, dieselHigh);
   dataMod.draw();
-
-  // debug: print first few pixels of canvas buffers to serial
-  uint16_t *bufTime = canvasTime.getBuffer();
-  uint16_t *bufData = canvasData.getBuffer();
-  Serial.println("CanvasTime first pixels:");
-  for (int i = 0; i < 16; ++i) {
-    Serial.printf("%04X ", (uint16_t)bufTime[i]);
-  }
-  Serial.println();
-  Serial.println("CanvasData first pixels:");
-  for (int i = 0; i < 16; ++i) {
-    Serial.printf("%04X ", (uint16_t)bufData[i]);
-  }
-  Serial.println();
 
   // compute bytes
   psramBufTimeBytes = (size_t)canvasTime.width() * (size_t)canvasTime.height() * sizeof(uint16_t);
   psramBufDataBytes = (size_t)canvasData.width() * (size_t)canvasData.height() * sizeof(uint16_t);
 
-  // allocate PSRAM buffers lazily
+  // allocate PSRAM buffers lazily (keeps previous behavior)
   if (!psramBufTime) {
     psramBufTime = (uint16_t*) heap_caps_malloc(psramBufTimeBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (psramBufTime) Serial.printf("PSRAM: allocated time buffer %u bytes\n", (unsigned)psramBufTimeBytes);
@@ -183,36 +225,10 @@ void composeAndDraw() {
     if (psramBufData) Serial.printf("PSRAM: allocated data buffer %u bytes\n", (unsigned)psramBufDataBytes);
   }
 
-  // Quick manual test: verify drawRGBBitmap works by drawing a solid test buffer (green/blue)
-  static bool manualTestDone = false;
-  if (!manualTestDone) {
-    size_t topPixels = (size_t)canvasTime.width() * (size_t)canvasTime.height();
-    size_t bottomPixels = (size_t)canvasData.width() * (size_t)canvasData.height();
-    size_t testPixels = max(topPixels, bottomPixels);
-    uint16_t *testBuf = (uint16_t*)malloc(testPixels * sizeof(uint16_t));
-    if (testBuf) {
-      // fill with green for top
-      uint16_t green = 0x07E0;
-      for (size_t i = 0; i < topPixels; ++i) testBuf[i] = green;
-      virtualDisp->clearScreen();
-      // draw to top area
-      virtualDisp->drawRGBBitmap(0, 0, testBuf, canvasTime.width(), canvasTime.height());
-      // fill with blue for bottom
-      uint16_t blue = 0x001F;
-      for (size_t i = 0; i < bottomPixels; ++i) testBuf[i] = blue;
-      virtualDisp->drawRGBBitmap(0, TIME_AREA_H, testBuf, canvasData.width(), canvasData.height());
-      free(testBuf);
-      Serial.println("Manual test buffer drawn (green top, blue bottom). Look at panel.");
-    } else {
-      Serial.println("Manual test buffer allocation failed.");
-    }
-    // wait a moment so you can see it, then continue with normal drawing
-    delay(1200);
-    manualTestDone = true;
-    virtualDisp->clearScreen();
-  }
-
   // draw the real canvases
+  uint16_t *bufTime = canvasTime.getBuffer();
+  uint16_t *bufData = canvasData.getBuffer();
+
   if (psramBufTime) {
     memcpy(psramBufTime, bufTime, psramBufTimeBytes);
     virtualDisp->drawRGBBitmap(0, 0, psramBufTime, canvasTime.width(), canvasTime.height());
@@ -271,7 +287,6 @@ void setup() {
 
   dma_display = new MatrixPanel_I2S_DMA(mxconfig);
   dma_display->begin();
-  // corrected: brightness is on dma_display
   dma_display->setBrightness8(128);
   dma_display->clearScreen();
 
@@ -279,19 +294,6 @@ void setup() {
   virtualDisp->setDisplay(*dma_display);
 
   u8g2.begin(canvasTime);
-
-  // --- QUICK DISPLAY SELF-TEST ---
-  Serial.println("Display self-test: writing test text...");
-  dma_display->setBrightness8(255);
-  virtualDisp->clearScreen();
-  virtualDisp->setTextSize(2);
-  virtualDisp->setCursor(0, 0);
-  virtualDisp->println("TEST");
-  virtualDisp->println("OK?");
-  delay(2000);
-  dma_display->setBrightness8(128);
-  virtualDisp->clearScreen();
-  Serial.println("Self-test done.");
 
   // print object pointers & buffer info
   Serial.printf("dma_display ptr: %p\n", (void*)dma_display);
@@ -301,7 +303,7 @@ void setup() {
 
   Serial.println("Display initialized.");
 
-  // Attempt WiFi connect if config exists; if it fails start portal
+  // Attempt WiFi connect if config exists; if it fails start portal (AP mode)
   if (deviceConfig.ssid.length() > 0) {
     Serial.printf("Have SSID configured: '%s' -> trying to connect\n", deviceConfig.ssid.c_str());
     WiFi.setHostname(deviceConfig.hostname.c_str());
@@ -309,7 +311,6 @@ void setup() {
     int counter = 0;
     while (WiFi.status() != WL_CONNECTED && counter < 40) {
       delay(500);
-      if (virtualDisp) virtualDisp->print(".");
       counter++;
     }
 
@@ -325,42 +326,52 @@ void setup() {
         .onProgress([](unsigned int progress, unsigned int total){ Serial.printf("Progress: %u%%\r", (progress / (total / 100))); })
         .onError([](ota_error_t error){ Serial.printf("Error[%u]: ", error); });
       ArduinoOTA.begin();
+
+      // Start the portal on STA (no AP) so it is reachable via the WiFi IP
+      startConfigPortalIfNeeded(false);
     } else {
       Serial.println("WiFi connect failed -> starting config portal (AP mode).");
-      // Force portal even if SSID was present but connect failed
+      // Force AP portal because connect failed
       startConfigPortalIfNeeded(true);
       Serial.print("AP IP: "); Serial.println(WiFi.softAPIP());
     }
   } else {
-    Serial.println("No WiFi configured; starting config portal.");
+    Serial.println("No WiFi configured; starting config portal (AP mode).");
     startConfigPortalIfNeeded();
     Serial.print("AP IP: "); Serial.println(WiFi.softAPIP());
   }
 
+  // configure NTP (start as early as possible so time can sync while splash shows)
   configTime(3600, 3600, "pool.ntp.org", "time.nist.gov");
-  delay(500);
-  virtualDisp->clearScreen();
+  delay(100);
+
+  // Show splash & connection info for 5 seconds, then continue to normal display
+  {
+    String line1 = "Panelclock";
+    String line2;
+    if (WiFi.status() == WL_CONNECTED) {
+      line2 = String("WLAN IP: ") + WiFi.localIP().toString();
+    } else {
+      IPAddress ap = WiFi.softAPIP();
+      if (ap != (uint32_t)0) line2 = String("AP IP: ") + ap.toString();
+      else line2 = "Kein Netzwerk";
+    }
+    showPanelMessage(line1, line2, 2, 1);
+    delay(5000);
+    virtualDisp->clearScreen();
+  }
 
   // draw initial content once immediately so panel is not blank
   composeAndDraw();
   lastDrawMillis = millis();
-
-  // Diagnostic: if portal didn't start earlier, force it and print status
-  if (!configPortalActive) {
-    Serial.println("Portal not active after initial setup -> forcing start for diagnosis");
-    startConfigPortalIfNeeded(true);
-    Serial.printf("After force: softAPIP=%s, portalActive=%d\n", WiFi.softAPIP().toString().c_str(), (int)configPortalActive);
-  }
 }
 
 void loop() {
   handleConfigPortal();
   ArduinoOTA.handle();
 
-  // fetch data only when WiFi available
-  if (WiFi.status() == WL_CONNECTED) {
-    fetchStationDataIfNeeded();
-  }
+  // fetch data (fetchStationDataIfNeeded will set errors if needed)
+  fetchStationDataIfNeeded();
 
   // redraw periodically, independent of WiFi (so panel is never blank)
   if (millis() - lastDrawMillis >= drawIntervalMs) {

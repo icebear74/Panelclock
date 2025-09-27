@@ -29,11 +29,19 @@ public:
   void setData(const String &station,
                float e5_, float e10_, float diesel_,
                float e5L, float e5H, float e10L, float e10H, float dL, float dH) {
+    hasError = false;
+    errorMsg = "";
     stationname = station;
-    e5 = e5_; e10 = e10_; diesel = diesel_;
+    e5 = e5_; e10 = e10_; this->diesel = diesel_;
     e5Low = e5L; e5High = e5H;
     e10Low = e10L; e10High = e10H;
     dieselLow = dL; dieselHigh = dH;
+  }
+
+  // set an error message to display instead of prices
+  void setError(const String &msg) {
+    hasError = true;
+    errorMsg = msg;
   }
 
   // Draw the data area (frame + contents)
@@ -48,45 +56,61 @@ public:
     u8g2.setCursor(40, 40 - timeAreaH);
     u8g2.print("Benzinpreise");
 
-    // station name
+    // station / status or error
     u8g2.setFont(u8g2_font_tom_thumb_4x6_tf);
-    u8g2.setForegroundColor(rgb565(128,128,128));
-    u8g2.setCursor(0, 47 - timeAreaH);
-    u8g2.print(stationname);
+    if (hasError) {
+      // show error prominently
+      u8g2.setForegroundColor(RED);
+      u8g2.setCursor(2, 47 - timeAreaH);
+      // if message too long, crop
+      String s = errorMsg;
+      if (s.length() > 30) s = s.substring(0, 30) + "...";
+      u8g2.print(s);
+      // optionally show help hint
+      u8g2.setForegroundColor(rgb565(200,200,200));
+      u8g2.setCursor(2, 54 - timeAreaH);
+      u8g2.print("Portal: 192.168.4.1");
+      // no prices drawn
+      return;
+    } else {
+      u8g2.setForegroundColor(rgb565(128,128,128));
+      u8g2.setCursor(0, 47 - timeAreaH);
+      u8g2.print(stationname);
+    }
 
     // prices: baselines adjusted relative to the overall display (main uses same baseline scheme)
     u8g2.setForegroundColor(YELLOW);
     // E5
     int e5_baseline = 60 - timeAreaH;
     u8g2.setFont(u8g2_font_6x13_me);
-    u8g2.setCursor(2, e5_baseline);
+    u8g2.setCursor(3, e5_baseline); // label moved 1px to the right
     u8g2.print("E5");
-    drawPrice(50, e5_baseline, e5Low, GREEN);
+    drawPrice(48, e5_baseline, e5Low, GREEN);   // shifted 2px left
     uint16_t e5col = calcColor(e5, e5Low, e5High);
-    drawPrice(100, e5_baseline, e5, e5col);
-    drawPrice(150, e5_baseline, e5High, RED);
+    drawPrice(98, e5_baseline, e5, e5col);      // shifted 2px left
+    drawPrice(148, e5_baseline, e5High, RED);   // shifted 2px left
 
     // E10
     int e10_baseline = 73 - timeAreaH;
     u8g2.setForegroundColor(YELLOW);
     u8g2.setFont(u8g2_font_6x13_me);
-    u8g2.setCursor(2, e10_baseline);
+    u8g2.setCursor(3, e10_baseline); // label moved 1px to the right
     u8g2.print("E10");
-    drawPrice(50, e10_baseline, e10Low, GREEN);
+    drawPrice(48, e10_baseline, e10Low, GREEN);
     uint16_t e10col = calcColor(e10, e10Low, e10High);
-    drawPrice(100, e10_baseline, e10, e10col);
-    drawPrice(150, e10_baseline, e10High, RED);
+    drawPrice(98, e10_baseline, e10, e10col);
+    drawPrice(148, e10_baseline, e10High, RED);
 
     // Diesel
     int diesel_baseline = 86 - timeAreaH;
     u8g2.setForegroundColor(YELLOW);
     u8g2.setFont(u8g2_font_6x13_me);
-    u8g2.setCursor(2, diesel_baseline);
+    u8g2.setCursor(3, diesel_baseline); // label moved 1px to the right
     u8g2.print("Diesel");
-    drawPrice(50, diesel_baseline, dieselLow, GREEN);
+    drawPrice(48, diesel_baseline, dieselLow, GREEN);
     uint16_t dcol = calcColor(diesel, dieselLow, dieselHigh);
-    drawPrice(100, diesel_baseline, diesel, dcol);
-    drawPrice(150, diesel_baseline, dieselHigh, RED);
+    drawPrice(98, diesel_baseline, diesel, dcol);
+    drawPrice(148, diesel_baseline, dieselHigh, RED);
   }
 
   // accessors for buffer if main wants to copy to PSRAM
@@ -103,6 +127,9 @@ private:
   String stationname;
   float e5=0, e10=0, diesel=0;
   float e5Low=99.999, e5High=0, e10Low=99.999, e10High=0, dieselLow=99.999, dieselHigh=0;
+
+  bool hasError = false;
+  String errorMsg;
 
   // colors
   static constexpr uint16_t WHITE = 0xFFFF;
