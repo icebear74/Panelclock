@@ -69,6 +69,10 @@ bool skiptimer = true;
 
 struct tm timeinfo;
 
+// draw scheduling
+static unsigned long lastDrawMillis = 0;
+const unsigned long drawIntervalMs = 1000; // redraw every 1s even without WiFi
+
 // helpers & functions (HTTP, history, fetch)
 String httpGETRequest(const char *serverName) {
   WiFiClient client;
@@ -135,6 +139,8 @@ void fetchStationDataIfNeeded() {
       savePriceHistory();
 
       firstFetchDone = true;
+    } else {
+      // WiFi not connected -- nothing to fetch
     }
     skiptimer = false;
     lastTime = millis();
@@ -189,7 +195,6 @@ void composeAndDraw() {
       uint16_t green = 0x07E0;
       for (size_t i = 0; i < topPixels; ++i) testBuf[i] = green;
       virtualDisp->clearScreen();
-      virtualDisp->setTextSize(1);
       // draw to top area
       virtualDisp->drawRGBBitmap(0, 0, testBuf, canvasTime.width(), canvasTime.height());
       // fill with blue for bottom
@@ -238,6 +243,10 @@ void setup() {
     Serial.println("LittleFS Mounted Successfully.");
     loadPriceHistory();
   }
+
+  // ensure device config is loaded early so we know whether portal should start
+  loadDeviceConfig();
+  Serial.printf("Loaded deviceConfig.ssid length=%u, value='%s'\n", (unsigned)deviceConfig.ssid.length(), deviceConfig.ssid.c_str());
 
   // Display init (pins)
 #define RL1 1
@@ -331,21 +340,37 @@ void setup() {
   configTime(3600, 3600, "pool.ntp.org", "time.nist.gov");
   delay(500);
   virtualDisp->clearScreen();
+
+  // draw initial content once immediately so panel is not blank
+  composeAndDraw();
+  lastDrawMillis = millis();
+
+  // Diagnostic: if portal didn't start earlier, force it and print status
+  if (!configPortalActive) {
+    Serial.println("Portal not active after initial setup -> forcing start for diagnosis");
+    startConfigPortalIfNeeded(true);
+    Serial.printf("After force: softAPIP=%s, portalActive=%d\n", WiFi.softAPIP().toString().c_str(), (int)configPortalActive);
+  }
 }
 
 void loop() {
   handleConfigPortal();
   ArduinoOTA.handle();
 
+  // fetch data only when WiFi available
   if (WiFi.status() == WL_CONNECTED) {
-    getLocalTime(&timeinfo);
-    if (oldsec != timeinfo.tm_sec) {
-      oldsec = timeinfo.tm_sec;
-      fetchStationDataIfNeeded();
-      composeAndDraw();
-    }
-  } else {
-    delay(50);
+    fetchStationDataIfNeeded();
   }
-  delay(50);
+
+  // redraw periodically, independent of WiFi (so panel is never blank)
+  if (millis() - lastDrawMillis >= drawIntervalMs) {
+    // update timeinfo if possible
+    if (WiFi.status() == WL_CONNECTED) {
+      getLocalTime(&timeinfo);
+    }
+    composeAndDraw();
+    lastDrawMillis = millis();
+  }
+
+  delay(10);
 }

@@ -59,8 +59,12 @@ inline bool saveDeviceConfig() {
   doc["otaPassword"] = deviceConfig.otaPassword;
   File f = LittleFS.open("/device_config.json", "w");
   if (!f) return false;
-  if (serializeJson(doc, f) == 0) { f.close(); return false; }
+  if (serializeJson(doc, f) == 0) {
+    f.close();
+    return false;
+  }
   f.close();
+  // ensure file is visible to subsequent reads
   return true;
 }
 
@@ -73,13 +77,19 @@ inline bool verifySavedConfig() {
   DeserializationError err = deserializeJson(doc, f);
   f.close();
   if (err) return false;
+  // Compare key fields -- exact match required
   String ssid = String((const char*)(doc["ssid"] | ""));
   String passwd = String((const char*)(doc["password"] | ""));
   String host = String((const char*)(doc["hostname"] | ""));
   String tanker = String((const char*)(doc["tankerApiKey"] | ""));
   String station = String((const char*)(doc["stationId"] | ""));
   String ota = String((const char*)(doc["otaPassword"] | ""));
-  return (ssid == deviceConfig.ssid) && (passwd == deviceConfig.password) && (host == deviceConfig.hostname) && (tanker == deviceConfig.tankerApiKey) && (station == deviceConfig.stationId) && (ota == deviceConfig.otaPassword);
+  return (ssid == deviceConfig.ssid) &&
+         (passwd == deviceConfig.password) &&
+         (host == deviceConfig.hostname) &&
+         (tanker == deviceConfig.tankerApiKey) &&
+         (station == deviceConfig.stationId) &&
+         (ota == deviceConfig.otaPassword);
 }
 
 // Return HTML <option> list of scanned networks (ssid values escaped)
@@ -150,12 +160,10 @@ inline void startConfigPortalIfNeeded(bool force = false) {
   if (configPortalActive) { Serial.println("Config portal already active"); return; }
 
   Serial.println("Starting config portal: scanning networks (STA mode)...");
-  // try a STA scan first to populate dropdown reliably
   WiFi.mode(WIFI_STA);
   delay(200);
   int n = WiFi.scanNetworks();
   Serial.printf("Scan result count: %d\n", n);
-  // small delay to let scan settle on some SDKs
   delay(200);
 
   const char *apName = "Panelclock-Setup";
