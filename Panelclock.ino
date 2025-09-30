@@ -1,9 +1,3 @@
-/**
-  Panelclock.ino
-  Main firmware for the Panelclock project.
-  (Updated: show startup greetings and connection IP on display for 5s before showing clock/data)
-*/
-
 #include <Arduino.h>
 #include <ESP32-HUB75-VirtualMatrixPanel_T.hpp>
 #include <WiFi.h>
@@ -17,13 +11,12 @@
 #include <FS.h>
 #include <LittleFS.h>
 #include "webconfig.hpp"
-
 #include "ClockModule.hpp"
 #include "DataModule.hpp"
+#include "CalendarModule.hpp"
+#include <esp_heap_caps.h>
 
-#include <esp_heap_caps.h> // heap_caps_malloc / heap_caps_free
-
-// constants
+// Display-Konstanten
 #define PANEL_RES_X 64
 #define PANEL_RES_Y 32
 #define VDISP_NUM_ROWS 3
@@ -35,56 +28,46 @@ const int FULL_HEIGHT = PANEL_RES_Y * VDISP_NUM_ROWS;
 const int TIME_AREA_H = 30;
 const int DATA_AREA_H = FULL_HEIGHT - TIME_AREA_H;
 
-// display
+// Display-Objekte
 MatrixPanel_I2S_DMA *dma_display = nullptr;
 VirtualMatrixPanel_T<PANEL_CHAIN_TYPE> *virtualDisp = nullptr;
 U8G2_FOR_ADAFRUIT_GFX u8g2;
-
-// canvases
 GFXcanvas16 canvasTime(FULL_WIDTH, TIME_AREA_H);
 GFXcanvas16 canvasData(FULL_WIDTH, DATA_AREA_H);
 
-// modules
+// Module
 ClockModule clockMod(u8g2, canvasTime);
 DataModule dataMod(u8g2, canvasData, TIME_AREA_H);
+CalendarModule calendarMod(u8g2, canvasData);
 
-// PSRAM buffers
+// PSRAM Buffers
 static uint16_t *psramBufTime = nullptr;
 static uint16_t *psramBufData = nullptr;
 static size_t psramBufTimeBytes = 0;
 static size_t psramBufDataBytes = 0;
 
-// runtime data (kept in main)
+// Laufzeitdaten
 String TankerkoenigApiKey = "";
 String TankstellenID = "";
 float diesel = 0, e5 = 0, e10 = 0;
 float dieselLow = 99.999, dieselHigh = 0, e5Low = 99.999, e5High = 0, e10Low = 99.999, e10High = 0;
 String stationname;
-
 unsigned long lastTime = 0;
 unsigned long timerDelay = 360000;
 unsigned long initialQueryDelay = 5000;
 bool firstFetchDone = false;
 bool skiptimer = true;
-
 struct tm timeinfo;
 
-// draw scheduling
-static unsigned long lastDrawMillis = 0;
-const unsigned long drawIntervalMs = 1000; // redraw every 1s even without WiFi
+// Anzeige-Wechsel-Logik
+unsigned long calendarDisplayMs = 30000;
+unsigned long stationDisplayMs = 30000;
+unsigned long lastSwitch = 0;
+bool showCalendar = false;
 
-// helpers & functions (HTTP, history, fetch)
-String httpGETRequest(const char *serverName) {
-  WiFiClient client;
-  HTTPClient http;
-  http.begin(serverName);
-  int httpResponseCode = http.GET();
-  String payload = "{}";
-  if (httpResponseCode > 0) payload = http.getString();
-  http.end();
-  return payload;
-}
+volatile bool calendarScrollNeedsRedraw = false;
 
+// --- Hilfsfunktionen für Preishistorie ---
 void savePriceHistory() {
   StaticJsonDocument<512> doc;
   doc["e5Low"] = e5Low; doc["e5High"] = e5High;
@@ -109,14 +92,89 @@ void loadPriceHistory() {
   file.close();
 }
 
+// --------- Hilfsfunktionen ---------
+
+void displayStatus(const char* msg) {
+  if (!dma_display || !virtualDisp) return;
+  dma_display->clearScreen();
+  u8g2.begin(*virtualDisp);
+  u8g2.setFont(u8g2_font_6x13_tf);
+  u8g2.setForegroundColor(0xFFFF);
+
+  String text(msg);
+  int maxPixel = FULL_WIDTH - 8;
+  std::vector<String> lines;
+  while (text.length()) {
+    int len = text.length();
+    int cut = len;
+    while (cut > 0 && u8g2.getUTF8Width(text.substring(0, cut).c_str()) > maxPixel) cut--;
+    if (cut == 0) cut = 1;
+    lines.push_back(text.substring(0, cut));
+    text = text.substring(cut);
+    text.trim();
+  }
+  int totalHeight = lines.size() * 14;
+  int y = (FULL_HEIGHT - totalHeight) / 2 + 12;
+  for (const auto& l : lines) {
+    int x = (FULL_WIDTH - u8g2.getUTF8Width(l.c_str())) / 2;
+    u8g2.setCursor(x, y);
+    u8g2.print(l);
+    y += 14;
+  }
+  dma_display->flipDMABuffer();
+}
+
+// OTA-Statusanzeige
+void displayOtaStatus(const String& line1, const String& line2 = "", const String& line3 = "") {
+    dma_display->clearScreen();
+    u8g2.begin(*virtualDisp);
+    u8g2.setFont(u8g2_font_6x13_tf);
+    u8g2.setForegroundColor(0x07E0); // grün
+    int y = 18;
+    if (!line1.isEmpty()) { u8g2.setCursor(4, y); u8g2.print(line1); y += 15; }
+    if (!line2.isEmpty()) { u8g2.setCursor(4, y); u8g2.print(line2); y += 15; }
+    if (!line3.isEmpty()) { u8g2.setCursor(4, y); u8g2.print(line3); }
+    dma_display->flipDMABuffer();
+}
+
+void setupOtaDisplayStatus() {
+    ArduinoOTA.onStart([]() {
+        String type = ArduinoOTA.getCommand() == U_FLASH ? "Firmware" : "Filesystem";
+        displayOtaStatus("OTA Update:", type + " wird geladen", "Bitte warten...");
+    });
+
+    ArduinoOTA.onEnd([]() {
+        displayOtaStatus("OTA Update:", "Fertig.", "Neustart...");
+        delay(1500);
+    });
+
+    ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+        int percent = (progress * 100) / total;
+        String line2 = "Fortschritt: " + String(percent) + "%";
+        displayOtaStatus("OTA Update", line2);
+    });
+
+    ArduinoOTA.onError([](ota_error_t error) {
+        String msg;
+        switch (error) {
+            case OTA_AUTH_ERROR:    msg = "Auth Fehler"; break;
+            case OTA_BEGIN_ERROR:   msg = "Begin Fehler"; break;
+            case OTA_CONNECT_ERROR: msg = "Connect Fehler"; break;
+            case OTA_RECEIVE_ERROR: msg = "Receive Fehler"; break;
+            case OTA_END_ERROR:     msg = "End Fehler"; break;
+            default: msg = "Unbekannter Fehler"; break;
+        }
+        displayOtaStatus("OTA Update Fehler", msg);
+        delay(2000);
+    });
+}
+
+// Robustere Tankerkönig-Abfrage
 void fetchStationDataIfNeeded() {
   unsigned long effectiveDelay = firstFetchDone ? timerDelay : initialQueryDelay;
   if ((millis() - lastTime) > effectiveDelay || skiptimer == true) {
-    // If API key or station missing -> set error for DataModule and keep showing clock
     if (TankerkoenigApiKey.length() == 0 || TankstellenID.length() == 0) {
-      Serial.println("Tankerkoenig API key or station ID missing -> showing portal hint in data area.");
       dataMod.setError("Fehler: API/Station fehlt");
-      // ensure some sane defaults for history so UI code doesn't break
       if (!firstFetchDone) {
         e5Low = e5High = e5;
         e10Low = e10High = e10;
@@ -129,39 +187,45 @@ void fetchStationDataIfNeeded() {
     }
 
     if (WiFi.status() == WL_CONNECTED) {
+      HTTPClient http;
       String serverPath = "https://creativecommons.tankerkoenig.de/json/detail.php?id=" + TankstellenID + "&apikey=" + TankerkoenigApiKey;
-      String jsonBuffer = httpGETRequest(serverPath.c_str());
+      http.begin(serverPath);
+      http.setTimeout(4000); // 4s Timeout
+      int httpResponseCode = http.GET();
+      if (httpResponseCode != 200) {
+        dataMod.setError("HTTP Fehler: " + String(httpResponseCode));
+        http.end();
+        skiptimer = false;
+        lastTime = millis();
+        return;
+      }
+      String jsonBuffer = http.getString();
+      http.end();
+
       StaticJsonDocument<1024> doc;
       DeserializationError error = deserializeJson(doc, jsonBuffer);
       if (error) {
-        Serial.print(F("deserializeJson() failed: " ));
-        Serial.println(error.f_str());
-        dataMod.setError("Fehler: JSON");
+        dataMod.setError("JSON Fehler");
         skiptimer = false;
         lastTime = millis();
         return;
       }
       bool isOk = doc["ok"];
       if (!isOk) {
-        String msg = doc["message"] | String("API error");
-        Serial.println("Tankerkoenig response not ok: " + msg);
-        dataMod.setError("API Fehler");
+        String msg = doc.containsKey("message") ? String((const char*)doc["message"]) : String("API Fehler");
+        dataMod.setError("API Fehler: " + msg);
         skiptimer = false;
         lastTime = millis();
         return;
       }
       JsonObject station = doc["station"];
-      // protect against missing fields
-      if (!station.containsKey("e5") || !station.containsKey("e10") || !station.containsKey("diesel")) {
-        Serial.println("Tankerkoenig: station data incomplete");
+      if (!station["e5"].is<float>() || !station["e10"].is<float>() || !station["diesel"].is<float>()) {
         dataMod.setError("API: unvollst. Daten");
         skiptimer = false;
         lastTime = millis();
         return;
       }
       e5 = station["e5"]; e10 = station["e10"]; diesel = station["diesel"]; stationname = station["name"].as<String>();
-
-      // clear any previous error and update data module
       dataMod.setData(stationname, e5, e10, diesel, e5Low, e5High, e10Low, e10High, dieselLow, dieselHigh);
 
       if (skiptimer == true) {
@@ -182,7 +246,6 @@ void fetchStationDataIfNeeded() {
 
       firstFetchDone = true;
     } else {
-      Serial.println("WiFi not connected, skipping station fetch");
       dataMod.setError("Kein WLAN");
     }
     skiptimer = false;
@@ -190,42 +253,27 @@ void fetchStationDataIfNeeded() {
   }
 }
 
-// draw the panel text lines (simple helper)
-static void showPanelMessage(const String &line1, const String &line2, uint8_t textSizeMain = 2, uint8_t textSizeSub = 1) {
-  if (!virtualDisp) return;
-  virtualDisp->clearScreen();
-  virtualDisp->setTextSize(textSizeMain);
-  virtualDisp->setCursor(0, 8);
-  virtualDisp->println(line1);
-  if (line2.length() > 0) {
-    virtualDisp->setTextSize(textSizeSub);
-    virtualDisp->println(line2);
-  }
-  // keep brightness as configured
-}
-
-// Compose & draw (with PSRAM copy if available)
-void composeAndDraw() {
-  // draw into canvases using modules
+// Compose und draw wie gehabt
+void composeAndDraw(bool showCalendarNow) {
   clockMod.setTime(timeinfo);
+  clockMod.tick();
   clockMod.draw();
-  dataMod.draw();
+  if (showCalendarNow) {
+    calendarMod.draw();
+  } else {
+    dataMod.draw();
+  }
 
-  // compute bytes
   psramBufTimeBytes = (size_t)canvasTime.width() * (size_t)canvasTime.height() * sizeof(uint16_t);
   psramBufDataBytes = (size_t)canvasData.width() * (size_t)canvasData.height() * sizeof(uint16_t);
 
-  // allocate PSRAM buffers lazily (keeps previous behavior)
   if (!psramBufTime) {
     psramBufTime = (uint16_t*) heap_caps_malloc(psramBufTimeBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    if (psramBufTime) Serial.printf("PSRAM: allocated time buffer %u bytes\n", (unsigned)psramBufTimeBytes);
   }
   if (!psramBufData) {
     psramBufData = (uint16_t*) heap_caps_malloc(psramBufDataBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    if (psramBufData) Serial.printf("PSRAM: allocated data buffer %u bytes\n", (unsigned)psramBufDataBytes);
   }
 
-  // draw the real canvases
   uint16_t *bufTime = canvasTime.getBuffer();
   uint16_t *bufData = canvasData.getBuffer();
 
@@ -244,27 +292,108 @@ void composeAndDraw() {
   }
 }
 
-uint8_t oldsec = 255;
+// WLAN: immer stärksten AP nehmen
+bool connectToBestWifi(const String& ssid, const String& password) {
+  displayStatus("Suche WLAN...");
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect(true);
+  delay(100);
+  int n = WiFi.scanNetworks();
+  int best_rssi = -1000;
+  int best_net = -1;
+  uint8_t best_bssid[6] = {0};
+  for (int i = 0; i < n; ++i) {
+    if (WiFi.SSID(i) == ssid && WiFi.RSSI(i) > best_rssi) {
+      best_rssi = WiFi.RSSI(i);
+      best_net = i;
+      memcpy(best_bssid, WiFi.BSSID(i), 6);
+    }
+  }
+  if (best_net == -1) {
+    displayStatus("WLAN nicht gefunden!");
+    delay(3000);
+    return false;
+  }
+  displayStatus("WLAN verbinden...");
+  WiFi.begin(ssid.c_str(), password.c_str(), 0, best_bssid);
+  for (int i = 0; i < 40; ++i) {
+    if (WiFi.status() == WL_CONNECTED) break;
+    delay(500);
+    displayStatus("Verbinde WLAN...");
+  }
+  if (WiFi.status() == WL_CONNECTED) {
+    String msg = "WLAN OK: " + WiFi.localIP().toString();
+    displayStatus(msg.c_str());
+    delay(1000);
+    return true;
+  } else {
+    displayStatus("WLAN fehlgeschlagen!");
+    delay(3000);
+    return false;
+  }
+}
+
+// Warte bis gültige Zeit empfangen wurde
+bool waitForTime() {
+  displayStatus("Warte auf Uhrzeit...");
+  configTime(3600, 3600, "pool.ntp.org", "time.nist.gov");
+  for (int i = 0; i < 30; ++i) { // max. 15s warten
+    struct tm t;
+    if (getLocalTime(&t) && t.tm_year > 120) {
+      timeinfo = t;
+      return true; // Jahr > 2020
+    }
+    delay(500);
+  }
+  displayStatus("Keine Zeit erhalten!");
+  delay(3000);
+  return false;
+}
+
+void applyLiveConfig() {
+  if (deviceConfig.icsUrl.length()) {
+    calendarMod.setICSUrl(deviceConfig.icsUrl);
+  }
+  calendarMod.setFetchIntervalMinutes(deviceConfig.calendarFetchIntervalMin);
+  calendarMod.setScrollStepInterval(deviceConfig.calendarScrollMs);
+  calendarMod.setColors(deviceConfig.calendarDateColor, deviceConfig.calendarTextColor);
+  calendarDisplayMs = deviceConfig.calendarDisplaySec * 1000UL;
+  stationDisplayMs = deviceConfig.stationDisplaySec * 1000UL;
+}
+
+// Calendar scroll task
+void CalendarScrollTask(void* param) {
+  while (true) {
+    calendarMod.tickScroll();
+    calendarScrollNeedsRedraw = true;
+    vTaskDelay(pdMS_TO_TICKS(calendarMod.getScrollStepInterval()));
+  }
+}
+
+// Calendar ICS Download robust
+void robustCalendarUpdateTask(void* param) {
+  while (true) {
+    calendarMod.robustUpdateIfDue();
+    vTaskDelay(pdMS_TO_TICKS(5000)); // prüfe alle 5 Sekunden (interner Timer im Modul)
+  }
+}
 
 void setup() {
   Serial.begin(115200);
   delay(50);
   Serial.println("=== Panelclock startup ===");
 
+  displayStatus("Starte Panelclock...");
+
   if (!LittleFS.begin(true)) {
-    Serial.println("LittleFS Mount Failed! Trying to format...");
-    if (LittleFS.format()) Serial.println("LittleFS formatted and mounted.");
-    else Serial.println("LittleFS Formatting Failed! Continuing without FS.");
+    displayStatus("LittleFS Fehler!");
+    delay(2000);
   } else {
-    Serial.println("LittleFS Mounted Successfully.");
     loadPriceHistory();
   }
 
-  // ensure device config is loaded early so we know whether portal should start
   loadDeviceConfig();
-  Serial.printf("Loaded deviceConfig.ssid length=%u, value='%s'\n", (unsigned)deviceConfig.ssid.length(), deviceConfig.ssid.c_str());
 
-  // Display init (pins)
 #define RL1 1
 #define GL1 2
 #define BL1 4
@@ -295,92 +424,73 @@ void setup() {
 
   u8g2.begin(canvasTime);
 
-  // print object pointers & buffer info
-  Serial.printf("dma_display ptr: %p\n", (void*)dma_display);
-  Serial.printf("virtualDisp ptr: %p\n", (void*)virtualDisp);
-  Serial.printf("canvasTime buffer ptr: %p\n", (void*)canvasTime.getBuffer());
-  Serial.printf("canvasData buffer ptr: %p\n", (void*)canvasData.getBuffer());
-
-  Serial.println("Display initialized.");
-
-  // Attempt WiFi connect if config exists; if it fails start portal (AP mode)
+  bool wifiOK = false;
   if (deviceConfig.ssid.length() > 0) {
-    Serial.printf("Have SSID configured: '%s' -> trying to connect\n", deviceConfig.ssid.c_str());
     WiFi.setHostname(deviceConfig.hostname.c_str());
-    WiFi.begin(deviceConfig.ssid.c_str(), deviceConfig.password.c_str());
-    int counter = 0;
-    while (WiFi.status() != WL_CONNECTED && counter < 40) {
-      delay(500);
-      counter++;
-    }
-
-    if (WiFi.status() == WL_CONNECTED) {
-      Serial.print("Connected, IP: "); Serial.println(WiFi.localIP());
+    wifiOK = connectToBestWifi(deviceConfig.ssid, deviceConfig.password);
+    if (wifiOK) {
       TankerkoenigApiKey = deviceConfig.tankerApiKey;
       TankstellenID = deviceConfig.stationId;
       if (deviceConfig.otaPassword.length() > 0) ArduinoOTA.setPassword(deviceConfig.otaPassword.c_str());
       ArduinoOTA.setHostname(deviceConfig.hostname.c_str());
-      ArduinoOTA
-        .onStart([]() { if (virtualDisp) { virtualDisp->clearScreen(); virtualDisp->setTextSize(2); virtualDisp->setCursor(0,0); virtualDisp->println("OTA UPDATE"); } })
-        .onEnd([](){ Serial.println("\nEnd"); })
-        .onProgress([](unsigned int progress, unsigned int total){ Serial.printf("Progress: %u%%\r", (progress / (total / 100))); })
-        .onError([](ota_error_t error){ Serial.printf("Error[%u]: ", error); });
+      setupOtaDisplayStatus(); // OTA-Display-Status initialisieren!
       ArduinoOTA.begin();
-
-      // Start the portal on STA (no AP) so it is reachable via the WiFi IP
       startConfigPortalIfNeeded(false);
     } else {
-      Serial.println("WiFi connect failed -> starting config portal (AP mode).");
-      // Force AP portal because connect failed
       startConfigPortalIfNeeded(true);
-      Serial.print("AP IP: "); Serial.println(WiFi.softAPIP());
     }
   } else {
-    Serial.println("No WiFi configured; starting config portal (AP mode).");
     startConfigPortalIfNeeded();
-    Serial.print("AP IP: "); Serial.println(WiFi.softAPIP());
   }
 
-  // configure NTP (start as early as possible so time can sync while splash shows)
-  configTime(3600, 3600, "pool.ntp.org", "time.nist.gov");
-  delay(100);
+  applyLiveConfig();
 
-  // Show splash & connection info for 5 seconds, then continue to normal display
-  {
-    String line1 = "Panelclock";
-    String line2;
-    if (WiFi.status() == WL_CONNECTED) {
-      line2 = String("WLAN IP: ") + WiFi.localIP().toString();
-    } else {
-      IPAddress ap = WiFi.softAPIP();
-      if (ap != (uint32_t)0) line2 = String("AP IP: ") + ap.toString();
-      else line2 = "Kein Netzwerk";
-    }
-    showPanelMessage(line1, line2, 2, 1);
-    delay(5000);
-    virtualDisp->clearScreen();
+  bool timeOK = waitForTime();
+
+  if (wifiOK && timeOK) {
+    displayStatus("Panelclock Start...");
+    delay(2000);
+    dma_display->clearScreen();
+    composeAndDraw(false);
+    lastSwitch = millis();
   }
 
-  // draw initial content once immediately so panel is not blank
-  composeAndDraw();
-  lastDrawMillis = millis();
+  // Starte den Scroll-Task (Core 1, Prio 2)
+  xTaskCreatePinnedToCore(CalendarScrollTask, "CalScroll", 2048, NULL, 2, NULL, 1);
+  // Starte robusten ICS-Fetch-Task
+  xTaskCreatePinnedToCore(robustCalendarUpdateTask, "CalICS", 4096, NULL, 2, NULL, 1);
 }
 
 void loop() {
   handleConfigPortal();
   ArduinoOTA.handle();
-
-  // fetch data (fetchStationDataIfNeeded will set errors if needed)
   fetchStationDataIfNeeded();
 
-  // redraw periodically, independent of WiFi (so panel is never blank)
-  if (millis() - lastDrawMillis >= drawIntervalMs) {
-    // update timeinfo if possible
-    if (WiFi.status() == WL_CONNECTED) {
-      getLocalTime(&timeinfo);
-    }
-    composeAndDraw();
-    lastDrawMillis = millis();
+  // Umschalten der Anzeige (wie gehabt)
+  unsigned long now = millis();
+  unsigned long nextSwitchInterval = showCalendar ? calendarDisplayMs : stationDisplayMs;
+  if (now - lastSwitch > nextSwitchInterval) {
+    showCalendar = !showCalendar;
+    lastSwitch = now;
+    composeAndDraw(showCalendar);
+  }
+
+  // Redraw nur wenn nötig
+  if (calendarScrollNeedsRedraw) {
+    calendarScrollNeedsRedraw = false;
+    composeAndDraw(showCalendar);
+  }
+
+  // Zeit aktualisieren
+  if (WiFi.status() == WL_CONNECTED) {
+    getLocalTime(&timeinfo);
+  }
+
+  // Zeige Status, bis gültige Zeit empfangen wurde!
+  if (timeinfo.tm_year < 120) {
+    displayStatus("Warte auf Uhrzeit...");
+    delay(500);
+    return;
   }
 
   delay(10);

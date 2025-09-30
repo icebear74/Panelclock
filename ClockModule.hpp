@@ -3,6 +3,8 @@
 
 #include <Arduino.h>
 #include <U8g2_for_Adafruit_GFX.h>
+#include <WiFi.h>
+#include <time.h>
 
 #if __has_include("gfxcanvas.h")
   #include "gfxcanvas.h"
@@ -18,33 +20,40 @@
   #error "gfxcanvas header not found. Please install the Adafruit GFX library (provides GFXcanvas16 / gfxcanvas.h)."
 #endif
 
-#include <time.h>
-
-// Header-only ClockModule: constructs with a reference to u8g2 and a GFXcanvas16
 class ClockModule {
 public:
   ClockModule(U8G2_FOR_ADAFRUIT_GFX &u8g2, GFXcanvas16 &canvas)
     : u8g2(u8g2), canvas(canvas) {}
 
-  // Set current localtime (copy)
   void setTime(const struct tm &t) { timeinfo = t; }
 
-  // Draw into the bound canvas (assumes canvas width/height set by main)
+  // Regelmäßig im loop aufrufen!
+  void tick() {
+    unsigned long now = millis();
+    if (now - lastRssiUpdate > 30000 || lastRssiUpdate == 0) {
+      lastRssi = WiFi.RSSI();
+      lastRssiUpdate = now;
+    }
+  }
+
   void draw() {
     canvas.fillScreen(0);
-    // frame
+    // Rahmen
     canvas.drawRect(0, 0, canvas.width() - 1, canvas.height(), rgb565(50,50,50));
+
+    // --- WLAN-Stärkebalken links ---
+    drawWifiStrengthBar();
 
     // bind u8g2 to this canvas and draw
     u8g2.begin(canvas);
     u8g2.setFontMode(0);
     u8g2.setFontDirection(0);
 
-    // Time (baseline ~25)
+    // Time (um 5 Pixel nach rechts verschoben, damit Balken Platz hat)
     u8g2.setForegroundColor(MAGENTA);
     u8g2.setBackgroundColor(BLACK);
     u8g2.setFont(u8g2_font_fub20_tf);
-    u8g2.setCursor(2, 25);
+    u8g2.setCursor(7, 25); // Original war (2,25) → jetzt (7,25)
     u8g2.print(&timeinfo, "%H:%M:%S");
 
     // Date
@@ -80,7 +89,6 @@ public:
     }
   }
 
-  // expose canvas buffer accessors for main if needed
   uint16_t* getBuffer() { return canvas.getBuffer(); }
   int width() const { return canvas.width(); }
   int height() const { return canvas.height(); }
@@ -89,8 +97,9 @@ private:
   U8G2_FOR_ADAFRUIT_GFX &u8g2;
   GFXcanvas16 &canvas;
   struct tm timeinfo{};
+  int lastRssi = -100;
+  unsigned long lastRssiUpdate = 0;
 
-  // small helpers and constants
   static inline uint16_t rgb565(uint8_t r,uint8_t g,uint8_t b){
     return ((r/8)<<11)|((g/4)<<5)|(b/8);
   }
@@ -98,6 +107,24 @@ private:
   static constexpr uint16_t YELLOW = 0xFFE0;
   static constexpr uint16_t MAGENTA = 0xF81F;
   static constexpr uint16_t CYAN = 0x07FF;
+
+  // Farbverlauf: -90 (rot) ... -30 (grün)
+  uint16_t rssiToColor(int rssi) {
+    int rssiClamped = constrain(rssi, -90, -30);
+    uint8_t r = map(rssiClamped, -90, -30, 255, 0); // schlecht = rot, gut = 0
+    uint8_t g = map(rssiClamped, -90, -30, 0, 255); // schlecht = 0, gut = grün
+    return rgb565(r, g, 0);
+  }
+
+  void drawWifiStrengthBar() {
+    int barX = 1;
+    int barW = 2; // jetzt exakt 2 Pixel breit!
+    int barH = canvas.height();
+    int barY = 0;
+    uint16_t color = rssiToColor(lastRssi);
+    canvas.fillRect(barX, barY, barW, barH, color);
+    canvas.drawRect(barX, barY, barW, barH, 0x0000); // schwarzer Rahmen
+  }
 
   // ISO week calculation
   static int isoWeekNumber(const struct tm &t) {

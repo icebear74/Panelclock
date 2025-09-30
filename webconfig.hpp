@@ -7,13 +7,9 @@
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 
-// Header-only webconfig for Panelclock
-// - verifies that config file is actually written (read-back verification)
-// - performs a WiFi scan in STA mode before starting the AP so the dropdown is populated
-// - adds serial debug output so it's visible whether AP started
-// - Behavior:
-//   * If no WiFi configured OR forced -> create softAP and start portal on AP interface
-//   * If WiFi is connected and not forced -> start portal on the STA (WiFi) interface (no AP created)
+extern void applyLiveConfig();
+inline void _portal_handleRoot();
+inline void _portal_handleSave();
 
 struct DeviceConfig {
   String ssid;
@@ -22,23 +18,29 @@ struct DeviceConfig {
   String tankerApiKey;
   String stationId;
   String otaPassword;
+  String icsUrl;
+  uint32_t switchIntervalSec = 30;
+  uint32_t calendarFetchIntervalMin = 5;
+  uint32_t calendarScrollMs = 150;
+  uint32_t calendarDisplaySec = 30;
+  uint32_t stationDisplaySec = 30;
+  String calendarDateColor = "#FFE000";
+  String calendarTextColor = "#FFFFFF";
 };
 
-static DeviceConfig deviceConfig;    // header-only instance
+static DeviceConfig deviceConfig;
 static bool configPortalActive = false;
 static WebServer portalServer(80);
 
-// Try to mount LittleFS if not mounted. Returns true if mounted.
 inline bool ensureLittleFSMounted() {
   return LittleFS.begin(true);
 }
 
-// Load deviceConfig from LittleFS (/device_config.json)
 inline void loadDeviceConfig() {
   if (!ensureLittleFSMounted()) return;
   File f = LittleFS.open("/device_config.json", "r");
   if (!f) return;
-  StaticJsonDocument<512> doc;
+  StaticJsonDocument<1024> doc;
   DeserializationError err = deserializeJson(doc, f);
   f.close();
   if (err) return;
@@ -48,18 +50,33 @@ inline void loadDeviceConfig() {
   deviceConfig.tankerApiKey= String((const char*)(doc["tankerApiKey"] | ""));
   deviceConfig.stationId   = String((const char*)(doc["stationId"] | ""));
   deviceConfig.otaPassword = String((const char*)(doc["otaPassword"] | ""));
+  deviceConfig.icsUrl      = String((const char*)(doc["icsUrl"] | ""));
+  deviceConfig.switchIntervalSec = doc["switchIntervalSec"] | 30;
+  deviceConfig.calendarFetchIntervalMin = doc["calendarFetchIntervalMin"] | 5;
+  deviceConfig.calendarScrollMs = doc["calendarScrollMs"] | 150;
+  deviceConfig.calendarDisplaySec = doc["calendarDisplaySec"] | 30;
+  deviceConfig.stationDisplaySec = doc["stationDisplaySec"] | 30;
+  deviceConfig.calendarDateColor = String((const char*)(doc["calendarDateColor"] | "#FFE000"));
+  deviceConfig.calendarTextColor = String((const char*)(doc["calendarTextColor"] | "#FFFFFF"));
 }
 
-// Save deviceConfig to LittleFS (/device_config.json)
 inline bool saveDeviceConfig() {
   if (!ensureLittleFSMounted()) return false;
-  StaticJsonDocument<512> doc;
+  StaticJsonDocument<1024> doc;
   doc["ssid"] = deviceConfig.ssid;
   doc["password"] = deviceConfig.password;
   doc["hostname"] = deviceConfig.hostname;
   doc["tankerApiKey"] = deviceConfig.tankerApiKey;
   doc["stationId"] = deviceConfig.stationId;
   doc["otaPassword"] = deviceConfig.otaPassword;
+  doc["icsUrl"] = deviceConfig.icsUrl;
+  doc["switchIntervalSec"] = deviceConfig.switchIntervalSec;
+  doc["calendarFetchIntervalMin"] = deviceConfig.calendarFetchIntervalMin;
+  doc["calendarScrollMs"] = deviceConfig.calendarScrollMs;
+  doc["calendarDisplaySec"] = deviceConfig.calendarDisplaySec;
+  doc["stationDisplaySec"] = deviceConfig.stationDisplaySec;
+  doc["calendarDateColor"] = deviceConfig.calendarDateColor;
+  doc["calendarTextColor"] = deviceConfig.calendarTextColor;
   File f = LittleFS.open("/device_config.json", "w");
   if (!f) return false;
   if (serializeJson(doc, f) == 0) {
@@ -67,35 +84,47 @@ inline bool saveDeviceConfig() {
     return false;
   }
   f.close();
-  // ensure file is visible to subsequent reads
   return true;
 }
 
-// Read back the file and verify fields match deviceConfig (basic verification)
 inline bool verifySavedConfig() {
   if (!ensureLittleFSMounted()) return false;
   File f = LittleFS.open("/device_config.json", "r");
   if (!f) return false;
-  StaticJsonDocument<512> doc;
+  StaticJsonDocument<1024> doc;
   DeserializationError err = deserializeJson(doc, f);
   f.close();
   if (err) return false;
-  // Compare key fields -- exact match required
   String ssid = String((const char*)(doc["ssid"] | ""));
   String passwd = String((const char*)(doc["password"] | ""));
   String host = String((const char*)(doc["hostname"] | ""));
   String tanker = String((const char*)(doc["tankerApiKey"] | ""));
   String station = String((const char*)(doc["stationId"] | ""));
   String ota = String((const char*)(doc["otaPassword"] | ""));
+  String icsUrl = String((const char*)(doc["icsUrl"] | ""));
+  uint32_t swInt = doc["switchIntervalSec"] | 30;
+  uint32_t calFetch = doc["calendarFetchIntervalMin"] | 5;
+  uint32_t calScroll = doc["calendarScrollMs"] | 150;
+  uint32_t calDisp = doc["calendarDisplaySec"] | 30;
+  uint32_t staDisp = doc["stationDisplaySec"] | 30;
+  String calDateColor = String((const char*)(doc["calendarDateColor"] | "#FFE000"));
+  String calTextColor = String((const char*)(doc["calendarTextColor"] | "#FFFFFF"));
   return (ssid == deviceConfig.ssid) &&
          (passwd == deviceConfig.password) &&
          (host == deviceConfig.hostname) &&
          (tanker == deviceConfig.tankerApiKey) &&
          (station == deviceConfig.stationId) &&
-         (ota == deviceConfig.otaPassword);
+         (ota == deviceConfig.otaPassword) &&
+         (icsUrl == deviceConfig.icsUrl) &&
+         (swInt == deviceConfig.switchIntervalSec) &&
+         (calFetch == deviceConfig.calendarFetchIntervalMin) &&
+         (calScroll == deviceConfig.calendarScrollMs) &&
+         (calDisp == deviceConfig.calendarDisplaySec) &&
+         (staDisp == deviceConfig.stationDisplaySec) &&
+         (calDateColor == deviceConfig.calendarDateColor) &&
+         (calTextColor == deviceConfig.calendarTextColor);
 }
 
-// Return HTML <option> list of scanned networks (ssid values escaped)
 inline String getNetworksOptionsHtml() {
   String html;
   int n = WiFi.scanNetworks();
@@ -128,8 +157,16 @@ inline String portalPageHtml() {
   html += "Tankerkoenig API Key:<br><input name='tankerApiKey' value='" + deviceConfig.tankerApiKey + "' style='width:300px'><br>";
   html += "Station ID:<br><input name='stationId' value='" + deviceConfig.stationId + "' style='width:300px'><br>";
   html += "OTA Passwort:<br><input name='otaPassword' value='" + deviceConfig.otaPassword + "' style='width:300px'><br>";
+  html += "Google Kalender ICS-URL:<br><input name='icsUrl' value='" + deviceConfig.icsUrl + "' style='width:300px'><br>";
+  html += "Anzeigedauer Kalender (Sekunden):<br><input name='calendarDisplaySec' type='number' min='5' max='600' value='" + String(deviceConfig.calendarDisplaySec) + "' style='width:80px'><br>";
+  html += "Anzeigedauer Tankstelle (Sekunden):<br><input name='stationDisplaySec' type='number' min='5' max='600' value='" + String(deviceConfig.stationDisplaySec) + "' style='width:80px'><br>";
+  html += "Wechselintervall (Sekunden, deprecated):<br><input name='switchIntervalSec' type='number' min='5' max='600' value='" + String(deviceConfig.switchIntervalSec) + "' style='width:80px'><br>";
+  html += "Kalender-Update-Intervall (Minuten):<br><input name='calendarFetchIntervalMin' type='number' min='1' max='120' value='" + String(deviceConfig.calendarFetchIntervalMin) + "' style='width:80px'><br>";
+  html += "Scrollgeschwindigkeit Kalender (ms pro Schritt, 0 = aus):<br><input name='calendarScrollMs' type='number' min='0' max='2000' value='" + String(deviceConfig.calendarScrollMs) + "' style='width:80px'><br>";
+  html += "Kalender-Datum-Farbe:<br><input name='calendarDateColor' type='color' value='" + deviceConfig.calendarDateColor + "' style='width:80px'><br>";
+  html += "Kalender-Text-Farbe:<br><input name='calendarTextColor' type='color' value='" + deviceConfig.calendarTextColor + "' style='width:80px'><br>";
   html += "<br><input type='submit' value='Speichern'></form>";
-  html += "<p>Nach Speichern startet das Gerät neu.</p>";
+  html += "<p>Nach Speichern werden die meisten Änderungen sofort aktiv.<br>Nur bei WLAN/OTA/Hostname ist ein Neustart nötig.</p>";
   html += "<p>Hinweis: Wenn das gewünschte WLAN nicht angezeigt wird, tragen Sie die SSID bitte manuell ein.</p>";
   html += "</body></html>";
   return html;
@@ -138,6 +175,11 @@ inline String portalPageHtml() {
 inline void _portal_handleRoot() { String page = portalPageHtml(); portalServer.send(200, "text/html", page); }
 
 inline void _portal_handleSave() {
+  String oldSsid = deviceConfig.ssid;
+  String oldPwd = deviceConfig.password;
+  String oldHost = deviceConfig.hostname;
+  String oldOta = deviceConfig.otaPassword;
+
   if (portalServer.hasArg("ssid_select") && portalServer.arg("ssid_select").length() > 0) deviceConfig.ssid = portalServer.arg("ssid_select");
   if (portalServer.hasArg("ssid")) deviceConfig.ssid = portalServer.arg("ssid");
   if (portalServer.hasArg("password")) deviceConfig.password = portalServer.arg("password");
@@ -145,27 +187,36 @@ inline void _portal_handleSave() {
   if (portalServer.hasArg("tankerApiKey")) deviceConfig.tankerApiKey = portalServer.arg("tankerApiKey");
   if (portalServer.hasArg("stationId")) deviceConfig.stationId = portalServer.arg("stationId");
   if (portalServer.hasArg("otaPassword")) deviceConfig.otaPassword = portalServer.arg("otaPassword");
+  if (portalServer.hasArg("icsUrl")) deviceConfig.icsUrl = portalServer.arg("icsUrl");
+  if (portalServer.hasArg("switchIntervalSec")) deviceConfig.switchIntervalSec = portalServer.arg("switchIntervalSec").toInt();
+  if (portalServer.hasArg("calendarFetchIntervalMin")) deviceConfig.calendarFetchIntervalMin = portalServer.arg("calendarFetchIntervalMin").toInt();
+  if (portalServer.hasArg("calendarScrollMs")) deviceConfig.calendarScrollMs = portalServer.arg("calendarScrollMs").toInt();
+  if (portalServer.hasArg("calendarDisplaySec")) deviceConfig.calendarDisplaySec = portalServer.arg("calendarDisplaySec").toInt();
+  if (portalServer.hasArg("stationDisplaySec")) deviceConfig.stationDisplaySec = portalServer.arg("stationDisplaySec").toInt();
+  if (portalServer.hasArg("calendarDateColor")) deviceConfig.calendarDateColor = portalServer.arg("calendarDateColor");
+  if (portalServer.hasArg("calendarTextColor")) deviceConfig.calendarTextColor = portalServer.arg("calendarTextColor");
 
   bool ok = saveDeviceConfig();
   if (!ok) { portalServer.send(500, "text/plain", "Fehler: Konfigurationsdatei konnte nicht geschrieben werden (LittleFS Fehler).\n"); return; }
   bool verified = verifySavedConfig();
   if (!verified) { portalServer.send(500, "text/plain", "Fehler: Gespeicherte Konfiguration konnte nicht verifiziert werden. Schreib-/Leseproblem.\n"); return; }
-  portalServer.send(200, "text/html", "<html><body><h3>Gespeichert</h3><p>Gerät startet neu...</p></body></html>");
-  delay(600);
-  ESP.restart();
+
+  bool needsRestart = (deviceConfig.ssid != oldSsid) || (deviceConfig.password != oldPwd) || (deviceConfig.hostname != oldHost) || (deviceConfig.otaPassword != oldOta);
+
+  if (needsRestart) {
+    portalServer.send(200, "text/html", "<html><head><meta http-equiv='refresh' content='2;url=/'></head><body><h3>Gespeichert</h3><p>Gerät startet neu...</p></body></html>");
+    delay(600);
+    ESP.restart();
+  } else {
+    applyLiveConfig();
+    portalServer.send(200, "text/html", "<html><head><meta http-equiv='refresh' content='3;url=/'></head><body><h3>Gespeichert</h3><p>Änderungen übernommen! Zurück zur Hauptseite...</p></body></html>");
+  }
 }
 
-// Start a lightweight config portal.
-// Behavior:
-//  - If WiFi is connected and not forced => start webserver on STA interface (no AP)
-//  - Otherwise => start AP (softAP) and start portal there
 inline void startConfigPortalIfNeeded(bool force = false) {
   loadDeviceConfig();
   if (configPortalActive) { Serial.println("Config portal already active"); return; }
-
-  // If we're connected to WiFi and not forcing an AP, start the portal on the STA interface (no softAP)
   if (!force && WiFi.status() == WL_CONNECTED) {
-    Serial.println("WiFi connected -> starting config portal on STA interface (no AP).");
     portalServer.on("/", HTTP_GET, _portal_handleRoot);
     portalServer.on("/save", HTTP_POST, _portal_handleSave);
     portalServer.onNotFound([](){ portalServer.send(404, "text/plain", "Not found"); });
@@ -174,25 +225,13 @@ inline void startConfigPortalIfNeeded(bool force = false) {
     Serial.printf("Config portal started on STA IP: %s\n", WiFi.localIP().toString().c_str());
     return;
   }
-
-  // Otherwise create AP and start portal there
-  Serial.println("Starting config portal (AP mode): scanning networks (STA mode) for dropdown...");
   WiFi.mode(WIFI_STA);
   delay(200);
-  int n = WiFi.scanNetworks();
-  Serial.printf("Scan result count: %d\n", n);
+  WiFi.scanNetworks();
   delay(200);
-
   const char *apName = "Panelclock-Setup";
-  Serial.println("Switching to AP+STA and starting softAP...");
   WiFi.mode(WIFI_AP_STA);
-  bool ok = WiFi.softAP(apName);
-  if (!ok) {
-    Serial.println("Warning: WiFi.softAP() returned false");
-  }
-  IPAddress apIP = WiFi.softAPIP();
-  Serial.printf("softAP IP: %s\n", apIP.toString().c_str());
-
+  WiFi.softAP(apName);
   portalServer.on("/", HTTP_GET, _portal_handleRoot);
   portalServer.on("/save", HTTP_POST, _portal_handleSave);
   portalServer.onNotFound([](){ portalServer.send(404, "text/plain", "Not found"); });
