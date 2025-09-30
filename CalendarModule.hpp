@@ -104,7 +104,7 @@ public:
     int lastOk = 0;
     for (int i = 1; i <= text.length(); ++i) {
       int w = u8g2.getUTF8Width(text.substring(0, i).c_str());
-      if (w <= maxPixel) lastOk = i;
+      if (w <= (maxPixel - 1)) lastOk = i; // <- 1 Pixel abziehen!
       else break;
     }
     return text.substring(0, lastOk);
@@ -170,7 +170,6 @@ public:
       if (isMulti) {
         u8g2.print("     ");
       } else if (ev.time.length() > 0) {
-        // Uhrzeit im Berliner Zeitformat anzeigen
         char bufTime[8];
         strftime(bufTime, sizeof(bufTime), "%H:%M", &tStart);
         u8g2.print(bufTime);
@@ -182,7 +181,7 @@ public:
       u8g2.setCursor(xSummary, y);
       size_t idx = i < scrollPos.size() ? i : 0;
       String shownText = ev.summary;
-      int visibleChars = fitTextToPixelWidth(shownText, maxSummaryPixel).length();
+      int visibleChars = fitTextToPixelWidth(shownText, maxSummaryPixel - 1).length(); // <- 1 Pixel abziehen!
       String pad = "   ";
       String scrollText = shownText + pad + shownText.substring(0, visibleChars);
       int maxScroll = scrollText.length() - visibleChars;
@@ -239,7 +238,7 @@ private:
             struct tm t;
             gmtime_r(&ev.startEpoch, &t);
             ev.date = icsDateToGerman(String(t.tm_year+1900) + pad2(t.tm_mon+1) + pad2(t.tm_mday));
-            ev.time = cur.time; // Zeit übernehmen
+            ev.time = cur.time;
             events.push_back(ev);
           }
         } else if (cur.summary.length() && cur.date.length()) {
@@ -261,7 +260,7 @@ private:
           cur.startEpoch = icsDateTimeToEpoch(dtstr);
         } else if (line.startsWith("DTEND;VALUE=DATE:")) {
           String datestr = line.substring(17);
-          cur.endEpoch = icsDateToEpoch(datestr, true) - 1; // end exclusive
+          cur.endEpoch = icsDateToEpoch(datestr, true) - 1;
         } else if (line.startsWith("DTEND:")) {
           String dtstr = line.substring(6);
           cur.endEpoch = icsDateTimeToEpoch(dtstr);
@@ -283,7 +282,7 @@ private:
       scrollPos.resize(upcomming.size());
       for (size_t i = 0; i < scrollPos.size(); ++i) {
         String shownText = upcomming[i].summary;
-        int visibleChars = fitTextToPixelWidth(shownText, maxTextPixel).length();
+        int visibleChars = fitTextToPixelWidth(shownText, maxTextPixel - 1).length(); // <- 1 Pixel abziehen!
         String pad = "   ";
         String scrollText = shownText + pad + shownText.substring(0, visibleChars);
         int maxScroll = (shownText.length() > visibleChars) ? (scrollText.length() - visibleChars) : 0;
