@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <time.h>
 #include "BerlinTime.hpp"
+#include "RRuleParser.hpp"
 
 uint16_t hexColorTo565(const String& hex) {
   if (hex.length() != 7 || hex[0] != '#') return 0xFFFF;
@@ -22,6 +23,7 @@ struct CalendarEvent {
   String time;
   String summary;
   time_t startEpoch;
+  time_t endEpoch;
 };
 
 class CalendarModule {
@@ -59,6 +61,7 @@ public:
         err.time = "";
         err.summary = String("ICS HTTP: ") + code;
         err.startEpoch = time(nullptr) + 1;
+        err.endEpoch = err.startEpoch;
         events.push_back(err);
         resetScroll();
         return;
@@ -72,11 +75,11 @@ public:
     }
   }
 
-  std::vector<CalendarEvent> getUpcomingEvents(int maxCount = 4) {
+  std::vector<CalendarEvent> getUpcomingEvents(int maxCount = 6) {
     std::vector<CalendarEvent> result;
     time_t now = time(nullptr);
     for (const auto& ev : events) {
-      if (ev.startEpoch >= now) result.push_back(ev);
+      if (ev.endEpoch >= now) result.push_back(ev);
       if ((int)result.size() >= maxCount) break;
     }
     return result;
@@ -119,10 +122,10 @@ public:
     int y = fontH + 1;
     u8g2.setForegroundColor(dateColor);
     u8g2.setCursor(2, y);
-    u8g2.print("Datum    Zeit   Termin");
+    u8g2.print("Start   Ende   Zeit   Termin");
     y += fontH;
 
-    auto upcomming = getUpcomingEvents(4);
+    auto upcomming = getUpcomingEvents(6);
     if (upcomming.empty()) {
       u8g2.setFont(font);
       u8g2.setForegroundColor(textColor);
@@ -131,53 +134,64 @@ public:
       return;
     }
 
-    int textX = 105;
-    int maxTextPixel = canvas.width() - textX - 2;
+    int xStart = 2;
+    int xEnd = 48;
+    int xTime = 74;
+    int xSummary = 110;
+    int maxSummaryPixel = canvas.width() - xSummary - 2;
 
-    ensureScrollPos(upcomming, maxTextPixel);
+    ensureScrollPos(upcomming, maxSummaryPixel);
 
     for (size_t i = 0; i < upcomming.size(); ++i) {
-      const auto &ev = upcomming[i];
-      u8g2.setFont(font);
+      const auto& ev = upcomming[i];
+      // === Berechnung mit Berliner Zeit ===
+      struct tm tStartUtc, tEndUtc;
+      gmtime_r(&ev.startEpoch, &tStartUtc);
+      gmtime_r(&ev.endEpoch, &tEndUtc);
+
+      struct tm tStart = utcToBerlin(tStartUtc);
+      struct tm tEnd = utcToBerlin(tEndUtc);
+
+      char bufStart[12];
+      strftime(bufStart, sizeof(bufStart), "%d.%m.%y", &tStart);
       u8g2.setForegroundColor(dateColor);
-      u8g2.setCursor(2, y);
+      u8g2.setCursor(xStart, y);
+      u8g2.print(bufStart);
 
-      // NEU: Kalenderzeit immer Berlin!
-      struct tm tStart;
-      gmtime_r(&ev.startEpoch, &tStart);
-      tStart = utcToBerlin(tStart);
-      char datebuf[12], timebuf[8];
-      strftime(datebuf, sizeof(datebuf), "%d.%m.%Y", &tStart);
-      strftime(timebuf, sizeof(timebuf), "%H:%M", &tStart);
-
-      u8g2.print(datebuf);
-      u8g2.setCursor(65, y);
-      u8g2.print(timebuf);
-
-      String shownText = ev.summary;
-      u8g2.setForegroundColor(textColor);
-
-      String fitted = fitTextToPixelWidth(shownText, maxTextPixel);
-
-      if (scrollStepInterval == 0) {
-        if (fitted.length() < shownText.length())
-          fitted = fitted.substring(0, fitted.length() > 3 ? fitted.length() - 3 : fitted.length()) + "...";
-        u8g2.setCursor(textX, y);
-        u8g2.print(fitted);
-        y += fontH;
-      } else {
-        size_t idx = i < scrollPos.size() ? i : 0;
-        int visibleChars = fitTextToPixelWidth(shownText, maxTextPixel).length();
-        String pad = "   ";
-        String scrollText = shownText + pad + shownText.substring(0, visibleChars);
-        int maxScroll = scrollText.length() - visibleChars;
-        int offset = scrollPos[idx].offset;
-        if (offset > maxScroll) offset = 0;
-        String part = scrollText.substring(offset, offset + visibleChars);
-        u8g2.setCursor(textX, y);
-        u8g2.print(part);
-        y += fontH;
+      char bufEnd[12] = "";
+      bool isMulti = (ev.endEpoch > ev.startEpoch && (tEnd.tm_yday != tStart.tm_yday || tEnd.tm_year != tStart.tm_year));
+      if (isMulti) {
+        strftime(bufEnd, sizeof(bufEnd), "%d.%m.%y", &tEnd);
+        u8g2.setCursor(xEnd, y);
+        u8g2.print(bufEnd);
       }
+
+      u8g2.setCursor(xTime, y);
+      if (isMulti) {
+        u8g2.print("     ");
+      } else if (ev.time.length() > 0) {
+        // Uhrzeit im Berliner Zeitformat anzeigen
+        char bufTime[8];
+        strftime(bufTime, sizeof(bufTime), "%H:%M", &tStart);
+        u8g2.print(bufTime);
+      } else {
+        u8g2.print("00:00");
+      }
+
+      u8g2.setForegroundColor(textColor);
+      u8g2.setCursor(xSummary, y);
+      size_t idx = i < scrollPos.size() ? i : 0;
+      String shownText = ev.summary;
+      int visibleChars = fitTextToPixelWidth(shownText, maxSummaryPixel).length();
+      String pad = "   ";
+      String scrollText = shownText + pad + shownText.substring(0, visibleChars);
+      int maxScroll = scrollText.length() - visibleChars;
+      int offset = scrollPos[idx].offset;
+      if (offset > maxScroll) offset = 0;
+      String part = scrollText.substring(offset, offset + visibleChars);
+      u8g2.print(part);
+
+      y += fontH;
     }
   }
 
@@ -204,6 +218,7 @@ private:
     int idx = 0;
     CalendarEvent cur;
     bool inEvent = false;
+    String rrule;
     while (idx < (int)ics.length()) {
       int next = ics.indexOf('\n', idx);
       if (next < 0) next = ics.length();
@@ -212,9 +227,24 @@ private:
       if (line == "BEGIN:VEVENT") {
         inEvent = true;
         cur = CalendarEvent();
+        cur.endEpoch = 0;
+        rrule = "";
       } else if (line == "END:VEVENT" && inEvent) {
-        if (cur.summary.length() && cur.date.length())
+        if (rrule.length()) {
+          std::vector<time_t> instances = parseRRule(rrule, cur.startEpoch, 20);
+          for (time_t inst : instances) {
+            CalendarEvent ev = cur;
+            ev.startEpoch = inst;
+            ev.endEpoch = inst + (cur.endEpoch - cur.startEpoch);
+            struct tm t;
+            gmtime_r(&ev.startEpoch, &t);
+            ev.date = icsDateToGerman(String(t.tm_year+1900) + pad2(t.tm_mon+1) + pad2(t.tm_mday));
+            ev.time = cur.time; // Zeit übernehmen
+            events.push_back(ev);
+          }
+        } else if (cur.summary.length() && cur.date.length()) {
           events.push_back(cur);
+        }
         inEvent = false;
       } else if (inEvent) {
         if (line.startsWith("SUMMARY:")) {
@@ -229,9 +259,20 @@ private:
           cur.date = icsDateToGerman(dtstr.substring(0,8));
           cur.time = icsTimeToGerman(dtstr.substring(9,15));
           cur.startEpoch = icsDateTimeToEpoch(dtstr);
+        } else if (line.startsWith("DTEND;VALUE=DATE:")) {
+          String datestr = line.substring(17);
+          cur.endEpoch = icsDateToEpoch(datestr, true) - 1; // end exclusive
+        } else if (line.startsWith("DTEND:")) {
+          String dtstr = line.substring(6);
+          cur.endEpoch = icsDateTimeToEpoch(dtstr);
+        } else if (line.startsWith("RRULE:")) {
+          rrule = line.substring(6);
         }
       }
       idx = next + 1;
+    }
+    for (auto& ev : events) {
+      if (ev.endEpoch == 0) ev.endEpoch = ev.startEpoch;
     }
   }
 
@@ -252,6 +293,11 @@ private:
     }
   }
 
+  static String pad2(int val) {
+    String s = String(val);
+    if (s.length() < 2) s = "0" + s;
+    return s;
+  }
   static String icsDateToGerman(const String& yyyymmdd) {
     if (yyyymmdd.length()!=8) return "";
     return yyyymmdd.substring(6,8) + "." + yyyymmdd.substring(4,6) + "." + yyyymmdd.substring(0,4);
