@@ -26,6 +26,7 @@ struct DeviceConfig {
   uint32_t stationDisplaySec = 30;
   String calendarDateColor = "#FFE000";
   String calendarTextColor = "#FFFFFF";
+  String timezone = "CET-1CEST,M3.5.0,M10.5.0/3"; // <--- Berlin Default NEU
 };
 
 static DeviceConfig deviceConfig;
@@ -58,6 +59,7 @@ inline void loadDeviceConfig() {
   deviceConfig.stationDisplaySec = doc["stationDisplaySec"] | 30;
   deviceConfig.calendarDateColor = String((const char*)(doc["calendarDateColor"] | "#FFE000"));
   deviceConfig.calendarTextColor = String((const char*)(doc["calendarTextColor"] | "#FFFFFF"));
+  deviceConfig.timezone         = String((const char*)(doc["timezone"] | "CET-1CEST,M3.5.0,M10.5.0/3")); // NEU
 }
 
 inline bool saveDeviceConfig() {
@@ -77,6 +79,7 @@ inline bool saveDeviceConfig() {
   doc["stationDisplaySec"] = deviceConfig.stationDisplaySec;
   doc["calendarDateColor"] = deviceConfig.calendarDateColor;
   doc["calendarTextColor"] = deviceConfig.calendarTextColor;
+  doc["timezone"] = deviceConfig.timezone; // NEU
   File f = LittleFS.open("/device_config.json", "w");
   if (!f) return false;
   if (serializeJson(doc, f) == 0) {
@@ -109,6 +112,7 @@ inline bool verifySavedConfig() {
   uint32_t staDisp = doc["stationDisplaySec"] | 30;
   String calDateColor = String((const char*)(doc["calendarDateColor"] | "#FFE000"));
   String calTextColor = String((const char*)(doc["calendarTextColor"] | "#FFFFFF"));
+  String tz = String((const char*)(doc["timezone"] | "CET-1CEST,M3.5.0,M10.5.0/3")); // NEU
   return (ssid == deviceConfig.ssid) &&
          (passwd == deviceConfig.password) &&
          (host == deviceConfig.hostname) &&
@@ -122,7 +126,8 @@ inline bool verifySavedConfig() {
          (calDisp == deviceConfig.calendarDisplaySec) &&
          (staDisp == deviceConfig.stationDisplaySec) &&
          (calDateColor == deviceConfig.calendarDateColor) &&
-         (calTextColor == deviceConfig.calendarTextColor);
+         (calTextColor == deviceConfig.calendarTextColor) &&
+         (tz == deviceConfig.timezone);
 }
 
 inline String getNetworksOptionsHtml() {
@@ -158,6 +163,7 @@ inline String portalPageHtml() {
   html += "Station ID:<br><input name='stationId' value='" + deviceConfig.stationId + "' style='width:300px'><br>";
   html += "OTA Passwort:<br><input name='otaPassword' value='" + deviceConfig.otaPassword + "' style='width:300px'><br>";
   html += "Google Kalender ICS-URL:<br><input name='icsUrl' value='" + deviceConfig.icsUrl + "' style='width:300px'><br>";
+  html += "Zeitzone (TZ-String, z.B. CET-1CEST,M3.5.0,M10.5.0/3):<br><input name='timezone' value='" + deviceConfig.timezone + "' style='width:300px'><br>"; // NEU
   html += "Anzeigedauer Kalender (Sekunden):<br><input name='calendarDisplaySec' type='number' min='5' max='600' value='" + String(deviceConfig.calendarDisplaySec) + "' style='width:80px'><br>";
   html += "Anzeigedauer Tankstelle (Sekunden):<br><input name='stationDisplaySec' type='number' min='5' max='600' value='" + String(deviceConfig.stationDisplaySec) + "' style='width:80px'><br>";
   html += "Wechselintervall (Sekunden, deprecated):<br><input name='switchIntervalSec' type='number' min='5' max='600' value='" + String(deviceConfig.switchIntervalSec) + "' style='width:80px'><br>";
@@ -188,6 +194,7 @@ inline void _portal_handleSave() {
   if (portalServer.hasArg("stationId")) deviceConfig.stationId = portalServer.arg("stationId");
   if (portalServer.hasArg("otaPassword")) deviceConfig.otaPassword = portalServer.arg("otaPassword");
   if (portalServer.hasArg("icsUrl")) deviceConfig.icsUrl = portalServer.arg("icsUrl");
+  if (portalServer.hasArg("timezone")) deviceConfig.timezone = portalServer.arg("timezone"); // NEU
   if (portalServer.hasArg("switchIntervalSec")) deviceConfig.switchIntervalSec = portalServer.arg("switchIntervalSec").toInt();
   if (portalServer.hasArg("calendarFetchIntervalMin")) deviceConfig.calendarFetchIntervalMin = portalServer.arg("calendarFetchIntervalMin").toInt();
   if (portalServer.hasArg("calendarScrollMs")) deviceConfig.calendarScrollMs = portalServer.arg("calendarScrollMs").toInt();

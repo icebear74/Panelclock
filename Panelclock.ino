@@ -10,6 +10,7 @@
 #include <U8g2_for_Adafruit_GFX.h>
 #include <FS.h>
 #include <LittleFS.h>
+#include "BerlinTime.hpp"
 #include "webconfig.hpp"
 #include "ClockModule.hpp"
 #include "DataModule.hpp"
@@ -57,7 +58,7 @@ unsigned long timerDelay = 360000;
 unsigned long initialQueryDelay = 5000;
 bool firstFetchDone = false;
 bool skiptimer = true;
-struct tm timeinfo;
+struct tm timeinfo; // Enthält immer Berlin-Zeit!
 
 // Anzeige-Wechsel-Logik
 unsigned long calendarDisplayMs = 30000;
@@ -336,11 +337,12 @@ bool connectToBestWifi(const String& ssid, const String& password) {
 // Warte bis gültige Zeit empfangen wurde
 bool waitForTime() {
   displayStatus("Warte auf Uhrzeit...");
+  setenv("TZ", "UTC", 1); tzset();
   configTime(3600, 3600, "pool.ntp.org", "time.nist.gov");
   for (int i = 0; i < 30; ++i) { // max. 15s warten
     struct tm t;
     if (getLocalTime(&t) && t.tm_year > 120) {
-      timeinfo = t;
+      timeinfo = t; // NEU: immer Berlin-Zeit!
       return true; // Jahr > 2020
     }
     delay(500);
@@ -374,7 +376,7 @@ void CalendarScrollTask(void* param) {
 void robustCalendarUpdateTask(void* param) {
   while (true) {
     calendarMod.robustUpdateIfDue();
-    vTaskDelay(pdMS_TO_TICKS(5000)); // prüfe alle 5 Sekunden (interner Timer im Modul)
+    vTaskDelay(pdMS_TO_TICKS(5000));
   }
 }
 
@@ -433,7 +435,7 @@ void setup() {
       TankstellenID = deviceConfig.stationId;
       if (deviceConfig.otaPassword.length() > 0) ArduinoOTA.setPassword(deviceConfig.otaPassword.c_str());
       ArduinoOTA.setHostname(deviceConfig.hostname.c_str());
-      setupOtaDisplayStatus(); // OTA-Display-Status initialisieren!
+      setupOtaDisplayStatus();
       ArduinoOTA.begin();
       startConfigPortalIfNeeded(false);
     } else {
@@ -455,9 +457,7 @@ void setup() {
     lastSwitch = millis();
   }
 
-  // Starte den Scroll-Task (Core 1, Prio 2)
   xTaskCreatePinnedToCore(CalendarScrollTask, "CalScroll", 2048, NULL, 2, NULL, 1);
-  // Starte robusten ICS-Fetch-Task
   xTaskCreatePinnedToCore(robustCalendarUpdateTask, "CalICS", 4096, NULL, 2, NULL, 1);
 }
 
@@ -466,7 +466,6 @@ void loop() {
   ArduinoOTA.handle();
   fetchStationDataIfNeeded();
 
-  // Umschalten der Anzeige (wie gehabt)
   unsigned long now = millis();
   unsigned long nextSwitchInterval = showCalendar ? calendarDisplayMs : stationDisplayMs;
   if (now - lastSwitch > nextSwitchInterval) {
@@ -475,18 +474,16 @@ void loop() {
     composeAndDraw(showCalendar);
   }
 
-  // Redraw nur wenn nötig
   if (calendarScrollNeedsRedraw) {
     calendarScrollNeedsRedraw = false;
     composeAndDraw(showCalendar);
   }
 
-  // Zeit aktualisieren
-  if (WiFi.status() == WL_CONNECTED) {
-    getLocalTime(&timeinfo);
+  struct tm utcNow;
+  if (WiFi.status() == WL_CONNECTED && getLocalTime(&utcNow)) {
+    timeinfo = utcNow; // NEU: immer Berlin-Zeit!
   }
 
-  // Zeige Status, bis gültige Zeit empfangen wurde!
   if (timeinfo.tm_year < 120) {
     displayStatus("Warte auf Uhrzeit...");
     delay(500);

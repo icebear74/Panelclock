@@ -6,6 +6,8 @@
 #include <HTTPClient.h>
 #include <vector>
 #include <algorithm>
+#include <time.h>
+#include "BerlinTime.hpp"
 
 uint16_t hexColorTo565(const String& hex) {
   if (hex.length() != 7 || hex[0] != '#') return 0xFFFF;
@@ -38,7 +40,6 @@ public:
     textColor = hexColorTo565(textColorHex);
   }
 
-  // Robuste Kalender-ICS-Abfrage (aufrufen im Task!)
   void robustUpdateIfDue() {
     unsigned long now = millis();
     if (now - lastFetch > fetchInterval || events.empty()) {
@@ -140,9 +141,18 @@ public:
       u8g2.setFont(font);
       u8g2.setForegroundColor(dateColor);
       u8g2.setCursor(2, y);
-      u8g2.print(ev.date);
+
+      // NEU: Kalenderzeit immer Berlin!
+      struct tm tStart;
+      gmtime_r(&ev.startEpoch, &tStart);
+      tStart = utcToBerlin(tStart);
+      char datebuf[12], timebuf[8];
+      strftime(datebuf, sizeof(datebuf), "%d.%m.%Y", &tStart);
+      strftime(timebuf, sizeof(timebuf), "%H:%M", &tStart);
+
+      u8g2.print(datebuf);
       u8g2.setCursor(65, y);
-      if (ev.time.length()) u8g2.print(ev.time);
+      u8g2.print(timebuf);
 
       String shownText = ev.summary;
       u8g2.setForegroundColor(textColor);
