@@ -60,11 +60,11 @@ inline struct tm utcToBerlin(const struct tm &utc) {
     bool dst = (now_utc >= dst_start_time && now_utc < dst_end_time);
     if (dst) offset = 2;
 
+    // Fix: Normalisiere Datum mit mktime, falls Stunde > 24
     berlin.tm_hour += offset;
-    if (berlin.tm_hour >= 24) {
-        berlin.tm_hour -= 24;
-        berlin.tm_mday += 1;
-    }
+    time_t berlin_t = mktime(&berlin);
+    localtime_r(&berlin_t, &berlin);
+
     berlin.tm_isdst = dst ? 1 : 0;
     return berlin;
 }
