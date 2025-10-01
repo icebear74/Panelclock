@@ -30,8 +30,8 @@ const int TIME_AREA_H = 30;
 const int DATA_AREA_H = FULL_HEIGHT - TIME_AREA_H;
 
 // Display-Objekte
-MatrixPanel_I2S_DMA *dma_display = nullptr;
-VirtualMatrixPanel_T<PANEL_CHAIN_TYPE> *virtualDisp = nullptr;
+MatrixPanel_I2S_DMA* dma_display = nullptr;
+VirtualMatrixPanel_T<PANEL_CHAIN_TYPE>* virtualDisp = nullptr;
 U8G2_FOR_ADAFRUIT_GFX u8g2;
 GFXcanvas16 canvasTime(FULL_WIDTH, TIME_AREA_H);
 GFXcanvas16 canvasData(FULL_WIDTH, DATA_AREA_H);
@@ -42,8 +42,8 @@ DataModule dataMod(u8g2, canvasData, TIME_AREA_H);
 CalendarModule calendarMod(u8g2, canvasData);
 
 // PSRAM Buffers
-static uint16_t *psramBufTime = nullptr;
-static uint16_t *psramBufData = nullptr;
+static uint16_t* psramBufTime = nullptr;
+static uint16_t* psramBufData = nullptr;
 static size_t psramBufTimeBytes = 0;
 static size_t psramBufDataBytes = 0;
 
@@ -58,7 +58,7 @@ unsigned long timerDelay = 360000;
 unsigned long initialQueryDelay = 5000;
 bool firstFetchDone = false;
 bool skiptimer = true;
-struct tm timeinfo; // Enthält immer Berlin-Zeit!
+struct tm timeinfo;  // Enthält immer Berlin-Zeit!
 
 // Anzeige-Wechsel-Logik
 unsigned long calendarDisplayMs = 30000;
@@ -67,34 +67,54 @@ unsigned long lastSwitch = 0;
 bool showCalendar = false;
 
 volatile bool calendarScrollNeedsRedraw = false;
+volatile bool calendarNeedsRedraw = false;
 
 // --- Hilfsfunktionen für Preishistorie ---
 void savePriceHistory() {
   StaticJsonDocument<512> doc;
-  doc["e5Low"] = e5Low; doc["e5High"] = e5High;
-  doc["e10Low"] = e10Low; doc["e10High"] = e10High;
-  doc["dieselLow"] = dieselLow; doc["dieselHigh"] = dieselHigh;
+  doc["e5Low"] = e5Low;
+  doc["e5High"] = e5High;
+  doc["e10Low"] = e10Low;
+  doc["e10High"] = e10High;
+  doc["dieselLow"] = dieselLow;
+  doc["dieselHigh"] = dieselHigh;
   File file = LittleFS.open("/preise.json", "w");
-  if (!file) { Serial.println("Fehler beim Öffnen der Datei zum Schreiben."); return; }
+  if (!file) {
+    Serial.println("Fehler beim Öffnen der Datei zum Schreiben.");
+    return;
+  }
   if (serializeJson(doc, file) == 0) Serial.println("Fehler beim Schreiben der JSON-Daten in die Datei.");
   file.close();
 }
 
 void loadPriceHistory() {
   File file = LittleFS.open("/preise.json", "r");
-  if (!file) { e5Low = 99.999; e5High = 0.0; e10Low = 99.999; e10High = 0.0; dieselLow = 99.999; dieselHigh = 0.0; return; }
+  if (!file) {
+    e5Low = 99.999;
+    e5High = 0.0;
+    e10Low = 99.999;
+    e10High = 0.0;
+    dieselLow = 99.999;
+    dieselHigh = 0.0;
+    return;
+  }
   StaticJsonDocument<512> doc;
   DeserializationError error = deserializeJson(doc, file);
-  if (error) { file.close(); return; }
-  e5Low = doc["e5Low"] | 99.999; e5High = doc["e5High"] | 0.0;
-  e10Low = doc["e10Low"] | 99.999; e10High = doc["e10High"] | 0.0;
-  dieselLow = doc["dieselLow"] | 99.999; dieselHigh = doc["dieselHigh"] | 0.0;
+  if (error) {
+    file.close();
+    return;
+  }
+  e5Low = doc["e5Low"] | 99.999;
+  e5High = doc["e5High"] | 0.0;
+  e10Low = doc["e10Low"] | 99.999;
+  e10High = doc["e10High"] | 0.0;
+  dieselLow = doc["dieselLow"] | 99.999;
+  dieselHigh = doc["dieselHigh"] | 0.0;
   skiptimer = false;
   file.close();
 }
 
 // --------- Hilfsfunktionen ---------
-
 void displayStatus(const char* msg) {
   if (!dma_display || !virtualDisp) return;
   dma_display->clearScreen();
@@ -127,50 +147,61 @@ void displayStatus(const char* msg) {
 
 // OTA-Statusanzeige
 void displayOtaStatus(const String& line1, const String& line2 = "", const String& line3 = "") {
-    dma_display->clearScreen();
-    u8g2.begin(*virtualDisp);
-    u8g2.setFont(u8g2_font_6x13_tf);
-    u8g2.setForegroundColor(0x07E0); // grün
-    int y = 18;
-    if (!line1.isEmpty()) { u8g2.setCursor(4, y); u8g2.print(line1); y += 15; }
-    if (!line2.isEmpty()) { u8g2.setCursor(4, y); u8g2.print(line2); y += 15; }
-    if (!line3.isEmpty()) { u8g2.setCursor(4, y); u8g2.print(line3); }
-    dma_display->flipDMABuffer();
+  dma_display->clearScreen();
+  u8g2.begin(*virtualDisp);
+  u8g2.setFont(u8g2_font_6x13_tf);
+  u8g2.setForegroundColor(0x07E0);  // grün
+  int y = 18;
+  if (!line1.isEmpty()) {
+    u8g2.setCursor(4, y);
+    u8g2.print(line1);
+    y += 15;
+  }
+  if (!line2.isEmpty()) {
+    u8g2.setCursor(4, y);
+    u8g2.print(line2);
+    y += 15;
+  }
+  if (!line3.isEmpty()) {
+    u8g2.setCursor(4, y);
+    u8g2.print(line3);
+  }
+  dma_display->flipDMABuffer();
 }
 
 void setupOtaDisplayStatus() {
-    ArduinoOTA.onStart([]() {
-        String type = ArduinoOTA.getCommand() == U_FLASH ? "Firmware" : "Filesystem";
-        displayOtaStatus("OTA Update:", type + " wird geladen", "Bitte warten...");
-    });
+  ArduinoOTA.onStart([]() {
+    String type = ArduinoOTA.getCommand() == U_FLASH ? "Firmware" : "Filesystem";
+    displayOtaStatus("OTA Update:", type + " wird geladen", "Bitte warten...");
+  });
 
-    ArduinoOTA.onEnd([]() {
-        displayOtaStatus("OTA Update:", "Fertig.", "Neustart...");
-        delay(1500);
-    });
+  ArduinoOTA.onEnd([]() {
+    displayOtaStatus("OTA Update:", "Fertig.", "Neustart...");
+    delay(1500);
+  });
 
-    ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-        int percent = (progress * 100) / total;
-        String line2 = "Fortschritt: " + String(percent) + "%";
-        displayOtaStatus("OTA Update", line2);
-    });
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    int percent = (progress * 100) / total;
+    String line2 = "Fortschritt: " + String(percent) + "%";
+    displayOtaStatus("OTA Update", line2);
+  });
 
-    ArduinoOTA.onError([](ota_error_t error) {
-        String msg;
-        switch (error) {
-            case OTA_AUTH_ERROR:    msg = "Auth Fehler"; break;
-            case OTA_BEGIN_ERROR:   msg = "Begin Fehler"; break;
-            case OTA_CONNECT_ERROR: msg = "Connect Fehler"; break;
-            case OTA_RECEIVE_ERROR: msg = "Receive Fehler"; break;
-            case OTA_END_ERROR:     msg = "End Fehler"; break;
-            default: msg = "Unbekannter Fehler"; break;
-        }
-        displayOtaStatus("OTA Update Fehler", msg);
-        delay(2000);
-    });
+  ArduinoOTA.onError([](ota_error_t error) {
+    String msg;
+    switch (error) {
+      case OTA_AUTH_ERROR: msg = "Auth Fehler"; break;
+      case OTA_BEGIN_ERROR: msg = "Begin Fehler"; break;
+      case OTA_CONNECT_ERROR: msg = "Connect Fehler"; break;
+      case OTA_RECEIVE_ERROR: msg = "Receive Fehler"; break;
+      case OTA_END_ERROR: msg = "End Fehler"; break;
+      default: msg = "Unbekannter Fehler"; break;
+    }
+    displayOtaStatus("OTA Update Fehler", msg);
+    delay(2000);
+  });
 }
 
-// Robustere Tankerkönig-Abfrage
+// Tankerkönig-Abfrage mit HTTP-Retry (3x, 10s Abstand, Anzeige bleibt stabil)
 void fetchStationDataIfNeeded() {
   unsigned long effectiveDelay = firstFetchDone ? timerDelay : initialQueryDelay;
   if ((millis() - lastTime) > effectiveDelay || skiptimer == true) {
@@ -188,20 +219,31 @@ void fetchStationDataIfNeeded() {
     }
 
     if (WiFi.status() == WL_CONNECTED) {
-      HTTPClient http;
-      String serverPath = "https://creativecommons.tankerkoenig.de/json/detail.php?id=" + TankstellenID + "&apikey=" + TankerkoenigApiKey;
-      http.begin(serverPath);
-      http.setTimeout(4000); // 4s Timeout
-      int httpResponseCode = http.GET();
-      if (httpResponseCode != 200) {
-        dataMod.setError("HTTP Fehler: " + String(httpResponseCode));
+      int httpRetries = 0;
+      int httpResponseCode = -1;
+      String jsonBuffer;
+      bool httpSuccess = false;
+      while (httpRetries < 3 && !httpSuccess) {
+        HTTPClient http;
+        String serverPath = "https://creativecommons.tankerkoenig.de/json/detail.php?id=" + TankstellenID + "&apikey=" + TankerkoenigApiKey;
+        http.begin(serverPath);
+        http.setTimeout(4000);
+        httpResponseCode = http.GET();
+        if (httpResponseCode == 200) {
+          jsonBuffer = http.getString();
+          httpSuccess = true;
+        } else {
+          httpRetries++;
+          if (httpRetries < 3) delay(10000);  // 10s Abstand, Anzeige bleibt stabil
+        }
         http.end();
+      }
+      if (!httpSuccess) {
+        dataMod.setError("HTTP Fehler: " + String(httpResponseCode));
         skiptimer = false;
         lastTime = millis();
         return;
       }
-      String jsonBuffer = http.getString();
-      http.end();
 
       StaticJsonDocument<1024> doc;
       DeserializationError error = deserializeJson(doc, jsonBuffer);
@@ -226,7 +268,10 @@ void fetchStationDataIfNeeded() {
         lastTime = millis();
         return;
       }
-      e5 = station["e5"]; e10 = station["e10"]; diesel = station["diesel"]; stationname = station["name"].as<String>();
+      e5 = station["e5"];
+      e10 = station["e10"];
+      diesel = station["diesel"];
+      stationname = station["name"].as<String>();
       dataMod.setData(stationname, e5, e10, diesel, e5Low, e5High, e10Low, e10High, dieselLow, dieselHigh);
 
       if (skiptimer == true) {
@@ -254,46 +299,54 @@ void fetchStationDataIfNeeded() {
   }
 }
 
-// Compose und draw wie gehabt
-void composeAndDraw(bool showCalendarNow) {
-  clockMod.setTime(timeinfo);
-  clockMod.tick();
-  clockMod.draw();
-  if (showCalendarNow) {
-    calendarMod.draw();
-  } else {
-    dataMod.draw();
-  }
-
-  psramBufTimeBytes = (size_t)canvasTime.width() * (size_t)canvasTime.height() * sizeof(uint16_t);
-  psramBufDataBytes = (size_t)canvasData.width() * (size_t)canvasData.height() * sizeof(uint16_t);
-
-  if (!psramBufTime) {
-    psramBufTime = (uint16_t*) heap_caps_malloc(psramBufTimeBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-  }
-  if (!psramBufData) {
-    psramBufData = (uint16_t*) heap_caps_malloc(psramBufDataBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-  }
-
-  uint16_t *bufTime = canvasTime.getBuffer();
-  uint16_t *bufData = canvasData.getBuffer();
-
-  if (psramBufTime) {
-    memcpy(psramBufTime, bufTime, psramBufTimeBytes);
-    virtualDisp->drawRGBBitmap(0, 0, psramBufTime, canvasTime.width(), canvasTime.height());
-  } else {
-    virtualDisp->drawRGBBitmap(0, 0, bufTime, canvasTime.width(), canvasTime.height());
-  }
-
-  if (psramBufData) {
-    memcpy(psramBufData, bufData, psramBufDataBytes);
-    virtualDisp->drawRGBBitmap(0, TIME_AREA_H, psramBufData, canvasData.width(), canvasData.height());
-  } else {
-    virtualDisp->drawRGBBitmap(0, TIME_AREA_H, bufData, canvasData.width(), canvasData.height());
+// Kalender-Update-Task: Anzeige bleibt während Fetch stabil, Redraw nur nach Erfolg/Fehler
+void robustCalendarUpdateTask(void* param) {
+  unsigned long lastFetch = 0;
+  while (true) {
+    unsigned long now = millis();
+    if (now - lastFetch >= calendarMod.getFetchIntervalMillis()) {
+      int httpRetries = 0;
+      int httpResponseCode = -1;
+      String icsBuffer;
+      bool httpSuccess = false;
+      String url = calendarMod.getICSUrl();
+      if (url.length()) {
+        while (httpRetries < 3 && !httpSuccess) {
+          HTTPClient http;
+          http.begin(url);
+          http.setTimeout(4000);
+          httpResponseCode = http.GET();
+          if (httpResponseCode == 200) {
+            icsBuffer = http.getString();
+            httpSuccess = true;
+          } else {
+            httpRetries++;
+            if (httpRetries < 3) delay(10000);
+          }
+          http.end();
+        }
+        if (httpSuccess) {
+          calendarMod.parseICS(icsBuffer);
+          calendarMod.onSuccessfulUpdate();
+        } else {
+          calendarMod.onFailedUpdate(httpResponseCode);
+        }
+        lastFetch = millis();
+        calendarNeedsRedraw = true;  // Anzeige nur jetzt aktualisieren!
+      }
+    }
+    vTaskDelay(pdMS_TO_TICKS(5000));
   }
 }
 
-// WLAN: immer stärksten AP nehmen
+void CalendarScrollTask(void* param) {
+  while (true) {
+    calendarMod.tickScroll();
+    calendarScrollNeedsRedraw = true;
+    vTaskDelay(pdMS_TO_TICKS(calendarMod.getScrollStepInterval()));
+  }
+}
+
 bool connectToBestWifi(const String& ssid, const String& password) {
   displayStatus("Suche WLAN...");
   WiFi.mode(WIFI_STA);
@@ -302,7 +355,7 @@ bool connectToBestWifi(const String& ssid, const String& password) {
   int n = WiFi.scanNetworks();
   int best_rssi = -1000;
   int best_net = -1;
-  uint8_t best_bssid[6] = {0};
+  uint8_t best_bssid[6] = { 0 };
   for (int i = 0; i < n; ++i) {
     if (WiFi.SSID(i) == ssid && WiFi.RSSI(i) > best_rssi) {
       best_rssi = WiFi.RSSI(i);
@@ -334,16 +387,20 @@ bool connectToBestWifi(const String& ssid, const String& password) {
   }
 }
 
-// Warte bis gültige Zeit empfangen wurde
 bool waitForTime() {
   displayStatus("Warte auf Uhrzeit...");
-  setenv("TZ", "UTC", 1); tzset();
-  configTime(3600, 3600, "pool.ntp.org", "time.nist.gov");
-  for (int i = 0; i < 30; ++i) { // max. 15s warten
+  //  setenv("TZ", "UTC", 1); tzset();
+  //  configTime(3600, 3600, "pool.ntp.org", "time.nist.gov");
+  // setenv("TZ", "CET-1CEST,M3.5.0/2,M10.5.0/3", 1);  // Berlin mit Sommerzeit
+  // tzset();
+   setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);
+   tzset();
+   configTime(3600,3600, "pool.ntp.org", "time.nist.gov");
+  for (int i = 0; i < 30; ++i) {
     struct tm t;
     if (getLocalTime(&t) && t.tm_year > 120) {
-      timeinfo = t; // NEU: immer Berlin-Zeit!
-      return true; // Jahr > 2020
+      timeinfo = t;
+      return true;  // Jahr > 2020
     }
     delay(500);
   }
@@ -363,20 +420,41 @@ void applyLiveConfig() {
   stationDisplayMs = deviceConfig.stationDisplaySec * 1000UL;
 }
 
-// Calendar scroll task
-void CalendarScrollTask(void* param) {
-  while (true) {
-    calendarMod.tickScroll();
-    calendarScrollNeedsRedraw = true;
-    vTaskDelay(pdMS_TO_TICKS(calendarMod.getScrollStepInterval()));
+void composeAndDraw(bool showCalendarNow) {
+  clockMod.setTime(timeinfo);
+  clockMod.tick();
+  clockMod.draw();
+  if (showCalendarNow) {
+    calendarMod.draw();
+  } else {
+    dataMod.draw();
   }
-}
 
-// Calendar ICS Download robust
-void robustCalendarUpdateTask(void* param) {
-  while (true) {
-    calendarMod.robustUpdateIfDue();
-    vTaskDelay(pdMS_TO_TICKS(5000));
+  psramBufTimeBytes = (size_t)canvasTime.width() * (size_t)canvasTime.height() * sizeof(uint16_t);
+  psramBufDataBytes = (size_t)canvasData.width() * (size_t)canvasData.height() * sizeof(uint16_t);
+
+  if (!psramBufTime) {
+    psramBufTime = (uint16_t*)heap_caps_malloc(psramBufTimeBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  }
+  if (!psramBufData) {
+    psramBufData = (uint16_t*)heap_caps_malloc(psramBufDataBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  }
+
+  uint16_t* bufTime = canvasTime.getBuffer();
+  uint16_t* bufData = canvasData.getBuffer();
+
+  if (psramBufTime) {
+    memcpy(psramBufTime, bufTime, psramBufTimeBytes);
+    virtualDisp->drawRGBBitmap(0, 0, psramBufTime, canvasTime.width(), canvasTime.height());
+  } else {
+    virtualDisp->drawRGBBitmap(0, 0, bufTime, canvasTime.width(), canvasTime.height());
+  }
+
+  if (psramBufData) {
+    memcpy(psramBufData, bufData, psramBufDataBytes);
+    virtualDisp->drawRGBBitmap(0, TIME_AREA_H, psramBufData, canvasData.width(), canvasData.height());
+  } else {
+    virtualDisp->drawRGBBitmap(0, TIME_AREA_H, bufData, canvasData.width(), canvasData.height());
   }
 }
 
@@ -474,14 +552,15 @@ void loop() {
     composeAndDraw(showCalendar);
   }
 
-  if (calendarScrollNeedsRedraw) {
+  if (calendarScrollNeedsRedraw || calendarNeedsRedraw) {
     calendarScrollNeedsRedraw = false;
+    calendarNeedsRedraw = false;
     composeAndDraw(showCalendar);
   }
 
   struct tm utcNow;
   if (WiFi.status() == WL_CONNECTED && getLocalTime(&utcNow)) {
-    timeinfo = utcNow; // NEU: immer Berlin-Zeit!
+    timeinfo = utcNow;  // Lokale Zeit direkt verwenden
   }
 
   if (timeinfo.tm_year < 120) {

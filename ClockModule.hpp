@@ -27,7 +27,7 @@ public:
     : u8g2(u8g2), canvas(canvas) {}
 
   void setTime(const struct tm &t) {
-    timeinfo = utcToBerlin(t); // NEU: immer Berliner Zeit!
+    timeinfo = t;
   }
 
   void tick() {
@@ -46,7 +46,6 @@ public:
     canvas.fillScreen(0);
     canvas.drawRect(0, 0, canvas.width() - 1, canvas.height(), rgb565(50,50,50));
     drawWifiStrengthBar();
-
     u8g2.begin(canvas);
     u8g2.setFontMode(0);
     u8g2.setFontDirection(0);
@@ -110,7 +109,7 @@ private:
   static constexpr uint16_t MAGENTA = 0xF81F;
   static constexpr uint16_t CYAN = 0x07FF;
 
-  // WLAN-RSSI Balkenanzeige
+  // WLAN-RSSI Balkenanzeige (mit Farbverlauf für Säule!)
   void drawWifiStrengthBar() {
     int x0 = 1;
     int x1 = 2;
@@ -119,28 +118,31 @@ private:
 
     // Hintergrund: von dunkelrot (unten) zu dunkelgrün (oben)
     for (int y = yTop; y <= yBot; y++) {
-      float rel = float(yBot - y) / float(yBot - yTop); // 0 unten, 1 oben
-      uint8_t r_bg = 10 + uint8_t(20 * (1.0 - rel)); // dunkelrot zu dunkelgrün
+      float rel = float(yBot - y) / float(yBot - yTop);
+      uint8_t r_bg = 10 + uint8_t(20 * (1.0 - rel));
       uint8_t g_bg = 10 + uint8_t(80 * rel);
       uint16_t col_bg = rgb565(r_bg, g_bg, 0);
       canvas.drawPixel(x0, y, col_bg);
       canvas.drawPixel(x1, y, col_bg);
     }
 
-    // Aktueller RSSI: heller Balken, hellrot -> hellgrün
+    // Säule: von yRssiTop bis yBot mit Farbverlauf von hellrot nach hellgrün
     int rssi = lastRssi;
     if (rssi < -100) rssi = -100;
     if (rssi > -40) rssi = -40;
     float frac = float(rssi + 100) / 60.0f; // 0.0 (schlecht) bis 1.0 (gut)
-    int yRssi = yBot - round(frac * (yBot - yTop));
-    for (int x = x0; x <= x1; x++) {
-      uint8_t r_fg = 220 - uint8_t(120 * frac);
-      uint8_t g_fg = 60 + uint8_t(195 * frac);
+    int yRssiTop = yBot - round(frac * (yBot - yTop));
+
+    for (int y = yRssiTop; y <= yBot; y++) {
+      float columnRel = float(yBot - y) / float(yBot - yRssiTop); // 0 unten, 1 oben der Säule!
+      uint8_t r_fg = 220 - uint8_t(120 * columnRel);
+      uint8_t g_fg = 60 + uint8_t(195 * columnRel);
       uint16_t col_fg = rgb565(r_fg, g_fg, 0);
-      canvas.drawPixel(x, yRssi, col_fg);
+      canvas.drawPixel(x0, y, col_fg);
+      canvas.drawPixel(x1, y, col_fg);
     }
 
-    // Abgrenzungslinie bei x=1 von y=3 bis unten (grau)
+    // Abgrenzungslinie bei x=1 von y=1 bis yBot (grau)
     for (int y = 1; y <= yBot; y++) {
       canvas.drawPixel(x0+2, y, rgb565(50, 50, 50));
     }
