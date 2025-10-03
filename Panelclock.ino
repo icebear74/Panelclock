@@ -5,12 +5,9 @@
 #include <ESPmDNS.h>
 #include <NetworkUdp.h>
 #include <ArduinoOTA.h>
-#include <HTTPClient.h>
-#include <ArduinoJson.h>
 #include <U8g2_for_Adafruit_GFX.h>
 #include <FS.h>
 #include <LittleFS.h>
-#include "BerlinTime.hpp"
 #include "webconfig.hpp"
 #include "ClockModule.hpp"
 #include "DataModule.hpp"
@@ -48,16 +45,6 @@ static size_t psramBufTimeBytes = 0;
 static size_t psramBufDataBytes = 0;
 
 // Laufzeitdaten
-String TankerkoenigApiKey = "";
-String TankstellenID = "";
-float diesel = 0, e5 = 0, e10 = 0;
-float dieselLow = 99.999, dieselHigh = 0, e5Low = 99.999, e5High = 0, e10Low = 99.999, e10High = 0;
-String stationname;
-unsigned long lastTime = 0;
-unsigned long timerDelay = 360000;
-unsigned long initialQueryDelay = 5000;
-bool firstFetchDone = false;
-bool skiptimer = true;
 struct tm timeinfo;  // Enthält immer Berlin-Zeit!
 
 // Anzeige-Wechsel-Logik
@@ -69,50 +56,6 @@ bool showCalendar = false;
 volatile bool calendarScrollNeedsRedraw = false;
 volatile bool calendarNeedsRedraw = false;
 
-// --- Hilfsfunktionen für Preishistorie ---
-void savePriceHistory() {
-  StaticJsonDocument<512> doc;
-  doc["e5Low"] = e5Low;
-  doc["e5High"] = e5High;
-  doc["e10Low"] = e10Low;
-  doc["e10High"] = e10High;
-  doc["dieselLow"] = dieselLow;
-  doc["dieselHigh"] = dieselHigh;
-  File file = LittleFS.open("/preise.json", "w");
-  if (!file) {
-    Serial.println("Fehler beim Öffnen der Datei zum Schreiben.");
-    return;
-  }
-  if (serializeJson(doc, file) == 0) Serial.println("Fehler beim Schreiben der JSON-Daten in die Datei.");
-  file.close();
-}
-
-void loadPriceHistory() {
-  File file = LittleFS.open("/preise.json", "r");
-  if (!file) {
-    e5Low = 99.999;
-    e5High = 0.0;
-    e10Low = 99.999;
-    e10High = 0.0;
-    dieselLow = 99.999;
-    dieselHigh = 0.0;
-    return;
-  }
-  StaticJsonDocument<512> doc;
-  DeserializationError error = deserializeJson(doc, file);
-  if (error) {
-    file.close();
-    return;
-  }
-  e5Low = doc["e5Low"] | 99.999;
-  e5High = doc["e5High"] | 0.0;
-  e10Low = doc["e10Low"] | 99.999;
-  e10High = doc["e10High"] | 0.0;
-  dieselLow = doc["dieselLow"] | 99.999;
-  dieselHigh = doc["dieselHigh"] | 0.0;
-  skiptimer = false;
-  file.close();
-}
 
 // --------- Hilfsfunktionen ---------
 void displayStatus(const char* msg) {
@@ -199,104 +142,6 @@ void setupOtaDisplayStatus() {
     displayOtaStatus("OTA Update Fehler", msg);
     delay(2000);
   });
-}
-
-// Tankerkönig-Abfrage mit HTTP-Retry (3x, 10s Abstand, Anzeige bleibt stabil)
-void fetchStationDataIfNeeded() {
-  unsigned long effectiveDelay = firstFetchDone ? timerDelay : initialQueryDelay;
-  if ((millis() - lastTime) > effectiveDelay || skiptimer == true) {
-    if (TankerkoenigApiKey.length() == 0 || TankstellenID.length() == 0) {
-      dataMod.setError("Fehler: API/Station fehlt");
-      if (!firstFetchDone) {
-        e5Low = e5High = e5;
-        e10Low = e10High = e10;
-        dieselLow = dieselHigh = diesel;
-      }
-      firstFetchDone = true;
-      skiptimer = false;
-      lastTime = millis();
-      return;
-    }
-
-    if (WiFi.status() == WL_CONNECTED) {
-      int httpRetries = 0;
-      int httpResponseCode = -1;
-      String jsonBuffer;
-      bool httpSuccess = false;
-      while (httpRetries < 3 && !httpSuccess) {
-        HTTPClient http;
-        String serverPath = "https://creativecommons.tankerkoenig.de/json/detail.php?id=" + TankstellenID + "&apikey=" + TankerkoenigApiKey;
-        http.begin(serverPath);
-        http.setTimeout(4000);
-        httpResponseCode = http.GET();
-        if (httpResponseCode == 200) {
-          jsonBuffer = http.getString();
-          httpSuccess = true;
-        } else {
-          httpRetries++;
-          if (httpRetries < 3) delay(10000);  // 10s Abstand, Anzeige bleibt stabil
-        }
-        http.end();
-      }
-      if (!httpSuccess) {
-        dataMod.setError("HTTP Fehler: " + String(httpResponseCode));
-        skiptimer = false;
-        lastTime = millis();
-        return;
-      }
-
-      StaticJsonDocument<1024> doc;
-      DeserializationError error = deserializeJson(doc, jsonBuffer);
-      if (error) {
-        dataMod.setError("JSON Fehler");
-        skiptimer = false;
-        lastTime = millis();
-        return;
-      }
-      bool isOk = doc["ok"];
-      if (!isOk) {
-        String msg = doc.containsKey("message") ? String((const char*)doc["message"]) : String("API Fehler");
-        dataMod.setError("API Fehler: " + msg);
-        skiptimer = false;
-        lastTime = millis();
-        return;
-      }
-      JsonObject station = doc["station"];
-      if (!station["e5"].is<float>() || !station["e10"].is<float>() || !station["diesel"].is<float>()) {
-        dataMod.setError("API: unvollst. Daten");
-        skiptimer = false;
-        lastTime = millis();
-        return;
-      }
-      e5 = station["e5"];
-      e10 = station["e10"];
-      diesel = station["diesel"];
-      stationname = station["name"].as<String>();
-      dataMod.setData(stationname, e5, e10, diesel, e5Low, e5High, e10Low, e10High, dieselLow, dieselHigh);
-
-      if (skiptimer == true) {
-        if (e5Low > e5High) e5Low = e5;
-        if (e5High < e5Low) e5High = e5;
-        if (e10Low > e10High) e10Low = e10;
-        if (e10High < e10Low) e10High = e10;
-        if (dieselLow > dieselHigh) dieselLow = diesel;
-        if (dieselHigh < dieselLow) dieselHigh = diesel;
-      }
-      if (e5 < e5Low) e5Low = e5;
-      if (e5 > e5High) e5High = e5;
-      if (e10 < e10Low) e10Low = e10;
-      if (e10 > e10High) e10High = e10;
-      if (diesel < dieselLow) dieselLow = diesel;
-      if (diesel > dieselHigh) dieselHigh = diesel;
-      savePriceHistory();
-
-      firstFetchDone = true;
-    } else {
-      dataMod.setError("Kein WLAN");
-    }
-    skiptimer = false;
-    lastTime = millis();
-  }
 }
 
 // Kalender-Update-Task: Anzeige bleibt während Fetch stabil, Redraw nur nach Erfolg/Fehler
@@ -389,10 +234,6 @@ bool connectToBestWifi(const String& ssid, const String& password) {
 
 bool waitForTime() {
   displayStatus("Warte auf Uhrzeit...");
-  //  setenv("TZ", "UTC", 1); tzset();
-  //  configTime(3600, 3600, "pool.ntp.org", "time.nist.gov");
-  // setenv("TZ", "CET-1CEST,M3.5.0/2,M10.5.0/3", 1);  // Berlin mit Sommerzeit
-  // tzset();
    setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);
    tzset();
    configTime(3600,3600, "pool.ntp.org", "time.nist.gov");
@@ -410,12 +251,18 @@ bool waitForTime() {
 }
 
 void applyLiveConfig() {
+  // Apply DataModule config
+  dataMod.setConfig(deviceConfig.tankerApiKey, deviceConfig.stationId, 6); // 6 min update interval
+
+  // Apply CalendarModule config
   if (deviceConfig.icsUrl.length()) {
     calendarMod.setICSUrl(deviceConfig.icsUrl);
   }
   calendarMod.setFetchIntervalMinutes(deviceConfig.calendarFetchIntervalMin);
   calendarMod.setScrollStepInterval(deviceConfig.calendarScrollMs);
   calendarMod.setColors(deviceConfig.calendarDateColor, deviceConfig.calendarTextColor);
+  
+  // Apply general display config
   calendarDisplayMs = deviceConfig.calendarDisplaySec * 1000UL;
   stationDisplayMs = deviceConfig.stationDisplaySec * 1000UL;
 }
@@ -469,7 +316,7 @@ void setup() {
     displayStatus("LittleFS Fehler!");
     delay(2000);
   } else {
-    loadPriceHistory();
+    dataMod.begin(); // Load price history from DataModule
   }
 
   loadDeviceConfig();
@@ -509,8 +356,6 @@ void setup() {
     WiFi.setHostname(deviceConfig.hostname.c_str());
     wifiOK = connectToBestWifi(deviceConfig.ssid, deviceConfig.password);
     if (wifiOK) {
-      TankerkoenigApiKey = deviceConfig.tankerApiKey;
-      TankstellenID = deviceConfig.stationId;
       if (deviceConfig.otaPassword.length() > 0) ArduinoOTA.setPassword(deviceConfig.otaPassword.c_str());
       ArduinoOTA.setHostname(deviceConfig.hostname.c_str());
       setupOtaDisplayStatus();
@@ -542,7 +387,7 @@ void setup() {
 void loop() {
   handleConfigPortal();
   ArduinoOTA.handle();
-  fetchStationDataIfNeeded();
+  dataMod.update(); // Let the DataModule handle its own data fetching schedule
 
   unsigned long now = millis();
   unsigned long nextSwitchInterval = showCalendar ? calendarDisplayMs : stationDisplayMs;
