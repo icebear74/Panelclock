@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <vector>
+#include <functional> // Hinzugefügt für std::function
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 #include <WebServer.h>
@@ -32,9 +33,6 @@ DeviceConfig deviceConfig;
 WebServer server(80);
 DNSServer dnsServer;
 
-// *** KORRIGIERTE POSIX-ZEITZONEN-STRINGS ***
-// Diese Strings enthalten die Regeln für die Sommerzeit (DST).
-// Format: STDoffsetDST[offset],start[/time],end[/time]
 const std::vector<std::pair<const char*, const char*>> timezones = {
     {"(UTC+1) Berlin, Amsterdam", "CET-1CEST,M3.5.0,M10.5.0/3"},
     {"(UTC+1) London, Dublin", "GMT0BST,M3.5.0/1,M10.5.0"},
@@ -50,7 +48,6 @@ const std::vector<std::pair<const char*, const char*>> timezones = {
     {"(UTC+10) Sydney, Melbourne", "AEST-10AEDT,M10.1.0,M4.1.0/3"}
 };
 
-// HTML, CSS und JS für das Web-Portal
 const char config_html[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
 <html>
@@ -189,6 +186,42 @@ void saveDeviceConfig() {
     }
 }
 
+void handleRoot();
+void handleSave();
+void handleNotFound();
+
+// *** KORREKTUR: Funktion akzeptiert einen Callback für Statusmeldungen ***
+void startConfigPortal(std::function<void(const char*)> statusCallback) {
+    const char* apSsid = "Panelclock-Setup";
+    if (statusCallback) {
+        statusCallback(("Kein WLAN, starte\nKonfig-Portal:\n" + String(apSsid)).c_str());
+    }
+
+    WiFi.softAP(apSsid);
+    dnsServer.start(53, "*", WiFi.softAPIP());
+    
+    server.on("/", HTTP_GET, handleRoot);
+    server.on("/save", HTTP_POST, handleSave);
+    server.onNotFound(handleNotFound);
+    
+    server.begin();
+}
+
+void setupWebServer() {
+    server.on("/", HTTP_GET, handleRoot);
+    server.on("/save", HTTP_POST, handleSave);
+    server.onNotFound(handleNotFound);
+    server.begin();
+}
+
+// *** KORREKTUR: Funktion akzeptiert den portalRunning-Status als Parameter ***
+void handleWebServer(bool portalIsRunning) {
+    if (portalIsRunning) {
+        dnsServer.processNextRequest();
+    }
+    server.handleClient();
+}
+
 void handleRoot() {
     String page = FPSTR(config_html);
     String tz_options_html;
@@ -249,41 +282,12 @@ void handleSave() {
 }
 
 void handleNotFound() {
-    // Captive Portal
-    if (!server.hostHeader().equals(deviceConfig.hostname) && !server.hostHeader().equals(WiFi.softAPIP().toString())) {
+    if (!server.hostHeader().equals(deviceConfig.hostname.c_str()) && !server.hostHeader().equals(WiFi.softAPIP().toString())) {
         server.sendHeader("Location", "http://" + WiFi.softAPIP().toString(), true);
         server.send(302, "text/plain", "");
     } else {
         server.send(404, "text/plain", "Not found");
     }
-}
-
-void startConfigPortal() {
-    const char* apSsid = "Panelclock-Setup";
-    displayStatus(("Kein WLAN, starte\nKonfig-Portal:\n" + String(apSsid)).c_str());
-
-    WiFi.softAP(apSsid);
-    dnsServer.start(53, "*", WiFi.softAPIP());
-    
-    server.on("/", HTTP_GET, handleRoot);
-    server.on("/save", HTTP_POST, handleSave);
-    server.onNotFound(handleNotFound);
-    
-    server.begin();
-}
-
-void setupWebServer() {
-    server.on("/", HTTP_GET, handleRoot);
-    server.on("/save", HTTP_POST, handleSave);
-    server.onNotFound(handleNotFound);
-    server.begin();
-}
-
-void handleWebServer() {
-    if (portalRunning) {
-        dnsServer.processNextRequest();
-    }
-    server.handleClient();
 }
 
 #endif
