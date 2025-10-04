@@ -14,6 +14,10 @@ struct CalendarEvent {
   time_t startEpoch; // Immer in UTC
   time_t endEpoch;   // Immer in UTC
   bool isAllDay;
+  String location;
+  String description;
+  String status;     // CONFIRMED, TENTATIVE, CANCELLED
+  String categories;
 };
 
 uint16_t hexColorTo565(const String& hex) {
@@ -45,6 +49,8 @@ public:
     CalendarEvent cur;
     bool inEvent = false;
     String rrule;
+    String lastField = "";
+    String lastValue = "";
     
     while (idx < (int)ics.length()) {
       int next = ics.indexOf('\n', idx);
@@ -52,11 +58,37 @@ public:
       String line = ics.substring(idx, next);
       line.trim();
 
+      // Handle line continuation (lines starting with space or tab)
+      if (inEvent && line.length() > 0 && (line[0] == ' ' || line[0] == '\t')) {
+        lastValue += line.substring(1);
+        idx = next + 1;
+        continue;
+      }
+
+      // Process the previous field if we have one
+      if (inEvent && lastField.length() > 0) {
+        if (lastField == "SUMMARY") {
+          cur.summary = lastValue;
+        } else if (lastField == "LOCATION") {
+          cur.location = lastValue;
+        } else if (lastField == "DESCRIPTION") {
+          cur.description = lastValue;
+        } else if (lastField == "STATUS") {
+          cur.status = lastValue;
+        } else if (lastField == "CATEGORIES") {
+          cur.categories = lastValue;
+        }
+        lastField = "";
+        lastValue = "";
+      }
+
       if (line == "BEGIN:VEVENT") {
         inEvent = true;
         cur = CalendarEvent();
         cur.isAllDay = false;
         rrule = "";
+        lastField = "";
+        lastValue = "";
       } else if (line == "END:VEVENT" && inEvent) {
         if (cur.summary.length() > 0 && cur.startEpoch > 0) {
           if (cur.endEpoch == 0) cur.endEpoch = cur.startEpoch;
@@ -77,7 +109,20 @@ public:
         inEvent = false;
       } else if (inEvent) {
         if (line.startsWith("SUMMARY:")) {
-          cur.summary = line.substring(8);
+          lastField = "SUMMARY";
+          lastValue = line.substring(8);
+        } else if (line.startsWith("LOCATION:")) {
+          lastField = "LOCATION";
+          lastValue = line.substring(9);
+        } else if (line.startsWith("DESCRIPTION:")) {
+          lastField = "DESCRIPTION";
+          lastValue = line.substring(12);
+        } else if (line.startsWith("STATUS:")) {
+          lastField = "STATUS";
+          lastValue = line.substring(7);
+        } else if (line.startsWith("CATEGORIES:")) {
+          lastField = "CATEGORIES";
+          lastValue = line.substring(11);
         } else if (line.startsWith("DTSTART")) {
           cur.startEpoch = parseIcsDateTime(line, cur.isAllDay);
         } else if (line.startsWith("DTEND")) {
@@ -157,7 +202,12 @@ public:
 
       char buf[12];
       strftime(buf, sizeof(buf), "%d.%m.%y", &tStart);
-      u8g2.setForegroundColor(dateColor);
+      
+      // Check if event is cancelled
+      bool isCancelled = (ev.status == "CANCELLED");
+      
+      // Use grey color for cancelled events, normal color for others
+      u8g2.setForegroundColor(isCancelled ? 0x8410 : dateColor);
       u8g2.setCursor(xStart, y);
       u8g2.print(buf);
 
@@ -169,10 +219,19 @@ public:
       else if (!ev.isAllDay) { strftime(buf, sizeof(buf), "%H:%M", &tStart); u8g2.print(buf); } 
       else { u8g2.print(" ganzt."); }
 
-      u8g2.setForegroundColor(textColor);
+      u8g2.setForegroundColor(isCancelled ? 0x8410 : textColor);
       u8g2.setCursor(xSummary, y);
       size_t idx = i < scrollPos.size() ? i : 0;
+      
+      // Combine summary with location if available
       String shownText = ev.summary;
+      if (ev.location.length() > 0 && !isCancelled) {
+        shownText += " @ " + ev.location;
+      }
+      if (isCancelled) {
+        shownText = "[ABGESAGT] " + shownText;
+      }
+      
       int visibleChars = fitTextToPixelWidth(shownText, maxSummaryPixel - 1).length();
       String pad = "   ";
       String scrollText = shownText + pad + shownText.substring(0, visibleChars);
@@ -242,7 +301,27 @@ private:
   }
 
   void resetScroll() { scrollPos.clear(); }
-  void ensureScrollPos(const std::vector<CalendarEvent>& upcomming, int maxTextPixel) { if (scrollPos.size() != upcomming.size()) { scrollPos.resize(upcomming.size()); for (size_t i = 0; i < scrollPos.size(); ++i) { String shownText = upcomming[i].summary; int visibleChars = fitTextToPixelWidth(shownText, maxTextPixel - 1).length(); String pad = "   "; String scrollText = shownText + pad + shownText.substring(0, visibleChars); int maxScroll = (shownText.length() > visibleChars) ? (scrollText.length() - visibleChars) : 0; scrollPos[i].offset = 0; scrollPos[i].maxScroll = maxScroll; } } }
+  void ensureScrollPos(const std::vector<CalendarEvent>& upcomming, int maxTextPixel) { 
+    if (scrollPos.size() != upcomming.size()) { 
+      scrollPos.resize(upcomming.size()); 
+      for (size_t i = 0; i < scrollPos.size(); ++i) { 
+        bool isCancelled = (upcomming[i].status == "CANCELLED");
+        String shownText = upcomming[i].summary;
+        if (upcomming[i].location.length() > 0 && !isCancelled) {
+          shownText += " @ " + upcomming[i].location;
+        }
+        if (isCancelled) {
+          shownText = "[ABGESAGT] " + shownText;
+        }
+        int visibleChars = fitTextToPixelWidth(shownText, maxTextPixel - 1).length(); 
+        String pad = "   "; 
+        String scrollText = shownText + pad + shownText.substring(0, visibleChars); 
+        int maxScroll = (shownText.length() > visibleChars) ? (scrollText.length() - visibleChars) : 0; 
+        scrollPos[i].offset = 0; 
+        scrollPos[i].maxScroll = maxScroll; 
+      } 
+    } 
+  }
 };
 
 #endif
