@@ -23,11 +23,10 @@ public:
     // Konvertiert eine UTC-Epochenzeit in die lokal konfigurierte Zeit
     // *** KORREKTUR: Methode als const deklariert, um den Kompilierungsfehler zu beheben ***
     time_t toLocal(time_t utc) const {
-        // localtime() konvertiert unter Berücksichtigung der via setenv/tzset gesetzten TZ-Regel
+        // Diese Funktion nutzt die globale TZ-Variable, die von setTimezone() gesetzt wurde.
+        // localtime() wendet die Regel an und mktime() erzeugt den korrekten lokalen Zeitstempel.
+        // Das ist die korrekte Implementierung für Ihr Design.
         struct tm* tm_local = localtime(&utc);
-        // mktime() konvertiert die tm-Struktur zurück in einen time_t-Wert,
-        // interpretiert die Eingabe aber als "lokale" Zeit.
-        // Dies ist der Standardweg, um einen korrekten lokalen Epochenwert zu erhalten.
         return mktime(tm_local);
     }
 

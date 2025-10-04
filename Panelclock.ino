@@ -188,6 +188,7 @@ bool waitForTime() {
   displayStatus("Warte auf Uhrzeit...");
   // Diese Funktion setzt nur die NTP-Server. Die Zeitzone bleibt unberührt.
   configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+  
   time_t now_utc;
   time(&now_utc);
   int retries = 30;
@@ -265,7 +266,7 @@ void drawDataArea() {
 void setup() {
   Serial.begin(115200);
   delay(3000);
-  Serial.println("=== Panelclock startup (Correct Time Logic) ===");
+  Serial.println("=== Panelclock startup (Your Design Restored) ===");
   webClient.begin();
 
   #define RL1 1
@@ -306,6 +307,7 @@ void setup() {
   }
   
   loadDeviceConfig();
+  applyLiveConfig(); // Zeitzone wird hier gesetzt
   dataMod.begin();
 
   dataMod.onUpdate([](){
@@ -319,9 +321,7 @@ void setup() {
   if (connectToWifi()) {
     portalRunning = false;
     
-    if (waitForTime()) {
-      applyLiveConfig(); // Setzt die Zeitzone, nachdem die Zeit synchronisiert ist.
-
+    if (waitForTime()) { // Holt nur UTC-Zeit, ohne die TZ zu ändern
       WiFi.setHostname(deviceConfig.hostname.c_str());
       if (deviceConfig.otaPassword.length() > 0) {
         ArduinoOTA.setPassword(deviceConfig.otaPassword.c_str());
@@ -333,12 +333,16 @@ void setup() {
       displayStatus("Start...");
       delay(1000);
       dma_display->clearScreen();
+      // Erste Zeitumwandlung für den initialen Draw
+      time_t now_utc;
+      time(&now_utc);
+      time_t local_epoch = timeConverter.toLocal(now_utc);
+      localtime_r(&local_epoch, &timeinfo);
       drawClockArea();
       drawDataArea();
       lastSwitch = millis();
     } else {
       displayStatus("Zeitfehler");
-      applyLiveConfig(); // Trotzdem versuchen, die Konfig anzuwenden
     }
   } else {
     portalRunning = true;
@@ -369,7 +373,7 @@ void loop() {
       return;
     }
 
-    // *** KORREKTUR: Die Umwandlung wird explizit über den TimeConverter gemacht ***
+    // *** IHR URSPRÜNGLICHES DESIGN: Die Zeitumwandlung findet hier statt ***
     time_t local_epoch = timeConverter.toLocal(now_utc);
     localtime_r(&local_epoch, &timeinfo);
     

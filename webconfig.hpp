@@ -190,7 +190,6 @@ void handleRoot();
 void handleSave();
 void handleNotFound();
 
-// *** KORREKTUR: Funktion akzeptiert einen Callback für Statusmeldungen ***
 void startConfigPortal(std::function<void(const char*)> statusCallback) {
     const char* apSsid = "Panelclock-Setup";
     if (statusCallback) {
@@ -214,7 +213,6 @@ void setupWebServer() {
     server.begin();
 }
 
-// *** KORREKTUR: Funktion akzeptiert den portalRunning-Status als Parameter ***
 void handleWebServer(bool portalIsRunning) {
     if (portalIsRunning) {
         dnsServer.processNextRequest();
