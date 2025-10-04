@@ -8,49 +8,58 @@
 #include <U8g2_for_Adafruit_GFX.h>
 #include <FS.h>
 #include <LittleFS.h>
-#include "webconfig.hpp"
-#include "ClockModule.hpp"
-#include "DataModule.hpp"
-#include "GeneralTimeConverter.hpp"
-#include "CalendarModule.hpp"
 #include <esp_heap_caps.h>
 
+// Eigene Header-Dateien
+#include "webconfig.hpp"
+#include "PsramUtils.hpp"
+#include "GeneralTimeConverter.hpp"
+#include "WebClientModule.hpp"
+#include "ClockModule.hpp"
+#include "DataModule.hpp"
+#include "CalendarModule.hpp"
+#include "RRuleParser.hpp"
+
+// Globale Objekte
 GeneralTimeConverter timeConverter;
 bool portalRunning = false;
+WebClientModule webClient;
 
+// Display-Konfiguration
 #define PANEL_RES_X 64
 #define PANEL_RES_Y 32
 #define VDISP_NUM_ROWS 3
 #define VDISP_NUM_COLS 3
 #define PANEL_CHAIN_TYPE CHAIN_TOP_LEFT_DOWN
-
 const int FULL_WIDTH = PANEL_RES_X * VDISP_NUM_COLS;
 const int FULL_HEIGHT = PANEL_RES_Y * VDISP_NUM_ROWS;
 const int TIME_AREA_H = 30;
 const int DATA_AREA_H = FULL_HEIGHT - TIME_AREA_H;
-
 MatrixPanel_I2S_DMA* dma_display = nullptr;
 VirtualMatrixPanel_T<PANEL_CHAIN_TYPE>* virtualDisp = nullptr;
 U8G2_FOR_ADAFRUIT_GFX u8g2;
 GFXcanvas16 canvasTime(FULL_WIDTH, TIME_AREA_H);
 GFXcanvas16 canvasData(FULL_WIDTH, DATA_AREA_H);
 
+// Module
 ClockModule clockMod(u8g2, canvasTime);
-DataModule dataMod(u8g2, canvasData, TIME_AREA_H);
-CalendarModule calendarMod(u8g2, canvasData, timeConverter);
+DataModule dataMod(u8g2, canvasData, TIME_AREA_H, &webClient);
+CalendarModule calendarMod(u8g2, canvasData, timeConverter, &webClient);
 
+// Globale Zustandsvariablen
 static uint16_t* psramBufTime = nullptr;
 static uint16_t* psramBufData = nullptr;
 static size_t psramBufTimeBytes = 0;
 static size_t psramBufDataBytes = 0;
-
 struct tm timeinfo;
 unsigned long calendarDisplayMs = 30000;
 unsigned long stationDisplayMs = 30000;
 unsigned long lastSwitch = 0;
+unsigned long lastClockUpdate = 0;
 bool showCalendar = false;
 volatile bool calendarScrollNeedsRedraw = false;
 volatile bool calendarNeedsRedraw = false;
+volatile bool dataNeedsRedraw = false;
 
 void displayStatus(const char* msg) {
   if (!dma_display || !virtualDisp) return;
@@ -61,9 +70,7 @@ void displayStatus(const char* msg) {
   String text(msg);
   int maxPixel = FULL_WIDTH - 8;
   std::vector<String> lines;
-  // Simple word wrap
   String currentLine;
-  int lastSpace = -1;
   while (text.length() > 0) {
     int nextSpace = text.indexOf(' ');
     String word = (nextSpace == -1) ? text : text.substring(0, nextSpace);
@@ -79,7 +86,7 @@ void displayStatus(const char* msg) {
         if (currentLine.length() > 0) {
             lines.push_back(currentLine);
             currentLine = "";
-        } else { // Word is too long
+        } else { 
             int cut = word.length();
             while(cut > 0 && u8g2.getUTF8Width(word.substring(0, cut).c_str()) > maxPixel) {
                 cut--;
@@ -92,7 +99,6 @@ void displayStatus(const char* msg) {
   if (currentLine.length() > 0) {
       lines.push_back(currentLine);
   }
-
   int totalHeight = lines.size() * 14;
   int y = (FULL_HEIGHT - totalHeight) / 2 + 12;
   for (const auto& l : lines) {
@@ -120,49 +126,26 @@ void setupOtaDisplayStatus() {
   ArduinoOTA.onStart([]() { String type = ArduinoOTA.getCommand() == U_FLASH ? "Firmware" : "Filesystem"; displayOtaStatus("OTA Update:", type + " wird geladen", "Bitte warten..."); });
   ArduinoOTA.onEnd([]() { displayOtaStatus("OTA Update:", "Fertig.", "Neustart..."); delay(1500); });
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) { int percent = (progress * 100) / total; String line2 = "Fortschritt: " + String(percent) + "%"; displayOtaStatus("OTA Update", line2); });
-  ArduinoOTA.onError([](ota_error_t error) { String msg; switch (error) { case OTA_AUTH_ERROR: msg = "Auth Fehler"; break; case OTA_BEGIN_ERROR: msg = "Begin Fehler"; break; case OTA_CONNECT_ERROR: msg = "Connect Fehler"; break; case OTA_RECEIVE_ERROR: msg = "Receive Fehler"; break; case OTA_END_ERROR: msg = "End Fehler"; break; default: msg = "Unbekannter Fehler"; break; } displayOtaStatus("OTA Update Fehler", msg); delay(2000); });
+  ArduinoOTA.onError([](ota_error_t error) { String msg; switch (error) { case OTA_AUTH_ERROR: msg = "Auth Fehler"; break; case OTA_BEGIN_ERROR: msg = "Begin Fehler"; break; case OTA_CONNECT_ERROR: msg = "Connect Fehler"; break; case OTA_RECEIVE_ERROR: msg = "Receive Fehler"; break; case OTA_END_ERROR: msg = "End Fehler"; break; default: msg = "Unbekannter Fehler"; } displayOtaStatus("OTA Update Fehler", msg); delay(2000); });
 }
 
-void robustCalendarUpdateTask(void* param) {
-  unsigned long lastFetch = 0;
+void UpdateCalendarTask(void* param) {
+  vTaskDelay(pdMS_TO_TICKS(10000));
   while (true) {
-    if (portalRunning) {
-      vTaskDelay(pdMS_TO_TICKS(1000));
-      continue;
+    if (!portalRunning) {
+      calendarMod.update();
     }
-    unsigned long now = millis();
-    if (lastFetch == 0 || (now - lastFetch >= calendarMod.getFetchIntervalMillis())) {
-      int httpRetries = 0;
-      int httpResponseCode = -1;
-      String icsBuffer;
-      bool httpSuccess = false;
-      String url = calendarMod.getICSUrl();
-      if (url.length()) {
-        while (httpRetries < 3 && !httpSuccess) {
-          HTTPClient http;
-          http.begin(url);
-          http.setTimeout(4000);
-          httpResponseCode = http.GET();
-          if (httpResponseCode == 200) {
-            icsBuffer = http.getString();
-            httpSuccess = true;
-          } else {
-            httpRetries++;
-            if (httpRetries < 3) delay(10000);
-          }
-          http.end();
-        }
-        if (httpSuccess) {
-          calendarMod.parseICS(icsBuffer);
-          calendarMod.onSuccessfulUpdate();
-        } else {
-          calendarMod.onFailedUpdate(httpResponseCode);
-        }
-        lastFetch = millis();
-        calendarNeedsRedraw = true;
-      }
+    vTaskDelay(pdMS_TO_TICKS(calendarMod.getFetchIntervalMillis()));
+  }
+}
+
+void UpdateDataTask(void* param) {
+  vTaskDelay(pdMS_TO_TICKS(5000));
+  while(true) {
+    if (!portalRunning) {
+      dataMod.fetch();
     }
-    vTaskDelay(pdMS_TO_TICKS(5000));
+    vTaskDelay(pdMS_TO_TICKS(dataMod.getFetchIntervalMillis()));
   }
 }
 
@@ -221,10 +204,9 @@ bool waitForTime() {
 
 void applyLiveConfig() {
   if (!timeConverter.setTimezone(deviceConfig.timezone.c_str())) {
-    Serial.println("FEHLER: Ungültiger Zeitzonen-String!");
     timeConverter.setTimezone("UTC");
   }
-  dataMod.setConfig(deviceConfig.tankerApiKey, deviceConfig.stationId, 6);
+  dataMod.setConfig(deviceConfig.tankerApiKey, deviceConfig.stationId, deviceConfig.stationFetchIntervalMin);
   if (deviceConfig.icsUrl.length()) {
     calendarMod.setICSUrl(deviceConfig.icsUrl);
   }
@@ -235,43 +217,49 @@ void applyLiveConfig() {
   stationDisplayMs = deviceConfig.stationDisplaySec * 1000UL;
 }
 
-void composeAndDraw(bool showCalendarNow) {
-  clockMod.setTime(timeinfo);
-  clockMod.tick();
-  clockMod.draw();
-  if (showCalendarNow) {
-    calendarMod.draw();
-  } else {
-    dataMod.draw();
-  }
-  psramBufTimeBytes = (size_t)canvasTime.width() * (size_t)canvasTime.height() * sizeof(uint16_t);
-  psramBufDataBytes = (size_t)canvasData.width() * (size_t)canvasData.height() * sizeof(uint16_t);
-  if (!psramBufTime) {
-    psramBufTime = (uint16_t*)heap_caps_malloc(psramBufTimeBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-  }
-  if (!psramBufData) {
-    psramBufData = (uint16_t*)heap_caps_malloc(psramBufDataBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-  }
-  uint16_t* bufTime = canvasTime.getBuffer();
-  uint16_t* bufData = canvasData.getBuffer();
-  if (psramBufTime) {
-    memcpy(psramBufTime, bufTime, psramBufTimeBytes);
-    virtualDisp->drawRGBBitmap(0, 0, psramBufTime, canvasTime.width(), canvasTime.height());
-  } else {
-    virtualDisp->drawRGBBitmap(0, 0, bufTime, canvasTime.width(), canvasTime.height());
-  }
-  if (psramBufData) {
-    memcpy(psramBufData, bufData, psramBufDataBytes);
-    virtualDisp->drawRGBBitmap(0, TIME_AREA_H, psramBufData, canvasData.width(), canvasData.height());
-  } else {
-    virtualDisp->drawRGBBitmap(0, TIME_AREA_H, bufData, canvasData.width(), canvasData.height());
-  }
+void drawClockArea() {
+    clockMod.setTime(timeinfo);
+    clockMod.tick();
+    clockMod.draw();
+    
+    psramBufTimeBytes = (size_t)canvasTime.width() * (size_t)canvasTime.height() * sizeof(uint16_t);
+    if (!psramBufTime) {
+        psramBufTime = (uint16_t*)heap_caps_malloc(psramBufTimeBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    }
+    
+    if (psramBufTime) {
+        memcpy(psramBufTime, canvasTime.getBuffer(), psramBufTimeBytes);
+        virtualDisp->drawRGBBitmap(0, 0, psramBufTime, canvasTime.width(), canvasTime.height());
+    } else {
+        virtualDisp->drawRGBBitmap(0, 0, canvasTime.getBuffer(), canvasTime.width(), canvasTime.height());
+    }
+}
+
+void drawDataArea() {
+    if (showCalendar) {
+        calendarMod.draw();
+    } else {
+        dataMod.draw();
+    }
+
+    psramBufDataBytes = (size_t)canvasData.width() * (size_t)canvasData.height() * sizeof(uint16_t);
+    if (!psramBufData) {
+        psramBufData = (uint16_t*)heap_caps_malloc(psramBufDataBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    }
+
+    if (psramBufData) {
+        memcpy(psramBufData, canvasData.getBuffer(), psramBufDataBytes);
+        virtualDisp->drawRGBBitmap(0, TIME_AREA_H, psramBufData, canvasData.width(), canvasData.height());
+    } else {
+        virtualDisp->drawRGBBitmap(0, TIME_AREA_H, canvasData.getBuffer(), canvasData.width(), canvasData.height());
+    }
 }
 
 void setup() {
   Serial.begin(115200);
-  delay(50);
-  Serial.println("=== Panelclock startup ===");
+  delay(3000);
+  Serial.println("=== Panelclock startup (Async WebClient Arch) ===");
+  webClient.begin();
 
   #define RL1 1
   #define GL1 2
@@ -312,6 +300,15 @@ void setup() {
   
   loadDeviceConfig();
   applyLiveConfig();
+  dataMod.begin();
+
+  dataMod.onUpdate([](){
+    dataNeedsRedraw = true;
+  });
+
+  calendarMod.onUpdate([](){
+    calendarNeedsRedraw = true;
+  });
 
   if (connectToWifi()) {
     portalRunning = false;
@@ -327,7 +324,8 @@ void setup() {
       displayStatus("Start...");
       delay(1000);
       dma_display->clearScreen();
-      composeAndDraw(false);
+      drawClockArea();
+      drawDataArea();
       lastSwitch = millis();
     } else {
       displayStatus("Zeitfehler");
@@ -341,7 +339,8 @@ void setup() {
   
   if (!portalRunning) {
     xTaskCreatePinnedToCore(CalendarScrollTask, "CalScroll", 2048, NULL, 2, NULL, 1);
-    xTaskCreatePinnedToCore(robustCalendarUpdateTask, "CalICS", 4096, NULL, 2, NULL, 1);
+    xTaskCreatePinnedToCore(UpdateCalendarTask, "CalUpdate", 4096, NULL, 2, NULL, 1);
+    xTaskCreatePinnedToCore(UpdateDataTask, "DataUpdate", 4096, NULL, 2, NULL, 1);
   }
 }
 
@@ -350,7 +349,6 @@ void loop() {
 
   if (!portalRunning) {
     ArduinoOTA.handle();
-    dataMod.update();
 
     time_t now_utc;
     time(&now_utc);
@@ -363,19 +361,38 @@ void loop() {
 
     time_t local_epoch = timeConverter.toLocal(now_utc);
     localtime_r(&local_epoch, &timeinfo);
-
+    
     unsigned long now_ms = millis();
+
+    if (now_ms - lastClockUpdate >= 1000) {
+      lastClockUpdate = now_ms;
+      drawClockArea();
+    }
+
+    bool needsDataRedraw = false;
     unsigned long nextSwitchInterval = showCalendar ? calendarDisplayMs : stationDisplayMs;
+    
     if (now_ms - lastSwitch > nextSwitchInterval) {
       showCalendar = !showCalendar;
       lastSwitch = now_ms;
-      composeAndDraw(showCalendar);
+      needsDataRedraw = true;
     }
 
-    if (calendarScrollNeedsRedraw || calendarNeedsRedraw) {
+    if (calendarScrollNeedsRedraw && showCalendar) {
+      needsDataRedraw = true;
       calendarScrollNeedsRedraw = false;
+    }
+    if (calendarNeedsRedraw && showCalendar) {
+      needsDataRedraw = true;
       calendarNeedsRedraw = false;
-      composeAndDraw(showCalendar);
+    }
+    if (dataNeedsRedraw && !showCalendar) {
+      needsDataRedraw = true;
+      dataNeedsRedraw = false;
+    }
+
+    if (needsDataRedraw) {
+      drawDataArea();
     }
   }
   delay(10);
