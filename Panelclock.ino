@@ -186,31 +186,23 @@ bool connectToWifi() {
 
 bool waitForTime() {
   displayStatus("Warte auf Uhrzeit...");
-  // Diese Funktion setzt nur die NTP-Server. Die Zeitzone bleibt unberührt.
   configTime(0, 0, "pool.ntp.org", "time.nist.gov");
-  
   time_t now_utc;
-  time(&now_utc);
-  int retries = 30;
-  while (now_utc < 1609459200 && retries > 0) {
-    delay(500);
+  for (int i = 0; i < 30; ++i) {
     time(&now_utc);
-    retries--;
+    if (now_utc > 1609459200) {
+      time_t local_epoch = timeConverter.toLocal(now_utc);
+      localtime_r(&local_epoch, &timeinfo);
+      return true;
+    }
+    delay(500);
   }
-
-  if (now_utc < 1609459200) {
-    displayStatus("Keine Zeit erhalten!");
-    delay(3000);
-    return false;
-  }
-  
-  // Die Zeit ist synchronisiert. Die Konvertierung in Lokalzeit passiert jetzt
-  // in der loop() unter Verwendung des GeneralTimeConverter.
-  return true;
+  displayStatus("Keine Zeit erhalten!");
+  delay(3000);
+  return false;
 }
 
 void applyLiveConfig() {
-  // Diese Funktion setzt die Zeitzonen-Regel, die von GeneralTimeConverter verwendet wird.
   if (!timeConverter.setTimezone(deviceConfig.timezone.c_str())) {
     timeConverter.setTimezone("UTC");
   }
@@ -266,7 +258,7 @@ void drawDataArea() {
 void setup() {
   Serial.begin(115200);
   delay(3000);
-  Serial.println("=== Panelclock startup (Your Design Restored) ===");
+  Serial.println("=== Panelclock startup (Final Arch) ===");
   webClient.begin();
 
   #define RL1 1
@@ -307,7 +299,7 @@ void setup() {
   }
   
   loadDeviceConfig();
-  applyLiveConfig(); // Zeitzone wird hier gesetzt
+  applyLiveConfig();
   dataMod.begin();
 
   dataMod.onUpdate([](){
@@ -320,24 +312,18 @@ void setup() {
 
   if (connectToWifi()) {
     portalRunning = false;
-    
-    if (waitForTime()) { // Holt nur UTC-Zeit, ohne die TZ zu ändern
-      WiFi.setHostname(deviceConfig.hostname.c_str());
-      if (deviceConfig.otaPassword.length() > 0) {
-        ArduinoOTA.setPassword(deviceConfig.otaPassword.c_str());
-      }
-      ArduinoOTA.setHostname(deviceConfig.hostname.c_str());
-      setupOtaDisplayStatus();
-      ArduinoOTA.begin();
+    WiFi.setHostname(deviceConfig.hostname.c_str());
+    if (deviceConfig.otaPassword.length() > 0) {
+      ArduinoOTA.setPassword(deviceConfig.otaPassword.c_str());
+    }
+    ArduinoOTA.setHostname(deviceConfig.hostname.c_str());
+    setupOtaDisplayStatus();
+    ArduinoOTA.begin();
 
+    if (waitForTime()) {
       displayStatus("Start...");
       delay(1000);
       dma_display->clearScreen();
-      // Erste Zeitumwandlung für den initialen Draw
-      time_t now_utc;
-      time(&now_utc);
-      time_t local_epoch = timeConverter.toLocal(now_utc);
-      localtime_r(&local_epoch, &timeinfo);
       drawClockArea();
       drawDataArea();
       lastSwitch = millis();
@@ -346,20 +332,22 @@ void setup() {
     }
   } else {
     portalRunning = true;
-    startConfigPortal();
+    // *** KORREKTUR: Übergabe der displayStatus-Funktion als Callback ***
+    startConfigPortal([](const char* msg){ displayStatus(msg); });
   }
 
   setupWebServer();
   
   if (!portalRunning) {
     xTaskCreatePinnedToCore(CalendarScrollTask, "CalScroll", 2048, NULL, 2, NULL, 1);
-    xTaskCreatePinnedToCore(UpdateCalendarTask, "CalUpdate", 8192, NULL, 2, NULL, 1);
+    xTaskCreatePinnedToCore(UpdateCalendarTask, "CalUpdate", 4096, NULL, 2, NULL, 1);
     xTaskCreatePinnedToCore(UpdateDataTask, "DataUpdate", 4096, NULL, 2, NULL, 1);
   }
 }
 
 void loop() {
-  handleWebServer();
+  // *** KORREKTUR: Übergabe des portalRunning-Status als Parameter ***
+  handleWebServer(portalRunning);
 
   if (!portalRunning) {
     ArduinoOTA.handle();
@@ -373,7 +361,6 @@ void loop() {
       return;
     }
 
-    // *** IHR URSPRÜNGLICHES DESIGN: Die Zeitumwandlung findet hier statt ***
     time_t local_epoch = timeConverter.toLocal(now_utc);
     localtime_r(&local_epoch, &timeinfo);
     
