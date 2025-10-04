@@ -191,8 +191,8 @@ bool waitForTime() {
   for (int i = 0; i < 30; ++i) {
     time(&now_utc);
     if (now_utc > 1609459200) {
-      time_t local_epoch = timeConverter.toLocal(now_utc);
-      localtime_r(&local_epoch, &timeinfo);
+      // *** KORREKTUR: timeConverter.toLocal() entfernt. localtime_r nutzt die globale TZ. ***
+      localtime_r(&now_utc, &timeinfo);
       return true;
     }
     delay(500);
@@ -359,8 +359,8 @@ void loop() {
       return;
     }
 
-    time_t local_epoch = timeConverter.toLocal(now_utc);
-    localtime_r(&local_epoch, &timeinfo);
+    // *** KORREKTUR: timeConverter.toLocal() entfernt. localtime_r nutzt die globale TZ. ***
+    localtime_r(&now_utc, &timeinfo);
     
     unsigned long now_ms = millis();
 

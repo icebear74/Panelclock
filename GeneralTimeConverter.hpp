@@ -21,7 +21,8 @@ public:
     }
 
     // Konvertiert eine UTC-Epochenzeit in die lokal konfigurierte Zeit
-    time_t toLocal(time_t utc) {
+    // *** KORREKTUR: Als const deklariert, um den Kompilierungsfehler zu beheben ***
+    time_t toLocal(time_t utc) const {
         // localtime() konvertiert unter Berücksichtigung der via setenv/tzset gesetzten TZ-Regel
         struct tm* tm_local = localtime(&utc);
         // mktime() konvertiert die tm-Struktur zurück in einen time_t-Wert,
@@ -31,7 +32,8 @@ public:
     }
 
     // Parst einen ISO8601-String (z.B. aus iCal) in eine UTC-Epochenzeit
-    time_t parse_iso8601(const char* iso_str) {
+    // *** KORREKTUR: Als const deklariert, um den Kompilierungsfehler zu beheben ***
+    time_t parse_iso8601(const char* iso_str) const {
         struct tm t;
         memset(&t, 0, sizeof(struct tm));
         int year, month, day, hour, min, sec;
