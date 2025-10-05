@@ -1,6 +1,5 @@
 #include <Arduino.h>
 #include <ESP32-HUB75-VirtualMatrixPanel_T.hpp>
-#include <WiFi.h>
 #include "time.h"
 #include <ESPmDNS.h>
 #include <NetworkUdp.h>
@@ -9,9 +8,14 @@
 #include <FS.h>
 #include <LittleFS.h>
 #include <esp_heap_caps.h>
+#include <algorithm>
 
-// Eigene Header-Dateien
-#include "webconfig.hpp"
+// Eigene Header-Dateien (neue Struktur)
+#include <WiFi.h>
+#include <WebServer.h>
+#include <DNSServer.h>
+#include "webconfig.hpp" // Enthält nur noch die Datenstruktur
+#include "WebServerManager.hpp" // Enthält die gesamte Web-Logik
 #include "PsramUtils.hpp"
 #include "GeneralTimeConverter.hpp"
 #include "WebClientModule.hpp"
@@ -19,6 +23,10 @@
 #include "DataModule.hpp"
 #include "CalendarModule.hpp"
 #include "RRuleParser.hpp"
+
+// Webserver-Objekte, die von WebServerManager.hpp erwartet werden
+WebServer server(80);
+DNSServer dnsServer;
 
 // Globale Objekte
 GeneralTimeConverter timeConverter;
@@ -163,134 +171,86 @@ void CalendarScrollTask(void* param) {
 
 bool connectToWifi() {
     if (deviceConfig.ssid.length() == 0) return false;
-
     displayStatus("Suche WLANs...");
     WiFi.mode(WIFI_STA);
     WiFi.disconnect();
     delay(100);
-
     int n = WiFi.scanNetworks();
-    Serial.println("Scan abgeschlossen.");
-
     if (n == 0) {
-        Serial.println("Keine WLANs gefunden!");
         displayStatus("Keine WLANs gefunden!");
         delay(2000);
         return false;
     }
-
-    // Struktur zum Speichern der gefundenen APs
-    struct WifiAP {
-        String ssid;
-        String bssid;
-        int32_t rssi;
-        int32_t channel;
-    };
+    struct WifiAP { String ssid; String bssid; int32_t rssi; int32_t channel; };
     std::vector<WifiAP> matchingAPs;
-
-    Serial.printf("%d Netzwerke gefunden:\n", n);
     for (int i = 0; i < n; ++i) {
         if (WiFi.SSID(i) == deviceConfig.ssid) {
-            WifiAP ap;
-            ap.ssid = WiFi.SSID(i);
-            ap.bssid = WiFi.BSSIDstr(i);
-            ap.rssi = WiFi.RSSI(i);
-            ap.channel = WiFi.channel(i);
-            matchingAPs.push_back(ap);
+            matchingAPs.push_back({WiFi.SSID(i), WiFi.BSSIDstr(i), WiFi.RSSI(i), WiFi.channel(i)});
         }
     }
-
     if (matchingAPs.empty()) {
-        Serial.println("Konfiguriertes WLAN nicht gefunden!");
         displayStatus("WLAN nicht gefunden!");
         delay(2000);
         return false;
     }
-
-    // Sortiere die gefundenen APs nach Signalstärke (absteigend)
-    std::sort(matchingAPs.begin(), matchingAPs.end(), [](const WifiAP& a, const WifiAP& b) {
-        return a.rssi > b.rssi;
-    });
-
-    Serial.printf("Gefundene APs für SSID '%s' (sortiert nach Stärke):\n", deviceConfig.ssid.c_str());
+    std::sort(matchingAPs.begin(), matchingAPs.end(), [](const WifiAP& a, const WifiAP& b) { return a.rssi > b.rssi; });
+    
     dma_display->clearScreen();
     u8g2.begin(*virtualDisp);
     u8g2.setFont(u8g2_font_6x13_tf);
     u8g2.setForegroundColor(0xFFFF);
     int y = 14;
-
     String title = "APs für " + deviceConfig.ssid;
     int x = (FULL_WIDTH - u8g2.getUTF8Width(title.c_str())) / 2;
     u8g2.setCursor(x, y);
     u8g2.print(title);
     y += 16;
     u8g2.setForegroundColor(0x07E0);
-
     for (size_t i = 0; i < matchingAPs.size(); ++i) {
         const auto& ap = matchingAPs[i];
         String line = ap.bssid + " (" + String(ap.rssi) + "dBm)";
-        Serial.println(line);
-
-        // Zeige nur so viele an, wie auf den Bildschirm passen
-        if (y < FULL_HEIGHT - 5) {
-            u8g2.setCursor(4, y);
-            u8g2.print(line);
-            y += 14;
-        }
+        if (y < FULL_HEIGHT - 5) { u8g2.setCursor(4, y); u8g2.print(line); y += 14; }
     }
     dma_display->flipDMABuffer();
-    delay(5000); // 5 Sekunden anzeigen
+    delay(5000);
 
     const auto& bestAP = matchingAPs[0];
-    Serial.printf("Verbinde mit stärkstem AP: %s, RSSI: %d dBm\n", bestAP.bssid.c_str(), bestAP.rssi);
     displayStatus("Verbinde mit\ndem stärksten Signal...");
-
-    // BSSID-String in Byte-Array für WiFi.begin() umwandeln
     uint8_t bssid[6];
     sscanf(bestAP.bssid.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx", &bssid[0], &bssid[1], &bssid[2], &bssid[3], &bssid[4], &bssid[5]);
-    
     WiFi.begin(deviceConfig.ssid.c_str(), deviceConfig.password.c_str(), bestAP.channel, bssid);
-
     int retries = 40;
-    while (WiFi.status() != WL_CONNECTED && retries > 0) {
-        delay(500);
-        Serial.print(".");
-        retries--;
-    }
-    Serial.println();
-
+    while (WiFi.status() != WL_CONNECTED && retries > 0) { delay(500); retries--; }
     if (WiFi.status() == WL_CONNECTED) {
-        Serial.println("WLAN verbunden!");
-        Serial.print("IP-Adresse: ");
-        Serial.println(WiFi.localIP());
         String msg = "Verbunden!\nIP: " + WiFi.localIP().toString();
         displayStatus(msg.c_str());
         delay(2000);
         return true;
     } else {
-        Serial.println("Verbindung fehlgeschlagen!");
         displayStatus("WLAN fehlgeschlagen!");
         WiFi.disconnect();
         delay(2000);
         return false;
     }
 }
+
 bool waitForTime() {
   displayStatus("Warte auf Uhrzeit...");
   configTime(0, 0, "pool.ntp.org", "time.nist.gov");
   time_t now_utc;
-  for (int i = 0; i < 30; ++i) {
-    time(&now_utc);
-    if (now_utc > 1609459200) {
-      time_t local_epoch = timeConverter.toLocal(now_utc);
-      localtime_r(&local_epoch, &timeinfo);
-      return true;
-    }
+  time(&now_utc);
+  int retries = 30;
+  while (now_utc < 1609459200 && retries > 0) {
     delay(500);
+    time(&now_utc);
+    retries--;
   }
-  displayStatus("Keine Zeit erhalten!");
-  delay(3000);
-  return false;
+  if (now_utc < 1609459200) {
+    displayStatus("Keine Zeit erhalten!");
+    delay(3000);
+    return false;
+  }
+  return true;
 }
 
 void applyLiveConfig() {
@@ -312,12 +272,8 @@ void drawClockArea() {
     clockMod.setTime(timeinfo);
     clockMod.tick();
     clockMod.draw();
-    
     psramBufTimeBytes = (size_t)canvasTime.width() * (size_t)canvasTime.height() * sizeof(uint16_t);
-    if (!psramBufTime) {
-        psramBufTime = (uint16_t*)heap_caps_malloc(psramBufTimeBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    }
-    
+    if (!psramBufTime) psramBufTime = (uint16_t*)heap_caps_malloc(psramBufTimeBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (psramBufTime) {
         memcpy(psramBufTime, canvasTime.getBuffer(), psramBufTimeBytes);
         virtualDisp->drawRGBBitmap(0, 0, psramBufTime, canvasTime.width(), canvasTime.height());
@@ -332,12 +288,8 @@ void drawDataArea() {
     } else {
         dataMod.draw();
     }
-
     psramBufDataBytes = (size_t)canvasData.width() * (size_t)canvasData.height() * sizeof(uint16_t);
-    if (!psramBufData) {
-        psramBufData = (uint16_t*)heap_caps_malloc(psramBufDataBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    }
-
+    if (!psramBufData) psramBufData = (uint16_t*)heap_caps_malloc(psramBufDataBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (psramBufData) {
         memcpy(psramBufData, canvasData.getBuffer(), psramBufDataBytes);
         virtualDisp->drawRGBBitmap(0, TIME_AREA_H, psramBufData, canvasData.width(), canvasData.height());
@@ -349,7 +301,7 @@ void drawDataArea() {
 void setup() {
   Serial.begin(115200);
   delay(3000);
-  Serial.println("=== Panelclock startup (Final Arch) ===");
+  Serial.println("=== Panelclock startup ===");
   webClient.begin();
 
   #define RL1 1
@@ -366,7 +318,6 @@ void setup() {
   #define CLK 19
   #define LAT 20
   #define OE 21
-
   HUB75_I2S_CFG::i2s_pins _pins = { RL1, GL1, BL1, RL2, GL2, BL2, CH_A, CH_B, CH_C, CH_D, CH_E, LAT, OE, CLK };
   HUB75_I2S_CFG mxconfig(PANEL_RES_X, PANEL_RES_Y, VDISP_NUM_ROWS * VDISP_NUM_COLS, _pins);
   mxconfig.i2sspeed = HUB75_I2S_CFG::HZ_10M;
@@ -382,7 +333,6 @@ void setup() {
   u8g2.begin(canvasTime);
 
   displayStatus("Starte...");
-
   if (!LittleFS.begin(true)) {
     displayStatus("LittleFS Fehler!");
     delay(2000);
@@ -392,29 +342,23 @@ void setup() {
   loadDeviceConfig();
   applyLiveConfig();
   dataMod.begin();
-
-  dataMod.onUpdate([](){
-    dataNeedsRedraw = true;
-  });
-
-  calendarMod.onUpdate([](){
-    calendarNeedsRedraw = true;
-  });
+  dataMod.onUpdate([](){ dataNeedsRedraw = true; });
+  calendarMod.onUpdate([](){ calendarNeedsRedraw = true; });
 
   if (connectToWifi()) {
     portalRunning = false;
-    WiFi.setHostname(deviceConfig.hostname.c_str());
-    if (deviceConfig.otaPassword.length() > 0) {
-      ArduinoOTA.setPassword(deviceConfig.otaPassword.c_str());
-    }
-    ArduinoOTA.setHostname(deviceConfig.hostname.c_str());
-    setupOtaDisplayStatus();
-    ArduinoOTA.begin();
-
     if (waitForTime()) {
+      WiFi.setHostname(deviceConfig.hostname.c_str());
+      if (deviceConfig.otaPassword.length() > 0) ArduinoOTA.setPassword(deviceConfig.otaPassword.c_str());
+      ArduinoOTA.setHostname(deviceConfig.hostname.c_str());
+      setupOtaDisplayStatus();
+      ArduinoOTA.begin();
       displayStatus("Start...");
       delay(1000);
       dma_display->clearScreen();
+      time_t now_utc; time(&now_utc);
+      time_t local_epoch = timeConverter.toLocal(now_utc);
+      localtime_r(&local_epoch, &timeinfo);
       drawClockArea();
       drawDataArea();
       lastSwitch = millis();
@@ -422,55 +366,62 @@ void setup() {
       displayStatus("Zeitfehler");
     }
   } else {
+    const char* apSsid = "Panelclock-Setup";
+    displayStatus(("Kein WLAN, starte\nKonfig-Portal:\n" + String(apSsid)).c_str());
+    WiFi.softAP(apSsid);
     portalRunning = true;
-    // *** KORREKTUR: Übergabe der displayStatus-Funktion als Callback ***
-    startConfigPortal([](const char* msg){ displayStatus(msg); });
   }
 
-  setupWebServer();
+  // Der Webserver läuft immer, entweder im STA- oder AP-Modus
+  setupWebServer(portalRunning);
   
   if (!portalRunning) {
     xTaskCreatePinnedToCore(CalendarScrollTask, "CalScroll", 2048, NULL, 2, NULL, 1);
-    xTaskCreatePinnedToCore(UpdateCalendarTask, "CalUpdate", 4096, NULL, 2, NULL, 1);
+    xTaskCreatePinnedToCore(UpdateCalendarTask, "CalUpdate", 8192, NULL, 2, NULL, 1);
     xTaskCreatePinnedToCore(UpdateDataTask, "DataUpdate", 4096, NULL, 2, NULL, 1);
   }
 }
 
+// Definition der handleNotFound-Funktion, die in WebServerManager.hpp deklariert ist
+void handleNotFound() {
+    // Im Portal-Modus auf die AP-IP umleiten, wenn eine andere URL aufgerufen wird
+    if (portalRunning && !server.hostHeader().equals(WiFi.softAPIP().toString())) {
+        server.sendHeader("Location", "http://" + WiFi.softAPIP().toString(), true);
+        server.send(302, "text/plain", "");
+        return;
+    }
+    String page = FPSTR(HTML_PAGE_HEADER);
+    page += "<h1>404 - Seite nicht gefunden</h1><div class='footer-link'><a href='/'>Zur&uuml;ck zum Hauptmen&uuml;</a></div>";
+    page += FPSTR(HTML_PAGE_FOOTER);
+    server.send(404, "text/html", page);
+}
+
 void loop() {
-  // *** KORREKTUR: Übergabe des portalRunning-Status als Parameter ***
   handleWebServer(portalRunning);
 
   if (!portalRunning) {
     ArduinoOTA.handle();
-
     time_t now_utc;
     time(&now_utc);
-
     if (now_utc < 1609459200) {
       displayStatus("Warte auf Zeit...");
       delay(500);
       return;
     }
-
     time_t local_epoch = timeConverter.toLocal(now_utc);
     localtime_r(&local_epoch, &timeinfo);
-    
     unsigned long now_ms = millis();
-
     if (now_ms - lastClockUpdate >= 1000) {
       lastClockUpdate = now_ms;
       drawClockArea();
     }
-
     bool needsDataRedraw = false;
     unsigned long nextSwitchInterval = showCalendar ? calendarDisplayMs : stationDisplayMs;
-    
     if (now_ms - lastSwitch > nextSwitchInterval) {
       showCalendar = !showCalendar;
       lastSwitch = now_ms;
       needsDataRedraw = true;
     }
-
     if (calendarScrollNeedsRedraw && showCalendar) {
       needsDataRedraw = true;
       calendarScrollNeedsRedraw = false;
@@ -483,7 +434,6 @@ void loop() {
       needsDataRedraw = true;
       dataNeedsRedraw = false;
     }
-
     if (needsDataRedraw) {
       drawDataArea();
     }
