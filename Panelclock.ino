@@ -162,28 +162,119 @@ void CalendarScrollTask(void* param) {
 }
 
 bool connectToWifi() {
-  if (deviceConfig.ssid.length() == 0) return false;
-  displayStatus("Verbinde WLAN...");
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(deviceConfig.ssid.c_str(), deviceConfig.password.c_str());
-  int retries = 40;
-  while (WiFi.status() != WL_CONNECTED && retries > 0) {
-    delay(500);
-    Serial.print(".");
-    retries--;
-  }
-  if (WiFi.status() == WL_CONNECTED) {
-    String msg = "Verbunden!\nIP: " + WiFi.localIP().toString();
-    displayStatus(msg.c_str());
-    delay(2000);
-    return true;
-  } else {
-    displayStatus("WLAN fehlgeschlagen!");
-    delay(2000);
-    return false;
-  }
-}
+    if (deviceConfig.ssid.length() == 0) return false;
 
+    displayStatus("Suche WLANs...");
+    WiFi.mode(WIFI_STA);
+    WiFi.disconnect();
+    delay(100);
+
+    int n = WiFi.scanNetworks();
+    Serial.println("Scan abgeschlossen.");
+
+    if (n == 0) {
+        Serial.println("Keine WLANs gefunden!");
+        displayStatus("Keine WLANs gefunden!");
+        delay(2000);
+        return false;
+    }
+
+    // Struktur zum Speichern der gefundenen APs
+    struct WifiAP {
+        String ssid;
+        String bssid;
+        int32_t rssi;
+        int32_t channel;
+    };
+    std::vector<WifiAP> matchingAPs;
+
+    Serial.printf("%d Netzwerke gefunden:\n", n);
+    for (int i = 0; i < n; ++i) {
+        if (WiFi.SSID(i) == deviceConfig.ssid) {
+            WifiAP ap;
+            ap.ssid = WiFi.SSID(i);
+            ap.bssid = WiFi.BSSIDstr(i);
+            ap.rssi = WiFi.RSSI(i);
+            ap.channel = WiFi.channel(i);
+            matchingAPs.push_back(ap);
+        }
+    }
+
+    if (matchingAPs.empty()) {
+        Serial.println("Konfiguriertes WLAN nicht gefunden!");
+        displayStatus("WLAN nicht gefunden!");
+        delay(2000);
+        return false;
+    }
+
+    // Sortiere die gefundenen APs nach Signalstärke (absteigend)
+    std::sort(matchingAPs.begin(), matchingAPs.end(), [](const WifiAP& a, const WifiAP& b) {
+        return a.rssi > b.rssi;
+    });
+
+    Serial.printf("Gefundene APs für SSID '%s' (sortiert nach Stärke):\n", deviceConfig.ssid.c_str());
+    dma_display->clearScreen();
+    u8g2.begin(*virtualDisp);
+    u8g2.setFont(u8g2_font_6x13_tf);
+    u8g2.setForegroundColor(0xFFFF);
+    int y = 14;
+
+    String title = "APs für " + deviceConfig.ssid;
+    int x = (FULL_WIDTH - u8g2.getUTF8Width(title.c_str())) / 2;
+    u8g2.setCursor(x, y);
+    u8g2.print(title);
+    y += 16;
+    u8g2.setForegroundColor(0x07E0);
+
+    for (size_t i = 0; i < matchingAPs.size(); ++i) {
+        const auto& ap = matchingAPs[i];
+        String line = ap.bssid + " (" + String(ap.rssi) + "dBm)";
+        Serial.println(line);
+
+        // Zeige nur so viele an, wie auf den Bildschirm passen
+        if (y < FULL_HEIGHT - 5) {
+            u8g2.setCursor(4, y);
+            u8g2.print(line);
+            y += 14;
+        }
+    }
+    dma_display->flipDMABuffer();
+    delay(5000); // 5 Sekunden anzeigen
+
+    const auto& bestAP = matchingAPs[0];
+    Serial.printf("Verbinde mit stärkstem AP: %s, RSSI: %d dBm\n", bestAP.bssid.c_str(), bestAP.rssi);
+    displayStatus("Verbinde mit\ndem stärksten Signal...");
+
+    // BSSID-String in Byte-Array für WiFi.begin() umwandeln
+    uint8_t bssid[6];
+    sscanf(bestAP.bssid.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx", &bssid[0], &bssid[1], &bssid[2], &bssid[3], &bssid[4], &bssid[5]);
+    
+    WiFi.begin(deviceConfig.ssid.c_str(), deviceConfig.password.c_str(), bestAP.channel, bssid);
+
+    int retries = 40;
+    while (WiFi.status() != WL_CONNECTED && retries > 0) {
+        delay(500);
+        Serial.print(".");
+        retries--;
+    }
+    Serial.println();
+
+    if (WiFi.status() == WL_CONNECTED) {
+        Serial.println("WLAN verbunden!");
+        Serial.print("IP-Adresse: ");
+        Serial.println(WiFi.localIP());
+        String msg = "Verbunden!\nIP: " + WiFi.localIP().toString();
+        displayStatus(msg.c_str());
+        delay(2000);
+        return true;
+    } else {
+        Serial.println("Verbindung fehlgeschlagen!");
+        displayStatus("WLAN fehlgeschlagen!");
+        WiFi.disconnect();
+        delay(2000);
+        return false;
+    }
+}
 bool waitForTime() {
   displayStatus("Warte auf Uhrzeit...");
   configTime(0, 0, "pool.ntp.org", "time.nist.gov");
