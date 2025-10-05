@@ -14,8 +14,9 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <DNSServer.h>
-#include "webconfig.hpp" // Enthält nur noch die Datenstruktur
-#include "WebServerManager.hpp" // Enthält die gesamte Web-Logik
+#include "webconfig.hpp"
+#include "HardwareConfig.hpp" // NEU
+#include "WebServerManager.hpp"
 #include "PsramUtils.hpp"
 #include "GeneralTimeConverter.hpp"
 #include "WebClientModule.hpp"
@@ -200,7 +201,7 @@ bool connectToWifi() {
     u8g2.setFont(u8g2_font_6x13_tf);
     u8g2.setForegroundColor(0xFFFF);
     int y = 14;
-    String title = "APs für " + deviceConfig.ssid;
+    String title = "APs f&uuml;r " + deviceConfig.ssid;
     int x = (FULL_WIDTH - u8g2.getUTF8Width(title.c_str())) / 2;
     u8g2.setCursor(x, y);
     u8g2.print(title);
@@ -215,7 +216,7 @@ bool connectToWifi() {
     delay(5000);
 
     const auto& bestAP = matchingAPs[0];
-    displayStatus("Verbinde mit\ndem stärksten Signal...");
+    displayStatus("Verbinde mit\ndem st&auml;rksten Signal...");
     uint8_t bssid[6];
     sscanf(bestAP.bssid.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx", &bssid[0], &bssid[1], &bssid[2], &bssid[3], &bssid[4], &bssid[5]);
     WiFi.begin(deviceConfig.ssid.c_str(), deviceConfig.password.c_str(), bestAP.channel, bssid);
@@ -304,21 +305,23 @@ void setup() {
   Serial.println("=== Panelclock startup ===");
   webClient.begin();
 
-  #define RL1 1
-  #define GL1 2
-  #define BL1 4
-  #define RL2 5
-  #define GL2 6
-  #define BL2 7
-  #define CH_A 15
-  #define CH_B 16
-  #define CH_C 17
-  #define CH_D 18
-  #define CH_E 3
-  #define CLK 19
-  #define LAT 20
-  #define OE 21
-  HUB75_I2S_CFG::i2s_pins _pins = { RL1, GL1, BL1, RL2, GL2, BL2, CH_A, CH_B, CH_C, CH_D, CH_E, LAT, OE, CLK };
+  if (!LittleFS.begin(true)) {
+    Serial.println("Fataler LittleFS Fehler!");
+    delay(5000);
+    ESP.restart();
+  }
+  
+  // Lade Konfigurationen zuerst, damit wir die Pins kennen
+  loadDeviceConfig();
+  loadHardwareConfig(); // NEU
+
+  // Display-Initialisierung mit Pins aus der Konfiguration
+  HUB75_I2S_CFG::i2s_pins _pins = { 
+    hardwareConfig.R1, hardwareConfig.G1, hardwareConfig.B1, 
+    hardwareConfig.R2, hardwareConfig.G2, hardwareConfig.B2, 
+    hardwareConfig.A, hardwareConfig.B, hardwareConfig.C, hardwareConfig.D, hardwareConfig.E, 
+    hardwareConfig.LAT, hardwareConfig.OE, hardwareConfig.CLK 
+  };
   HUB75_I2S_CFG mxconfig(PANEL_RES_X, PANEL_RES_Y, VDISP_NUM_ROWS * VDISP_NUM_COLS, _pins);
   mxconfig.i2sspeed = HUB75_I2S_CFG::HZ_10M;
   mxconfig.clkphase = false;
@@ -333,13 +336,7 @@ void setup() {
   u8g2.begin(canvasTime);
 
   displayStatus("Starte...");
-  if (!LittleFS.begin(true)) {
-    displayStatus("LittleFS Fehler!");
-    delay(2000);
-    ESP.restart();
-  }
   
-  loadDeviceConfig();
   applyLiveConfig();
   dataMod.begin();
   dataMod.onUpdate([](){ dataNeedsRedraw = true; });
