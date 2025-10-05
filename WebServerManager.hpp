@@ -13,9 +13,10 @@ extern DeviceConfig deviceConfig;
 extern HardwareConfig hardwareConfig;
 extern const std::vector<std::pair<const char*, const char*>> timezones;
 
-// Externe Deklaration der Speicherfunktionen
+// Externe Deklaration der Speicher- und Anwendungsfunktionen
 void saveDeviceConfig();
 void saveHardwareConfig();
+void applyLiveConfig(); // WICHTIG für diesen Schritt!
 
 // --- HTML-Vorlagen ---
 
@@ -37,7 +38,7 @@ const char HTML_PAGE_FOOTER[] PROGMEM = R"rawliteral(</div></body></html>)rawlit
 const char HTML_INDEX[] PROGMEM = R"rawliteral(
 <h1>Panelclock Hauptmen&uuml;</h1>
 <a href="/config_base" class="button">Grundkonfiguration (mit Neustart)</a>
-<a href="/config_modules" class="button">Anzeige-Module</a>
+<a href="/config_modules" class="button">Anzeige-Module (Live-Update)</a>
 )rawliteral";
 
 const char HTML_CONFIG_BASE[] PROGMEM = R"rawliteral(
@@ -97,7 +98,7 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
     <label for="calendarDateColor">Farbe Datum</label><input type="color" id="calendarDateColor" name="calendarDateColor" value="{calendarDateColor}">
     <label for="calendarTextColor">Farbe Text</label><input type="color" id="calendarTextColor" name="calendarTextColor" value="{calendarTextColor}">
 </div>
-<input type="submit" value="Speichern &amp; Neustarten">
+<input type="submit" value="Speichern (Live-Update)">
 </form>
 <div class="footer-link"><a href="/">&laquo; Zur&uuml;ck zum Hauptmen&uuml;</a></div>
 )rawliteral";
@@ -114,12 +115,10 @@ void handleRoot() {
 void handleConfigBase() {
     String page = FPSTR(HTML_PAGE_HEADER);
     String content = FPSTR(HTML_CONFIG_BASE);
-    // DeviceConfig Werte
     content.replace("{hostname}", deviceConfig.hostname);
     content.replace("{ssid}", deviceConfig.ssid);
     content.replace("{password}", deviceConfig.password);
     content.replace("{otaPassword}", deviceConfig.otaPassword);
-    // HardwareConfig Werte
     content.replace("{R1}", String(hardwareConfig.R1));
     content.replace("{G1}", String(hardwareConfig.G1));
     content.replace("{B1}", String(hardwareConfig.B1));
@@ -165,14 +164,12 @@ void handleConfigModules() {
 }
 
 void handleSaveBase() {
-    // DeviceConfig Teile speichern
     deviceConfig.hostname = server.arg("hostname");
     deviceConfig.ssid = server.arg("ssid");
     if (server.hasArg("password") && server.arg("password").length() > 0) deviceConfig.password = server.arg("password");
     if (server.hasArg("otaPassword") && server.arg("otaPassword").length() > 0) deviceConfig.otaPassword = server.arg("otaPassword");
     saveDeviceConfig();
 
-    // HardwareConfig Teile speichern
     hardwareConfig.R1 = server.arg("R1").toInt();
     hardwareConfig.G1 = server.arg("G1").toInt();
     hardwareConfig.B1 = server.arg("B1").toInt();
@@ -211,12 +208,13 @@ void handleSaveModules() {
     deviceConfig.calendarTextColor = server.arg("calendarTextColor");
     saveDeviceConfig();
     
+    // ** DER ENTSCHEIDENDE TEIL: KONFIGURATION LIVE ANWENDEN **
+    applyLiveConfig();
+
     String page = FPSTR(HTML_PAGE_HEADER);
-    page += "<h1>Gespeichert!</h1><p>Modul-Konfiguration gespeichert. Das Ger&auml;t wird neu gestartet...</p><script>setTimeout(function(){ window.location.href = '/'; }, 3000);</script>";
+    page += "<h1>Gespeichert!</h1><p>Modul-Konfiguration live &uuml;bernommen!</p><script>setTimeout(function(){ window.location.href = '/config_modules'; }, 2000);</script>";
     page += FPSTR(HTML_PAGE_FOOTER);
     server.send(200, "text/html", page);
-    delay(1000);
-    ESP.restart();
 }
 
 

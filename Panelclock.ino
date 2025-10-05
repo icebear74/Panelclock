@@ -15,7 +15,7 @@
 #include <WebServer.h>
 #include <DNSServer.h>
 #include "webconfig.hpp"
-#include "HardwareConfig.hpp" // NEU
+#include "HardwareConfig.hpp"
 #include "WebServerManager.hpp"
 #include "PsramUtils.hpp"
 #include "GeneralTimeConverter.hpp"
@@ -313,7 +313,7 @@ void setup() {
   
   // Lade Konfigurationen zuerst, damit wir die Pins kennen
   loadDeviceConfig();
-  loadHardwareConfig(); // NEU
+  loadHardwareConfig();
 
   // Display-Initialisierung mit Pins aus der Konfiguration
   HUB75_I2S_CFG::i2s_pins _pins = { 
