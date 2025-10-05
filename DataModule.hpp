@@ -3,193 +3,255 @@
 
 #include <Arduino.h>
 #include <U8g2_for_Adafruit_GFX.h>
+#include <ArduinoJson.h>
+#include <LittleFS.h>
+#include <vector>
+#include <functional>
+#include "WebClientModule.hpp"
 
-#if __has_include("gfxcanvas.h")
-  #include "gfxcanvas.h"
-#elif __has_include(<gfxcanvas.h>)
-  #include <gfxcanvas.h>
-#elif __has_include("GFXcanvas.h")
-  #include "GFXcanvas.h"
-#elif __has_include(<GFXcanvas.h>)
-  #include <GFXcanvas.h>
-#elif __has_include("Adafruit_GFX.h")
-  #include <Adafruit_GFX.h>
-#else
-  #error "gfxcanvas header not found. Please install the Adafruit GFX library (provides GFXcanvas16 / gfxcanvas.h)."
-#endif
+struct PriceEntry {
+    float price;
+    long timestamp;
+};
 
-#include <cmath>
+struct StationData {
+    String name;
+    String street;
+    String city;
+    float e5;
+    float e10;
+    float diesel;
+    bool isOpen;
+};
 
 class DataModule {
 public:
-  DataModule(U8G2_FOR_ADAFRUIT_GFX &u8g2, GFXcanvas16 &canvas, int timeAreaHeight)
-    : u8g2(u8g2), canvas(canvas), timeAreaH(timeAreaHeight) {}
+    DataModule(U8G2_FOR_ADAFRUIT_GFX &u8g2, GFXcanvas16 &canvas, int topOffset, WebClientModule* webClient)
+     : u8g2(u8g2), canvas(canvas), top_offset(topOffset), webClient(webClient) {
+        data.isOpen = false;
+     }
 
-  // set station / price data (main will call after fetching)
-  void setData(const String &station,
-               float e5_, float e10_, float diesel_,
-               float e5L, float e5H, float e10L, float e10H, float dL, float dH) {
-    hasError = false;
-    errorMsg = "";
-    stationname = station;
-    e5 = e5_; e10 = e10_; this->diesel = diesel_;
-    e5Low = e5L; e5High = e5H;
-    e10Low = e10L; e10High = e10H;
-    dieselLow = dL; dieselHigh = dH;
-  }
-
-  // set an error message to display instead of prices
-  void setError(const String &msg) {
-    hasError = true;
-    errorMsg = msg;
-  }
-
-  // Draw the data area (frame + contents)
-  void draw() {
-    canvas.fillScreen(0);
-    canvas.drawRect(0, 0, canvas.width() - 1, canvas.height(), rgb565(50,50,50));
-    u8g2.begin(canvas);
-
-    // heading
-    u8g2.setFont(u8g2_font_8x13_tf);
-    u8g2.setForegroundColor(WHITE);
-    u8g2.setCursor(40, 40 - timeAreaH);
-    u8g2.print("Benzinpreise");
-
-    // station / status or error
-    u8g2.setFont(u8g2_font_tom_thumb_4x6_tf);
-    if (hasError) {
-      // show error prominently
-      u8g2.setForegroundColor(RED);
-      u8g2.setCursor(2, 47 - timeAreaH);
-      // if message too long, crop
-      String s = errorMsg;
-      if (s.length() > 30) s = s.substring(0, 30) + "...";
-      u8g2.print(s);
-      // optionally show help hint
-      u8g2.setForegroundColor(rgb565(200,200,200));
-      u8g2.setCursor(2, 54 - timeAreaH);
-      u8g2.print("Portal: 192.168.4.1");
-      // no prices drawn
-      return;
-    } else {
-      u8g2.setForegroundColor(rgb565(128,128,128));
-      u8g2.setCursor(3, 47 - timeAreaH); // moved X to 3 so station name aligns with labels (E5/E10/Diesel)
-      u8g2.print(stationname);
+    void begin() {
+        if (LittleFS.exists("/price_history.json")) {
+            loadPriceHistory();
+        }
     }
 
-    // prices: baselines adjusted relative to the overall display (main uses same baseline scheme)
-    u8g2.setForegroundColor(YELLOW);
-    // E5
-    int e5_baseline = 60 - timeAreaH;
-    u8g2.setFont(u8g2_font_6x13_me);
-    u8g2.setCursor(3, e5_baseline); // label moved 1px to the right
-    u8g2.print("E5");
-    drawPrice(48, e5_baseline, e5Low, GREEN);   // shifted 2px left
-    uint16_t e5col = calcColor(e5, e5Low, e5High);
-    drawPrice(98, e5_baseline, e5, e5col);      // shifted 2px left
-    drawPrice(148, e5_baseline, e5High, RED);   // shifted 2px left
+    void onUpdate(std::function<void()> callback) {
+        updateCallback = callback;
+    }
 
-    // E10
-    int e10_baseline = 73 - timeAreaH;
-    u8g2.setForegroundColor(YELLOW);
-    u8g2.setFont(u8g2_font_6x13_me);
-    u8g2.setCursor(3, e10_baseline); // label moved 1px to the right
-    u8g2.print("E10");
-    drawPrice(48, e10_baseline, e10Low, GREEN);
-    uint16_t e10col = calcColor(e10, e10Low, e10High);
-    drawPrice(98, e10_baseline, e10, e10col);
-    drawPrice(148, e10_baseline, e10High, RED);
+    void setConfig(const String& apiKey, const String& stationId, int fetchIntervalMinutes) {
+        this->api_key = apiKey;
+        this->station_id = stationId;
+        this->fetch_interval_ms = fetchIntervalMinutes * 60 * 1000UL;
+    }
 
-    // Diesel
-    int diesel_baseline = 86 - timeAreaH;
-    u8g2.setForegroundColor(YELLOW);
-    u8g2.setFont(u8g2_font_6x13_me);
-    u8g2.setCursor(3, diesel_baseline); // label moved 1px to the right
-    u8g2.print("Diesel");
-    drawPrice(48, diesel_baseline, dieselLow, GREEN);
-    uint16_t dcol = calcColor(diesel, dieselLow, dieselHigh);
-    drawPrice(98, diesel_baseline, diesel, dcol);
-    drawPrice(148, diesel_baseline, dieselHigh, RED);
-  }
+    unsigned long getFetchIntervalMillis() const {
+        return fetch_interval_ms;
+    }
 
-  // accessors for buffer if main wants to copy to PSRAM
-  uint16_t* getBuffer() { return canvas.getBuffer(); }
-  int width() const { return canvas.width(); }
-  int height() const { return canvas.height(); }
+    void fetch() {
+        if (api_key.length() == 0 || station_id.length() == 0) {
+            data.isOpen = false;
+            return;
+        }
+
+        WebRequest request;
+        request.url = "https://creativecommons.tankerkoenig.de/json/detail.php?id=" + station_id + "&apikey=" + api_key;
+
+        request.onSuccess = [this](char* buffer, size_t size) {
+            JsonDocument doc; 
+            JsonDocument filter;
+            filter["ok"] = true;
+            filter["station"]["name"] = true;
+            filter["station"]["street"] = true;
+            filter["station"]["postCode"] = true;
+            filter["station"]["place"] = true;
+            filter["station"]["isOpen"] = true;
+            filter["station"]["e5"] = true;
+            filter["station"]["e10"] = true;
+            filter["station"]["diesel"] = true;
+            
+            DeserializationError error = deserializeJson(doc, buffer, size, DeserializationOption::Filter(filter));
+
+            if (!error && doc["ok"] == true) {
+                Serial.println("[DataModule] ERFOLG: JSON-Daten erfolgreich geparst!");
+                JsonObject station = doc["station"];
+                this->data.name = station["name"].as<String>();
+                this->data.street = station["street"].as<String>();
+                this->data.city = String(station["postCode"].as<int>()) + " " + station["place"].as<String>();
+                this->data.e5 = station["e5"];
+                this->data.e10 = station["e10"];
+                this->data.diesel = station["diesel"];
+                this->data.isOpen = station["isOpen"];
+                
+                Serial.printf("[DataModule] -> Tankstelle: %s\n", this->data.name.c_str());
+                Serial.printf("[DataModule] -> E5-Preis: %.3f\n", this->data.e5);
+                
+                if(this->data.isOpen && this->data.e5 > 0) {
+                    this->addPriceToHistory(this->data.e5);
+                }
+            } else {
+                 Serial.println("[DataModule] FEHLER: JSON-Daten konnten nicht geparst werden.");
+                 Serial.printf("[DataModule] -> ArduinoJson-Fehler: %s\n", error.c_str());
+                 this->data.isOpen = false;
+            }
+            
+            if (updateCallback) {
+                updateCallback();
+            }
+        };
+
+        request.onFailure = [this](int httpCode) {
+            Serial.printf("[DataModule] FEHLER: Download der Tankstellendaten fehlgeschlagen, HTTP-Code: %d\n", httpCode);
+            this->data.isOpen = false;
+            if (updateCallback) {
+                updateCallback();
+            }
+        };
+        
+        webClient->addRequest(request);
+    }
+    
+    void draw() {
+        canvas.fillScreen(0);
+        u8g2.begin(canvas);
+
+        if (!data.isOpen) {
+             u8g2.setFont(u8g2_font_10x20_tf);
+             u8g2.setForegroundColor(0xF800); // Rot
+             int x = (canvas.width() - u8g2.getUTF8Width("GESCHLOSSEN")) / 2;
+             u8g2.setCursor(x, 30);
+             u8g2.print("GESCHLOSSEN");
+             return;
+        }
+
+        u8g2.setFont(u8g2_font_7x14_tf);
+        u8g2.setForegroundColor(0xFFFF);
+        int titleWidth = u8g2.getUTF8Width("Benzinpreise");
+        u8g2.setCursor((canvas.width() - titleWidth) / 2, 11);
+        u8g2.print("Benzinpreise");
+        
+        u8g2.setFont(u8g2_font_tom_thumb_4x6_tf);
+        int nameWidth = u8g2.getUTF8Width(data.name.c_str());
+        u8g2.setCursor((canvas.width() - nameWidth) / 2, 19);
+        u8g2.print(data.name);
+
+        float minE5 = 10.0, maxE5 = 0.0;
+        if (priceHistory.size() >= 2) {
+            for (const auto& entry : priceHistory) {
+                if (entry.price < minE5) minE5 = entry.price;
+                if (entry.price > maxE5) maxE5 = entry.price;
+            }
+        } else {
+            minE5 = data.e5 > 0 ? data.e5 - 0.05 : 0;
+            maxE5 = data.e5 > 0 ? data.e5 + 0.05 : 0;
+        }
+        
+        float minE10 = minE5 > 0 ? minE5 - 0.05 : 0;
+        float maxE10 = maxE5 > 0 ? maxE5 - 0.05 : 0;
+        float minDiesel = minE5 > 0 ? minE5 - 0.15 : 0;
+        float maxDiesel = maxE5 > 0 ? maxE5 - 0.15 : 0;
+
+        drawPriceLine(31, "E5", data.e5, minE5, maxE5);
+        drawPriceLine(44, "E10", data.e10, minE10, maxE10);
+        drawPriceLine(57, "Diesel", data.diesel, minDiesel, maxDiesel);
+    }
 
 private:
-  U8G2_FOR_ADAFRUIT_GFX &u8g2;
-  GFXcanvas16 &canvas;
-  int timeAreaH;
+    U8G2_FOR_ADAFRUIT_GFX &u8g2;
+    GFXcanvas16 &canvas;
+    String api_key;
+    String station_id;
+    unsigned long fetch_interval_ms = 300000;
+    int top_offset;
+    StationData data;
+    std::vector<PriceEntry> priceHistory;
+    WebClientModule* webClient;
+    std::function<void()> updateCallback;
 
-  // data
-  String stationname;
-  float e5=0, e10=0, diesel=0;
-  float e5Low=99.999, e5High=0, e10Low=99.999, e10High=0, dieselLow=99.999, dieselHigh=0;
-
-  bool hasError = false;
-  String errorMsg;
-
-  // colors
-  static constexpr uint16_t WHITE = 0xFFFF;
-  static constexpr uint16_t YELLOW = 0xFFE0;
-  static constexpr uint16_t GREEN = 0x07E0;
-  static constexpr uint16_t RED = 0xF800;
-
-  static inline uint16_t rgb565(uint8_t r,uint8_t g,uint8_t b){
-    return ((r/8)<<11)|((g/4)<<5)|(b/8);
-  }
-
-  // compute gradient color like previous logic; returns RGB565 color
-  static uint16_t calcColor(float value, float low, float high) {
-    if (low == high) return 0xFFFF; // WHITE
-    int diff = (int)round(((high - value) / (high - low) * 100));
-    uint8_t rval = 255, gval = 255;
-    if (diff <= 50) { rval = 255; gval = map(diff, 0, 50, 0, 255); }
-    else { gval = 255; rval = map(diff, 50, 100, 255, 0); }
-    return rgb565(rval, gval, 0);
-  }
-
-  // drawPrice: renders price with 3 decimals; third decimal small and superscript
-  void drawPrice(int x, int baselineY, float price, uint16_t color) {
-    char buf[32];
-    snprintf(buf, sizeof(buf), "%.3f", price);
-    String s = String(buf);
-    int dotPos = s.indexOf('.');
-    String mainPart;
-    String thirdDigit;
-    if (dotPos >= 0 && (int)s.length() >= dotPos + 4) {
-      mainPart = s.substring(0, dotPos + 3);   // e.g. "1.45"
-      thirdDigit = s.substring(dotPos + 3, dotPos + 4);
-    } else {
-      mainPart = s;
-      thirdDigit = "";
+    static uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b) { return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3); }
+    static uint16_t calcColor(float value, float low, float high) {
+        if (low >= high) return rgb565(255, 255, 0);
+        int diff = (int)roundf(((high - value) / (high - low)) * 100.0f);
+        if(diff < 0) diff = 0;
+        if(diff > 100) diff = 100;
+        uint8_t rval = 255, gval = 255;
+        if (diff <= 50) { rval = 255; gval = map(diff, 0, 50, 0, 255); }
+        else { gval = 255; rval = map(diff, 50, 100, 255, 0); }
+        return rgb565(rval, gval, 0);
     }
 
-    // approximate widths used in main sketch
-    const int MAIN_W = 6;
-    const int SMALL_W = 4;
-    const int SMALL_SUPER_OFFSET = 6;
-
-    u8g2.setForegroundColor(color);
-    u8g2.setFont(u8g2_font_6x13_me);
-    u8g2.setCursor(x, baselineY);
-    u8g2.print(mainPart);
-
-    int wMain = mainPart.length() * MAIN_W;
-
-    if (thirdDigit.length() > 0) {
-      u8g2.setFont(u8g2_font_tom_thumb_4x6_tf);
-      u8g2.setCursor(x + wMain, baselineY - SMALL_SUPER_OFFSET);
-      u8g2.print(thirdDigit);
+    void drawPrice(int x, int y, float price, uint16_t color) {
+        if (price <= 0) return;
+        u8g2.setForegroundColor(color);
+        String priceStr = String(price, 3);
+        priceStr.replace('.', ',');
+        String mainPricePart = priceStr.substring(0, priceStr.length() - 1);
+        char last_digit_char = priceStr.charAt(priceStr.length() - 1);
+        char last_digit_str[2] = {last_digit_char, '\0'};
+        u8g2.setFont(u8g2_font_7x14_tf);
+        u8g2.setCursor(x, y);
+        u8g2.print(mainPricePart);
+        int mainPriceWidth = u8g2.getUTF8Width(mainPricePart.c_str());
+        int superscriptX = x + mainPriceWidth;
+        u8g2.setFont(u8g2_font_5x8_tf);
+        u8g2.setCursor(superscriptX+1, y - 4);
+        u8g2.print(last_digit_str);
+        int superscriptWidth = u8g2.getUTF8Width(last_digit_str);
+        u8g2.setFont(u8g2_font_6x13_me);
+        u8g2.setCursor(superscriptX + superscriptWidth + 3, y);
+        u8g2.print("€");
     }
 
-    int wSmall = (thirdDigit.length() > 0) ? (thirdDigit.length() * SMALL_W) : 0;
-    u8g2.setFont(u8g2_font_6x13_me);
-    u8g2.setCursor(x + wMain + wSmall + 2, baselineY);
-    u8g2.print(" €");
-  }
+    void drawPriceLine(int y, const char* label, float current, float min, float max) {
+        u8g2.setFont(u8g2_font_7x14_tf);
+        u8g2.setForegroundColor(0xFFFF);
+        u8g2.setCursor(2, y);
+        u8g2.print(label);
+        drawPrice(50, y, min, rgb565(0, 255, 0));
+        drawPrice(100, y, current, calcColor(current, min, max));
+        drawPrice(150, y, max, rgb565(255, 0, 0));
+    }
+
+    void addPriceToHistory(float price) {
+        if (priceHistory.empty() || priceHistory.back().price != price) {
+            priceHistory.push_back({price, (long)time(nullptr)});
+            if (priceHistory.size() > 30) {
+                priceHistory.erase(priceHistory.begin());
+            }
+            savePriceHistory();
+        }
+    }
+
+    void savePriceHistory() {
+        JsonDocument doc;
+        JsonArray array = doc.to<JsonArray>();
+        for(const auto& entry : priceHistory) {
+            JsonObject obj = array.add<JsonObject>();
+            obj["p"] = entry.price;
+            obj["t"] = entry.timestamp;
+        }
+        File file = LittleFS.open("/price_history.json", "w");
+        if (file) { serializeJson(doc, file); file.close(); }
+    }
+
+    void loadPriceHistory() {
+        File file = LittleFS.open("/price_history.json", "r");
+        if(file) {
+            JsonDocument doc;
+            DeserializationError error = deserializeJson(doc, file);
+            if (!error) {
+                JsonArray array = doc.as<JsonArray>();
+                priceHistory.clear();
+                for(JsonObject obj : array) {
+                    priceHistory.push_back({obj["p"].as<float>(), obj["t"].as<long>()});
+                }
+            }
+            file.close();
+        }
+    }
 };
 
-#endif // DATAMODULE_HPP
+#endif
