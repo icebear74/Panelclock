@@ -6,15 +6,35 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-// *** FINALE KORREKTUR: Explizite Deklaration von timegm für den C++ Compiler ***
-// Dies teilt dem Compiler mit, dass die Funktion existiert und vom Linker gefunden wird.
-#ifdef __cplusplus
-extern "C" {
-#endif
-time_t timegm(struct tm *tm);
-#ifdef __cplusplus
+// *** FINALE KORREKTUR: Eigene Implementierung von timegm, um Linker-Fehler zu beheben ***
+// Da die ESP32-Toolchain die Funktion nicht zuverlässig bereitstellt, definieren wir sie selbst.
+// Diese Funktion ist Standard und sicher.
+bool is_leap(unsigned yr) {
+    return yr % 400 == 0 || (yr % 4 == 0 && yr % 100 != 0);
 }
-#endif
+
+time_t timegm(struct tm *tm) {
+    static const unsigned ndays[2][12] = {
+        {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31},
+        {31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}
+    };
+    time_t res = 0;
+    for (int i = 1970; i < tm->tm_year + 1900; i++) {
+        res += is_leap(i) ? 366 : 365;
+    }
+    for (int i = 0; i < tm->tm_mon; i++) {
+        res += ndays[is_leap(tm->tm_year + 1900)][i];
+    }
+    res += tm->tm_mday - 1;
+    res *= 24;
+    res += tm->tm_hour;
+    res *= 60;
+    res += tm->tm_min;
+    res *= 60;
+    res += tm->tm_sec;
+    return res;
+}
+
 
 class GeneralTimeConverter {
 public:
@@ -22,11 +42,6 @@ public:
         isValid = parseTzString(tzString);
     }
 
-    /**
-     * @brief (NEU) Setzt eine neue Zeitzone zur Laufzeit.
-     * @param tzString Der neue POSIX-Zeitzonen-String.
-     * @return true bei Erfolg, false bei einem Parse-Fehler.
-     */
     bool setTimezone(const char* tzString) {
         isValid = parseTzString(tzString);
         return isValid;
@@ -46,7 +61,7 @@ public:
     }
 
     bool isDST(time_t utc_epoch) const {
-        if (!isValid || dstOffsetSec == stdOffsetSec) return false; // Keine Sommerzeit, wenn Offsets gleich sind
+        if (!isValid || dstOffsetSec == stdOffsetSec) return false;
 
         struct tm t;
         gmtime_r(&utc_epoch, &t);
@@ -55,12 +70,9 @@ public:
         time_t dst_start_utc = calculateRuleDate(year, dstStartRule, stdOffsetSec);
         time_t dst_end_utc = calculateRuleDate(year, dstEndRule, dstOffsetSec);
 
-        // Standard-Reihenfolge (Nordhalbkugel)
         if (dst_start_utc < dst_end_utc) {
             return (utc_epoch >= dst_start_utc && utc_epoch < dst_end_utc);
-        } 
-        // Inverse Reihenfolge (Südhalbkugel)
-        else {
+        } else {
             return (utc_epoch >= dst_start_utc || utc_epoch < dst_end_utc);
         }
     }
@@ -80,13 +92,12 @@ private:
     bool isValid = false;
 
     bool parseTzString(const char* tzString) {
-        // Reset state
         stdOffsetSec = 0;
         dstOffsetSec = 0;
         memset(&dstStartRule, 0, sizeof(Rule));
         memset(&dstEndRule, 0, sizeof(Rule));
-        dstStartRule.hour = 2; // Default
-        dstEndRule.hour = 2; // Default
+        dstStartRule.hour = 2;
+        dstEndRule.hour = 2;
 
         char buffer[100];
         strncpy(buffer, tzString, sizeof(buffer) - 1);
@@ -95,9 +106,8 @@ private:
         char* stdPart = strtok(buffer, ",");
         if (!stdPart) return false;
 
-        char* rulePart = strtok(NULL, ""); // Nimm den Rest des Strings
+        char* rulePart = strtok(NULL, "");
 
-        // Parse std name and offset
         char stdName[20] = {0};
         float stdOffHours = 0;
         int numParsed = sscanf(stdPart, "%[A-Za-z]%f", stdName, &stdOffHours);
@@ -105,7 +115,6 @@ private:
 
         this->stdOffsetSec = (numParsed > 1) ? -stdOffHours * 3600 : 0;
 
-        // Parse dst name and offset
         char* dstNameStart = stdPart + strlen(stdName);
         while (*dstNameStart && (*dstNameStart < '0' || *dstNameStart > '9') && *dstNameStart != '-' && *dstNameStart != '+') {
             dstNameStart++;
@@ -114,7 +123,7 @@ private:
             dstNameStart++;
         }
 
-        if (*dstNameStart) { // DST part exists
+        if (*dstNameStart) {
             char dstName[20] = {0};
             float dstOffHours = 0;
             if (sscanf(dstNameStart, "%[A-Za-z]%f", dstName, &dstOffHours) >= 1) {
@@ -135,11 +144,9 @@ private:
                 *endRuleStr = '\0';
                 endRuleStr++;
                 if (!parseRule(startRuleStr, this->dstStartRule) || !parseRule(endRuleStr, this->dstEndRule)) {
-                    // Parsing failed, but maybe it's a timezone without DST rules
                 }
             }
         } else {
-            // No rules, DST offset must be same as STD offset
             this->dstOffsetSec = this->stdOffsetSec;
         }
         
@@ -153,20 +160,18 @@ private:
             if (slash) sscanf(slash, "/%d", &h);
             if (sscanf(ruleStr, "M%d.%d.%d", &m, &w, &d) != 3) return false;
             rule.month = m; rule.week = w; rule.day = d; rule.hour = h;
-        } else { // Julian day format J<n> or <n>
-            // Diese Implementierung unterstützt nur das M-Format für die Einfachheit.
+        } else {
             return false;
         }
         return true;
     }
 
-    // *** KORREKTUR: Methode als const deklariert, damit sie von anderen const-Methoden aufgerufen werden kann ***
     time_t calculateRuleDate(int year, const Rule& rule, int offsetForLocalTime) const {
         struct tm t = {0};
         t.tm_year = year - 1900;
         t.tm_mon = rule.month - 1;
         t.tm_hour = rule.hour;
-        t.tm_isdst = 0;
+        t.tm_isdst = -1;
 
         if (rule.week == 5) {
             t.tm_mday = 1;
