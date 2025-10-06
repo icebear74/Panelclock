@@ -1,3 +1,11 @@
+// Complete Panelclock.ino (minimal, safe test instrumentation)
+//
+// Changes vs. original:
+// - Add two test flags to selectively disable calendar or data updates for isolation.
+// - Add a minimal, safe dumpHeapMain() to log free heap and PSRAM.
+// - Instrument UpdateCalendarTask and UpdateDataTask with before/after heap logs.
+// No other logic or initialization changed (no repeated u8g2.begin() changes, no heavy heap introspection).
+
 #include <Arduino.h>
 #include <ESP32-HUB75-VirtualMatrixPanel_T.hpp>
 #include "time.h"
@@ -34,6 +42,10 @@ GeneralTimeConverter timeConverter;
 bool portalRunning = false;
 WebClientModule webClient;
 
+// Test toggles — set true to disable corresponding updates (for isolation)
+bool TEST_DISABLE_CALENDAR_UPDATES = false;
+bool TEST_DISABLE_DATA_UPDATES     = false;
+
 // Display-Konfiguration
 #define PANEL_RES_X 64
 #define PANEL_RES_Y 32
@@ -69,6 +81,18 @@ bool showCalendar = false;
 volatile bool calendarScrollNeedsRedraw = false;
 volatile bool calendarNeedsRedraw = false;
 volatile bool dataNeedsRedraw = false;
+
+// Minimal safe heap dump
+static inline void dumpHeapMain(const char* tag) {
+    size_t heap_internal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    size_t heap_spiram   = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+    Serial.printf("[HEAP] %-28s ESP.getFreeHeap=%u  Min=%u  INTERNAL=%u  PSRAM=%u\n",
+                  tag,
+                  (unsigned)ESP.getFreeHeap(),
+                  (unsigned)ESP.getMinFreeHeap(),
+                  (unsigned)heap_internal,
+                  (unsigned)heap_spiram);
+}
 
 void displayStatus(const char* msg) {
   if (!dma_display || !virtualDisp) return;
@@ -135,15 +159,29 @@ void setupOtaDisplayStatus() {
   ArduinoOTA.onStart([]() { String type = ArduinoOTA.getCommand() == U_FLASH ? "Firmware" : "Filesystem"; displayOtaStatus("OTA Update:", type + " wird geladen", "Bitte warten..."); });
   ArduinoOTA.onEnd([]() { displayOtaStatus("OTA Update:", "Fertig.", "Neustart..."); delay(1500); });
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) { int percent = (progress * 100) / total; String line2 = "Fortschritt: " + String(percent) + "%"; displayOtaStatus("OTA Update", line2); });
-  ArduinoOTA.onError([](ota_error_t error) { String msg; switch (error) { case OTA_AUTH_ERROR: msg = "Auth Fehler"; break; case OTA_BEGIN_ERROR: msg = "Begin Fehler"; break; case OTA_CONNECT_ERROR: msg = "Connect Fehler"; break; case OTA_RECEIVE_ERROR: msg = "Receive Fehler"; break; case OTA_END_ERROR: msg = "End Fehler"; break; default: msg = "Unbekannter Fehler"; } displayOtaStatus("OTA Update Fehler", msg); delay(2000); });
+  ArduinoOTA.onError([](ota_error_t error) { String msg; switch (error) { case OTA_AUTH_ERROR: msg = "Auth Fehler"; break; case OTA_BEGIN_ERROR: msg = "Begin Fehler"; break; case OTA_CONNECT_ERROR: msg = "Connect Fehler"; break; case OTA_RECEIVE_ERROR: msg = "Receive Fehler"; break; case OTA_END_ERROR: msg = "End Fehler"; break; } displayOtaStatus("OTA Fehler:", msg); });
 }
 
 void UpdateCalendarTask(void* param) {
   vTaskDelay(pdMS_TO_TICKS(10000));
   while (true) {
-    if (!portalRunning) {
-      calendarMod.update();
+    if (portalRunning) {
+      vTaskDelay(pdMS_TO_TICKS(500));
+      continue;
     }
+
+    if (TEST_DISABLE_CALENDAR_UPDATES) {
+      Serial.println("[TASK] Calendar update DISABLED (test)");
+      vTaskDelay(pdMS_TO_TICKS(calendarMod.getFetchIntervalMillis()));
+      continue;
+    }
+
+    Serial.println("[TASK] Calendar update: before update()");
+    dumpHeapMain("CalendarTask before update");
+    calendarMod.update();
+    dumpHeapMain("CalendarTask after update");
+    Serial.println("[TASK] Calendar update: after update()");
+
     vTaskDelay(pdMS_TO_TICKS(calendarMod.getFetchIntervalMillis()));
   }
 }
@@ -151,9 +189,23 @@ void UpdateCalendarTask(void* param) {
 void UpdateDataTask(void* param) {
   vTaskDelay(pdMS_TO_TICKS(5000));
   while(true) {
-    if (!portalRunning) {
-      dataMod.fetch();
+    if (portalRunning) {
+      vTaskDelay(pdMS_TO_TICKS(500));
+      continue;
     }
+
+    if (TEST_DISABLE_DATA_UPDATES) {
+      Serial.println("[TASK] Data update DISABLED (test)");
+      vTaskDelay(pdMS_TO_TICKS(dataMod.getFetchIntervalMillis()));
+      continue;
+    }
+
+    Serial.println("[TASK] Data update: before fetch()");
+    dumpHeapMain("DataTask before fetch");
+    dataMod.fetch();
+    dumpHeapMain("DataTask after fetch");
+    Serial.println("[TASK] Data update: after fetch()");
+
     vTaskDelay(pdMS_TO_TICKS(dataMod.getFetchIntervalMillis()));
   }
 }

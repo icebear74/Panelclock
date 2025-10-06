@@ -8,17 +8,14 @@
 #include <time.h>
 #include <map>
 #include <string>
-#include <functional> // Hinzugefügt für std::function
-#include "RRuleParser.hpp" 
+#include <functional>
+#include "RRuleParser.hpp"
 #include "GeneralTimeConverter.hpp"
 #include "WebClientModule.hpp"
 #include "PsramUtils.hpp"
 
-// Forward declaration, falls RRuleParser diese Struktur benötigt
+// Forward declaration
 struct Event;
-
-// PsramString und PsramAllocator müssen hier definiert sein
-// (Annahme: sie sind in PsramUtils.hpp oder einem ähnlichen globalen Header)
 
 struct CalendarEvent {
   PsramString summary;
@@ -27,18 +24,24 @@ struct CalendarEvent {
   bool isAllDay;
 };
 
-// Debug- und Hilfsfunktionen aus Ihrem Original
-void printMemoryStats(const char* stage, int counter = -1) {
+// Debug- und Hilfsfunktionen
+static inline void printMemoryStats(const char* stage, int counter = -1) {
     Serial.printf("\n--- Memory @ %s ", stage);
     if (counter != -1) { Serial.printf("[%d] ", counter); }
     Serial.println("---");
-    Serial.printf("Heap:  Free: %lu, Min Free: %lu\n", ESP.getFreeHeap(), ESP.getMinFreeHeap());
-    if (psramFound()) { Serial.printf("PSRAM: Free: %lu\n", ESP.getFreePsram()); }
-    else { Serial.println("PSRAM not found."); }
+    size_t free_internal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    size_t min_internal  = ESP.getMinFreeHeap();
+    Serial.printf("Heap:  Free: %lu, Min Free: %lu\n", (unsigned long)free_internal, (unsigned long)min_internal);
+    if (psramFound()) {
+        size_t free_spiram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+        Serial.printf("PSRAM: Free: %lu\n", (unsigned long)free_spiram);
+    } else {
+        Serial.println("PSRAM not found.");
+    }
     Serial.println("------------------------------------");
 }
 
-uint16_t hexColorTo565(const String& hex) {
+static uint16_t hexColorTo565(const String& hex) {
   if (hex.length() != 7 || hex[0] != '#') return 0xFFFF;
   long r = strtol(hex.substring(1,3).c_str(), NULL, 16);
   long g = strtol(hex.substring(3,5).c_str(), NULL, 16);
@@ -51,7 +54,6 @@ public:
     CalendarModule(U8G2_FOR_ADAFRUIT_GFX &u8g2, GFXcanvas16 &canvas, const GeneralTimeConverter& converter, WebClientModule* webClient)
     : u8g2(u8g2), canvas(canvas), timeConverter(converter), webClient(webClient) {}
 
-    // Integration des onUpdate-Callbacks
     void onUpdate(std::function<void()> callback) {
         updateCallback = callback;
     }
@@ -67,37 +69,49 @@ public:
         textColor = hexColorTo565(textColorHex);
     }
 
+    // Request calendar: WebClientModule liefert PSRAM buffer via onSuccess callback
     void update() {
         if (!webClient || icsUrl.length() == 0) return;
         WebRequest request;
         request.url = icsUrl;
+
         request.onSuccess = [this](char* buffer, size_t size) {
-            this->parseICS(buffer, size); 
+            printMemoryStats("onSuccess start (calendar)");
+            if (buffer && size > 0) {
+                this->parseICS(buffer, size);
+            } else {
+                this->onFailedUpdate(-100);
+            }
+            // free PSRAM buffer (ownership returned by WebClientModule)
+            if (buffer) free(buffer);
+
             this->onSuccessfulUpdate();
             Serial.println("[CalendarModule] Callback: Update successful.");
-            if (updateCallback) { updateCallback(); } // Callback aufrufen
+            if (updateCallback) updateCallback();
         };
+
         request.onFailure = [this](int httpCode) {
             this->onFailedUpdate(httpCode);
             Serial.printf("[CalendarModule] Callback: Update failed, code: %d\n", httpCode);
-            if (updateCallback) { updateCallback(); } // Callback aufrufen
+            if (updateCallback) updateCallback();
         };
+
         webClient->addRequest(request);
     }
 
-    void tickScroll() { 
-        if (scrollStepInterval == 0) return; 
-        unsigned long now = millis(); 
-        if (now - lastScrollStep >= scrollStepInterval) { 
-            lastScrollStep = now; 
-            for (auto& s : scrollPos) { 
-                if (s.maxScroll > 0) { 
-                    s.offset = (s.offset + 1) % s.maxScroll; 
-                } 
-            } 
-        } 
+    void tickScroll() {
+        if (scrollStepInterval == 0) return;
+        unsigned long now = millis();
+        if (now - lastScrollStep >= scrollStepInterval) {
+            lastScrollStep = now;
+            for (auto& s : scrollPos) {
+                if (s.maxScroll > 0) {
+                    s.offset = (s.offset + 1) % s.maxScroll;
+                }
+            }
+        }
     }
-    
+
     void draw() {
         canvas.fillScreen(0);
         u8g2.begin(canvas);
@@ -109,11 +123,11 @@ public:
         u8g2.print("Start   Ende   Zeit   Termin");
         y += fontH;
         auto upcomming = getUpcomingEvents(6);
-        if (upcomming.empty()) { 
-            u8g2.setForegroundColor(textColor); 
-            u8g2.setCursor(2, y); 
-            u8g2.print("Keine Termine"); 
-            return; 
+        if (upcomming.empty()) {
+            u8g2.setForegroundColor(textColor);
+            u8g2.setCursor(2, y);
+            u8g2.print("Keine Termine");
+            return;
         }
         int xStart = 2, xEnd = 48, xTime = 74, xSummary = 110;
         int maxSummaryPixel = canvas.width() - xSummary - 2;
@@ -131,24 +145,26 @@ public:
             u8g2.setCursor(xStart, y);
             u8g2.print(buf);
             bool isMultiDay = (tEnd.tm_yday != tStart.tm_yday || tEnd.tm_year != tStart.tm_year);
-            if (isMultiDay) { 
-                strftime(buf, sizeof(buf), "%d.%m.%y", &tEnd); 
-                u8g2.setCursor(xEnd, y); 
-                u8g2.print(buf); 
+            if (isMultiDay) {
+                strftime(buf, sizeof(buf), "%d.%m.%y", &tEnd);
+                u8g2.setCursor(xEnd, y);
+                u8g2.print(buf);
             }
             u8g2.setCursor(xTime, y);
-            if (isMultiDay) { u8g2.print("     "); } 
-            else if (!ev.isAllDay) { strftime(buf, sizeof(buf), "%H:%M", &tStart); u8g2.print(buf); } 
+            if (isMultiDay) { u8g2.print("     "); }
+            else if (!ev.isAllDay) { strftime(buf, sizeof(buf), "%H:%M", &tStart); u8g2.print(buf); }
             else { u8g2.print(" ganzt."); }
             u8g2.setForegroundColor(textColor);
             u8g2.setCursor(xSummary, y);
-            size_t idx = i < scrollPos.size() ? i : 0;
+
             const char* shownText = ev.summary.c_str();
             PsramString visiblePart = fitTextToPixelWidth(shownText, maxSummaryPixel - 1);
             int visibleChars = visiblePart.length();
             PsramString pad("   ");
-            PsramString scrollText = PsramString(shownText) + pad + PsramString(shownText).substr(0, visibleChars);
-            int maxScroll = (ev.summary.length() > visibleChars) ? (scrollText.length() - visibleChars + pad.length()) : 0;
+            PsramString src(shownText);
+            PsramString scrollText = src + pad + src.substr(0, visibleChars);
+            int maxScroll = (src.length() > visibleChars) ? (scrollText.length() - visibleChars + pad.length()) : 0;
+            size_t idx = i < scrollPos.size() ? i : 0;
             scrollPos[idx].maxScroll = maxScroll;
             int offset = scrollPos[idx].offset;
             if (offset >= maxScroll) offset = 0;
@@ -164,7 +180,7 @@ private:
     GFXcanvas16 &canvas;
     const GeneralTimeConverter& timeConverter;
     WebClientModule* webClient;
-    std::function<void()> updateCallback; // Integriert
+    std::function<void()> updateCallback;
     String icsUrl;
     uint32_t fetchInterval = 900000;
     std::vector<CalendarEvent, PsramAllocator<CalendarEvent>> events;
@@ -175,67 +191,133 @@ private:
     uint16_t dateColor = 0xFFE0;
     uint16_t textColor = 0xFFFF;
 
-    // HINWEIS: Die 'Event' Struktur und 'parseVEvent' / 'parseRRule' werden
-    // aus 'RRuleParser.hpp' oder einer ähnlichen Datei erwartet.
-    // Die Logik hier ist eine Rekonstruktion basierend auf Ihrem Original.
-
+    // Parse ICS from PSRAM buffer (char*). Uses PsramString for large temporaries.
+    // This implementation collects parsed events in a single PSRAM vector,
+    // sorts by UID and processes contiguous groups. That avoids node-based maps
+    // and reduces internal-heap fragmentation.
     void parseICS(char* icsBuffer, size_t size) {
-        printMemoryStats("Start of parseICS (Buffer)");
-        String ics(icsBuffer); 
+        printMemoryStats("Start of parseICS (PSRAM buffer)");
+        if (!icsBuffer || size == 0) return;
+
+        // Create Psram-backed string view of the buffer (no internal-heap copy)
+        PsramString ics(icsBuffer, size);
+
         events.clear();
+
         using PsramEventVector = std::vector<Event, PsramAllocator<Event>>;
-        using EventGroupMap = std::map<PsramString, PsramEventVector, std::less<PsramString>, 
-                                       PsramAllocator<std::pair<const PsramString, PsramEventVector>>>;
-        EventGroupMap eventGroups;
-        printMemoryStats("After PSRAM map allocation");
-        int idx = 0;
+        PsramEventVector parsedEvents;
+        parsedEvents.reserve(256); // reserve to reduce reallocations; tune if needed
+
+        printMemoryStats("Before parsing VEVENTs");
+
+        size_t idx = 0;
         int veventCounter = 0;
-        while ((idx = ics.indexOf("BEGIN:VEVENT", idx)) != -1) {
+        const PsramString beginTag("BEGIN:VEVENT");
+        const PsramString endTag("END:VEVENT");
+
+        // Collect parsed events in a flat vector (PSRAM-backed) to avoid map node allocs.
+        while (true) {
+            size_t pos = ics.find(beginTag, idx);
+            if (pos == PsramString::npos) break;
             veventCounter++;
-            int endIdx = ics.indexOf("END:VEVENT", idx);
-            if (endIdx == -1) break;
-            String veventBlock = ics.substring(idx, endIdx + strlen("END:VEVENT"));
+            size_t endPos = ics.find(endTag, pos);
+            if (endPos == PsramString::npos) break;
+            size_t blockLen = (endPos + endTag.length()) - pos;
+            PsramString veventBlock = ics.substr(pos, blockLen);
+
             Event parsedEvent;
-            parseVEvent(veventBlock, parsedEvent); // Annahme: parseVEvent existiert in einem anderen Modul
-            if (!parsedEvent.uid.empty()) {
-                eventGroups[parsedEvent.uid].push_back(parsedEvent);
-            }
-            idx = endIdx;
+            parseVEvent(veventBlock.c_str(), veventBlock.length(), parsedEvent);
+            parsedEvents.push_back(std::move(parsedEvent));
+
+            idx = endPos + endTag.length();
             if (veventCounter % 50 == 0) { printMemoryStats("Grouping VEVENTs", veventCounter); }
         }
-        printMemoryStats("Finished grouping all VEVENTs", veventCounter);
+        printMemoryStats("Finished parsing VEVENTs");
+
+        if (parsedEvents.empty()) {
+            printMemoryStats("No VEVENTs found");
+            return;
+        }
+
+        // Sort parsed events by UID (PSRAM strings) to group them without map allocations
+        std::sort(parsedEvents.begin(), parsedEvents.end(), [](const Event& a, const Event& b){
+            return a.uid < b.uid;
+        });
+        printMemoryStats("After sorting");
+
+        // Scan contiguous groups with same UID
+        size_t i = 0;
         int groupCounter = 0;
-        for (auto const& [uid, group] : eventGroups) {
+        while (i < parsedEvents.size()) {
+            size_t j = i + 1;
+            while (j < parsedEvents.size() && parsedEvents[j].uid == parsedEvents[i].uid) ++j;
+
             groupCounter++;
+            // parsedEvents[i..j-1] form one group for the same UID
             Event masterEvent;
             std::vector<Event, PsramAllocator<Event>> exceptions;
-            for (const auto& ev : group) {
-                if (!ev.rrule.empty()) { masterEvent = ev; } else { exceptions.push_back(ev); }
+            exceptions.reserve(j - i);
+
+            for (size_t k = i; k < j; ++k) {
+                const Event& ev = parsedEvents[k];
+                if (!ev.rrule.empty()) masterEvent = ev;
+                else exceptions.push_back(ev);
             }
+
             if (masterEvent.rrule.empty()) {
-                for(const auto& singleEvent : exceptions) { addSingleEvent(singleEvent); }
-                continue;
+                // no RRULE -> treat exceptions as single events
+                for (const auto& singleEvent : exceptions) addSingleEvent(singleEvent);
+            } else {
+                // Expand master event -> occurrences
+                std::vector<time_t, PsramAllocator<time_t>> occurrences;
+                occurrences.reserve(64);
+                parseRRule(masterEvent, occurrences);
+
+                // Build a flat final_series vector (time,event) instead of map
+                using Pair = std::pair<time_t, Event>;
+                std::vector<Pair, PsramAllocator<Pair>> final_series_vec;
+                final_series_vec.reserve(occurrences.size() + exceptions.size());
+
+                // add occurrences
+                for (time_t start : occurrences) {
+                    Event series_event = masterEvent;
+                    series_event.dtstart = start;
+                    final_series_vec.emplace_back(start, std::move(series_event));
+                }
+
+                // apply exceptions (replace existing by recurrence_id or append)
+                for (const auto& ex : exceptions) {
+                    bool replaced = false;
+                    for (auto &pr : final_series_vec) {
+                        if (pr.first == ex.recurrence_id) {
+                            pr.second = ex;
+                            replaced = true;
+                            break;
+                        }
+                    }
+                    if (!replaced) {
+                        time_t key = (ex.recurrence_id != 0) ? ex.recurrence_id : ex.dtstart;
+                        final_series_vec.emplace_back(key, ex);
+                    }
+                }
+
+                // sort by time and unique by time (keep one entry per time)
+                std::sort(final_series_vec.begin(), final_series_vec.end(), [](const Pair& a, const Pair& b){ return a.first < b.first; });
+                final_series_vec.erase(std::unique(final_series_vec.begin(), final_series_vec.end(),
+                    [](const Pair& a, const Pair& b){ return a.first == b.first; }), final_series_vec.end());
+
+                // add to events
+                for (auto const& pr : final_series_vec) addSingleEvent(pr.second);
             }
-            std::vector<time_t, PsramAllocator<time_t>> occurrences;
-            parseRRule(masterEvent, occurrences); // Annahme: parseRRule existiert
-            using PsramEventMap = std::map<time_t, Event, std::less<time_t>, PsramAllocator<std::pair<const time_t, Event>>>;
-            PsramEventMap final_series;
-            for (time_t start : occurrences) {
-                Event series_event = masterEvent;
-                series_event.dtstart = start;
-                final_series[start] = series_event;
-            }
-            for (const auto& ex : exceptions) {
-                if (ex.recurrence_id != 0 && final_series.count(ex.recurrence_id)) {
-                    final_series.at(ex.recurrence_id) = ex;
-                } else { addSingleEvent(ex); }
-            }
-            for (auto const& [start, ev] : final_series) { addSingleEvent(ev); }
-            if(groupCounter % 20 == 0) { printMemoryStats("Processing UID groups", groupCounter); }
+
+            if (groupCounter % 20 == 0) { printMemoryStats("Processing UID groups", groupCounter); }
+
+            i = j;
         }
+
         printMemoryStats("Finished processing all UID groups", groupCounter);
     }
-    
+
     void onSuccessfulUpdate() {
         printMemoryStats("Start of onSuccessfulUpdate");
         if (events.empty()) {
@@ -248,10 +330,10 @@ private:
             return a.summary < b.summary;
         });
         printMemoryStats("After sorting");
+
         std::vector<CalendarEvent, PsramAllocator<CalendarEvent>> mergedEvents;
-        if (!events.empty()) {
-            mergedEvents.push_back(events[0]);
-        }
+        mergedEvents.reserve(events.size());
+        if (!events.empty()) mergedEvents.push_back(events[0]);
         for (size_t i = 1; i < events.size(); ++i) {
             CalendarEvent& lastMerged = mergedEvents.back();
             CalendarEvent& current = events[i];
@@ -271,8 +353,12 @@ private:
     void onFailedUpdate(int httpCode) {
         events.clear();
         CalendarEvent err;
-        if (httpCode == -1) { err.summary = "Keine URL/WLAN"; } 
-        else { err.summary = (String("ICS HTTP: ") + httpCode).c_str(); }
+        if (httpCode == -1) { err.summary = PsramString("Keine URL/WLAN"); }
+        else {
+            char tmp[32];
+            snprintf(tmp, sizeof(tmp), "ICS HTTP: %d", httpCode);
+            err.summary = PsramString(tmp);
+        }
         time_t now; time(&now);
         err.startEpoch = now > 1609459200 ? now + 1 : 0;
         err.endEpoch = err.startEpoch;
@@ -282,21 +368,22 @@ private:
     }
 
     void addSingleEvent(const Event& ev) {
-        if(ev.dtstart == 0) return;
+        if (ev.dtstart == 0) return;
         time_t duration = (ev.dtend > ev.dtstart) ? (ev.dtend - ev.dtstart) : (ev.isAllDay ? 86400 : 0);
         CalendarEvent ce;
-        ce.summary = ev.summary;
+        ce.summary = PsramString(ev.summary.c_str());
         ce.startEpoch = ev.dtstart;
         ce.endEpoch = ev.dtstart + duration;
-        ce.isAllDay = ev.isAllDay;
         if (ce.isAllDay && duration == 86400) {
             ce.endEpoch -= 1;
         }
+        ce.isAllDay = ev.isAllDay;
         events.push_back(ce);
     }
-    
+
     std::vector<CalendarEvent, PsramAllocator<CalendarEvent>> getUpcomingEvents(int maxCount) {
         std::vector<CalendarEvent, PsramAllocator<CalendarEvent>> result;
+        result.reserve(maxCount);
         time_t now_utc; time(&now_utc);
         for (const auto& ev : events) {
             if (ev.endEpoch > now_utc) {
@@ -307,23 +394,23 @@ private:
         return result;
     }
 
-    PsramString fitTextToPixelWidth(const char* text, int maxPixel) { 
+    PsramString fitTextToPixelWidth(const char* text, int maxPixel) {
         int lastOk = 0;
         int len = strlen(text);
         PsramString p_text(text);
         for (int i = 1; i <= len; ++i) {
-            if (u8g2.getUTF8Width(p_text.substr(0, i).c_str()) <= (maxPixel - 1)) { 
-                lastOk = i; 
-            } else { break; } 
-        } 
+            if (u8g2.getUTF8Width(p_text.substr(0, i).c_str()) <= (maxPixel - 1)) {
+                lastOk = i;
+            } else { break; }
+        }
         return p_text.substr(0, lastOk);
     }
 
     void resetScroll() { scrollPos.clear(); }
-    void ensureScrollPos(const std::vector<CalendarEvent, PsramAllocator<CalendarEvent>>& upcomming, int maxTextPixel) { 
-        if (scrollPos.size() != upcomming.size()) { 
-            scrollPos.resize(upcomming.size()); 
-        } 
+    void ensureScrollPos(const std::vector<CalendarEvent, PsramAllocator<CalendarEvent>>& upcomming, int maxTextPixel) {
+        if (scrollPos.size() != upcomming.size()) {
+            scrollPos.resize(upcomming.size());
+        }
     }
 };
 

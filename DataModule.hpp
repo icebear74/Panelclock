@@ -8,6 +8,20 @@
 #include <vector>
 #include <functional>
 #include "WebClientModule.hpp"
+#include "PsramUtils.hpp"
+#include <esp_heap_caps.h>
+
+// Minimal heap dump
+static inline void dumpHeapData(const char* tag) {
+    size_t free_internal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    size_t free_spiram   = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+    Serial.printf("[HEAP_DATA] %-30s ESP.getFreeHeap=%u  Min=%u  INTERNAL=%u  PSRAM=%u\n",
+                  tag,
+                  (unsigned)ESP.getFreeHeap(),
+                  (unsigned)ESP.getMinFreeHeap(),
+                  (unsigned)free_internal,
+                  (unsigned)free_spiram);
+}
 
 struct PriceEntry {
     float price;
@@ -15,26 +29,34 @@ struct PriceEntry {
 };
 
 struct StationData {
-    String name;
-    String street;
-    String city;
+    char name[64];
+    char street[64];
+    char city[96];
     float e5;
     float e10;
     float diesel;
     bool isOpen;
+    StationData() {
+        name[0] = street[0] = city[0] = '\0';
+        e5 = e10 = diesel = 0.0f;
+        isOpen = false;
+    }
 };
+
+using PriceVec = std::vector<PriceEntry, PsramAllocator<PriceEntry>>;
 
 class DataModule {
 public:
     DataModule(U8G2_FOR_ADAFRUIT_GFX &u8g2, GFXcanvas16 &canvas, int topOffset, WebClientModule* webClient)
      : u8g2(u8g2), canvas(canvas), top_offset(topOffset), webClient(webClient) {
         data.isOpen = false;
-     }
+    }
 
     void begin() {
         if (LittleFS.exists("/price_history.json")) {
             loadPriceHistory();
         }
+        priceHistory.reserve(32);
     }
 
     void onUpdate(std::function<void()> callback) {
@@ -61,46 +83,95 @@ public:
         request.url = "https://creativecommons.tankerkoenig.de/json/detail.php?id=" + station_id + "&apikey=" + api_key;
 
         request.onSuccess = [this](char* buffer, size_t size) {
-            JsonDocument doc; 
-            JsonDocument filter;
-            filter["ok"] = true;
-            filter["station"]["name"] = true;
-            filter["station"]["street"] = true;
-            filter["station"]["postCode"] = true;
-            filter["station"]["place"] = true;
-            filter["station"]["isOpen"] = true;
-            filter["station"]["e5"] = true;
-            filter["station"]["e10"] = true;
-            filter["station"]["diesel"] = true;
-            
-            DeserializationError error = deserializeJson(doc, buffer, size, DeserializationOption::Filter(filter));
+            dumpHeapData("onSuccess start");
 
-            if (!error && doc["ok"] == true) {
+            // allocate JSON docs in PSRAM (placement-new)
+            void* docMem = ps_malloc(sizeof(StaticJsonDocument<2048>));
+            void* filterMem = ps_malloc(sizeof(StaticJsonDocument<256>));
+            StaticJsonDocument<2048>* doc = nullptr;
+            StaticJsonDocument<256>* filter = nullptr;
+
+            if (!docMem || !filterMem) {
+                Serial.println("[DataModule] FEHLER: ps_malloc für JsonDocument fehlgeschlagen!");
+                if (docMem) free(docMem);
+                if (filterMem) free(filterMem);
+                if (buffer) free(buffer);
+                dumpHeapData("onSuccess ps_malloc failure end");
+                return;
+            }
+
+            doc = new (docMem) StaticJsonDocument<2048>();
+            filter = new (filterMem) StaticJsonDocument<256>();
+
+            (*filter)["ok"] = true;
+            (*filter)["station"]["name"] = true;
+            (*filter)["station"]["street"] = true;
+            (*filter)["station"]["postCode"] = true;
+            (*filter)["station"]["place"] = true;
+            (*filter)["station"]["isOpen"] = true;
+            (*filter)["station"]["e5"] = true;
+            (*filter)["station"]["e10"] = true;
+            (*filter)["station"]["diesel"] = true;
+
+            dumpHeapData("before deserializeJson");
+            DeserializationError error = deserializeJson(*doc, buffer, size, DeserializationOption::Filter(*filter));
+            dumpHeapData("after deserializeJson");
+
+            if (!error && (*doc)["ok"] == true) {
                 Serial.println("[DataModule] ERFOLG: JSON-Daten erfolgreich geparst!");
-                JsonObject station = doc["station"];
-                this->data.name = station["name"].as<String>();
-                this->data.street = station["street"].as<String>();
-                this->data.city = String(station["postCode"].as<int>()) + " " + station["place"].as<String>();
+                JsonObject station = (*doc)["station"];
+
+                const char* sname = station["name"] | "";
+                const char* sstreet = station["street"] | "";
+                const char* spost = station["postCode"] | "";
+                const char* splace = station["place"] | "";
+
+                strncpy(this->data.name, sname, sizeof(this->data.name) - 1);
+                this->data.name[sizeof(this->data.name) - 1] = '\0';
+
+                strncpy(this->data.street, sstreet, sizeof(this->data.street) - 1);
+                this->data.street[sizeof(this->data.street) - 1] = '\0';
+
+                snprintf(this->data.city, sizeof(this->data.city), "%s %s", spost, splace);
+                this->data.city[sizeof(this->data.city) - 1] = '\0';
+
                 this->data.e5 = station["e5"];
                 this->data.e10 = station["e10"];
                 this->data.diesel = station["diesel"];
                 this->data.isOpen = station["isOpen"];
-                
-                Serial.printf("[DataModule] -> Tankstelle: %s\n", this->data.name.c_str());
+
+                Serial.printf("[DataModule] -> Tankstelle: %s\n", this->data.name);
                 Serial.printf("[DataModule] -> E5-Preis: %.3f\n", this->data.e5);
-                
-                if(this->data.isOpen && this->data.e5 > 0) {
+
+                if (this->data.isOpen && this->data.e5 > 0) {
+                    dumpHeapData("before addPriceToHistory");
                     this->addPriceToHistory(this->data.e5);
+                    dumpHeapData("after addPriceToHistory");
                 }
             } else {
-                 Serial.println("[DataModule] FEHLER: JSON-Daten konnten nicht geparst werden.");
-                 Serial.printf("[DataModule] -> ArduinoJson-Fehler: %s\n", error.c_str());
-                 this->data.isOpen = false;
+                Serial.println("[DataModule] FEHLER: JSON-Daten konnten nicht geparst werden.");
+                Serial.printf("[DataModule] -> ArduinoJson-Fehler: %s\n", error.c_str());
+                this->data.isOpen = false;
             }
-            
+
             if (updateCallback) {
                 updateCallback();
             }
+
+            // clean up JSON docs and free PSRAM backing
+            if (doc) {
+                doc->~StaticJsonDocument<2048>();
+                free(docMem);
+            }
+            if (filter) {
+                filter->~StaticJsonDocument<256>();
+                free(filterMem);
+            }
+
+            dumpHeapData("before free buffer");
+            if (buffer) free(buffer);
+            dumpHeapData("after free buffer");
+            dumpHeapData("onSuccess end");
         };
 
         request.onFailure = [this](int httpCode) {
@@ -109,11 +180,12 @@ public:
             if (updateCallback) {
                 updateCallback();
             }
+            dumpHeapData("onFailure end");
         };
-        
+
         webClient->addRequest(request);
     }
-    
+
     void draw() {
         canvas.fillScreen(0);
         u8g2.begin(canvas);
@@ -134,9 +206,9 @@ public:
         u8g2.print("Benzinpreise");
         
         u8g2.setFont(u8g2_font_tom_thumb_4x6_tf);
-        int nameWidth = u8g2.getUTF8Width(data.name.c_str());
+        int nameWidth = u8g2.getUTF8Width(this->data.name);
         u8g2.setCursor((canvas.width() - nameWidth) / 2, 19);
-        u8g2.print(data.name);
+        u8g2.print(this->data.name);
 
         float minE5 = 10.0, maxE5 = 0.0;
         if (priceHistory.size() >= 2) {
@@ -167,7 +239,7 @@ private:
     unsigned long fetch_interval_ms = 300000;
     int top_offset;
     StationData data;
-    std::vector<PriceEntry> priceHistory;
+    PriceVec priceHistory;
     WebClientModule* webClient;
     std::function<void()> updateCallback;
 
@@ -226,32 +298,40 @@ private:
     }
 
     void savePriceHistory() {
-        JsonDocument doc;
-        JsonArray array = doc.to<JsonArray>();
+        void* mem = ps_malloc(sizeof(StaticJsonDocument<1024>));
+        if (!mem) return;
+        StaticJsonDocument<1024>* doc = new (mem) StaticJsonDocument<1024>();
+        JsonArray array = doc->to<JsonArray>();
         for(const auto& entry : priceHistory) {
             JsonObject obj = array.add<JsonObject>();
             obj["p"] = entry.price;
             obj["t"] = entry.timestamp;
         }
         File file = LittleFS.open("/price_history.json", "w");
-        if (file) { serializeJson(doc, file); file.close(); }
+        if (file) { serializeJson(*doc, file); file.close(); }
+        doc->~StaticJsonDocument<1024>();
+        free(mem);
     }
 
     void loadPriceHistory() {
         File file = LittleFS.open("/price_history.json", "r");
         if(file) {
-            JsonDocument doc;
-            DeserializationError error = deserializeJson(doc, file);
+            void* mem = ps_malloc(sizeof(StaticJsonDocument<1024>));
+            if (!mem) { file.close(); return; }
+            StaticJsonDocument<1024>* doc = new (mem) StaticJsonDocument<1024>();
+            DeserializationError error = deserializeJson(*doc, file);
             if (!error) {
-                JsonArray array = doc.as<JsonArray>();
+                JsonArray array = doc->as<JsonArray>();
                 priceHistory.clear();
                 for(JsonObject obj : array) {
                     priceHistory.push_back({obj["p"].as<float>(), obj["t"].as<long>()});
                 }
             }
             file.close();
+            doc->~StaticJsonDocument<1024>();
+            free(mem);
         }
     }
 };
 
-#endif
+#endif // DATAMODULE_HPP

@@ -1,11 +1,20 @@
 #ifndef PSRAMUTILS_HPP
 #define PSRAMUTILS_HPP
 
-#include <Arduino.h> // Für ps_malloc
-#include <string>    // Für std::basic_string
-#include <new>       // Für std::bad_alloc
+#include <Arduino.h>
+#include <cstdlib>
+#include <string>
+#include <new>
+#include <esp_heap_caps.h>
 
-// PSRAM Allocator für std Container
+// NOTE: Do NOT define psramFound() here because esp32-hal-psram.h already declares it.
+// Use the SDK's psramFound() (declared in esp32-hal-psram.h) directly.
+
+static inline size_t psramFree() {
+    return heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+}
+
+// PSRAM Allocator for std containers
 template <typename T>
 struct PsramAllocator {
     using value_type = T;
@@ -24,7 +33,7 @@ bool operator==(const PsramAllocator<T>&, const PsramAllocator<U>&) { return tru
 template <typename T, typename U>
 bool operator!=(const PsramAllocator<T>&, const PsramAllocator<U>&) { return false; }
 
-// Definiert einen std::string, der den PSRAM Allocator verwendet
+// Psram-backed std::string
 using PsramString = std::basic_string<char, std::char_traits<char>, PsramAllocator<char>>;
 
 #endif // PSRAMUTILS_HPP
