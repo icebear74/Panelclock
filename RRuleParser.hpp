@@ -186,12 +186,13 @@ void parseRRule(const Event& masterEvent, std::vector<time_t, Allocator>& occurr
     if (masterEvent.rrule.empty() || masterEvent.dtstart == 0) return;
     occurrences.clear();
 
-    PsramString rrule_str = masterEvent.rrule; // stays in PSRAM
+    PsramString rrule_str = masterEvent.rrule; 
     PsramString freq = "";
     int interval = 1;
     int count = -1;
     time_t until = 0;
-    std::vector<std::pair<int, int>> bydays;
+    // KORREKTUR: Vector explizit auf PSRAM umgestellt
+    std::vector<std::pair<int, int>, PsramAllocator<std::pair<int, int>>> bydays;
     int wkst = 1;
 
     size_t last = 0;
@@ -254,7 +255,8 @@ void parseRRule(const Event& masterEvent, std::vector<time_t, Allocator>& occurr
             time_t weekStart = current_base - (daysToSubtract * 24 * 3600);
             if (!bydays.empty()) {
                 for (auto const& pr : bydays) {
-                    int nth = pr.first;
+                    // KORREKTUR: Unbenutzte Variable entfernt
+                    // int nth = pr.first;
                     int wd = pr.second;
                     int dayOffset = (wd - wkst + 7) % 7;
                     time_t eventTime = weekStart + dayOffset * 24 * 3600;

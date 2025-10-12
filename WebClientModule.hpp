@@ -4,219 +4,377 @@
 #include <Arduino.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
-#include <queue>
+#include <vector>
 #include <functional>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "freertos/queue.h"
+#include "freertos/semphr.h"
 #include "PsramUtils.hpp"
-#include <esp_heap_caps.h>
+#include "webconfig.hpp"
+#include "certs.hpp"
 
-// Simple PSRAM-backed stream for downloads
 class PsramBufferStream : public Stream {
 public:
-    PsramBufferStream() {
-        _buffer = (char*)ps_malloc(INITIAL_SIZE);
-        if (_buffer) _capacity = INITIAL_SIZE;
+    PsramBufferStream() = default;
+    
+    void begin(char* buffer, size_t capacity) {
+        _buffer = buffer;
+        _capacity = capacity;
+        reset();
     }
-    ~PsramBufferStream() {
-        if (_buffer) free(_buffer);
+
+    void reset() {
+        _position = 0;
+        _overflowed = false;
     }
 
     size_t write(uint8_t data) override {
-        if (!_buffer) return 0;
+        if (_overflowed || !_buffer) return 0;
         if (_position >= _capacity) {
-            if (!grow()) return 0;
+            _overflowed = true;
+            return 0;
         }
         _buffer[_position++] = data;
         return 1;
     }
 
     size_t write(const uint8_t *buffer, size_t size) override {
-        if (!_buffer) return 0;
-        for (size_t i = 0; i < size; ++i) {
-            if (write(buffer[i]) == 0) return i;
+        if (_overflowed || !_buffer) return 0;
+        size_t bytes_to_write = size;
+        if (_position + size > _capacity) {
+            _overflowed = true;
+            bytes_to_write = (_capacity > _position) ? _capacity - _position : 0;
+            Serial.printf("[PsramBufferStream] WARNUNG: Pufferüberlauf! Schreibe nur die letzten %u von %u Bytes.\n", bytes_to_write, size);
         }
-        return size;
+        if (bytes_to_write > 0) {
+            const size_t chunkSize = 4096;
+            size_t bytesCopied = 0;
+            while(bytesCopied < bytes_to_write) {
+                size_t currentChunkSize = bytes_to_write - bytesCopied;
+                if (currentChunkSize > chunkSize) currentChunkSize = chunkSize;
+                memcpy(_buffer + _position + bytesCopied, buffer + bytesCopied, currentChunkSize);
+                bytesCopied += currentChunkSize;
+                vTaskDelay(1); 
+            }
+            _position += bytes_to_write;
+        }
+        return bytes_to_write;
     }
 
+    bool hasOverflowed() const { return _overflowed; }
+    size_t getCapacity() const { return _capacity; }
     int available() override { return 0; }
     int read() override { return -1; }
     int peek() override { return -1; }
     void flush() override {}
-
     char* getBuffer() { return _buffer; }
     size_t getSize() { return _position; }
-
-    // Transfers ownership to caller; the stream no longer frees the buffer.
-    char* releaseBuffer() {
-        char* tmp = _buffer;
-        _buffer = nullptr;
-        _capacity = 0;
-        _position = 0;
-        return tmp;
-    }
 
 private:
     char* _buffer = nullptr;
     size_t _capacity = 0;
     size_t _position = 0;
-    static const size_t INITIAL_SIZE = 16 * 1024; // start smaller, grow if needed
-    static const size_t MAX_SIZE = 2 * 1024 * 1024;
-
-    bool grow() {
-        if (_capacity >= MAX_SIZE) return false;
-        size_t new_capacity = std::min(_capacity ? _capacity * 2 : (size_t)INITIAL_SIZE, MAX_SIZE);
-        char* new_buffer = (char*)ps_realloc(_buffer, new_capacity);
-        if (!new_buffer) {
-            Serial.println("[PsramBufferStream] FEHLER: ps_realloc fehlgeschlagen!");
-            return false;
-        }
-        _buffer = new_buffer;
-        _capacity = new_capacity;
-        Serial.printf("[PsramBufferStream] Puffer auf %u Bytes vergrößert.\n", (unsigned)_capacity);
-        return true;
-    }
+    bool _overflowed = false;
 };
 
+struct ManagedResource {
+    PsramString url;
+    uint32_t update_interval_ms;
+    const char* root_ca_fallback;
+    PsramString cert_filename;
+    char* data_buffer = nullptr;
+    size_t data_size = 0;
+    time_t last_successful_update = 0;
+    time_t last_check_attempt = 0;
+    SemaphoreHandle_t mutex;
+    uint8_t retry_count = 0;
+    bool is_in_retry_mode = false;
+    bool is_data_stale = true;
 
-struct WebRequest {
-    String url;
-    // callback: buffer is a PSRAM-allocated char*; caller must free(buffer) after use
-    std::function<void(char*, size_t)> onSuccess = nullptr;
-    std::function<void(int)> onFailure = nullptr;
+    ManagedResource(const PsramString& u, uint32_t interval, const char* ca)
+        : url(u), update_interval_ms(interval), root_ca_fallback(ca) {
+        mutex = xSemaphoreCreateMutex();
+    }
+    ~ManagedResource() {
+        if (data_buffer) free(data_buffer);
+        if (mutex) vSemaphoreDelete(mutex);
+    }
+    ManagedResource(ManagedResource&& other) noexcept
+        : url(std::move(other.url)), update_interval_ms(other.update_interval_ms), root_ca_fallback(other.root_ca_fallback),
+          cert_filename(std::move(other.cert_filename)), data_buffer(other.data_buffer), data_size(other.data_size), 
+          last_successful_update(other.last_successful_update), last_check_attempt(other.last_check_attempt), 
+          mutex(other.mutex), retry_count(other.retry_count), is_in_retry_mode(other.is_in_retry_mode), is_data_stale(other.is_data_stale)
+    {
+        other.data_buffer = nullptr; other.mutex = nullptr;
+    }
 };
 
 class WebClientModule {
 public:
-    WebClientModule() {
-        requestQueue = xQueueCreate(10, sizeof(WebRequest*));
-        workerTaskHandle = NULL;
+    WebClientModule() : workerTaskHandle(NULL) {}
+    ~WebClientModule() {
+        if (workerTaskHandle) vTaskDelete(workerTaskHandle);
+        if (_downloadBuffer) free(_downloadBuffer);
     }
 
     void begin() {
-        // create worker task with increased stack to be safe
-        xTaskCreatePinnedToCore(webWorkerTask, "WebWorker", 16384, this, 2, &workerTaskHandle, 1);
+        reallocateBuffer(deviceConfig.webClientBufferSize);
+        BaseType_t app_core = xPortGetCoreID();
+        BaseType_t network_core = (app_core == 0) ? 1 : 0;
+        xTaskCreatePinnedToCore(webWorkerTask, "WebDataManager", 8192, this, 2, &workerTaskHandle, network_core);
     }
 
-    void addRequest(const WebRequest& request) {
-        WebRequest* reqCopy = new WebRequest(request);
-        if (xQueueSend(requestQueue, &reqCopy, pdMS_TO_TICKS(100)) != pdPASS) {
-            Serial.println("[WebClient] Warteschlange voll, Anfrage verworfen!");
-            delete reqCopy;
+    // --- FINALE KORREKTUR: Die Logik ist jetzt HIER, direkt bei der Registrierung ---
+    void registerResource(const String& url, uint32_t update_interval_minutes, const char* root_ca = nullptr) {
+        if (url.isEmpty() || update_interval_minutes == 0) return;
+        
+        for(const auto& res : resources) {
+            if (res.url.compare(url.c_str()) == 0) return;
+        }
+
+        uint32_t interval_ms = update_interval_minutes * 60 * 1000UL;
+        resources.emplace_back(url.c_str(), interval_ms, root_ca);
+        ManagedResource& new_res = resources.back();
+
+        // Zertifikat sofort zuweisen
+        if (indexOf(new_res.url, "dartsrankings.com") != -1) {
+            new_res.cert_filename = deviceConfig.dartsCertFile;
+        } else if (indexOf(new_res.url, "creativecommons.tankerkoenig.de") != -1) {
+            new_res.cert_filename = deviceConfig.tankerkoenigCertFile;
+        } else if (indexOf(new_res.url, "google.com") != -1) {
+            new_res.cert_filename = deviceConfig.googleCertFile;
+        }
+
+        Serial.printf("[WebDataManager] Ressource registriert: %s (Cert-File: '%s')\n", new_res.url.c_str(), new_res.cert_filename.c_str());
+    }
+
+    void accessResource(const String& url, std::function<void(const char* data, size_t size, time_t last_update, bool is_stale)> callback) {
+        for (auto& resource : resources) {
+            if (resource.url.compare(url.c_str()) == 0) {
+                if (xSemaphoreTake(resource.mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+                    callback(resource.data_buffer, resource.data_size, resource.last_successful_update, resource.is_data_stale);
+                    xSemaphoreGive(resource.mutex);
+                } else {
+                    Serial.printf("[WebDataManager] Timeout beim Warten auf Mutex für %s\n", url.c_str());
+                }
+                return;
+            }
+        }
+    }
+
+    void updateResourceCertificateByHost(const String& host, const String& cert_filename) {
+        for (auto& resource : resources) {
+            if (indexOf(resource.url, host) != -1) {
+                if (xSemaphoreTake(resource.mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+                    resource.cert_filename = cert_filename.c_str();
+                    Serial.printf("[WebDataManager] Zertifikat für Ressource '%s' (Host: %s) live aktualisiert auf Datei: '%s'\n", resource.url.c_str(), host.c_str(), cert_filename.c_str());
+                    xSemaphoreGive(resource.mutex);
+                }
+            }
         }
     }
 
 private:
-    QueueHandle_t requestQueue;
+    char* _downloadBuffer = nullptr;
+    size_t _bufferCapacity = 0;
+    PsramBufferStream _downloadStream;
+    std::vector<ManagedResource, PsramAllocator<ManagedResource>> resources;
     TaskHandle_t workerTaskHandle;
 
-    static void dumpHeapDetailed(const char* tag) {
-        size_t free_internal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
-        size_t largest_block = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
-        size_t free_spiram   = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
-        Serial.printf("[WEB_HEAP_DETAILED] %-22s INTERNAL_FREE=%u LARGEST=%u PSRAM=%u\n",
-                      tag, (unsigned)free_internal, (unsigned)largest_block, (unsigned)free_spiram);
+    bool reallocateBuffer(size_t new_size) {
+        if (new_size <= _bufferCapacity) return true;
+        logMemoryUsage("WebClient: Vor Puffer-Allokation");
+        char* new_buffer = (char*)ps_realloc(_downloadBuffer, new_size);
+        if (new_buffer) {
+            _downloadBuffer = new_buffer;
+            _bufferCapacity = new_size;
+            Serial.printf("[WebClientModule] Download-Puffer alloziert/vergrößert auf: %u Bytes\n", new_size);
+            logMemoryUsage("WebClient: Nach Puffer-Allokation");
+            return true;
+        } else {
+            Serial.printf("[WebClientModule] FEHLER: Konnte Puffer nicht auf %u Bytes vergrößern!\n", new_size);
+            logMemoryUsage("WebClient: Puffer-Allokation FEHLER");
+            return false;
+        }
     }
 
     static void webWorkerTask(void* param) {
         WebClientModule* self = static_cast<WebClientModule*>(param);
+        Serial.printf("[WebDataManager] Worker-Task gestartet auf Core %d.\n", xPortGetCoreID());
+        
+        time_t now;
+        time(&now);
+        while (now < 1609459200) {
+            Serial.println("[WebDataManager] Warte auf NTP-Synchronisation...");
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            time(&now);
+        }
+        Serial.println("[WebDataManager] NTP-Synchronisation erfolgreich. Starte reguläre Arbeit.");
 
         while (true) {
-            WebRequest* request;
-            if (!xQueueReceive(self->requestQueue, &request, portMAX_DELAY)) continue;
+            if (WiFi.status() == WL_CONNECTED && !self->resources.empty()) {
+                time(&now);
+                for (auto& resource : self->resources) {
+                    bool should_run = false;
+                    if (resource.is_in_retry_mode) {
+                        if ((now - resource.last_check_attempt) * 1000UL >= 30000UL) {
+                            should_run = true;
+                        }
+                    } else {
+                        if (resource.last_check_attempt == 0 || (now - resource.last_check_attempt) * 1000UL >= resource.update_interval_ms) {
+                            should_run = true;
+                        }
+                    }
 
-            if (WiFi.status() != WL_CONNECTED) {
-                Serial.printf("[WebWorker] Keine WLAN-Verbindung f&uuml;r: %s\n", request->url.c_str());
-                if (request->onFailure) request->onFailure(-7);
-                delete request;
-                continue;
+                    if (should_run) {
+                        self->performUpdate(resource);
+                    }
+                }
             }
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+    }
 
+    void performUpdate(ManagedResource& resource) {
+        Serial.printf("[WebDataManager] Starte Update für %s...\n", resource.url.c_str());
+        resource.last_check_attempt = time(nullptr);
+        bool retry_with_larger_buffer;
+        int max_growth_retries = 3;
+
+        do {
+            retry_with_larger_buffer = false;
+            HTTPClient http;
+            
             int httpCode = 0;
-            bool success = false;
-            Serial.printf("[WebWorker] Rufe URL auf: %s\n", request->url.c_str());
+            WiFiClientSecure secure_client;
+            WiFiClient plain_client;
 
-            for (int attempt = 1; attempt <= 3; ++attempt) {
-                Serial.printf("[WebWorker] Versuch %d/3...\n", attempt);
-
-                // Local client + http per request (forces full cleanup)
-                WiFiClientSecure client;
-                client.setInsecure();
-                HTTPClient http;
-
-                dumpHeapDetailed("before http.begin");
-                bool began = http.begin(client, request->url);
-                dumpHeapDetailed("after http.begin");
-
-                if (!began) {
-                    Serial.println("[WebWorker] http.begin fehlgeschlagen");
-                    httpCode = -30;
-                } else {
-                    httpCode = http.GET();
-                    Serial.printf("[WebWorker] http.GET() => %d\n", httpCode);
-                    dumpHeapDetailed("after GET");
-
-                    if (httpCode == HTTP_CODE_OK) {
-                        // PSRAM buffer approach (small and moderate responses)
-                        PsramBufferStream psramStream;
-                        dumpHeapDetailed("before writeToStream->psram");
-                        size_t written = http.writeToStream(&psramStream);
-                        dumpHeapDetailed("after writeToStream->psram");
-
-                        if (written > 0) {
-                            size_t size = psramStream.getSize();
-                            char* buffer = psramStream.releaseBuffer();
-                            if (buffer) {
-                                buffer[size] = '\0';
-                                // Free HTTP internal resources BEFORE heavy processing
-                                dumpHeapDetailed("before http.end (psram)");
-                                http.end();
-                                dumpHeapDetailed("after http.end (psram)");
-                                client.stop();
-
-                                dumpHeapDetailed("before onSuccess (psram)");
-                                if (request->onSuccess) request->onSuccess(buffer, size);
-                                dumpHeapDetailed("after onSuccess (psram)");
-
-                                // caller is responsible to free(buffer)
-                                success = true;
-                            } else {
-                                Serial.println("[WebWorker] FEHLER: releaseBuffer() returned null");
-                                httpCode = -21;
-                                dumpHeapDetailed("before http.end (null buffer)");
-                                http.end();
-                                dumpHeapDetailed("after http.end (null buffer)");
-                                client.stop();
+            if (resource.url.rfind("https://", 0) == 0) {
+                PsramString cert_data;
+                bool cert_loaded = false;
+                String filepath;
+                if (!resource.cert_filename.empty()) {
+                    filepath = "/certs/" + String(resource.cert_filename.c_str());
+                    if (LittleFS.exists(filepath)) {
+                        File certFile = LittleFS.open(filepath, "r");
+                        if (certFile) {
+                            size_t fileSize = certFile.size();
+                            char* buf = (char*)ps_malloc(fileSize + 1);
+                            if (buf) {
+                                certFile.readBytes(buf, fileSize);
+                                buf[fileSize] = '\0';
+                                cert_data = buf;
+                                free(buf);
+                                cert_loaded = true;
                             }
-                        } else {
-                            Serial.println("[WebWorker] FEHLER: Konnte keine Daten in PSRAM-Stream schreiben.");
-                            httpCode = -20;
-                            dumpHeapDetailed("before http.end (psram write fail)");
-                            http.end();
-                            dumpHeapDetailed("after http.end (psram write fail)");
-                            client.stop();
+                            certFile.close();
                         }
                     }
                 }
 
-                // ensure cleanup in any path
-                dumpHeapDetailed("before http.end (ensure)");
-                http.end();
-                dumpHeapDetailed("after http.end (ensure)");
-                client.stop();
-                dumpHeapDetailed("after client.stop (ensure)");
-
-                if (success) break;
-                if (attempt < 3) delay(3000);
+                if (cert_loaded) {
+                    Serial.printf("[WebDataManager] Verwende Zertifikat aus Datei '%s' für %s.\n", filepath.c_str(), resource.url.c_str());
+                    secure_client.setCACert(cert_data.c_str());
+                } else if (resource.root_ca_fallback) {
+                    Serial.printf("[WebDataManager] Verwende Fallback-Zertifikat für %s.\n", resource.url.c_str());
+                    secure_client.setCACert(resource.root_ca_fallback);
+                } else {
+                    Serial.printf("[WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für %s.\n", resource.url.c_str());
+                    secure_client.setInsecure();
+                }
+                
+                PsramString host;
+                uint16_t port = 443;
+                int hostStart = indexOf(resource.url, "://") + 3;
+                int pathStart = indexOf(resource.url, "/", hostStart);
+                host = (pathStart != -1) ? resource.url.substr(hostStart, pathStart - hostStart) : resource.url.substr(hostStart);
+                
+                if (!secure_client.connect(host.c_str(), port)) {
+                    httpCode = -1;
+                } else {
+                    if (http.begin(secure_client, resource.url.c_str())) {
+                         http.setTimeout(15000);
+                         httpCode = http.GET();
+                    } else {
+                        httpCode = -10;
+                    }
+                }
+            } else {
+                if (http.begin(plain_client, resource.url.c_str())) {
+                    http.setTimeout(15000);
+                    httpCode = http.GET();
+                } else {
+                    httpCode = -10;
+                }
             }
 
-            if (!success) {
-                if (request->onFailure) request->onFailure(httpCode);
+            _downloadStream.begin(_downloadBuffer, _bufferCapacity);
+
+            if (httpCode == HTTP_CODE_OK) {
+                http.writeToStream(&_downloadStream);
+                if (_downloadStream.hasOverflowed()) {
+                    Serial.printf("[WebClientModule] LERNEN: Pufferüberlauf bei %s. Puffer wird vergrößert.\n", resource.url.c_str());
+                    size_t new_capacity = ((_downloadStream.getCapacity() / (128 * 1024)) + 1) * (128 * 1024);
+                    if (reallocateBuffer(new_capacity)) {
+                        deviceConfig.webClientBufferSize = new_capacity;
+                        saveDeviceConfig();
+                        retry_with_larger_buffer = true;
+                    } else {
+                        Serial.println("[WebClientModule] FEHLER: Puffer konnte nicht vergrößert werden. Update für diese Ressource abgebrochen.");
+                    }
+                } else {
+                    size_t downloaded_size = _downloadStream.getSize();
+                    if (downloaded_size > 0) {
+                        char* new_permanent_buffer = (char*)ps_malloc(downloaded_size + 1);
+                        if (new_permanent_buffer) {
+                            memcpy(new_permanent_buffer, _downloadStream.getBuffer(), downloaded_size);
+                            new_permanent_buffer[downloaded_size] = '\0';
+                            if (xSemaphoreTake(resource.mutex, portMAX_DELAY) == pdTRUE) {
+                                if (resource.data_buffer) free(resource.data_buffer);
+                                resource.data_buffer = new_permanent_buffer;
+                                resource.data_size = downloaded_size;
+                                time(&resource.last_successful_update);
+                                resource.is_data_stale = false;
+                                xSemaphoreGive(resource.mutex);
+                                Serial.printf("[WebDataManager] ERFOLG: %s aktualisiert (%u Bytes).\n", resource.url.c_str(), (unsigned int)downloaded_size);
+                            } else {
+                                free(new_permanent_buffer);
+                            }
+                        } else {
+                            Serial.printf("[WebDataManager] FEHLER: Konnte keinen passgenauen Puffer für %s allozieren.\n", resource.url.c_str());
+                        }
+                    }
+                    resource.retry_count = 0;
+                    resource.is_in_retry_mode = false;
+                }
+            } else {
+                resource.retry_count++;
+                resource.is_data_stale = true;
+                
+                String errorMsg;
+                if (httpCode > 0) {
+                    errorMsg = "HTTP-Code " + String(httpCode);
+                } else if (httpCode == -1) {
+                    char error_buf[128];
+                    secure_client.lastError(error_buf, sizeof(error_buf));
+                    errorMsg = "Connect-Fehler: " + String(error_buf);
+                }
+                else {
+                    errorMsg = http.errorToString(httpCode);
+                }
+
+                if (resource.retry_count >= 3) {
+                    Serial.printf("[WebDataManager] FEHLER bei %s: %s. Max. Retries (%d) erreicht.\n", resource.url.c_str(), errorMsg.c_str(), resource.retry_count);
+                    resource.retry_count = 0;
+                    resource.is_in_retry_mode = false;
+                } else {
+                    Serial.printf("[WebDataManager] FEHLER bei %s: %s. Versuch %d/3 in 30s.\n", resource.url.c_str(), errorMsg.c_str(), resource.retry_count);
+                    resource.is_in_retry_mode = true;
+                }
             }
-            delete request;
-        }
+            http.end();
+            max_growth_retries--;
+        } while (retry_with_larger_buffer && max_growth_retries > 0);
     }
 };
-
 #endif // WEBCLIENTMODULE_HPP
