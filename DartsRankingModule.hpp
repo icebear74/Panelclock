@@ -281,14 +281,13 @@ public:
                 u8g2.printf("%d", player.movementValue);
             }
             
-            // --- KORREKTUR DER FARBLOGIK ---
             uint16_t name_color;
             if (player.isTrackedPlayer) {
                 name_color = player.isActive ? colors.trackedPlayerColor : dimColor(colors.trackedPlayerColor);
-            } else if (player.didParticipate && player.rank > 32) { // Nur Teilnehmer AUSSERHALB der Top 32 werden Cyan
+            } else if (player.didParticipate && player.rank > 32) {
                 name_color = player.isActive ? colors.participantColor : dimColor(colors.participantColor);
             } else {
-                name_color = rank_color; // Alle anderen (inkl. Top 32 Teilnehmer) erhalten die Standardfarbe
+                name_color = rank_color;
             }
             u8g2.setForegroundColor(name_color); 
             
@@ -494,13 +493,11 @@ private:
                     }
                 }
                 
-                if (isLiveFormat) {
-                    if (header == "+/-") {
-                        player.movementValue = content.toInt();
-                        if (strstr(td_start_tag, "change-up")) player.movement = PlayerMovement::UP;
-                        else if (strstr(td_start_tag, "change-down")) player.movement = PlayerMovement::DOWN;
-                        else player.movement = PlayerMovement::SAME;
-                    }
+                if (header == "+/-") {
+                    player.movementValue = content.toInt();
+                    if (strstr(td_start_tag, "change-up")) player.movement = PlayerMovement::UP;
+                    else if (strstr(td_start_tag, "change-down")) player.movement = PlayerMovement::DOWN;
+                    else player.movement = PlayerMovement::SAME;
                 }
             } else if (!isLiveFormat && col_idx == 0) {
                  player.rank = content.toInt();
@@ -545,7 +542,7 @@ private:
         Serial.printf("[DartsModule] Parsing %s beendet. %d Spieler angezeigt.\n", type_str, target_players.size());
     }
 
-    void parseTable(const char* html, std::vector<DartsPlayer, PsramAllocator<DartsPlayer>>& players_ref) {
+    bool parseTable(const char* html, std::vector<DartsPlayer, PsramAllocator<DartsPlayer>>& players_ref) {
         const char* current_search_pos = html;
         const char* table_start = nullptr;
 
@@ -562,12 +559,14 @@ private:
             }
             current_search_pos++;
         }
-        if (!table_start) { Serial.println("[DartsModule] Keine passende Tabelle gefunden."); return; }
+        if (!table_start) { Serial.println("[DartsModule] Keine passende Tabelle gefunden."); return false; }
 
         std::vector<String> headers;
         const char* thead_start = strstr(table_start, "<thead>");
         const char* thead_end = thead_start ? strstr(thead_start, "</thead>") : nullptr;
         bool isLiveFormat = false;
+        int round_headers_count = 0;
+
         if (thead_start && thead_end) {
             const char* th_start = thead_start;
             while (th_start < thead_end && (th_start = strstr(th_start, "<th")) != nullptr) {
@@ -578,12 +577,19 @@ private:
                 if (!th_end_tag) break;
                 String headerText = extractText(th_content_start, th_end_tag - th_content_start);
                 headers.push_back(headerText);
-                if (headerText == "+/-") { isLiveFormat = true; }
+                
+                if (headerText != "Rk" && headerText != "+/-" && headerText != "Name" && headerText != "Prize Money" && headerText.length() > 0 && headerText.length() <= 4) {
+                    round_headers_count++;
+                }
                 th_start = th_end_tag;
             }
         }
         
-        Serial.printf("[DartsModule] Header-Analyse: %d Spalten gefunden. Live-Format: %s\n", headers.size(), isLiveFormat ? "Ja" : "Nein");
+        if (round_headers_count > 0) {
+            isLiveFormat = true;
+        }
+        
+        Serial.printf("[DartsModule] Header-Analyse: %d Spalten, %d Runden-Spalten. Live-Format: %s\n", headers.size(), round_headers_count, isLiveFormat ? "Ja" : "Nein");
 
         const char* current_pos = thead_end ? thead_end : table_start;
         while (current_pos) {
@@ -614,6 +620,7 @@ private:
             }
             current_pos = tr_end;
         }
+        return isLiveFormat;
     }
 
     void tickScroll() {
