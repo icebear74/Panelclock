@@ -29,16 +29,27 @@ struct DeviceConfig {
     int dartsDisplaySec = 30;
     PsramString trackedDartsPlayers;
 
+    // Einstellungen für den Fritz!Box Call Monitor
+    bool fritzboxEnabled = false;
+    PsramString fritzboxIp;
+    PsramString fritzboxUser;
+    PsramString fritzboxPassword;
+
     PsramString tankerkoenigCertFile;
     PsramString dartsCertFile;
     PsramString googleCertFile;
 
-    // --- NEU: Adaptiver Puffer für den WebClient ---
-    // Speichert die benötigte Größe des Download-Puffers in Bytes.
     size_t webClientBufferSize = 512 * 1024;
+
+    bool mwaveSensorEnabled = false;
+    int mwaveOffCheckDuration = 300;
+    float mwaveOffCheckOnPercent = 10.0f;
+    int mwaveOnCheckDuration = 5;
+    float mwaveOnCheckPercentage = 50.0f;
 };
 
-DeviceConfig deviceConfig;
+// --- KORREKTUR: Auf Zeiger umgestellt ---
+extern DeviceConfig* deviceConfig;
 
 const std::vector<std::pair<const char*, const char*>> timezones = {
     {"(UTC+0) UTC", "UTC"},
@@ -57,37 +68,48 @@ const std::vector<std::pair<const char*, const char*>> timezones = {
 };
 
 void loadDeviceConfig() {
+    if (!deviceConfig) return; // Sicherheitsabfrage
     if (LittleFS.exists("/config.json")) {
         File configFile = LittleFS.open("/config.json", "r");
         JsonDocument doc;
         if (deserializeJson(doc, configFile) == DeserializationError::Ok) {
-            deviceConfig.hostname = doc["hostname"] | "Panel-Clock";
-            deviceConfig.ssid = doc["ssid"] | "";
-            deviceConfig.password = doc["password"] | "";
-            deviceConfig.otaPassword = doc["otaPassword"] | "";
-            deviceConfig.timezone = doc["timezone"] | "UTC";
-            deviceConfig.tankerApiKey = doc["tankerApiKey"] | "";
-            deviceConfig.stationId = doc["stationId"] | "";
-            deviceConfig.stationFetchIntervalMin = doc["stationFetchIntervalMin"] | 5;
-            deviceConfig.icsUrl = doc["icsUrl"] | "";
-            deviceConfig.calendarFetchIntervalMin = doc["calendarFetchIntervalMin"] | 60;
-            deviceConfig.calendarScrollMs = doc["calendarScrollMs"] | 50;
-            deviceConfig.calendarDateColor = doc["calendarDateColor"] | "#FBE000";
-            deviceConfig.calendarTextColor = doc["calendarTextColor"] | "#FFFFFF";
-            deviceConfig.calendarDisplaySec = doc["calendarDisplaySec"] | 30;
-            deviceConfig.stationDisplaySec = doc["stationDisplaySec"] | 15;
+            deviceConfig->hostname = doc["hostname"] | "Panel-Clock";
+            deviceConfig->ssid = doc["ssid"] | "";
+            deviceConfig->password = doc["password"] | "";
+            deviceConfig->otaPassword = doc["otaPassword"] | "";
+            deviceConfig->timezone = doc["timezone"] | "UTC";
+            deviceConfig->tankerApiKey = doc["tankerApiKey"] | "";
+            deviceConfig->stationId = doc["stationId"] | "";
+            deviceConfig->stationFetchIntervalMin = doc["stationFetchIntervalMin"] | 5;
+            deviceConfig->icsUrl = doc["icsUrl"] | "";
+            deviceConfig->calendarFetchIntervalMin = doc["calendarFetchIntervalMin"] | 60;
+            deviceConfig->calendarScrollMs = doc["calendarScrollMs"] | 50;
+            deviceConfig->calendarDateColor = doc["calendarDateColor"] | "#FBE000";
+            deviceConfig->calendarTextColor = doc["calendarTextColor"] | "#FFFFFF";
+            deviceConfig->calendarDisplaySec = doc["calendarDisplaySec"] | 30;
+            deviceConfig->stationDisplaySec = doc["stationDisplaySec"] | 15;
             
-            deviceConfig.dartsOomEnabled = doc["dartsOomEnabled"] | false;
-            deviceConfig.dartsProTourEnabled = doc["dartsProTourEnabled"] | false;
-            deviceConfig.dartsDisplaySec = doc["dartsDisplaySec"] | 30;
-            deviceConfig.trackedDartsPlayers = doc["trackedDartsPlayers"] | "";
+            deviceConfig->dartsOomEnabled = doc["dartsOomEnabled"] | false;
+            deviceConfig->dartsProTourEnabled = doc["dartsProTourEnabled"] | false;
+            deviceConfig->dartsDisplaySec = doc["dartsDisplaySec"] | 30;
+            deviceConfig->trackedDartsPlayers = doc["trackedDartsPlayers"] | "";
 
-            deviceConfig.tankerkoenigCertFile = doc["tankerkoenigCertFile"] | "";
-            deviceConfig.dartsCertFile = doc["dartsCertFile"] | "";
-            deviceConfig.googleCertFile = doc["googleCertFile"] | "";
+            deviceConfig->fritzboxEnabled = doc["fritzboxEnabled"] | false;
+            deviceConfig->fritzboxIp = doc["fritzboxIp"] | "";
+            deviceConfig->fritzboxUser = doc["fritzboxUser"] | "";
+            deviceConfig->fritzboxPassword = doc["fritzboxPassword"] | "";
 
-            // --- NEU: Laden der Puffergröße ---
-            deviceConfig.webClientBufferSize = doc["webClientBufferSize"] | (512 * 1024);
+            deviceConfig->tankerkoenigCertFile = doc["tankerkoenigCertFile"] | "";
+            deviceConfig->dartsCertFile = doc["dartsCertFile"] | "";
+            deviceConfig->googleCertFile = doc["googleCertFile"] | "";
+
+            deviceConfig->webClientBufferSize = doc["webClientBufferSize"] | (512 * 1024);
+
+            deviceConfig->mwaveSensorEnabled = doc["mwaveSensorEnabled"] | false;
+            deviceConfig->mwaveOffCheckDuration = doc["mwaveOffCheckDuration"] | 300;
+            deviceConfig->mwaveOffCheckOnPercent = doc["mwaveOffCheckOnPercent"] | 10.0f;
+            deviceConfig->mwaveOnCheckDuration = doc["mwaveOnCheckDuration"] | 5;
+            deviceConfig->mwaveOnCheckPercentage = doc["mwaveOnCheckPercentage"] | 50.0f;
 
             Serial.println("Geräte-Konfiguration geladen.");
         } else {
@@ -100,34 +122,45 @@ void loadDeviceConfig() {
 }
 
 void saveDeviceConfig() {
+    if (!deviceConfig) return; // Sicherheitsabfrage
     JsonDocument doc;
-    doc["hostname"] = deviceConfig.hostname.c_str();
-    doc["ssid"] = deviceConfig.ssid.c_str();
-    doc["password"] = deviceConfig.password.c_str();
-    doc["otaPassword"] = deviceConfig.otaPassword.c_str();
-    doc["timezone"] = deviceConfig.timezone.c_str();
-    doc["tankerApiKey"] = deviceConfig.tankerApiKey.c_str();
-    doc["stationId"] = deviceConfig.stationId.c_str();
-    doc["stationFetchIntervalMin"] = deviceConfig.stationFetchIntervalMin;
-    doc["icsUrl"] = deviceConfig.icsUrl.c_str();
-    doc["calendarFetchIntervalMin"] = deviceConfig.calendarFetchIntervalMin;
-    doc["calendarScrollMs"] = deviceConfig.calendarScrollMs;
-    doc["calendarDateColor"] = deviceConfig.calendarDateColor.c_str();
-    doc["calendarTextColor"] = deviceConfig.calendarTextColor.c_str();
-    doc["calendarDisplaySec"] = deviceConfig.calendarDisplaySec;
-    doc["stationDisplaySec"] = deviceConfig.stationDisplaySec;
+    doc["hostname"] = deviceConfig->hostname.c_str();
+    doc["ssid"] = deviceConfig->ssid.c_str();
+    doc["password"] = deviceConfig->password.c_str();
+    doc["otaPassword"] = deviceConfig->otaPassword.c_str();
+    doc["timezone"] = deviceConfig->timezone.c_str();
+    doc["tankerApiKey"] = deviceConfig->tankerApiKey.c_str();
+    doc["stationId"] = deviceConfig->stationId.c_str();
+    doc["stationFetchIntervalMin"] = deviceConfig->stationFetchIntervalMin;
+    doc["icsUrl"] = deviceConfig->icsUrl.c_str();
+    doc["calendarFetchIntervalMin"] = deviceConfig->calendarFetchIntervalMin;
+    doc["calendarScrollMs"] = deviceConfig->calendarScrollMs;
+    doc["calendarDateColor"] = deviceConfig->calendarDateColor.c_str();
+    doc["calendarTextColor"] = deviceConfig->calendarTextColor.c_str();
+    doc["calendarDisplaySec"] = deviceConfig->calendarDisplaySec;
+    doc["stationDisplaySec"] = deviceConfig->stationDisplaySec;
 
-    doc["dartsOomEnabled"] = deviceConfig.dartsOomEnabled;
-    doc["dartsProTourEnabled"] = deviceConfig.dartsProTourEnabled;
-    doc["dartsDisplaySec"] = deviceConfig.dartsDisplaySec;
-    doc["trackedDartsPlayers"] = deviceConfig.trackedDartsPlayers.c_str();
+    doc["dartsOomEnabled"] = deviceConfig->dartsOomEnabled;
+    doc["dartsProTourEnabled"] = deviceConfig->dartsProTourEnabled;
+    doc["dartsDisplaySec"] = deviceConfig->dartsDisplaySec;
+    doc["trackedDartsPlayers"] = deviceConfig->trackedDartsPlayers.c_str();
 
-    doc["tankerkoenigCertFile"] = deviceConfig.tankerkoenigCertFile.c_str();
-    doc["dartsCertFile"] = deviceConfig.dartsCertFile.c_str();
-    doc["googleCertFile"] = deviceConfig.googleCertFile.c_str();
+    doc["fritzboxEnabled"] = deviceConfig->fritzboxEnabled;
+    doc["fritzboxIp"] = deviceConfig->fritzboxIp.c_str();
+    doc["fritzboxUser"] = deviceConfig->fritzboxUser.c_str();
+    doc["fritzboxPassword"] = deviceConfig->fritzboxPassword.c_str();
 
-    // --- NEU: Speichern der Puffergröße ---
-    doc["webClientBufferSize"] = deviceConfig.webClientBufferSize;
+    doc["tankerkoenigCertFile"] = deviceConfig->tankerkoenigCertFile.c_str();
+    doc["dartsCertFile"] = deviceConfig->dartsCertFile.c_str();
+    doc["googleCertFile"] = deviceConfig->googleCertFile.c_str();
+
+    doc["webClientBufferSize"] = deviceConfig->webClientBufferSize;
+
+    doc["mwaveSensorEnabled"] = deviceConfig->mwaveSensorEnabled;
+    doc["mwaveOffCheckDuration"] = deviceConfig->mwaveOffCheckDuration;
+    doc["mwaveOffCheckOnPercent"] = deviceConfig->mwaveOffCheckOnPercent;
+    doc["mwaveOnCheckDuration"] = deviceConfig->mwaveOnCheckDuration;
+    doc["mwaveOnCheckPercentage"] = deviceConfig->mwaveOnCheckPercentage;
 
     File configFile = LittleFS.open("/config.json", "w");
     if (configFile) {

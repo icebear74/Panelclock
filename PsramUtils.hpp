@@ -7,19 +7,16 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <vector>
 #include <new>
 #include <esp_heap_caps.h>
 
-static inline void logMemoryUsage(const char* tag) {
-#ifdef ENABLE_MEMORY_LOGGING
-    size_t heap_internal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
-    size_t heap_spiram   = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
-    Serial.printf("[MEM_LOG] %-30s | Free Heap: %7u | Free PSRAM: %7u\n",
-                  tag,
-                  (unsigned)heap_internal,
-                  (unsigned)heap_spiram);
+#if __has_include(<WString.h>)
+#include <WString.h>
 #endif
-}
+
+// Vorwärtsdeklaration für MemoryLogger
+void logMemoryUsage(const char* tag);
 
 static inline size_t psramFree() {
     return heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
@@ -55,18 +52,22 @@ bool operator!=(const PsramAllocator<T>&, const PsramAllocator<U>&) { return fal
 
 using PsramString = std::basic_string<char, std::char_traits<char>, PsramAllocator<char>>;
 
+template <typename T>
+using PsramVector = std::vector<T, PsramAllocator<T>>;
+
+// --- EINZIGE KORREKTE DEFINITION VON indexOf ---
 static inline int indexOf(const PsramString& str, const char* substring, size_t fromIndex = 0) {
-    size_t pos = str.find(substring, fromIndex);
-    return (pos == PsramString::npos) ? -1 : static_cast<int>(pos);
+    const char* found = strstr(str.c_str() + fromIndex, substring);
+    if (found == nullptr) return -1;
+    return found - str.c_str();
 }
 
 static inline int indexOf(const PsramString& str, const String& substring, size_t fromIndex = 0) {
     return indexOf(str, substring.c_str(), fromIndex);
 }
 
+// --- Operatoren für Flash-Strings ---
 #if __has_include(<WString.h>)
-#include <WString.h>
-
 inline PsramString& operator+=(PsramString& s, const __FlashStringHelper* f) {
   s += String(f).c_str();
   return s;
@@ -79,7 +80,6 @@ inline PsramString operator+(const PsramString& s, const __FlashStringHelper* f)
 inline PsramString operator+(const __FlashStringHelper* f, const PsramString& s) {
     return String(f).c_str() + s;
 }
-
 #endif
 
 #endif // PSRAMUTILS_HPP

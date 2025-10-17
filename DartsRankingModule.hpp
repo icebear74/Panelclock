@@ -221,6 +221,8 @@ public:
         if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) != pdTRUE) return;
 
         auto& players_list = (type == DartsRankingType::ORDER_OF_MERIT) ? oom_players : protour_players;
+        char* mainTitle = (type == DartsRankingType::ORDER_OF_MERIT) ? oom_mainTitleText : protour_mainTitleText;
+        char* subTitle = (type == DartsRankingType::ORDER_OF_MERIT) ? oom_subTitleText : protour_subTitleText;
         
         totalPages = (players_list.size() > 0) ? (players_list.size() + PLAYERS_PER_PAGE - 1) / PLAYERS_PER_PAGE : 1;
         if (currentPage >= totalPages) currentPage = 0;
@@ -230,18 +232,16 @@ public:
 
         u8g2.setFont(u8g2_font_profont12_tf);
         u8g2.setForegroundColor(0xFFFF);
-        const char* mainTitle = (type == DartsRankingType::ORDER_OF_MERIT) ? "Order of Merit" : "Pro Tour";
-        int titleWidth = u8g2.getUTF8Width(mainTitle);
+        
+        const char* titleToDraw = mainTitle ? mainTitle : ((type == DartsRankingType::ORDER_OF_MERIT) ? "Order of Merit" : "Pro Tour");
+        int titleWidth = u8g2.getUTF8Width(titleToDraw);
         u8g2.setCursor((canvas.width() - titleWidth) / 2, 10);
-        u8g2.print(mainTitle);
+        u8g2.print(titleToDraw);
 
-        char* subTitle = (type == DartsRankingType::ORDER_OF_MERIT) ? oom_lastUpdatedText : protour_lastUpdatedText;
         if (subTitle) {
             u8g2.setFont(u8g2_font_profont10_tf); 
-            u8g2.setForegroundColor(colors.subtitleColor); 
-            int subTitleWidth = u8g2.getUTF8Width(subTitle);
-            u8g2.setCursor((canvas.width() - subTitleWidth) / 2, 18);
-            u8g2.print(subTitle);
+            u8g2.setForegroundColor(colors.subtitleColor);
+            drawScrollingText(subTitle, (canvas.width() - u8g2.getUTF8Width(" ") * 40) / 2, 18, u8g2.getUTF8Width(" ") * 40, -1);
         }
         
         String page_info = String(currentPage + 1) + "/" + String(totalPages);
@@ -375,14 +375,18 @@ private:
 
     struct ScrollState { int offset = 0; int maxScroll = 0; };
     std::vector<ScrollState, PsramAllocator<ScrollState>> scrollPos;
+    ScrollState subtitleScrollState;
     unsigned long lastScrollStepTime = 0;
     uint32_t scrollStepInterval = 150;
 
     time_t oom_last_processed_update = 0;
-    char* oom_lastUpdatedText = nullptr;
+    char* oom_mainTitleText = nullptr;
+    char* oom_subTitleText = nullptr;
     std::vector<DartsPlayer, PsramAllocator<DartsPlayer>> oom_players;
+    
     time_t protour_last_processed_update = 0;
-    char* protour_lastUpdatedText = nullptr;
+    char* protour_mainTitleText = nullptr;
+    char* protour_subTitleText = nullptr;
     std::vector<DartsPlayer, PsramAllocator<DartsPlayer>> protour_players;
     
     std::vector<char*, PsramAllocator<char*>> trackedPlayerNames;
@@ -398,8 +402,10 @@ private:
     void clearAllData() {
         oom_players.clear();
         protour_players.clear();
-        if (oom_lastUpdatedText) { free(oom_lastUpdatedText); oom_lastUpdatedText = nullptr; }
-        if (protour_lastUpdatedText) { free(protour_lastUpdatedText); protour_lastUpdatedText = nullptr; }
+        if (oom_mainTitleText) { free(oom_mainTitleText); oom_mainTitleText = nullptr; }
+        if (oom_subTitleText) { free(oom_subTitleText); oom_subTitleText = nullptr; }
+        if (protour_mainTitleText) { free(protour_mainTitleText); protour_mainTitleText = nullptr; }
+        if (protour_subTitleText) { free(protour_subTitleText); protour_subTitleText = nullptr; }
     }
 
     void filterAndSortPlayers(DartsRankingType type) {
@@ -438,10 +444,10 @@ private:
         result.replace("&pound;", ""); result.trim(); return result;
     }
 
-    void parsePlayerRow(const char* tr_start, const char* tr_end, const std::vector<String>& headers, DartsPlayer& player, bool isLiveFormat) {
+    void parsePlayerRow(const char* tr_start, const char* tr_end, const PsramVector<PsramString>& headers, DartsPlayer& player, bool isLiveFormat) {
         int col_idx = 0;
         const char* current_pos = tr_start;
-        char* last_round_name = nullptr;
+        const char* last_round_name = nullptr;
 
         while (current_pos < tr_end) {
             const char* td_start_tag = strstr(current_pos, "<td");
@@ -466,7 +472,7 @@ private:
                     if (strstr(temp_td_tag, "projout") || strstr(temp_td_tag, "projpast") || strstr(temp_td_tag, "proj now")) {
                         player.didParticipate = true;
                         if(col_idx < headers.size()) {
-                           last_round_name = (char*)headers[col_idx].c_str();
+                           last_round_name = headers[col_idx].c_str();
                         }
                     }
                     if (strstr(temp_td_tag, "proj now")) {
@@ -480,7 +486,7 @@ private:
             }
 
             if (col_idx < headers.size()) {
-                const String& header = headers[col_idx];
+                const PsramString& header = headers[col_idx];
                 if (header == "Rk") player.rank = content.toInt();
                 else if (header == "Name") player.name = psram_strdup(content.c_str());
                 else if (header == "Prize Money") {
@@ -523,19 +529,52 @@ private:
         Serial.printf("[DartsModule] Parsing %s gestartet...\n", type_str);
 
         auto& target_players = (type == DartsRankingType::ORDER_OF_MERIT) ? oom_players : protour_players;
-        auto& target_title = (type == DartsRankingType::ORDER_OF_MERIT) ? oom_lastUpdatedText : protour_lastUpdatedText;
+        auto& target_main_title = (type == DartsRankingType::ORDER_OF_MERIT) ? oom_mainTitleText : protour_mainTitleText;
+        auto& target_sub_title = (type == DartsRankingType::ORDER_OF_MERIT) ? oom_subTitleText : protour_subTitleText;
         
         std::vector<DartsPlayer, PsramAllocator<DartsPlayer>> temp_players;
+        temp_players.reserve(256);
         
-        if (target_title) { free(target_title); target_title = nullptr; }
+        if (target_main_title) { free(target_main_title); target_main_title = nullptr; }
+        if (target_sub_title) { free(target_sub_title); target_sub_title = nullptr; }
 
-        if (const char* p_start = strstr(html, "<b> As of:")) {
-            if (const char* p_end = strstr(p_start, "</b>")) { 
-                target_title = psram_strdup(extractText(p_start, p_end - p_start).c_str()); 
+        const char* intr_div_start = strstr(html, "<div id=\"intr\">");
+        if (intr_div_start) {
+            const char* h2_start = strstr(intr_div_start, "<h2");
+            if (h2_start) {
+                const char* h2_content_start = strchr(h2_start, '>');
+                const char* h2_end = strstr(h2_content_start, "</h2>");
+                if (h2_content_start && h2_end) {
+                    target_main_title = psram_strdup(extractText(h2_content_start + 1, h2_end - (h2_content_start + 1)).c_str());
+                }
+            }
+
+            PsramString sub_title_builder;
+            const char* b_start = strstr(intr_div_start, "<b>");
+            if (b_start) {
+                const char* b_content_start = b_start + 3;
+                const char* b_end = strstr(b_content_start, "</b>");
+                if (b_end) {
+                    sub_title_builder += extractText(b_content_start, b_end - b_content_start).c_str();
+                }
+            }
+
+            const char* span_start = strstr(intr_div_start, "<span style=\"color:rgb(160, 43, 43)\">");
+            if (span_start) {
+                const char* span_content_start = span_start + strlen("<span style=\"color:rgb(160, 43, 43)\">");
+                const char* span_end = strstr(span_content_start, "</span>");
+                if (span_end) {
+                    if (sub_title_builder.length() > 0) sub_title_builder += " ";
+                    sub_title_builder += extractText(span_content_start, span_end - span_content_start).c_str();
+                }
+            }
+            
+            if (sub_title_builder.length() > 0) {
+                target_sub_title = psram_strdup(sub_title_builder.c_str());
             }
         }
-        parseTable(html, temp_players);
         
+        parseTable(html, temp_players);
         target_players = std::move(temp_players);
 
         filterAndSortPlayers(type);
@@ -543,29 +582,17 @@ private:
     }
 
     bool parseTable(const char* html, std::vector<DartsPlayer, PsramAllocator<DartsPlayer>>& players_ref) {
-        const char* current_search_pos = html;
-        const char* table_start = nullptr;
-
-        while ((current_search_pos = strstr(current_search_pos, "<table"))) {
-            const char* table_tag_end = strchr(current_search_pos, '>');
-            if (!table_tag_end) break; 
-            char temp_tag[256];
-            int tag_len = table_tag_end - current_search_pos;
-            if (tag_len >= sizeof(temp_tag)) { current_search_pos++; continue; }
-            strncpy(temp_tag, current_search_pos, tag_len); temp_tag[tag_len] = '\0';
-            if (strstr(temp_tag, "class=\"tablechangelive\"") || strstr(temp_tag, "class=\"ranking-table\"") || strstr(temp_tag, "id=\"tablesingle\"")) {
-                table_start = current_search_pos;
-                break;
-            }
-            current_search_pos++;
+        const char* table_start = strstr(html, "<table");
+        if (!table_start) {
+            Serial.println("[DartsModule] Kein <table> Tag gefunden.");
+            return false;
         }
-        if (!table_start) { Serial.println("[DartsModule] Keine passende Tabelle gefunden."); return false; }
 
-        std::vector<String> headers;
+        // KORREKTUR: Verwende PsramVector (definiert in PsramUtils.hpp)
+        PsramVector<PsramString> headers;
         const char* thead_start = strstr(table_start, "<thead>");
         const char* thead_end = thead_start ? strstr(thead_start, "</thead>") : nullptr;
         bool isLiveFormat = false;
-        int round_headers_count = 0;
 
         if (thead_start && thead_end) {
             const char* th_start = thead_start;
@@ -575,23 +602,31 @@ private:
                 th_content_start++;
                 const char* th_end_tag = strstr(th_content_start, "</th>"); 
                 if (!th_end_tag) break;
-                String headerText = extractText(th_content_start, th_end_tag - th_content_start);
+                
+                String headerTextStr = extractText(th_content_start, th_end_tag - th_content_start);
+                PsramString headerText(headerTextStr.c_str());
                 headers.push_back(headerText);
                 
                 if (headerText != "Rk" && headerText != "+/-" && headerText != "Name" && headerText != "Prize Money" && headerText.length() > 0 && headerText.length() <= 4) {
-                    round_headers_count++;
+                    isLiveFormat = true;
                 }
                 th_start = th_end_tag;
             }
         }
         
-        if (round_headers_count > 0) {
-            isLiveFormat = true;
+        if (headers.empty()) {
+            Serial.println("[DartsModule] Keine Header in der Tabelle gefunden.");
+            return false;
         }
         
-        Serial.printf("[DartsModule] Header-Analyse: %d Spalten, %d Runden-Spalten. Live-Format: %s\n", headers.size(), round_headers_count, isLiveFormat ? "Ja" : "Nein");
+        Serial.printf("[DartsModule] Header-Analyse: %d Spalten. Live-Format: %s\n", headers.size(), isLiveFormat ? "Ja" : "Nein");
 
-        const char* current_pos = thead_end ? thead_end : table_start;
+        const char* tbody_start = strstr(table_start, "<tbody");
+        if (!tbody_start) {
+            tbody_start = table_start;
+        }
+
+        const char* current_pos = tbody_start;
         while (current_pos) {
             const char* tr_start = strstr(current_pos, "<tr");
             if (!tr_start) break;
@@ -602,7 +637,7 @@ private:
 
             DartsPlayer player;
             if (isLiveFormat) {
-                const char* tr_open_end = strchr(tr_start, '>');
+                 const char* tr_open_end = strchr(tr_start, '>');
                 if (tr_open_end && tr_open_end < tr_end) {
                     char temp_tag[128];
                     int tag_len = tr_open_end - tr_start;
@@ -620,7 +655,7 @@ private:
             }
             current_pos = tr_end;
         }
-        return isLiveFormat;
+        return true;
     }
 
     void tickScroll() {
@@ -629,6 +664,9 @@ private:
                 if (s.maxScroll > 0) {
                     s.offset = (s.offset + 1) % s.maxScroll;
                 }
+            }
+            if (subtitleScrollState.maxScroll > 0) {
+                subtitleScrollState.offset = (subtitleScrollState.offset + 1) % subtitleScrollState.maxScroll;
             }
             xSemaphoreGive(dataMutex);
         }
@@ -640,20 +678,24 @@ private:
         PsramString p_text(text);
         PsramString visiblePart = fitTextToPixelWidth(p_text, maxWidth);
         
+        ScrollState& currentScrollState = (scrollIndex == -1) ? subtitleScrollState : scrollPos[scrollIndex];
+
         if (p_text.length() > visiblePart.length()) {
             PsramString pad("   ");
             PsramString scrollText = p_text + pad + p_text.substr(0, visiblePart.length());
             int maxScroll = scrollText.length() - visiblePart.length();
             
-            scrollPos[scrollIndex].maxScroll = maxScroll;
-            int offset = scrollPos[scrollIndex].offset;
+            currentScrollState.maxScroll = maxScroll;
+            int offset = currentScrollState.offset;
             if (offset >= maxScroll) offset = 0;
-            scrollPos[scrollIndex].offset = offset;
+            currentScrollState.offset = offset;
             
             PsramString part = scrollText.substr(offset, visiblePart.length());
             u8g2.setCursor(x, y);
             u8g2.print(part.c_str());
         } else {
+            currentScrollState.maxScroll = 0;
+            currentScrollState.offset = 0;
             u8g2.setCursor(x, y);
             u8g2.print(text);
         }
@@ -674,6 +716,7 @@ private:
     void resetScroll() {
         if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
             scrollPos.clear();
+            subtitleScrollState = ScrollState();
             xSemaphoreGive(dataMutex);
         }
     }

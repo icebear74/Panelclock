@@ -8,10 +8,12 @@
 #include <functional>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/queue.h" // NEU
 #include "freertos/semphr.h"
 #include "PsramUtils.hpp"
 #include "webconfig.hpp"
 #include "certs.hpp"
+#include "MemoryLogger.hpp" // KORREKTUR: Fehlendes Include hinzugefügt
 
 class PsramBufferStream : public Stream {
 public:
@@ -109,22 +111,33 @@ struct ManagedResource {
     }
 };
 
+// NEU: Struktur für einen einmaligen Web-Job (z.B. POST)
+struct WebJob {
+    enum JobType { POST };
+    JobType type;
+    PsramString url;
+    PsramString body;
+    PsramString contentType;
+    std::function<void(const char* buffer, size_t size)> callback;
+};
+
 class WebClientModule {
 public:
-    WebClientModule() : workerTaskHandle(NULL) {}
+    WebClientModule() : workerTaskHandle(NULL), jobQueue(NULL) {}
     ~WebClientModule() {
         if (workerTaskHandle) vTaskDelete(workerTaskHandle);
         if (_downloadBuffer) free(_downloadBuffer);
+        if (jobQueue) vQueueDelete(jobQueue);
     }
 
     void begin() {
-        reallocateBuffer(deviceConfig.webClientBufferSize);
+        reallocateBuffer(deviceConfig->webClientBufferSize);
+        jobQueue = xQueueCreate(5, sizeof(WebJob*)); // NEU: Queue für 5 Jobs
         BaseType_t app_core = xPortGetCoreID();
         BaseType_t network_core = (app_core == 0) ? 1 : 0;
         xTaskCreatePinnedToCore(webWorkerTask, "WebDataManager", 8192, this, 2, &workerTaskHandle, network_core);
     }
 
-    // --- FINALE KORREKTUR: Die Logik ist jetzt HIER, direkt bei der Registrierung ---
     void registerResource(const String& url, uint32_t update_interval_minutes, const char* root_ca = nullptr) {
         if (url.isEmpty() || update_interval_minutes == 0) return;
         
@@ -136,13 +149,12 @@ public:
         resources.emplace_back(url.c_str(), interval_ms, root_ca);
         ManagedResource& new_res = resources.back();
 
-        // Zertifikat sofort zuweisen
         if (indexOf(new_res.url, "dartsrankings.com") != -1) {
-            new_res.cert_filename = deviceConfig.dartsCertFile;
+            new_res.cert_filename = deviceConfig->dartsCertFile;
         } else if (indexOf(new_res.url, "creativecommons.tankerkoenig.de") != -1) {
-            new_res.cert_filename = deviceConfig.tankerkoenigCertFile;
+            new_res.cert_filename = deviceConfig->tankerkoenigCertFile;
         } else if (indexOf(new_res.url, "google.com") != -1) {
-            new_res.cert_filename = deviceConfig.googleCertFile;
+            new_res.cert_filename = deviceConfig->googleCertFile;
         }
 
         Serial.printf("[WebDataManager] Ressource registriert: %s (Cert-File: '%s')\n", new_res.url.c_str(), new_res.cert_filename.c_str());
@@ -174,30 +186,79 @@ public:
         }
     }
 
+    // NEU: postRequest stellt einen Job in die Queue ein
+    void postRequest(const PsramString& url, const PsramString& postBody, const PsramString& contentType, std::function<void(const char* buffer, size_t size)> callback) {
+        if (WiFi.status() != WL_CONNECTED) {
+            Serial.println("[WebClientModule] POST-Anfrage fehlgeschlagen: Keine WLAN-Verbindung.");
+            callback(nullptr, 0);
+            return;
+        }
+
+        WebJob* job = new WebJob{WebJob::POST, url, postBody, contentType, callback};
+        if (!job) {
+            Serial.println("[WebClientModule] FEHLER: Konnte keinen WebJob für POST allozieren.");
+            callback(nullptr, 0);
+            return;
+        }
+
+        if (xQueueSend(jobQueue, &job, pdMS_TO_TICKS(100)) != pdTRUE) {
+            Serial.println("[WebClientModule] FEHLER: Konnte POST-Job nicht zur Queue hinzufügen.");
+            delete job;
+            callback(nullptr, 0);
+        }
+    }
+
 private:
     char* _downloadBuffer = nullptr;
     size_t _bufferCapacity = 0;
     PsramBufferStream _downloadStream;
     std::vector<ManagedResource, PsramAllocator<ManagedResource>> resources;
     TaskHandle_t workerTaskHandle;
+    QueueHandle_t jobQueue; // NEU
 
     bool reallocateBuffer(size_t new_size) {
         if (new_size <= _bufferCapacity) return true;
-        logMemoryUsage("WebClient: Vor Puffer-Allokation");
+        LOG_MEMORY_DETAILED("WebClient: Vor Puffer-Allokation");
         char* new_buffer = (char*)ps_realloc(_downloadBuffer, new_size);
         if (new_buffer) {
             _downloadBuffer = new_buffer;
             _bufferCapacity = new_size;
             Serial.printf("[WebClientModule] Download-Puffer alloziert/vergrößert auf: %u Bytes\n", new_size);
-            logMemoryUsage("WebClient: Nach Puffer-Allokation");
+            LOG_MEMORY_DETAILED("WebClient: Nach Puffer-Allokation");
             return true;
         } else {
             Serial.printf("[WebClientModule] FEHLER: Konnte Puffer nicht auf %u Bytes vergrößern!\n", new_size);
-            logMemoryUsage("WebClient: Puffer-Allokation FEHLER");
+            LOG_MEMORY_DETAILED("WebClient: Puffer-Allokation FEHLER");
             return false;
         }
     }
 
+    // NEU: Eigene Funktion zur Ausführung eines einmaligen Jobs
+    void performJob(const WebJob& job) {
+        if (job.type == WebJob::POST) {
+            Serial.printf("[WebDataManager] Führe POST-Job für %s aus...\n", job.url.c_str());
+            
+            HTTPClient http;
+            WiFiClient client;
+            
+            http.begin(client, job.url.c_str());
+            http.addHeader("Content-Type", job.contentType.c_str());
+
+            int httpCode = http.POST(job.body.c_str());
+
+            if (httpCode > 0) {
+                String payload = http.getString();
+                // Wir rufen den Callback direkt mit dem String-Buffer auf
+                job.callback(payload.c_str(), payload.length());
+            } else {
+                Serial.printf("[WebDataManager] POST-Job FEHLER: HTTP-Code %d für %s\n", httpCode, http.errorToString(httpCode).c_str());
+                job.callback(nullptr, 0);
+            }
+            http.end();
+        }
+    }
+
+    // KORRIGIERT: Der Worker-Task verarbeitet jetzt auch die Job-Queue
     static void webWorkerTask(void* param) {
         WebClientModule* self = static_cast<WebClientModule*>(param);
         Serial.printf("[WebDataManager] Worker-Task gestartet auf Core %d.\n", xPortGetCoreID());
@@ -211,8 +272,16 @@ private:
         }
         Serial.println("[WebDataManager] NTP-Synchronisation erfolgreich. Starte reguläre Arbeit.");
 
+        WebJob* receivedJob;
         while (true) {
-            if (WiFi.status() == WL_CONNECTED && !self->resources.empty()) {
+            if (WiFi.status() == WL_CONNECTED) {
+                // Priorität 1: Einmalige Jobs aus der Queue abarbeiten
+                if (xQueueReceive(self->jobQueue, &receivedJob, 0) == pdTRUE) {
+                    self->performJob(*receivedJob);
+                    delete receivedJob; // Job-Objekt nach Erledigung löschen
+                }
+
+                // Priorität 2: Reguläre Ressourcen-Updates
                 time(&now);
                 for (auto& resource : self->resources) {
                     bool should_run = false;
@@ -231,7 +300,7 @@ private:
                     }
                 }
             }
-            vTaskDelay(pdMS_TO_TICKS(1000));
+            vTaskDelay(pdMS_TO_TICKS(500)); // Prüfintervall etwas verkürzt
         }
     }
 
@@ -316,7 +385,7 @@ private:
                     Serial.printf("[WebClientModule] LERNEN: Pufferüberlauf bei %s. Puffer wird vergrößert.\n", resource.url.c_str());
                     size_t new_capacity = ((_downloadStream.getCapacity() / (128 * 1024)) + 1) * (128 * 1024);
                     if (reallocateBuffer(new_capacity)) {
-                        deviceConfig.webClientBufferSize = new_capacity;
+                        deviceConfig->webClientBufferSize = new_capacity;
                         saveDeviceConfig();
                         retry_with_larger_buffer = true;
                     } else {
