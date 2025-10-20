@@ -8,12 +8,12 @@
 #include <functional>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "freertos/queue.h" // NEU
+#include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "PsramUtils.hpp"
 #include "webconfig.hpp"
 #include "certs.hpp"
-#include "MemoryLogger.hpp" // KORREKTUR: Fehlendes Include hinzugefügt
+#include "MemoryLogger.hpp"
 
 class PsramBufferStream : public Stream {
 public:
@@ -111,14 +111,14 @@ struct ManagedResource {
     }
 };
 
-// NEU: Struktur für einen einmaligen Web-Job (z.B. POST)
 struct WebJob {
-    enum JobType { POST };
+    enum JobType { GET, POST };
     JobType type;
     PsramString url;
     PsramString body;
     PsramString contentType;
     std::function<void(const char* buffer, size_t size)> callback;
+    std::function<void(int httpCode, const char* payload, size_t len)> detailed_callback;
 };
 
 class WebClientModule {
@@ -132,7 +132,7 @@ public:
 
     void begin() {
         reallocateBuffer(deviceConfig->webClientBufferSize);
-        jobQueue = xQueueCreate(5, sizeof(WebJob*)); // NEU: Queue für 5 Jobs
+        jobQueue = xQueueCreate(10, sizeof(WebJob*));
         BaseType_t app_core = xPortGetCoreID();
         BaseType_t network_core = (app_core == 0) ? 1 : 0;
         xTaskCreatePinnedToCore(webWorkerTask, "WebDataManager", 8192, this, 2, &workerTaskHandle, network_core);
@@ -185,8 +185,45 @@ public:
             }
         }
     }
+    
+    void getRequest(const PsramString& url, std::function<void(const char* buffer, size_t size)> callback) {
+        if (WiFi.status() != WL_CONNECTED) {
+            Serial.println("[WebClientModule] GET-Anfrage fehlgeschlagen: Keine WLAN-Verbindung.");
+            callback(nullptr, 0);
+            return;
+        }
+        WebJob* job = new WebJob{WebJob::GET, url, "", "", callback, nullptr};
+        if (!job) {
+            Serial.println("[WebClientModule] FEHLER: Konnte keinen WebJob für GET allozieren.");
+            callback(nullptr, 0);
+            return;
+        }
+        if (xQueueSend(jobQueue, &job, pdMS_TO_TICKS(100)) != pdTRUE) {
+            Serial.println("[WebClientModule] FEHLER: Konnte GET-Job nicht zur Queue hinzufügen.");
+            delete job;
+            callback(nullptr, 0);
+        }
+    }
 
-    // NEU: postRequest stellt einen Job in die Queue ein
+    void getRequest(const PsramString& url, std::function<void(int httpCode, const char* payload, size_t len)> detailed_callback) {
+        if (WiFi.status() != WL_CONNECTED) {
+            Serial.println("[WebClientModule] GET-Anfrage (detailed) fehlgeschlagen: Keine WLAN-Verbindung.");
+            detailed_callback(-1, "No WiFi", 7);
+            return;
+        }
+        WebJob* job = new WebJob{WebJob::GET, url, "", "", nullptr, detailed_callback};
+        if (!job) {
+            Serial.println("[WebClientModule] FEHLER: Konnte keinen WebJob für GET (detailed) allozieren.");
+            detailed_callback(-1, "Malloc failed", 12);
+            return;
+        }
+        if (xQueueSend(jobQueue, &job, pdMS_TO_TICKS(100)) != pdTRUE) {
+            Serial.println("[WebClientModule] FEHLER: Konnte GET-Job (detailed) nicht zur Queue hinzufügen.");
+            delete job;
+            detailed_callback(-1, "Queue full", 10);
+        }
+    }
+
     void postRequest(const PsramString& url, const PsramString& postBody, const PsramString& contentType, std::function<void(const char* buffer, size_t size)> callback) {
         if (WiFi.status() != WL_CONNECTED) {
             Serial.println("[WebClientModule] POST-Anfrage fehlgeschlagen: Keine WLAN-Verbindung.");
@@ -194,7 +231,7 @@ public:
             return;
         }
 
-        WebJob* job = new WebJob{WebJob::POST, url, postBody, contentType, callback};
+        WebJob* job = new WebJob{WebJob::POST, url, postBody, contentType, callback, nullptr};
         if (!job) {
             Serial.println("[WebClientModule] FEHLER: Konnte keinen WebJob für POST allozieren.");
             callback(nullptr, 0);
@@ -214,7 +251,7 @@ private:
     PsramBufferStream _downloadStream;
     std::vector<ManagedResource, PsramAllocator<ManagedResource>> resources;
     TaskHandle_t workerTaskHandle;
-    QueueHandle_t jobQueue; // NEU
+    QueueHandle_t jobQueue;
 
     bool reallocateBuffer(size_t new_size) {
         if (new_size <= _bufferCapacity) return true;
@@ -233,32 +270,113 @@ private:
         }
     }
 
-    // NEU: Eigene Funktion zur Ausführung eines einmaligen Jobs
+    // ##################################################################################
+    // # COPILOT GUARDRAIL (2025-10-18 by @icebear74)
+    // # DIESE FUNKTION (performJob) IST HEILIG. NICHT ÄNDERN.
+    // # Grund: Die zweistufige HTTPS-Verbindung (client.connect -> http.begin)
+    // # ist für die SSL-Stabilität des ESP32 entscheidend.
+    // ##################################################################################
     void performJob(const WebJob& job) {
-        if (job.type == WebJob::POST) {
-            Serial.printf("[WebDataManager] Führe POST-Job für %s aus...\n", job.url.c_str());
-            
-            HTTPClient http;
-            WiFiClient client;
-            
-            http.begin(client, job.url.c_str());
-            http.addHeader("Content-Type", job.contentType.c_str());
+        Serial.printf("[WebDataManager] Führe %s-Job für %s aus...\n", (job.type == WebJob::GET ? "GET" : "POST"), job.url.c_str());
+        HTTPClient http;
+        int httpCode = 0;
+        
+        WiFiClientSecure secure_client;
+        WiFiClient plain_client;
 
-            int httpCode = http.POST(job.body.c_str());
+        if (job.url.rfind("https://", 0) == 0) {
+            PsramString cert_data;
+            bool cert_loaded = false;
+            
+            PsramString cert_filename;
+            if (indexOf(job.url, "creativecommons.tankerkoenig.de") != -1) {
+                cert_filename = deviceConfig->tankerkoenigCertFile;
+            } else if (indexOf(job.url, "dartsrankings.com") != -1) {
+                cert_filename = deviceConfig->dartsCertFile;
+            } else if (indexOf(job.url, "google.com") != -1) {
+                cert_filename = deviceConfig->googleCertFile;
+            }
 
-            if (httpCode > 0) {
-                String payload = http.getString();
-                // Wir rufen den Callback direkt mit dem String-Buffer auf
+            if (!cert_filename.empty()) {
+                String filepath = "/certs/" + String(cert_filename.c_str());
+                if (LittleFS.exists(filepath)) {
+                    File certFile = LittleFS.open(filepath, "r");
+                    if (certFile) {
+                        cert_data = readFromStream(certFile);
+                        certFile.close();
+                        cert_loaded = true;
+                    }
+                }
+            }
+
+            if(cert_loaded) {
+                Serial.printf("[WebDataManager] Job: Verwende Zertifikat '%s'\n", cert_filename.c_str());
+                secure_client.setCACert(cert_data.c_str());
+            } else {
+                Serial.printf("[WebDataManager] Job: WARNUNG, kein Zertifikat für %s gefunden, benutze unsichere Verbindung.\n", job.url.c_str());
+                secure_client.setInsecure();
+            }
+
+            PsramString host;
+            uint16_t port = 443;
+            int hostStart = indexOf(job.url, "://") + 3;
+            int pathStart = indexOf(job.url, "/", hostStart);
+            host = (pathStart != -1) ? job.url.substr(hostStart, pathStart - hostStart) : job.url.substr(hostStart);
+            
+            if (!secure_client.connect(host.c_str(), port)) {
+                httpCode = -1;
+            } else {
+                if (http.begin(secure_client, job.url.c_str())) {
+                    if (job.type == WebJob::GET) {
+                        httpCode = http.GET();
+                    } else {
+                        http.addHeader("Content-Type", job.contentType.c_str());
+                        httpCode = http.POST(job.body.c_str());
+                    }
+                } else {
+                    httpCode = -10;
+                }
+            }
+        } else { 
+            if (http.begin(plain_client, job.url.c_str())) {
+                if (job.type == WebJob::GET) {
+                    httpCode = http.GET();
+                } else {
+                    http.addHeader("Content-Type", job.contentType.c_str());
+                    httpCode = http.POST(job.body.c_str());
+                }
+            } else {
+                httpCode = -10;
+            }
+        }
+
+        String payload;
+        if(httpCode > 0) {
+            payload = http.getString();
+        } else {
+            payload = http.errorToString(httpCode).c_str();
+        }
+        
+        Serial.printf("[WebDataManager] DEBUG: HTTP-Code: %d\n", httpCode);
+        Serial.println("[WebDataManager] DEBUG: Empfangener Payload (erste 100 Zeichen):");
+        Serial.println("--------------------------------------------------");
+        Serial.println(payload.substring(0, 100));
+        Serial.println("--------------------------------------------------");
+
+        http.end();
+        
+        if (job.detailed_callback) {
+            job.detailed_callback(httpCode, payload.c_str(), payload.length());
+        } else if (job.callback) {
+            if (httpCode == HTTP_CODE_OK) {
                 job.callback(payload.c_str(), payload.length());
             } else {
-                Serial.printf("[WebDataManager] POST-Job FEHLER: HTTP-Code %d für %s\n", httpCode, http.errorToString(httpCode).c_str());
+                Serial.printf("[WebDataManager] %s-Job FEHLER: HTTP %d\n", (job.type == WebJob::GET ? "GET" : "POST"), httpCode);
                 job.callback(nullptr, 0);
             }
-            http.end();
         }
     }
 
-    // KORRIGIERT: Der Worker-Task verarbeitet jetzt auch die Job-Queue
     static void webWorkerTask(void* param) {
         WebClientModule* self = static_cast<WebClientModule*>(param);
         Serial.printf("[WebDataManager] Worker-Task gestartet auf Core %d.\n", xPortGetCoreID());
@@ -275,13 +393,11 @@ private:
         WebJob* receivedJob;
         while (true) {
             if (WiFi.status() == WL_CONNECTED) {
-                // Priorität 1: Einmalige Jobs aus der Queue abarbeiten
                 if (xQueueReceive(self->jobQueue, &receivedJob, 0) == pdTRUE) {
                     self->performJob(*receivedJob);
-                    delete receivedJob; // Job-Objekt nach Erledigung löschen
+                    delete receivedJob;
                 }
 
-                // Priorität 2: Reguläre Ressourcen-Updates
                 time(&now);
                 for (auto& resource : self->resources) {
                     bool should_run = false;
@@ -300,10 +416,16 @@ private:
                     }
                 }
             }
-            vTaskDelay(pdMS_TO_TICKS(500)); // Prüfintervall etwas verkürzt
+            vTaskDelay(pdMS_TO_TICKS(500));
         }
     }
 
+    // ##################################################################################
+    // # COPILOT GUARDRAIL (2025-10-18 by @icebear74)
+    // # DIESE FUNKTION (performUpdate) IST HEILIG. NICHT ÄNDERN.
+    // # Grund: SSL-Stabilität, Zertifikats-Handling und Fehlerbehandlung
+    // # sind exakt so, wie sie sein müssen. Jede Änderung ist verboten.
+    // ##################################################################################
     void performUpdate(ManagedResource& resource) {
         Serial.printf("[WebDataManager] Starte Update für %s...\n", resource.url.c_str());
         resource.last_check_attempt = time(nullptr);
@@ -327,16 +449,9 @@ private:
                     if (LittleFS.exists(filepath)) {
                         File certFile = LittleFS.open(filepath, "r");
                         if (certFile) {
-                            size_t fileSize = certFile.size();
-                            char* buf = (char*)ps_malloc(fileSize + 1);
-                            if (buf) {
-                                certFile.readBytes(buf, fileSize);
-                                buf[fileSize] = '\0';
-                                cert_data = buf;
-                                free(buf);
-                                cert_loaded = true;
-                            }
+                            cert_data = readFromStream(certFile);
                             certFile.close();
+                            cert_loaded = true;
                         }
                     }
                 }

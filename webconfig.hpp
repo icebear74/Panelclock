@@ -14,7 +14,8 @@ struct DeviceConfig {
     PsramString otaPassword;
     PsramString timezone = "UTC";
     PsramString tankerApiKey;
-    PsramString stationId;
+    PsramString stationId; // Behält die erste/einzelne ID
+    PsramString tankerkoenigStationIds; // NEU: Für die komplette Liste
     int stationFetchIntervalMin = 5;
     PsramString icsUrl;
     int calendarFetchIntervalMin = 60;
@@ -29,7 +30,6 @@ struct DeviceConfig {
     int dartsDisplaySec = 30;
     PsramString trackedDartsPlayers;
 
-    // Einstellungen für den Fritz!Box Call Monitor
     bool fritzboxEnabled = false;
     PsramString fritzboxIp;
     PsramString fritzboxUser;
@@ -46,11 +46,14 @@ struct DeviceConfig {
     float mwaveOffCheckOnPercent = 10.0f;
     int mwaveOnCheckDuration = 5;
     float mwaveOnCheckPercentage = 50.0f;
+    
+    float userLatitude = 51.581619;
+    float userLongitude = 6.729940;
 };
 
-// --- KORREKTUR: Auf Zeiger umgestellt ---
 extern DeviceConfig* deviceConfig;
 
+// +++ WIEDERHERGESTELLTE DEFINITION +++
 const std::vector<std::pair<const char*, const char*>> timezones = {
     {"(UTC+0) UTC", "UTC"},
     {"(UTC+1) Berlin, Amsterdam", "CET-1CEST,M3.5.0,M10.5.0/3"},
@@ -68,7 +71,7 @@ const std::vector<std::pair<const char*, const char*>> timezones = {
 };
 
 void loadDeviceConfig() {
-    if (!deviceConfig) return; // Sicherheitsabfrage
+    if (!deviceConfig) return;
     if (LittleFS.exists("/config.json")) {
         File configFile = LittleFS.open("/config.json", "r");
         JsonDocument doc;
@@ -80,6 +83,7 @@ void loadDeviceConfig() {
             deviceConfig->timezone = doc["timezone"] | "UTC";
             deviceConfig->tankerApiKey = doc["tankerApiKey"] | "";
             deviceConfig->stationId = doc["stationId"] | "";
+            deviceConfig->tankerkoenigStationIds = doc["tankerkoenigStationIds"] | "";
             deviceConfig->stationFetchIntervalMin = doc["stationFetchIntervalMin"] | 5;
             deviceConfig->icsUrl = doc["icsUrl"] | "";
             deviceConfig->calendarFetchIntervalMin = doc["calendarFetchIntervalMin"] | 60;
@@ -111,6 +115,9 @@ void loadDeviceConfig() {
             deviceConfig->mwaveOnCheckDuration = doc["mwaveOnCheckDuration"] | 5;
             deviceConfig->mwaveOnCheckPercentage = doc["mwaveOnCheckPercentage"] | 50.0f;
 
+            deviceConfig->userLatitude = doc["userLatitude"] | 51.581619;
+            deviceConfig->userLongitude = doc["userLongitude"] | 6.729940;
+
             Serial.println("Geräte-Konfiguration geladen.");
         } else {
             Serial.println("Fehler beim Parsen der Konfigurationsdatei.");
@@ -122,7 +129,7 @@ void loadDeviceConfig() {
 }
 
 void saveDeviceConfig() {
-    if (!deviceConfig) return; // Sicherheitsabfrage
+    if (!deviceConfig) return;
     JsonDocument doc;
     doc["hostname"] = deviceConfig->hostname.c_str();
     doc["ssid"] = deviceConfig->ssid.c_str();
@@ -131,6 +138,7 @@ void saveDeviceConfig() {
     doc["timezone"] = deviceConfig->timezone.c_str();
     doc["tankerApiKey"] = deviceConfig->tankerApiKey.c_str();
     doc["stationId"] = deviceConfig->stationId.c_str();
+    doc["tankerkoenigStationIds"] = deviceConfig->tankerkoenigStationIds.c_str();
     doc["stationFetchIntervalMin"] = deviceConfig->stationFetchIntervalMin;
     doc["icsUrl"] = deviceConfig->icsUrl.c_str();
     doc["calendarFetchIntervalMin"] = deviceConfig->calendarFetchIntervalMin;
@@ -161,6 +169,9 @@ void saveDeviceConfig() {
     doc["mwaveOffCheckOnPercent"] = deviceConfig->mwaveOffCheckOnPercent;
     doc["mwaveOnCheckDuration"] = deviceConfig->mwaveOnCheckDuration;
     doc["mwaveOnCheckPercentage"] = deviceConfig->mwaveOnCheckPercentage;
+
+    doc["userLatitude"] = deviceConfig->userLatitude;
+    doc["userLongitude"] = deviceConfig->userLongitude;
 
     File configFile = LittleFS.open("/config.json", "w");
     if (configFile) {

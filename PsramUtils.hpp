@@ -50,12 +50,47 @@ bool operator==(const PsramAllocator<T>&, const PsramAllocator<U>&) { return tru
 template <typename T, typename U>
 bool operator!=(const PsramAllocator<T>&, const PsramAllocator<U>&) { return false; }
 
+
+// ##################################################################################
+// # COPILOT_HINWEIS: FÜR ZUKÜNFTIGE ÄNDERUNGEN DURCH @copilot
+// ##################################################################################
+// # NICHT VERSUCHEN, PsramString von std::basic_string erben zu lassen.
+// # Dieser Ansatz wurde mehrfach versucht und ist aufgrund von Compiler-Problemen
+// # mit mehrdeutigen Überladungen (ambiguous overloads) gescheitert.
+// #
+// # Das korrekte und stabile Muster ist:
+// # 1. PsramString als 'using'-Alias beibehalten.
+// # 2. Neue Funktionalität als eigenständige Hilfsfunktionen (wie 'indexOf' oder
+// #    'readFromStream') implementieren, die auf einer 'PsramString' operieren.
+// ##################################################################################
+
 using PsramString = std::basic_string<char, std::char_traits<char>, PsramAllocator<char>>;
 
 template <typename T>
 using PsramVector = std::vector<T, PsramAllocator<T>>;
 
-// --- EINZIGE KORREKTE DEFINITION VON indexOf ---
+// Hilfsfunktion zum sicheren Lesen aus einem Stream in einen PsramString
+static inline PsramString readFromStream(Stream& stream) {
+    size_t size = stream.available();
+    if (size == 0) return "";
+
+    char* buf = (char*)ps_malloc(size + 1);
+    if (!buf) {
+        Serial.println("[PsramUtils] FEHLER: Konnte Puffer für Stream-Lesen nicht allozieren.");
+        return "";
+    }
+
+    stream.readBytes(buf, size);
+    buf[size] = '\0';
+    
+    PsramString result(buf);
+    free(buf);
+    
+    return result;
+}
+
+
+// --- Bestehende, unveränderte Funktionen ---
 static inline int indexOf(const PsramString& str, const char* substring, size_t fromIndex = 0) {
     const char* found = strstr(str.c_str() + fromIndex, substring);
     if (found == nullptr) return -1;
@@ -66,7 +101,44 @@ static inline int indexOf(const PsramString& str, const String& substring, size_
     return indexOf(str, substring.c_str(), fromIndex);
 }
 
-// --- Operatoren für Flash-Strings ---
+// NEU: Zentrale Definition der replaceAll-Funktion
+static inline void replaceAll(PsramString& str, const PsramString& from, const PsramString& to) {
+    if (from.empty())
+        return;
+    size_t start_pos = 0;
+    while ((start_pos = str.find(from, start_pos)) != PsramString::npos) {
+        str.replace(start_pos, from.length(), to);
+        start_pos += to.length(); 
+    }
+}
+
+// +++ HINZUGEFÜGTE FUNKTION FÜR JSON-ESCAPING +++
+static inline PsramString escapeJsonString(const PsramString& input) {
+    PsramString output;
+    output.reserve(input.length());
+    for (char c : input) {
+        switch (c) {
+            case '"':  output += "\\\""; break;
+            case '\\': output += "\\\\"; break;
+            case '\b': output += "\\b";  break;
+            case '\f': output += "\\f";  break;
+            case '\n': output += "\\n";  break;
+            case '\r': output += "\\r";  break;
+            case '\t': output += "\\t";  break;
+            default:
+                if (c >= 0 && c < 32) {
+                    // Andere Steuerzeichen ignorieren
+                } else {
+                    output += c;
+                }
+                break;
+        }
+    }
+    return output;
+}
+
+
+// --- Bestehende, unveränderte Operatoren ---
 #if __has_include(<WString.h>)
 inline PsramString& operator+=(PsramString& s, const __FlashStringHelper* f) {
   s += String(f).c_str();

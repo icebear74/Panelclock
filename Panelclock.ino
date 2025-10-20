@@ -100,6 +100,7 @@ void displayStatus(const char* msg) {
   u8g2->begin(*virtualDisp);
   u8g2->setFont(u8g2_font_6x13_tf);
   u8g2->setForegroundColor(0xFFFF);
+  u8g2->setBackgroundColor(0x0000);
   
   PsramString text(msg);
   int maxPixel = FULL_WIDTH - 8;
@@ -283,7 +284,8 @@ void executeApplyLiveConfig() {
     timeConverter->setTimezone("UTC");
   }
   
-  dataMod->setConfig(deviceConfig->tankerApiKey, deviceConfig->stationId, deviceConfig->stationFetchIntervalMin);
+  dataMod->setConfig(deviceConfig->tankerApiKey, deviceConfig->tankerkoenigStationIds, deviceConfig->stationFetchIntervalMin);
+  
   calendarMod->setFetchIntervalMinutes(deviceConfig->calendarFetchIntervalMin);
   calendarMod->setICSUrl(deviceConfig->icsUrl);
   dartsMod->applyConfig(deviceConfig->dartsOomEnabled, deviceConfig->dartsProTourEnabled, 5);
@@ -292,7 +294,10 @@ void executeApplyLiveConfig() {
   
   calendarMod->setScrollStepInterval(deviceConfig->calendarScrollMs);
   calendarMod->setColors(deviceConfig->calendarDateColor, deviceConfig->calendarTextColor);
+  
   stationDisplayMs = deviceConfig->stationDisplaySec * 1000UL;
+  dataMod->setPageDisplayTime(stationDisplayMs);
+
   calendarDisplayMs = deviceConfig->calendarDisplaySec * 1000UL;
   
   dartsDisplayMs = deviceConfig->dartsDisplaySec * 1000UL;
@@ -303,16 +308,6 @@ void executeApplyLiveConfig() {
   lastSwitch = 0; 
   Serial.println("[Config] Live-Konfiguration angewendet.");
   LOG_MEMORY_DETAILED("Nach executeApplyLiveConfig");
-}
-
-void handleNotFound() {
-    if (!server) return;
-    if (portalRunning && !server->hostHeader().equals(WiFi.softAPIP().toString())) {
-        server->sendHeader("Location", "http://" + WiFi.softAPIP().toString(), true);
-        server->send(302, "text/plain", "");
-        return;
-    }
-    server->send_P(200, "text/html", PSTR("<!DOCTYPE html><html><head><title>404</title></head><body><h1>404 - Not Found</h1><a href='/'>Home</a></body></html>"));
 }
 
 void updateDisplay() {
@@ -374,7 +369,14 @@ void setup() {
   Serial.println("\n=== Panelclock startup ===");
   LOG_MEMORY_STRATEGIC("Setup: Start");
 
-  // --- PHASE 1: GRUNDLAGEN (OHNE DISPLAY) ---
+  // --- PHASE 1: GRUNDLAGEN (PSRAM, FS, Hardware Config) ---
+  LOG_MEMORY_DETAILED("Vor PSRAM Init");
+  if (!psramInit()) {
+      Serial.println("FATAL: PSRAM konnte nicht initialisiert werden!");
+      delay(5000); ESP.restart();
+  }
+  LOG_MEMORY_DETAILED("Nach PSRAM Init");
+
   LOG_MEMORY_DETAILED("Vor LittleFS.begin");
   if (!LittleFS.begin(true)) {
     Serial.println("FATAL: LittleFS konnte nicht initialisiert werden.");
@@ -388,7 +390,7 @@ void setup() {
   loadHardwareConfig();
   LOG_MEMORY_DETAILED("Nach loadHardwareConfig");
   
-  // --- PHASE 2: DISPLAY INITIALISIERUNG (SOFORT) ---
+  // --- PHASE 2: DISPLAY INITIALISIERUNG ---
   LOG_MEMORY_STRATEGIC("Vor Display Init");
   
   LOG_MEMORY_DETAILED("Vor 'new U8G2_FOR_ADAFRUIT_GFX'");
@@ -412,7 +414,7 @@ void setup() {
   HUB75_I2S_CFG::i2s_pins _pins = { 
     static_cast<int8_t>(hardwareConfig->R1), static_cast<int8_t>(hardwareConfig->G1), static_cast<int8_t>(hardwareConfig->B1), 
     static_cast<int8_t>(hardwareConfig->R2), static_cast<int8_t>(hardwareConfig->G2), static_cast<int8_t>(hardwareConfig->B2), 
-    static_cast<int8_t>(hardwareConfig->A), static_cast<int8_t>(hardwareConfig->B), static_cast<int8_t>(hardwareConfig->C), static_cast<int8_t>(hardwareConfig->D), static_cast<int8_t>(hardwareConfig->E), 
+    static_cast<int8_t>(hardwareConfig->A), static_cast<int8_t>(hardwareConfig->B), static_cast<int8_t>(hardwareConfig->C), static_cast<int8_t>(hardwareConfig->D), static_cast<int8_t>(hardwareConfig->E),
     static_cast<int8_t>(hardwareConfig->LAT), static_cast<int8_t>(hardwareConfig->OE), static_cast<int8_t>(hardwareConfig->CLK) 
   };
   HUB75_I2S_CFG mxconfig(PANEL_RES_X, PANEL_RES_Y, VDISP_NUM_ROWS * VDISP_NUM_COLS, _pins);
@@ -439,19 +441,53 @@ void setup() {
   LOG_MEMORY_STRATEGIC("Nach Display Init");
   displayStatus("Systemstart...");
 
-  // --- PHASE 3: KONFIGURATION & NETZWERK ---
+  // --- PHASE 3: KONFIGURATION & MODULE ---
+  LOG_MEMORY_STRATEGIC("Vor Anwendungslogik Init");
+  displayStatus("Starte Module...");
+  
   LOG_MEMORY_DETAILED("Vor 'new DeviceConfig'");
   deviceConfig = new DeviceConfig();
   LOG_MEMORY_DETAILED("Nach 'new DeviceConfig'");
-  
-  displayStatus("Lade Konfiguration...");
   loadDeviceConfig();
   LOG_MEMORY_DETAILED("Nach loadDeviceConfig");
+  
+  LOG_MEMORY_DETAILED("Vor 'new MwaveSensorModule'");
+  mwaveSensorModule = new MwaveSensorModule(*deviceConfig, *hardwareConfig, sensorSerial);
+  LOG_MEMORY_DETAILED("Nach 'new MwaveSensorModule'");
+  
+  LOG_MEMORY_DETAILED("Vor 'new WebClientModule'");
+  webClient = new WebClientModule();
+  LOG_MEMORY_DETAILED("Nach 'new WebClientModule'");
+  
+  LOG_MEMORY_DETAILED("Vor 'new GeneralTimeConverter'");
+  timeConverter = new GeneralTimeConverter();
+  LOG_MEMORY_DETAILED("Nach 'new GeneralTimeConverter'");
 
+  LOG_MEMORY_DETAILED("Vor Modul-Instanziierung");
+  clockMod = new ClockModule(*u8g2, *canvasTime, *timeConverter);
+  LOG_MEMORY_DETAILED("Nach ClockModule");
+  
+  dataMod = new DataModule(*u8g2, *canvasData, *timeConverter, TIME_AREA_H, webClient);
+  
+  LOG_MEMORY_DETAILED("Nach DataModule");
+  calendarMod = new CalendarModule(*u8g2, *canvasData, *timeConverter, webClient);
+  LOG_MEMORY_DETAILED("Nach CalendarModule");
+  dartsMod = new DartsRankingModule(*u8g2, *canvasData, webClient);
+  LOG_MEMORY_DETAILED("Nach DartsModule");
+  fritzMod = new FritzboxModule(*u8g2, *canvasData, webClient);
+  LOG_MEMORY_DETAILED("Nach FritzboxModule");
+  
+  LOG_MEMORY_DETAILED("Vor Modul-begin()");
+  mwaveSensorModule->begin();
+  webClient->begin();
+  dataMod->begin();
+  
   BaseType_t app_core = xPortGetCoreID();
   BaseType_t network_core = (app_core == 0) ? 1 : 0;
-  Serial.printf("App läuft auf Core %d, Netzwerk-Tasks werden auf Core %d ausgeführt.\n", app_core, network_core);
+  fritzMod->begin(network_core);
+  LOG_MEMORY_DETAILED("Nach Modul-begin()");
 
+  // --- PHASE 4: NETZWERK ---
   LOG_MEMORY_STRATEGIC("Vor Netzwerk-Stack Init");
   LOG_MEMORY_DETAILED("Vor 'new DNSServer'");
   dnsServer = new DNSServer();
@@ -492,42 +528,7 @@ void setup() {
   }
   LOG_MEMORY_STRATEGIC("Nach Netzwerk-Stack Init");
 
-  // --- PHASE 4: ANWENDUNGSLOGIK & MODULE ---
-  LOG_MEMORY_STRATEGIC("Vor Anwendungslogik Init");
-  displayStatus("Starte Module...");
-  LOG_MEMORY_DETAILED("Vor 'new MwaveSensorModule'");
-  mwaveSensorModule = new MwaveSensorModule(*deviceConfig, *hardwareConfig, sensorSerial);
-  LOG_MEMORY_DETAILED("Nach 'new MwaveSensorModule'");
-  mwaveSensorModule->begin();
-  LOG_MEMORY_DETAILED("Nach MwaveSensor.begin");
-  
-  LOG_MEMORY_DETAILED("Vor 'new WebClientModule'");
-  webClient = new WebClientModule();
-  LOG_MEMORY_DETAILED("Nach 'new WebClientModule'");
-  webClient->begin();
-  LOG_MEMORY_DETAILED("Nach webClient.begin");
-  
-  LOG_MEMORY_DETAILED("Vor 'new GeneralTimeConverter'");
-  timeConverter = new GeneralTimeConverter();
-  LOG_MEMORY_DETAILED("Nach 'new GeneralTimeConverter'");
-
-  LOG_MEMORY_DETAILED("Vor Modul-Instanziierung");
-  clockMod = new ClockModule(*u8g2, *canvasTime, *timeConverter);
-  LOG_MEMORY_DETAILED("Nach ClockModule");
-  dataMod = new DataModule(*u8g2, *canvasData, TIME_AREA_H, webClient);
-  LOG_MEMORY_DETAILED("Nach DataModule");
-  calendarMod = new CalendarModule(*u8g2, *canvasData, *timeConverter, webClient);
-  LOG_MEMORY_DETAILED("Nach CalendarModule");
-  dartsMod = new DartsRankingModule(*u8g2, *canvasData, webClient);
-  LOG_MEMORY_DETAILED("Nach DartsModule");
-  fritzMod = new FritzboxModule(*u8g2, *canvasData, webClient);
-  LOG_MEMORY_DETAILED("Nach FritzboxModule");
-
-  LOG_MEMORY_DETAILED("Vor Modul-begin()");
-  dataMod->begin();
-  fritzMod->begin(network_core);
-  LOG_MEMORY_DETAILED("Nach Modul-begin()");
-  
+  // --- PHASE 5: ABSCHLUSS ---
   executeApplyLiveConfig(); 
   
   dataMod->onUpdate([](){ dataNeedsRedraw = true; });
@@ -540,6 +541,8 @@ void setup() {
   if (!portalRunning) {
     if (deviceConfig && !deviceConfig->icsUrl.empty()) {
       LOG_MEMORY_DETAILED("Vor CalendarScrollTask Start");
+      BaseType_t app_core = xPortGetCoreID();
+      BaseType_t network_core = (app_core == 0) ? 1 : 0;
       xTaskCreatePinnedToCore(CalendarScrollTask, "CalScroll", 1536, NULL, 2, NULL, network_core);
       LOG_MEMORY_DETAILED("Nach CalendarScrollTask Start");
     }
@@ -596,7 +599,9 @@ void loop() {
     if(dartsMod) dartsMod->processData();
     if(calendarMod) calendarMod->processData();
 
-    if (currentDataMode == MODE_DARTS_OOM) {
+    if (currentDataMode == MODE_STATION) {
+        if(dataMod) dataMod->tick();
+    } else if (currentDataMode == MODE_DARTS_OOM) {
         if(dartsMod) dartsMod->tick(DartsRankingType::ORDER_OF_MERIT);
     } else if (currentDataMode == MODE_DARTS_PRO_TOUR) {
         if(dartsMod) dartsMod->tick(DartsRankingType::PRO_TOUR);
@@ -633,8 +638,12 @@ void loop() {
     if (!fritzMod || !fritzMod->isCallActive()) {
         unsigned long currentDisplayDuration = 0;
         switch(currentDataMode) {
-            case MODE_STATION: currentDisplayDuration = stationDisplayMs; break;
-            case MODE_CALENDAR: currentDisplayDuration = calendarDisplayMs; break;
+            case MODE_STATION: 
+                currentDisplayDuration = dataMod ? dataMod->getRequiredDisplayDuration() : 0;
+                break;
+            case MODE_CALENDAR: 
+                currentDisplayDuration = calendarDisplayMs; 
+                break;
             case MODE_DARTS_OOM:
                 currentDisplayDuration = dartsMod ? dartsMod->getRequiredDisplayDuration(DartsRankingType::ORDER_OF_MERIT) : 0;
                 break;
@@ -647,7 +656,10 @@ void loop() {
           DataAreaMode initialMode = currentDataMode;
           do {
             currentDataMode = static_cast<DataAreaMode>((static_cast<int>(currentDataMode) + 1) % 4);
-            if (currentDataMode == MODE_STATION && deviceConfig && !deviceConfig->stationId.empty()) break;
+            if (currentDataMode == MODE_STATION && deviceConfig && !deviceConfig->tankerkoenigStationIds.empty()) {
+                if(dataMod) dataMod->resetPaging();
+                break;
+            }
             if (currentDataMode == MODE_CALENDAR && deviceConfig && !deviceConfig->icsUrl.empty()) break;
             if (currentDataMode == MODE_DARTS_OOM && deviceConfig && deviceConfig->dartsOomEnabled) {
                 if(dartsMod) dartsMod->resetPaging();
