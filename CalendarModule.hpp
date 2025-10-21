@@ -31,6 +31,7 @@ using PsramTimeVector = std::vector<time_t, PsramAllocator<time_t>>;
 using PsramEventPair = std::pair<time_t, Event>;
 using PsramEventPairVector = std::vector<PsramEventPair, PsramAllocator<PsramEventPair>>;
 using PsramCalendarEventVector = std::vector<CalendarEvent, PsramAllocator<CalendarEvent>>;
+using PsramOccurrenceVector = std::vector<Occurrence, PsramAllocator<Occurrence>>;
 
 static uint16_t hexColorTo565(const PsramString& hex) {
   if (hex.length() != 7 || hex[0] != '#') return 0xFFFF;
@@ -254,16 +255,23 @@ private:
             if (masterEvent.rrule.empty()) {
                 for (const auto& singleEvent : exceptions) addSingleEvent(singleEvent);
             } else {
-                PsramTimeVector occurrences;
+                PsramOccurrenceVector occurrences;
                 occurrences.reserve(64);
                 parseRRule(masterEvent, occurrences);
+                
+                // Convert occurrences to events, handling exceptions
                 PsramEventPairVector final_series_vec;
                 final_series_vec.reserve(occurrences.size() + exceptions.size());
-                for (time_t start : occurrences) {
+                
+                for (const auto& occ : occurrences) {
                     Event series_event = masterEvent;
-                    series_event.dtstart = start;
-                    final_series_vec.emplace_back(start, std::move(series_event));
+                    series_event.summary = occ.summary;
+                    series_event.dtstart = occ.startEpoch;
+                    series_event.dtend = occ.endEpoch;
+                    series_event.isAllDay = occ.isAllDay;
+                    final_series_vec.emplace_back(occ.startEpoch, std::move(series_event));
                 }
+                
                 for (const auto& ex : exceptions) {
                     bool replaced = false;
                     for (auto &pr : final_series_vec) {
@@ -284,57 +292,52 @@ private:
         
         events.clear();
         
+        // Sort events by start time
         std::sort(raw_events.begin(), raw_events.end(), [](const CalendarEvent &a, const CalendarEvent &b) {
             return a.startEpoch < b.startEpoch;
         });
-
+        
+        // Consolidate multiple distinct single-day all-day events on the same date
+        std::map<time_t, std::vector<size_t>, std::less<time_t>, PsramAllocator<std::pair<const time_t, std::vector<size_t>>>> allDayByDate;
         std::vector<bool, PsramAllocator<bool>> processed(raw_events.size(), false);
-
+        
+        // First pass: identify single-day all-day events and group by date
         for (size_t i = 0; i < raw_events.size(); ++i) {
-            if (processed[i]) continue;
-
-            CalendarEvent merged_event = raw_events[i];
-            processed[i] = true;
-            int chain_length = 1;
-
-            if (merged_event.isAllDay) {
-                time_t expected_next_start = merged_event.endEpoch;
-
-                while (true) {
-                    bool found_in_chain = false;
-                    for (size_t j = i + 1; j < raw_events.size(); ++j) {
-                        if (processed[j]) continue;
-                        const CalendarEvent& next_event = raw_events[j];
-                        
-                        if (next_event.isAllDay &&
-                            next_event.summary == merged_event.summary &&
-                            next_event.startEpoch == expected_next_start) {
-                            
-                            merged_event.endEpoch = next_event.endEpoch;
-                            expected_next_start = next_event.endEpoch;
-                            processed[j] = true;
-                            found_in_chain = true;
-                            chain_length++;
-                            break;
-                        }
-                    }
-                    if (!found_in_chain) break;
-                }
+            const auto& ev = raw_events[i];
+            if (ev.isAllDay && ev.startEpoch == ev.endEpoch) {
+                // Single-day all-day event
+                allDayByDate[ev.startEpoch].push_back(i);
+                processed[i] = true;
             }
-            
-            // ====================================================================================
-            // Deine finale Datenverarbeitungs-Logik
-            // ====================================================================================
-            if (chain_length > 1) {
-                // "Dirty Hack" für mehrtägige Termine
-                merged_event.endEpoch -= 86400;
-            } else if (merged_event.isAllDay) {
-                // Regel für einzelne ganztägige Termine
-                merged_event.endEpoch = merged_event.startEpoch;
-            }
-            events.push_back(merged_event);
         }
-
+        
+        // Second pass: consolidate single-day all-day events on same date
+        for (const auto& entry : allDayByDate) {
+            const auto& indices = entry.second;
+            if (indices.size() == 1) {
+                // Only one event on this date, add it as-is
+                events.push_back(raw_events[indices[0]]);
+            } else {
+                // Multiple events on same date, combine summaries
+                CalendarEvent combined = raw_events[indices[0]];
+                PsramString combinedSummary = combined.summary;
+                for (size_t i = 1; i < indices.size(); ++i) {
+                    combinedSummary += ", ";
+                    combinedSummary += raw_events[indices[i]].summary;
+                }
+                combined.summary = combinedSummary;
+                events.push_back(combined);
+            }
+        }
+        
+        // Third pass: add all other events (timed events and multi-day all-day events)
+        for (size_t i = 0; i < raw_events.size(); ++i) {
+            if (!processed[i]) {
+                events.push_back(raw_events[i]);
+            }
+        }
+        
+        // Final sort by start time
         std::sort(events.begin(), events.end(), [](const CalendarEvent &a, const CalendarEvent &b) {
             return a.startEpoch < b.startEpoch;
         });
@@ -346,12 +349,19 @@ private:
 
     void addSingleEvent(const Event& ev) {
         if (ev.dtstart == 0) return;
-        time_t duration = (ev.dtend > ev.dtstart) ? (ev.dtend - ev.dtstart) : (ev.isAllDay ? 86400 : 0);
         CalendarEvent ce;
         ce.summary = ev.summary.c_str();
         ce.startEpoch = ev.dtstart;
-        ce.endEpoch = ev.dtstart + duration;
         ce.isAllDay = ev.isAllDay;
+        
+        // If dtend is already set and valid, use it
+        if (ev.dtend > 0) {
+            ce.endEpoch = ev.dtend;
+        } else {
+            // Otherwise calculate duration
+            time_t duration = ev.isAllDay ? 86400 : 0;
+            ce.endEpoch = ev.dtstart + duration;
+        }
         
         raw_events.push_back(ce);
     }
@@ -361,11 +371,12 @@ private:
         result.reserve(maxCount);
         time_t now_utc; time(&now_utc);
         for (const auto& ev : events) {
-            // Angepasste Bedingung für die Anzeige, da endEpoch jetzt 0 sein kann
-            if (ev.endEpoch >= ev.startEpoch && ev.endEpoch >= now_utc) {
+            // For single-day all-day events: endEpoch == startEpoch, show if startEpoch >= now
+            // For multi-day all-day events: show if endEpoch >= now
+            // For timed events: show if startEpoch >= now
+            time_t compareTime = (ev.isAllDay && ev.endEpoch > ev.startEpoch) ? ev.endEpoch : ev.startEpoch;
+            if (compareTime >= now_utc) {
                 result.push_back(ev);
-            } else if (ev.endEpoch < ev.startEpoch && ev.startEpoch >= now_utc) { // Speziell für einzelne ganztägige
-                 result.push_back(ev);
             }
             if ((int)result.size() >= maxCount) break;
         }

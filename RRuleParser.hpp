@@ -32,6 +32,15 @@ struct Event {
     bool isAllDay = false;
 };
 
+// Occurrence structure for representing event occurrences with merged multi-day info
+struct Occurrence {
+    PsramString uid;
+    PsramString summary;
+    time_t startEpoch = 0;
+    time_t endEpoch = 0;
+    bool isAllDay = false;
+};
+
 // New parseVEvent that accepts a raw (PSRAM-backed) C string buffer to avoid Arduino String allocations.
 // veventBlock must be a valid pointer to the VEVENT block; length is the block length.
 void parseVEvent(const char* veventBlock, size_t len, Event& event);
@@ -43,7 +52,11 @@ inline void parseVEvent(const String& veventBlock, Event& event) {
 
 // parseRRule uses PsramString operations so allocations go to PSRAM (via PsramAllocator)
 template<typename Allocator>
-void parseRRule(const Event& masterEvent, std::vector<time_t, Allocator>& occurrences, int numFutureEventsToFind = 50);
+void parseRRule(const Event& masterEvent, std::vector<Occurrence, Allocator>& occurrences, int numFutureEventsToFind = 50);
+
+// Legacy version that returns time_t occurrences (for backward compatibility if needed)
+template<typename Allocator>
+void parseRRuleLegacy(const Event& masterEvent, std::vector<time_t, Allocator>& occurrences, int numFutureEventsToFind = 50);
 
 // ---------------- Implementations ----------------
 
@@ -182,7 +195,7 @@ void parseVEvent(const char* veventBlock, size_t len, Event& event) {
 }
 
 template<typename Allocator>
-void parseRRule(const Event& masterEvent, std::vector<time_t, Allocator>& occurrences, int numFutureEventsToFind) {
+void parseRRuleLegacy(const Event& masterEvent, std::vector<time_t, Allocator>& occurrences, int numFutureEventsToFind) {
     if (masterEvent.rrule.empty() || masterEvent.dtstart == 0) return;
     occurrences.clear();
 
@@ -327,5 +340,63 @@ void parseRRule(const Event& masterEvent, std::vector<time_t, Allocator>& occurr
                 for (time_t exdate : masterEvent.exdates) if (res == exdate) return true;
                 return false;
             }), occurrences.end());
+    }
+}
+
+// New parseRRule that returns Occurrence objects with merged multi-day all-day events
+template<typename Allocator>
+void parseRRule(const Event& masterEvent, std::vector<Occurrence, Allocator>& occurrences, int numFutureEventsToFind) {
+    occurrences.clear();
+    
+    // First get all time_t occurrences using the legacy parser
+    std::vector<time_t, Allocator> timeOccurrences;
+    parseRRuleLegacy(masterEvent, timeOccurrences, numFutureEventsToFind);
+    
+    if (timeOccurrences.empty()) return;
+    
+    // Sort the time occurrences
+    std::sort(timeOccurrences.begin(), timeOccurrences.end());
+    
+    if (masterEvent.isAllDay) {
+        // For all-day events, merge consecutive days into single occurrences
+        size_t i = 0;
+        while (i < timeOccurrences.size()) {
+            Occurrence occ;
+            occ.uid = masterEvent.uid;
+            occ.summary = masterEvent.summary;
+            occ.startEpoch = timeOccurrences[i];
+            occ.endEpoch = timeOccurrences[i] + 86400; // Initially end is start + 1 day
+            occ.isAllDay = true;
+            
+            // Look for consecutive days
+            size_t j = i + 1;
+            while (j < timeOccurrences.size() && timeOccurrences[j] == occ.endEpoch) {
+                occ.endEpoch = timeOccurrences[j] + 86400;
+                ++j;
+            }
+            
+            // For single-day all-day events, set endEpoch = startEpoch
+            if (j == i + 1) {
+                occ.endEpoch = occ.startEpoch;
+            } else {
+                // For multi-day events, endEpoch is already the last day + 86400
+                // We want it to be the last day at 00:00, so subtract 86400
+                occ.endEpoch -= 86400;
+            }
+            
+            occurrences.push_back(occ);
+            i = j;
+        }
+    } else {
+        // For timed events, just convert each time_t to an Occurrence
+        for (time_t t : timeOccurrences) {
+            Occurrence occ;
+            occ.uid = masterEvent.uid;
+            occ.summary = masterEvent.summary;
+            occ.startEpoch = t;
+            occ.endEpoch = t; // For timed events, we don't have duration info here
+            occ.isAllDay = false;
+            occurrences.push_back(occ);
+        }
     }
 }
