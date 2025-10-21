@@ -375,14 +375,8 @@ void parseRRule(const Event& masterEvent, std::vector<Occurrence, Allocator>& oc
                 ++j;
             }
             
-            // For single-day all-day events, set endEpoch = startEpoch
-            if (j == i + 1) {
-                occ.endEpoch = occ.startEpoch;
-            } else {
-                // For multi-day events, endEpoch is already the last day + 86400
-                // We want it to be the last day at 00:00, so subtract 86400
-                occ.endEpoch -= 86400;
-            }
+            // endEpoch is now the day after the last day (iCal convention, exclusive)
+            // This will be adjusted in addSingleEvent to the actual last day
             
             occurrences.push_back(occ);
             i = j;

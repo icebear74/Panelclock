@@ -354,13 +354,32 @@ private:
         ce.startEpoch = ev.dtstart;
         ce.isAllDay = ev.isAllDay;
         
-        // If dtend is already set and valid, use it
+        // If dtend is set, use it
         if (ev.dtend > 0) {
-            ce.endEpoch = ev.dtend;
+            // For all-day events, adjust for iCal's exclusive end date convention
+            if (ev.isAllDay && ev.dtend > ev.dtstart) {
+                // iCal DTEND is exclusive (day after last day)
+                // Check if this is a single-day event (dtend = dtstart + 1 day)
+                if (ev.dtend == ev.dtstart + 86400) {
+                    // Single-day all-day event: set endEpoch = startEpoch
+                    ce.endEpoch = ce.startEpoch;
+                } else {
+                    // Multi-day all-day event: subtract 1 day to get the last day
+                    ce.endEpoch = ev.dtend - 86400;
+                }
+            } else {
+                // For timed events or edge cases
+                ce.endEpoch = ev.dtend;
+            }
         } else {
-            // Otherwise calculate duration
-            time_t duration = ev.isAllDay ? 86400 : 0;
-            ce.endEpoch = ev.dtstart + duration;
+            // No dtend provided, default to same as start (timed event) or start + 1 day (all-day)
+            if (ev.isAllDay) {
+                // Treat as single-day all-day event
+                ce.endEpoch = ce.startEpoch;
+            } else {
+                // Timed event without duration
+                ce.endEpoch = ev.dtstart;
+            }
         }
         
         raw_events.push_back(ce);
