@@ -153,17 +153,17 @@ public:
             u8g2.print(buf);
 
             // ====================================================================================
-            // Deine finale Anzeigelogik
+            // Display logic for different event types
             // ====================================================================================
-            if (ev.startEpoch == ev.endEpoch) {
-                // Einzelner ganztägiger Termin, "Ende/Zeit" bleibt leer.
+            if (ev.isAllDay && ev.startEpoch == ev.endEpoch) {
+                // Single-day all-day event, "Ende/Zeit" column remains empty.
             } else if (ev.isAllDay) {
-                // Mehrtägiger Termin, End-Datum anzeigen.
+                // Multi-day all-day event, show end date.
                 strftime(buf, sizeof(buf), "%d.%m.%y", &tEnd);
                 u8g2.setCursor(xEndZeit, y);
                 u8g2.print(buf);
             } else {
-                // Normaler Termin mit Uhrzeit.
+                // Timed event, show start time.
                 strftime(buf, sizeof(buf), "%H:%M", &tStart);
                 u8g2.setCursor(xEndZeit, y);
                 u8g2.print(buf);
