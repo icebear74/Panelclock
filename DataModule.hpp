@@ -319,7 +319,7 @@ public:
             canvas.drawLine(0, 19, canvas.width() - 1, canvas.height() - 1, red);
             // Linie von rechts oben nach links unten
             canvas.drawLine(canvas.width() - 1, 19, 0, canvas.height() - 1, red);
-
+        }
         xSemaphoreGive(dataMutex);
     }
 
