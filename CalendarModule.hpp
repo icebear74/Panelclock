@@ -9,6 +9,7 @@
 #include <map>
 #include <string>
 #include <functional>
+#include <math.h> 
 #include "RRuleParser.hpp"
 #include "GeneralTimeConverter.hpp"
 #include "WebClientModule.hpp"
@@ -17,13 +18,15 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 
-struct Event;
-
 struct CalendarEvent {
   PsramString summary;
   time_t startEpoch;
-  time_t endEpoch;
+  time_t duration;
   bool isAllDay;
+
+  bool operator<(const time_t& t) const {
+    return startEpoch < t;
+  }
 };
 
 using PsramEventVector = std::vector<Event, PsramAllocator<Event>>;
@@ -79,7 +82,6 @@ public:
     void processData() {
         if (data_pending) {
             if (xSemaphoreTake(dataMutex, portMAX_DELAY) == pdTRUE) {
-                Serial.println("[CalendarModule] Neue Kalender-Daten gefunden, starte Parsing...");
                 this->parseICS(pending_buffer, buffer_size);
                 this->onSuccessfulUpdate();
                 free(pending_buffer);
@@ -95,9 +97,13 @@ public:
         if (scrollStepInterval == 0) return;
         unsigned long now = millis();
         if (now - lastScrollStep >= scrollStepInterval) {
+            lastScrollStep = now;
             if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-                lastScrollStep = now;
-                for (auto& s : scrollPos) if (s.maxScroll > 0) s.offset = (s.offset + 1) % s.maxScroll;
+                for (auto& s : scrollPos) {
+                    if (s.maxScroll > 0) {
+                        s.offset = (s.offset + 1) % s.maxScroll;
+                    }
+                }
                 xSemaphoreGive(dataMutex);
             }
         }
@@ -115,76 +121,105 @@ public:
         int xStart = 2, xEndZeit = 44, xTermin = 88;
 
         u8g2.setForegroundColor(dateColor);
-        u8g2.setCursor(xStart, y);
-        u8g2.print("Start");
-        u8g2.setCursor(xEndZeit, y);
-        u8g2.print("Ende/Zeit");
-        u8g2.setCursor(xTermin, y);
-        u8g2.print("Termin");
+        u8g2.setCursor(xStart, y); u8g2.print("Start");
+        u8g2.setCursor(xEndZeit, y); u8g2.print("Ende/Zeit");
+        u8g2.setCursor(xTermin, y); u8g2.print("Termin");
         y += fontH;
         
         auto upcomming = getUpcomingEvents(6);
         if (upcomming.empty()) {
             u8g2.setForegroundColor(textColor);
-            u8g2.setCursor(2, y);
-            u8g2.print("Keine Termine");
+            u8g2.setCursor(2, y); u8g2.print("Keine Termine");
             xSemaphoreGive(dataMutex);
             return;
         }
 
+        const float pulse_period_ms = 2000.0f;
+        const float min_brightness = 0.25f;
+        float cos_input = (millis() % (int)pulse_period_ms) / pulse_period_ms * 2.0f * PI;
+        float pulseFactor = min_brightness + (1.0f - min_brightness) * (cos(cos_input) + 1.0f) / 2.0f;
+
+        time_t now_utc;
+        time(&now_utc);
+        
+        // *** FINALE KORREKTUR: Sichere, UTC-basierte Berechnung der Tagesgrenzen ***
+        time_t local_now = timeConverter.toLocal(now_utc);
+        struct tm tm_local_now;
+        localtime_r(&local_now, &tm_local_now);
+        tm_local_now.tm_hour = 0; tm_local_now.tm_min = 0; tm_local_now.tm_sec = 0;
+        // Konvertiere den Anfang des lokalen Tages zurück nach UTC, um eine UTC-Tagesgrenze zu haben
+        time_t today_start_local_epoch = mktime(&tm_local_now);
+        time_t today_start_utc = today_start_local_epoch - (timeConverter.isDST(today_start_local_epoch) ? dstOffsetSec : stdOffsetSec);
+        time_t tomorrow_start_utc = today_start_utc + 86400;
+
         int maxSummaryPixel = canvas.width() - xTermin - 2;
         ensureScrollPos(upcomming, maxSummaryPixel);
+
         for (size_t i = 0; i < upcomming.size(); ++i) {
             const auto& ev = upcomming[i];
-            struct tm tStart, tEnd;
-            
+            struct tm tStart;
             time_t localStartEpoch = timeConverter.toLocal(ev.startEpoch);
-            time_t localEndEpoch = timeConverter.toLocal(ev.endEpoch);
-
             localtime_r(&localStartEpoch, &tStart);
-            localtime_r(&localEndEpoch, &tEnd);
             char buf[12];
             
-            u8g2.setForegroundColor(dateColor);
+            uint16_t currentTextColor = textColor;
+            uint16_t currentDateColor = dateColor;
             
-            strftime(buf, sizeof(buf), "%d.%m.%y", &tStart);
-            u8g2.setCursor(xStart, y);
-            u8g2.print(buf);
+            // *** FINALE KORREKTUR: Robuste Prüfung, ob ein Termin heute aktiv ist, basierend auf UTC-Grenzen ***
+            bool isToday = (ev.startEpoch < tomorrow_start_utc) && ((ev.startEpoch + ev.duration) > today_start_utc);
 
-            // ====================================================================================
-            // Deine finale Anzeigelogik
-            // ====================================================================================
-            if (ev.startEpoch == ev.endEpoch) {
-                // Einzelner ganztägiger Termin, "Ende/Zeit" bleibt leer.
-            } else if (ev.isAllDay) {
-                // Mehrtägiger Termin, End-Datum anzeigen.
-                strftime(buf, sizeof(buf), "%d.%m.%y", &tEnd);
-                u8g2.setCursor(xEndZeit, y);
-                u8g2.print(buf);
+            if (isToday) {
+                currentTextColor = dimColor(textColor, pulseFactor);
+                currentDateColor = dimColor(dateColor, pulseFactor);
+            }
+            
+            u8g2.setForegroundColor(currentDateColor);
+            strftime(buf, sizeof(buf), "%d.%m.%y", &tStart);
+            u8g2.setCursor(xStart, y); u8g2.print(buf);
+
+            if (ev.isAllDay) {
+                long days = (ev.duration + 43200) / 86400;
+                if (days > 1) {
+                    struct tm tEnd;
+                    time_t end_date_epoch = ev.startEpoch + ev.duration - 86400;
+                    time_t localEndEpoch = timeConverter.toLocal(end_date_epoch);
+                    localtime_r(&localEndEpoch, &tEnd);
+                    strftime(buf, sizeof(buf), "%d.%m.%y", &tEnd);
+                    u8g2.setCursor(xEndZeit, y); u8g2.print(buf);
+                }
             } else {
-                // Normaler Termin mit Uhrzeit.
                 strftime(buf, sizeof(buf), "%H:%M", &tStart);
-                u8g2.setCursor(xEndZeit, y);
-                u8g2.print(buf);
+                u8g2.setCursor(xEndZeit, y); u8g2.print(buf);
             }
 
-            u8g2.setForegroundColor(textColor);
-            u8g2.setCursor(xTermin, y);
-
-            const char* shownText = ev.summary.c_str();
-            PsramString visiblePart = fitTextToPixelWidth(shownText, maxSummaryPixel);
+            u8g2.setForegroundColor(currentTextColor);
+            
+            const char* src_cstr = ev.summary.c_str();
+            int src_len = strlen(src_cstr);
+            PsramString visiblePart = fitTextToPixelWidth(src_cstr, maxSummaryPixel);
             int visibleChars = visiblePart.length();
-            PsramString pad("   ");
-            PsramString src(shownText);
-            PsramString scrollText = src + pad + src.substr(0, visibleChars);
-            int maxScroll = (src.length() > visibleChars) ? (scrollText.length() - visibleChars + pad.length()) : 0;
+            
             size_t idx = i < scrollPos.size() ? i : 0;
-            scrollPos[idx].maxScroll = maxScroll;
-            int offset = scrollPos[idx].offset;
-            if (offset >= maxScroll) offset = 0;
-            scrollPos[idx].offset = offset;
-            PsramString part = scrollText.substr(offset, visibleChars);
-            u8g2.print(part.c_str());
+            
+            if (src_len > visibleChars) {
+                PsramString scrollText = PsramString(src_cstr) + "     ";
+                scrollPos[idx].maxScroll = scrollText.length();
+                int offset = scrollPos[idx].offset;
+                
+                PsramString part_to_display = "";
+                for(int k=0; k < visibleChars; ++k) {
+                    part_to_display += scrollText[(offset + k) % scrollText.length()];
+                }
+                u8g2.setCursor(xTermin, y);
+                u8g2.print(part_to_display.c_str());
+
+            } else {
+                scrollPos[idx].maxScroll = 0;
+                scrollPos[idx].offset = 0;
+                u8g2.setCursor(xTermin, y);
+                u8g2.print(src_cstr);
+            }
+            
             y += fontH;
         }
         xSemaphoreGive(dataMutex);
@@ -207,10 +242,15 @@ private:
     uint32_t fetchIntervalMinutes = 60;
     PsramCalendarEventVector events;
     PsramCalendarEventVector raw_events;
-    struct ScrollState { int offset = 0; int maxScroll = 0; };
+    
+    struct ScrollState { 
+        int offset = 0; 
+        int maxScroll = 0; 
+    };
     std::vector<ScrollState, PsramAllocator<ScrollState>> scrollPos;
     unsigned long lastScrollStep = 0;
-    uint32_t scrollStepInterval = 150;
+    uint32_t scrollStepInterval = 250;
+
     uint16_t dateColor = 0xFFE0;
     uint16_t textColor = 0xFFFF;
     time_t last_processed_update;
@@ -220,12 +260,31 @@ private:
     size_t buffer_size = 0;
     volatile bool data_pending = false;
 
+    // *** Diese Member sind nötig, um die Tagesgrenzen zu berechnen, da wir nicht direkt auf die privaten Member des timeConverters zugreifen können ***
+    int stdOffsetSec = 0;
+    int dstOffsetSec = 0;
+
+    uint16_t dimColor(uint16_t color, float brightness) {
+        uint8_t r = (color >> 11) & 0x1F;
+        uint8_t g = (color >> 5) & 0x3F;
+        uint8_t b = color & 0x1F;
+        
+        r = (uint8_t)(r * brightness);
+        g = (uint8_t)(g * brightness);
+        b = (uint8_t)(b * brightness);
+        
+        return (r << 11) | (g << 5) | b;
+    }
+
     void parseICS(char* icsBuffer, size_t size) {
         if (!icsBuffer || size == 0) return;
         PsramString ics(icsBuffer, size);
+        
         raw_events.clear();
+        raw_events.reserve(1024);
+
         PsramEventVector parsedEvents;
-        parsedEvents.reserve(256);
+        parsedEvents.reserve(512);
         size_t idx = 0;
         const PsramString beginTag("BEGIN:VEVENT"), endTag("END:VEVENT");
         while (true) {
@@ -234,29 +293,44 @@ private:
             PsramString veventBlock = ics.substr(pos, (endPos + endTag.length()) - pos);
             Event parsedEvent;
             parseVEvent(veventBlock.c_str(), veventBlock.length(), parsedEvent);
-            parsedEvents.push_back(std::move(parsedEvent));
+            if(parsedEvent.dtstart > 0) parsedEvents.push_back(std::move(parsedEvent));
             idx = endPos + endTag.length();
+            if (parsedEvents.size() % 50 == 0) delay(1);
         }
         if (parsedEvents.empty()) return;
+        
         std::sort(parsedEvents.begin(), parsedEvents.end(), [](const Event& a, const Event& b){ return a.uid < b.uid; });
+        delay(1);
+        
         size_t i = 0;
         while (i < parsedEvents.size()) {
-            size_t j = i + 1;
-            while (j < parsedEvents.size() && parsedEvents[j].uid == parsedEvents[i].uid) ++j;
+            if (i > 0 && i % 50 == 0) delay(1);
+            size_t j = i;
+            while (j < parsedEvents.size() && parsedEvents[j].uid == parsedEvents[i].uid) j++;
+            
             Event masterEvent;
+            bool masterFound = false;
             PsramEventVector exceptions;
-            exceptions.reserve(j - i);
-            for (size_t k = i; k < j; ++k) {
-                const Event& ev = parsedEvents[k];
-                if (!ev.rrule.empty()) masterEvent = ev;
-                else exceptions.push_back(ev);
+            PsramEventVector singleEvents;
+
+            for(size_t k = i; k < j; ++k) {
+                if(!parsedEvents[k].rrule.empty()) {
+                    masterEvent = parsedEvents[k];
+                    masterFound = true;
+                } else if(parsedEvents[k].recurrence_id != 0) {
+                    exceptions.push_back(parsedEvents[k]);
+                } else {
+                    singleEvents.push_back(parsedEvents[k]);
+                }
             }
-            if (masterEvent.rrule.empty()) {
-                for (const auto& singleEvent : exceptions) addSingleEvent(singleEvent);
+
+            if (!masterFound) {
+                for(const auto& single : singleEvents) addSingleEvent(single);
             } else {
                 PsramTimeVector occurrences;
-                occurrences.reserve(64);
+                occurrences.reserve(128);
                 parseRRule(masterEvent, occurrences);
+                
                 PsramEventPairVector final_series_vec;
                 final_series_vec.reserve(occurrences.size() + exceptions.size());
                 for (time_t start : occurrences) {
@@ -280,77 +354,27 @@ private:
     }
 
     void onSuccessfulUpdate() {
-        if (raw_events.empty()) { resetScroll(); return; }
-        
-        events.clear();
+        if (raw_events.empty()) {
+            events.clear();
+            resetScroll();
+            return;
+        }
         
         std::sort(raw_events.begin(), raw_events.end(), [](const CalendarEvent &a, const CalendarEvent &b) {
             return a.startEpoch < b.startEpoch;
         });
-
-        std::vector<bool, PsramAllocator<bool>> processed(raw_events.size(), false);
-
-        for (size_t i = 0; i < raw_events.size(); ++i) {
-            if (processed[i]) continue;
-
-            CalendarEvent merged_event = raw_events[i];
-            processed[i] = true;
-            int chain_length = 1;
-
-            if (merged_event.isAllDay) {
-                time_t expected_next_start = merged_event.endEpoch;
-
-                while (true) {
-                    bool found_in_chain = false;
-                    for (size_t j = i + 1; j < raw_events.size(); ++j) {
-                        if (processed[j]) continue;
-                        const CalendarEvent& next_event = raw_events[j];
-                        
-                        if (next_event.isAllDay &&
-                            next_event.summary == merged_event.summary &&
-                            next_event.startEpoch == expected_next_start) {
-                            
-                            merged_event.endEpoch = next_event.endEpoch;
-                            expected_next_start = next_event.endEpoch;
-                            processed[j] = true;
-                            found_in_chain = true;
-                            chain_length++;
-                            break;
-                        }
-                    }
-                    if (!found_in_chain) break;
-                }
-            }
-            
-            // ====================================================================================
-            // Deine finale Datenverarbeitungs-Logik
-            // ====================================================================================
-            if (chain_length > 1) {
-                // "Dirty Hack" für mehrtägige Termine
-                merged_event.endEpoch -= 86400;
-            } else if (merged_event.isAllDay) {
-                // Regel für einzelne ganztägige Termine
-                merged_event.endEpoch = merged_event.startEpoch;
-            }
-            events.push_back(merged_event);
-        }
-
-        std::sort(events.begin(), events.end(), [](const CalendarEvent &a, const CalendarEvent &b) {
-            return a.startEpoch < b.startEpoch;
-        });
-
+        
+        events = raw_events;
         resetScroll();
     }
 
-
-
     void addSingleEvent(const Event& ev) {
         if (ev.dtstart == 0) return;
-        time_t duration = (ev.dtend > ev.dtstart) ? (ev.dtend - ev.dtstart) : (ev.isAllDay ? 86400 : 0);
+        
         CalendarEvent ce;
         ce.summary = ev.summary.c_str();
         ce.startEpoch = ev.dtstart;
-        ce.endEpoch = ev.dtstart + duration;
+        ce.duration = ev.duration;
         ce.isAllDay = ev.isAllDay;
         
         raw_events.push_back(ce);
@@ -359,15 +383,19 @@ private:
     PsramCalendarEventVector getUpcomingEvents(int maxCount) {
         PsramCalendarEventVector result;
         result.reserve(maxCount);
-        time_t now_utc; time(&now_utc);
-        for (const auto& ev : events) {
-            // Angepasste Bedingung für die Anzeige, da endEpoch jetzt 0 sein kann
-            if (ev.endEpoch >= ev.startEpoch && ev.endEpoch >= now_utc) {
-                result.push_back(ev);
-            } else if (ev.endEpoch < ev.startEpoch && ev.startEpoch >= now_utc) { // Speziell für einzelne ganztägige
-                 result.push_back(ev);
+        
+        time_t now_utc;
+        time(&now_utc);
+
+        auto it = std::lower_bound(events.begin(), events.end(), now_utc - (7 * 86400));
+
+        for (; it != events.end(); ++it) {
+            if (it->startEpoch + it->duration > now_utc) {
+                result.push_back(*it);
             }
-            if ((int)result.size() >= maxCount) break;
+            if (result.size() >= (size_t)maxCount) {
+                break;
+            }
         }
         return result;
     }
@@ -381,10 +409,12 @@ private:
         }
         return p_text.substr(0, lastOk);
     }
-
+    
     void resetScroll() { scrollPos.clear(); }
     void ensureScrollPos(const PsramCalendarEventVector& upcomming, int maxTextPixel) {
-        if (scrollPos.size() != upcomming.size()) scrollPos.resize(upcomming.size());
+        if (scrollPos.size() != upcomming.size()) {
+            scrollPos.assign(upcomming.size(), ScrollState());
+        }
     }
 };
 #endif

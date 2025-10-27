@@ -4,9 +4,8 @@
 #include <time.h>
 #include <algorithm>
 #include <map>
-#include "PsramUtils.hpp" // uses PsramAllocator / PsramString
+#include "PsramUtils.hpp"
 
-// Lightweight helpers to parse integers from ASCII without allocating
 static inline int parseDecimal(const char* p, size_t len) {
     int v = 0;
     for (size_t i = 0; i < len; ++i) {
@@ -17,74 +16,46 @@ static inline int parseDecimal(const char* p, size_t len) {
     return v;
 }
 
-int weekdayStrToInt(const char* s, size_t len);
-time_t parseICalDateTime(const char* str, size_t len, bool& isAllDay);
+// *** KOMPLETT NEUE, ROBUSTE PARSE-FUNKTION ***
+time_t parseICalDateTime(const char* line, size_t len, bool& isAllDay) {
+    isAllDay = false;
+    if (!line || len == 0) return 0;
 
-// Event structure using PSRAM types
-struct Event {
-    PsramString summary;
-    PsramString rrule;
-    PsramString uid;
-    time_t dtstart = 0;
-    time_t dtend = 0;
-    time_t recurrence_id = 0;
-    std::vector<time_t, PsramAllocator<time_t>> exdates;
-    bool isAllDay = false;
-};
-
-// New parseVEvent that accepts a raw (PSRAM-backed) C string buffer to avoid Arduino String allocations.
-// veventBlock must be a valid pointer to the VEVENT block; length is the block length.
-void parseVEvent(const char* veventBlock, size_t len, Event& event);
-
-// Backwards-compatible wrapper (keeps existing signature working)
-inline void parseVEvent(const String& veventBlock, Event& event) {
-    parseVEvent(veventBlock.c_str(), veventBlock.length(), event);
-}
-
-// parseRRule uses PsramString operations so allocations go to PSRAM (via PsramAllocator)
-template<typename Allocator>
-void parseRRule(const Event& masterEvent, std::vector<time_t, Allocator>& occurrences, int numFutureEventsToFind = 50);
-
-// ---------------- Implementations ----------------
-
-int weekdayStrToInt(const char* s, size_t len) {
-    if (len >= 2) {
-        if (s[0] == 'S' && s[1] == 'U') return 0;
-        if (s[0] == 'M' && s[1] == 'O') return 1;
-        if (s[0] == 'T' && s[1] == 'U') return 2;
-        if (s[0] == 'W' && s[1] == 'E') return 3;
-        if (s[0] == 'T' && s[1] == 'H') return 4;
-        if (s[0] == 'F' && s[1] == 'R') return 5;
-        if (s[0] == 'S' && s[1] == 'A') return 6;
+    const char* value_ptr = line;
+    const char* colon = (const char*)memchr(line, ':', len);
+    if (colon) {
+        value_ptr = colon + 1;
     }
-    return -1;
-}
 
-time_t parseICalDateTime(const char* str, size_t len, bool& isAllDay) {
-    isAllDay = true;
-    if (!str || len < 8) return 0;
-    const char* p = str;
-    size_t remaining = len;
-    while (remaining && (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n')) { ++p; --remaining; }
-    if (remaining < 8) return 0;
+    const char* semicolon = (const char*)memchr(line, ';', len);
+    if (semicolon && semicolon < colon) { // Property parameter
+        const char* value_date = strstr(semicolon, "VALUE=DATE");
+        if (value_date) {
+            isAllDay = true;
+        }
+    }
 
-    int year = parseDecimal(p, 4);
-    int month = parseDecimal(p + 4, 2);
-    int day = parseDecimal(p + 6, 2);
+    // Isoliere den reinen Datum/Zeit-String
+    const char* dt_str = value_ptr;
+    size_t dt_len = strlen(dt_str);
+    
+    // Entferne alle nicht-alphanumerischen Zeichen am Ende
+    while (dt_len > 0 && !isalnum(dt_str[dt_len - 1])) {
+        dt_len--;
+    }
 
+    if (dt_len < 8) return 0;
+
+    int year = parseDecimal(dt_str, 4);
+    int month = parseDecimal(dt_str + 4, 2);
+    int day = parseDecimal(dt_str + 6, 2);
     int hour = 0, minute = 0, second = 0;
-    const char* tpos = nullptr;
-    for (size_t i = 0; i < remaining; ++i) {
-        if (p[i] == 'T') { tpos = p + i; break; }
-    }
-    if (tpos) {
-        isAllDay = false;
-        const char* tm = tpos + 1;
-        size_t tmRem = remaining - (tm - p);
-        if (tmRem >= 6) {
-            hour = parseDecimal(tm, 2);
-            minute = parseDecimal(tm + 2, 2);
-            second = parseDecimal(tm + 4, 2);
+
+    if (dt_len > 8 && dt_str[8] == 'T') {
+        if (dt_len >= 15) {
+            hour = parseDecimal(dt_str + 9, 2);
+            minute = parseDecimal(dt_str + 11, 2);
+            second = parseDecimal(dt_str + 13, 2);
         }
     } else {
         isAllDay = true;
@@ -97,28 +68,45 @@ time_t parseICalDateTime(const char* str, size_t len, bool& isAllDay) {
     t.tm_hour = hour;
     t.tm_min = minute;
     t.tm_sec = second;
-    bool isUTC = false;
-    if (len > 0 && str[len - 1] == 'Z') isUTC = true;
+    t.tm_isdst = -1;
+
+    bool isUTC = (dt_len > 0 && dt_str[dt_len - 1] == 'Z');
 
     if (isUTC) {
         return timegm(&t);
     } else {
-        t.tm_isdst = -1;
+        // Behandelt als lokale Zeit des ESP32, was für "floating times" die korrekte Annahme ist.
         return mktime(&t);
     }
 }
 
-static const char* memrchr_safe(const char* buf, int c, size_t len) {
-    for (size_t i = len; i > 0; --i) {
-        if (buf[i-1] == (char)c) return buf + (i-1);
-    }
-    return nullptr;
-}
 
-void parseVEvent(const char* veventBlock, size_t len, Event& event) {
+struct Event {
+    PsramString summary;
+    PsramString rrule;
+    PsramString uid;
+    time_t dtstart = 0;
+    time_t dtend = 0;
+    time_t recurrence_id = 0;
+    std::vector<time_t, PsramAllocator<time_t>> exdates;
+    bool isAllDay = false;
+    time_t duration = 0;
+};
+
+void parseVEvent(const char* veventBlock, size_t len, Event& event);
+
+template<typename Allocator>
+void parseRRule(const Event& masterEvent, std::vector<time_t, Allocator>& occurrences, int numFutureEventsToFind = 15);
+
+// Implementations
+
+inline void parseVEvent(const char* veventBlock, size_t len, Event& event) {
     if (!veventBlock || len == 0) return;
     const char* p = veventBlock;
     const char* end = veventBlock + len;
+
+    bool dtstart_is_allday = false;
+    bool dtend_is_allday = false;
 
     while (p < end) {
         const char* lineEnd = (const char*)memchr(p, '\n', end - p);
@@ -131,53 +119,38 @@ void parseVEvent(const char* veventBlock, size_t len, Event& event) {
         }
         if (lineLen > 0 && p[lineLen - 1] == '\r') --lineLen;
 
-        if (lineLen > 0) {
-            if (lineLen >= 8 && strncmp(p, "SUMMARY:", 8) == 0) {
-                const char* val = p + 8;
-                size_t vlen = lineLen - 8;
-                event.summary = PsramString(val, vlen);
-            } else if (lineLen >= 6 && strncmp(p, "RRULE:", 6) == 0) {
-                const char* val = p + 6;
-                size_t vlen = lineLen - 6;
-                event.rrule = PsramString(val, vlen);
-            } else if (lineLen >= 4 && strncmp(p, "UID:", 4) == 0) {
-                const char* val = p + 4;
-                size_t vlen = lineLen - 4;
-                event.uid = PsramString(val, vlen);
-            } else if (lineLen >= 7 && (strncmp(p, "DTSTART", 7) == 0)) {
-                const char* colon = memrchr_safe(p, ':', lineLen);
-                if (!colon) colon = p;
-                const char* val = colon + 1;
-                size_t vlen = p + lineLen - val;
-                bool dummy;
-                event.dtstart = parseICalDateTime(val, vlen, dummy);
-                event.isAllDay = dummy;
-            } else if (lineLen >= 5 && (strncmp(p, "DTEND", 5) == 0)) {
-                const char* colon = memrchr_safe(p, ':', lineLen);
-                if (!colon) colon = p;
-                const char* val = colon + 1;
-                size_t vlen = p + lineLen - val;
-                bool dummy;
-                event.dtend = parseICalDateTime(val, vlen, dummy);
-            } else if (lineLen >= 6 && (strncmp(p, "EXDATE", 6) == 0)) {
-                const char* colon = memrchr_safe(p, ':', lineLen);
-                if (!colon) colon = p;
-                const char* val = colon + 1;
-                size_t vlen = p + lineLen - val;
-                bool dummy;
-                time_t ex = parseICalDateTime(val, vlen, dummy);
-                if (ex != 0) event.exdates.push_back(ex);
-            } else if (lineLen >= 12 && (strncmp(p, "RECURRENCE-ID", 13) == 0 || strncmp(p, "RECURRENCE-ID", 12) == 0)) {
-                const char* colon = memrchr_safe(p, ':', lineLen);
-                if (!colon) colon = p;
-                const char* val = colon + 1;
-                size_t vlen = p + lineLen - val;
-                bool dummy;
-                event.recurrence_id = parseICalDateTime(val, vlen, dummy);
-            }
+        if (lineLen > 8 && strncmp(p, "SUMMARY:", 8) == 0) {
+            const char* val = p + 8;
+            event.summary = PsramString(val, lineLen - 8);
+        } else if (lineLen > 6 && strncmp(p, "RRULE:", 6) == 0) {
+            const char* val = p + 6;
+            event.rrule = PsramString(val, lineLen - 6);
+        } else if (lineLen > 4 && strncmp(p, "UID:", 4) == 0) {
+            const char* val = p + 4;
+            event.uid = PsramString(val, lineLen - 4);
+        } else if (strncmp(p, "DTSTART", 7) == 0) {
+            event.dtstart = parseICalDateTime(p, lineLen, dtstart_is_allday);
+        } else if (strncmp(p, "DTEND", 5) == 0) {
+            event.dtend = parseICalDateTime(p, lineLen, dtend_is_allday);
+        } else if (strncmp(p, "EXDATE", 6) == 0) {
+            bool dummy;
+            time_t ex = parseICalDateTime(p, lineLen, dummy);
+            if (ex != 0) event.exdates.push_back(ex);
+        } else if (strncmp(p, "RECURRENCE-ID", 13) == 0) {
+            bool dummy;
+            event.recurrence_id = parseICalDateTime(p, lineLen, dummy);
         }
-
+        
         p = lineEnd + 1;
+    }
+
+    event.isAllDay = dtstart_is_allday;
+    if (event.dtend > event.dtstart) {
+        event.duration = event.dtend - event.dtstart;
+    } else if (event.isAllDay) {
+        event.duration = 86400;
+    } else {
+        event.duration = 0;
     }
 }
 
@@ -191,9 +164,6 @@ void parseRRule(const Event& masterEvent, std::vector<time_t, Allocator>& occurr
     int interval = 1;
     int count = -1;
     time_t until = 0;
-    // KORREKTUR: Vector explizit auf PSRAM umgestellt
-    std::vector<std::pair<int, int>, PsramAllocator<std::pair<int, int>>> bydays;
-    int wkst = 1;
 
     size_t last = 0;
     while (last < rrule_str.length()) {
@@ -208,124 +178,70 @@ void parseRRule(const Event& masterEvent, std::vector<time_t, Allocator>& occurr
             interval = atoi(part.substr(9).c_str());
         } else if (part.rfind("COUNT=", 0) == 0) {
             count = atoi(part.substr(6).c_str());
-        } else if (part.rfind("WKST=", 0) == 0) {
-            PsramString w = part.substr(5);
-            wkst = weekdayStrToInt(w.c_str(), w.length());
         } else if (part.rfind("UNTIL=", 0) == 0) {
             PsramString u = part.substr(6);
             bool d; until = parseICalDateTime(u.c_str(), u.length(), d);
-        } else if (part.rfind("BYDAY=", 0) == 0) {
-            PsramString days = part.substr(6);
-            size_t idx = 0;
-            while (idx < days.length()) {
-                size_t nextComma = days.find(',', idx);
-                if (nextComma == PsramString::npos) nextComma = days.length();
-                PsramString dayPart = days.substr(idx, nextComma - idx);
-                int nth = 0;
-                PsramString wdStr;
-                if (dayPart.length() > 2) {
-                    PsramString prefix = dayPart.substr(0, dayPart.length() - 2);
-                    nth = atoi(prefix.c_str());
-                    wdStr = dayPart.substr(dayPart.length() - 2);
-                } else {
-                    wdStr = dayPart;
-                }
-                int wd = weekdayStrToInt(wdStr.c_str(), wdStr.length());
-                bydays.push_back({nth, wd});
-                idx = (nextComma == days.length()) ? nextComma : nextComma + 1;
-            }
         }
     }
 
-    time_t now;
-    time(&now);
+    time_t now_t;
+    time(&now_t);
+    struct tm now_tm;
+    gmtime_r(&now_t, &now_tm);
+
+    struct tm start_tm;
+    gmtime_r(&masterEvent.dtstart, &start_tm);
+
+    struct tm current_tm = start_tm;
+    if (freq == "YEARLY") {
+        if (current_tm.tm_year < now_tm.tm_year) {
+            int year_diff = now_tm.tm_year - current_tm.tm_year;
+            int intervals_to_skip = year_diff / interval;
+            current_tm.tm_year += intervals_to_skip * interval;
+        }
+    } else if (freq == "MONTHLY") {
+         if (current_tm.tm_year < now_tm.tm_year || (current_tm.tm_year == now_tm.tm_year && current_tm.tm_mon < now_tm.tm_mon)) {
+            int month_diff = (now_tm.tm_year - current_tm.tm_year) * 12 + (now_tm.tm_mon - current_tm.tm_mon);
+            int intervals_to_skip = month_diff / interval;
+            current_tm.tm_mon += intervals_to_skip * interval;
+            current_tm.tm_year += current_tm.tm_mon / 12;
+            current_tm.tm_mon %= 12;
+        }
+    }
+    
     int eventsFound = 0;
     int futureEventsFound = 0;
-    time_t current_base = masterEvent.dtstart;
+    int loop_count = 0;
 
-    while ((count == -1 || eventsFound < count) && futureEventsFound < numFutureEventsToFind) {
-        if (until && current_base > until) break;
-        if (current_base > now + 3600 * 24 * 365 * 10) break;
+    while (futureEventsFound < numFutureEventsToFind) {
+        if (loop_count++ > 500) break;
 
-        struct tm t_base;
-        gmtime_r(&current_base, &t_base);
+        time_t current_t = timegm(&current_tm);
 
-        if (freq == "WEEKLY") {
-            int daysToSubtract = (t_base.tm_wday - wkst + 7) % 7;
-            time_t weekStart = current_base - (daysToSubtract * 24 * 3600);
-            if (!bydays.empty()) {
-                for (auto const& pr : bydays) {
-                    // KORREKTUR: Unbenutzte Variable entfernt
-                    // int nth = pr.first;
-                    int wd = pr.second;
-                    int dayOffset = (wd - wkst + 7) % 7;
-                    time_t eventTime = weekStart + dayOffset * 24 * 3600;
-                    if (eventTime >= masterEvent.dtstart) occurrences.push_back(eventTime);
-                }
-            } else {
-                occurrences.push_back(current_base);
+        if (until && current_t > until) break;
+        if (count != -1 && eventsFound >= count) break;
+
+        if (current_t >= masterEvent.dtstart) {
+            bool is_exdate = false;
+            for(time_t ex : masterEvent.exdates) {
+                if (ex == current_t) { is_exdate = true; break; }
             }
-        } else if (freq == "DAILY") {
-            occurrences.push_back(current_base);
-        } else if (freq == "MONTHLY") {
-            if (!bydays.empty()) {
-                for (auto const& pr : bydays) {
-                    int nth = pr.first;
-                    int wd = pr.second;
-                    struct tm t_month = t_base;
-                    t_month.tm_mday = 1;
-                    time_t firstDayOfMonth = mktime(&t_month);
-                    struct tm t_first; gmtime_r(&firstDayOfMonth, &t_first);
-                    int dayOffset = (wd - t_first.tm_wday + 7) % 7;
-                    int targetDay = 1 + dayOffset;
-                    if (nth > 0) {
-                        targetDay += (nth - 1) * 7;
-                    } else if (nth < 0) {
-                        t_month.tm_mon += 1; t_month.tm_mday = 0;
-                        time_t lastDayOfMonth = mktime(&t_month);
-                        struct tm t_last; gmtime_r(&lastDayOfMonth, &t_last);
-                        targetDay = t_last.tm_mday - ((t_last.tm_wday - wd + 7) % 7);
-                        targetDay += (nth + 1) * 7;
-                        t_month.tm_mon -= 1;
-                    }
-                    t_month.tm_mday = targetDay;
-                    time_t eventTime = mktime(&t_month);
-                    struct tm t_event; gmtime_r(&eventTime, &t_event);
-                    if (t_event.tm_mon == t_month.tm_mon && eventTime >= masterEvent.dtstart) {
-                        occurrences.push_back(eventTime);
-                    }
+            if (!is_exdate) {
+                occurrences.push_back(current_t);
+                eventsFound++;
+                if (current_t >= now_t) {
+                    futureEventsFound++;
                 }
-            } else {
-                occurrences.push_back(current_base);
             }
-        } else if (freq == "YEARLY") {
-            occurrences.push_back(current_base);
         }
 
-        struct tm t_temp;
-        gmtime_r(&current_base, &t_temp);
-        if (freq == "MONTHLY") t_temp.tm_mon += interval;
-        else if (freq == "DAILY") t_temp.tm_mday += interval;
-        else if (freq == "WEEKLY") t_temp.tm_mday += 7 * interval;
-        else if (freq == "YEARLY") t_temp.tm_year += interval;
+        if (freq == "YEARLY") current_tm.tm_year += interval;
+        else if (freq == "MONTHLY") current_tm.tm_mon += interval;
+        else if (freq == "WEEKLY") current_tm.tm_mday += 7 * interval;
+        else if (freq == "DAILY") current_tm.tm_mday += interval;
         else break;
-
-        current_base = mktime(&t_temp);
-
-        if (!occurrences.empty()) {
-            std::sort(occurrences.begin(), occurrences.end());
-            occurrences.erase(std::unique(occurrences.begin(), occurrences.end()), occurrences.end());
-            eventsFound = (int)occurrences.size();
-            futureEventsFound = 0;
-            for (time_t t : occurrences) if (t >= now) futureEventsFound++;
-        }
-    }
-
-    if (!masterEvent.exdates.empty()) {
-        occurrences.erase(std::remove_if(occurrences.begin(), occurrences.end(),
-            [&](const time_t& res) {
-                for (time_t exdate : masterEvent.exdates) if (res == exdate) return true;
-                return false;
-            }), occurrences.end());
+        
+        time_t temp_t = timegm(&current_tm);
+        gmtime_r(&temp_t, &current_tm);
     }
 }

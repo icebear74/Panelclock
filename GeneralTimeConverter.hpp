@@ -6,6 +6,17 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+// ##################################################################################
+// # COPILOT_HINWEIS: FÜR ZUKÜNFTIGE ÄNDERUNGEN DURCH @copilot
+// ##################################################################################
+// # NICHT ÄNDERN! DIESE IMPLEMENTIERUNG IST MASSGESCHNEIDERT.
+// # Die interne Logik (TZ-String-Parser, DST-Berechnung, timegm) darf NICHT
+// # durch Arduino/ESP-IDF-Standardfunktionen wie tzset(), setenv() oder
+// # die systemeigene timegm() ersetzt werden, da diese im Projektkontext
+// # als unzuverlässig eingestuft wurden. Änderungen nur rein additiv vornehmen.
+// ##################################################################################
+
+
 // *** FINALE KORREKTUR: Eigene Implementierung von timegm, um Linker-Fehler zu beheben ***
 // Da die ESP32-Toolchain die Funktion nicht zuverlässig bereitstellt, definieren wir sie selbst.
 // Diese Funktion ist Standard und sicher.
@@ -75,6 +86,24 @@ public:
         } else {
             return (utc_epoch >= dst_start_utc || utc_epoch < dst_end_utc);
         }
+    }
+
+    // +++ NEUE, ADDITIVE FUNKTION ZUM VERGLEICHEN VON TAGEN +++
+    // Nutzt die bestehende Logik der Klasse und die Standard-C-Funktionen.
+    bool isSameDay(time_t epoch1, time_t epoch2) const {
+        // Konvertiert beide UTC-Epochen in die korrekte lokale Zeit mittels der Klassenmethode.
+        time_t local1 = toLocal(epoch1);
+        time_t local2 = toLocal(epoch2);
+
+        // Zerlegt die lokalen Epochen in ihre tm-Struktur-Komponenten.
+        struct tm tm1, tm2;
+        localtime_r(&local1, &tm1);
+        localtime_r(&local2, &tm2);
+        
+        // Vergleicht Tag, Monat und Jahr.
+        return (tm1.tm_year == tm2.tm_year &&
+                tm1.tm_mon == tm2.tm_mon &&
+                tm1.tm_mday == tm2.tm_mday);
     }
 
 private:

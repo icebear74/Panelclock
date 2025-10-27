@@ -17,7 +17,7 @@
 #include "GeneralTimeConverter.hpp" // moving average
 
 // moving average
-#define MOVING_AVERAGE_DAYS 14 
+#define MOVING_AVERAGE_DAYS 30 
 #define STATION_PRICE_STATS_VERSION 3 
 
 // moving average - Erweiterte Struktur für alle drei Kraftstoffsorten
