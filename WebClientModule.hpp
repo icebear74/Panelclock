@@ -270,12 +270,6 @@ private:
         }
     }
 
-    // ##################################################################################
-    // # COPILOT GUARDRAIL (2025-10-18 by @icebear74)
-    // # DIESE FUNKTION (performJob) IST HEILIG. NICHT ÄNDERN.
-    // # Grund: Die zweistufige HTTPS-Verbindung (client.connect -> http.begin)
-    // # ist für die SSL-Stabilität des ESP32 entscheidend.
-    // ##################################################################################
     void performJob(const WebJob& job) {
         Serial.printf("[WebDataManager] Führe %s-Job für %s aus...\n", (job.type == WebJob::GET ? "GET" : "POST"), job.url.c_str());
         HTTPClient http;
@@ -381,15 +375,6 @@ private:
         WebClientModule* self = static_cast<WebClientModule*>(param);
         Serial.printf("[WebDataManager] Worker-Task gestartet auf Core %d.\n", xPortGetCoreID());
         
-        time_t now;
-        time(&now);
-        while (now < 1609459200) {
-            Serial.println("[WebDataManager] Warte auf NTP-Synchronisation...");
-            vTaskDelay(pdMS_TO_TICKS(2000));
-            time(&now);
-        }
-        Serial.println("[WebDataManager] NTP-Synchronisation erfolgreich. Starte reguläre Arbeit.");
-
         WebJob* receivedJob;
         while (true) {
             if (WiFi.status() == WL_CONNECTED) {
@@ -398,6 +383,7 @@ private:
                     delete receivedJob;
                 }
 
+                time_t now;
                 time(&now);
                 for (auto& resource : self->resources) {
                     bool should_run = false;
@@ -420,12 +406,6 @@ private:
         }
     }
 
-    // ##################################################################################
-    // # COPILOT GUARDRAIL (2025-10-18 by @icebear74)
-    // # DIESE FUNKTION (performUpdate) IST HEILIG. NICHT ÄNDERN.
-    // # Grund: SSL-Stabilität, Zertifikats-Handling und Fehlerbehandlung
-    // # sind exakt so, wie sie sein müssen. Jede Änderung ist verboten.
-    // ##################################################################################
     void performUpdate(ManagedResource& resource) {
         Serial.printf("[WebDataManager] Starte Update für %s...\n", resource.url.c_str());
         resource.last_check_attempt = time(nullptr);

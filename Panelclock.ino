@@ -30,6 +30,8 @@
 #include "FritzboxModule.hpp"
 #include "certs.hpp"
 #include "MemoryLogger.hpp"
+#include "ConnectionManager.hpp"
+#include "Application.hpp"
 
 // Definition des globalen Mutex für den Logger
 SemaphoreHandle_t serialMutex;
@@ -54,6 +56,7 @@ GeneralTimeConverter* timeConverter = nullptr;
 WebClientModule* webClient = nullptr;
 MwaveSensorModule* mwaveSensorModule = nullptr;
 U8G2_FOR_ADAFRUIT_GFX* u8g2 = nullptr;
+ConnectionManager* connectionManager = nullptr;
 
 HardwareSerial sensorSerial(1);
 
@@ -224,52 +227,6 @@ void CalendarScrollTask(void* param) {
   }
 }
 
-bool connectToWifi() {
-    if (!deviceConfig || deviceConfig->ssid.empty()) return false;
-    displayStatus("Suche WLANs...");
-    WiFi.mode(WIFI_STA);
-    WiFi.disconnect();
-    delay(100);
-    int n = WiFi.scanNetworks();
-    if (n == 0) {
-        displayStatus("Keine WLANs gefunden!");
-        delay(2000);
-        return false;
-    }
-    struct WifiAP { String ssid; String bssid; int32_t rssi; int32_t channel; };
-    std::vector<WifiAP> matchingAPs;
-    for (int i = 0; i < n; ++i) {
-        if (WiFi.SSID(i) == deviceConfig->ssid.c_str()) {
-            matchingAPs.push_back({WiFi.SSID(i), WiFi.BSSIDstr(i), WiFi.RSSI(i), WiFi.channel(i)});
-        }
-    }
-    if (matchingAPs.empty()) {
-        displayStatus("WLAN nicht gefunden!");
-        delay(2000);
-        return false;
-    }
-    std::sort(matchingAPs.begin(), matchingAPs.end(), [](const WifiAP& a, const WifiAP& b) { return a.rssi > b.rssi; });
-    
-    const auto& bestAP = matchingAPs[0];
-    displayStatus("Verbinde mit dem staerksten Signal...");
-    uint8_t bssid[6];
-    sscanf(bestAP.bssid.c_str(), "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx", &bssid[0], &bssid[1], &bssid[2], &bssid[3], &bssid[4], &bssid[5]);
-    WiFi.begin(deviceConfig->ssid.c_str(), deviceConfig->password.c_str(), bestAP.channel, bssid);
-    int retries = 40;
-    while (WiFi.status() != WL_CONNECTED && retries > 0) { delay(500); retries--; }
-    if (WiFi.status() == WL_CONNECTED) {
-        String msg = "Verbunden!\nIP: " + WiFi.localIP().toString();
-        displayStatus(msg.c_str());
-        delay(2000);
-        return true;
-    } else {
-        displayStatus("WLAN fehlgeschlagen!");
-        WiFi.disconnect();
-        delay(2000);
-        return false;
-    }
-}
-
 void applyLiveConfig() {
   configNeedsApplying = true;
   Serial.println("[Config] Live-Konfiguration angefordert. Wird im nächsten Loop-Durchlauf angewendet.");
@@ -363,146 +320,73 @@ void setup() {
   Serial.begin(115200);
   delay(1000);
 
-  // Erstelle den Mutex, bevor er von irgendeinem Task verwendet wird
   serialMutex = xSemaphoreCreateMutex();
 
   Serial.println("\n=== Panelclock startup ===");
   LOG_MEMORY_STRATEGIC("Setup: Start");
 
   // --- PHASE 1: GRUNDLAGEN (PSRAM, FS, Hardware Config) ---
-  LOG_MEMORY_DETAILED("Vor PSRAM Init");
-  if (!psramInit()) {
-      Serial.println("FATAL: PSRAM konnte nicht initialisiert werden!");
-      delay(5000); ESP.restart();
-  }
-  LOG_MEMORY_DETAILED("Nach PSRAM Init");
-
-  LOG_MEMORY_DETAILED("Vor LittleFS.begin");
-  if (!LittleFS.begin(true)) {
-    Serial.println("FATAL: LittleFS konnte nicht initialisiert werden.");
-    delay(5000); ESP.restart();
-  }
-  LOG_MEMORY_DETAILED("Nach LittleFS.begin");
-
-  LOG_MEMORY_DETAILED("Vor 'new HardwareConfig'");
+  if (!psramInit()) { Serial.println("FATAL: PSRAM konnte nicht initialisiert werden!"); delay(5000); ESP.restart(); }
+  if (!LittleFS.begin(true)) { Serial.println("FATAL: LittleFS konnte nicht initialisiert werden."); delay(5000); ESP.restart(); }
   hardwareConfig = new HardwareConfig();
-  LOG_MEMORY_DETAILED("Nach 'new HardwareConfig'");
   loadHardwareConfig();
-  LOG_MEMORY_DETAILED("Nach loadHardwareConfig");
   
   // --- PHASE 2: DISPLAY INITIALISIERUNG ---
-  LOG_MEMORY_STRATEGIC("Vor Display Init");
-  
-  LOG_MEMORY_DETAILED("Vor 'new U8G2_FOR_ADAFRUIT_GFX'");
   u8g2 = new U8G2_FOR_ADAFRUIT_GFX();
-  LOG_MEMORY_DETAILED("Nach 'new U8G2_FOR_ADAFRUIT_GFX'");
-
-  LOG_MEMORY_DETAILED("Vor Canvas PSRAM Allokation");
   uint16_t* timeBuffer = (uint16_t*)ps_malloc(FULL_WIDTH * TIME_AREA_H * sizeof(uint16_t));
   uint16_t* dataBuffer = (uint16_t*)ps_malloc(FULL_WIDTH * DATA_AREA_H * sizeof(uint16_t));
-  if (!timeBuffer || !dataBuffer) {
-      Serial.println("FATAL: PSRAM-Allokation für Canvases fehlgeschlagen!");
-      delay(5000); ESP.restart();
-  }
-  LOG_MEMORY_DETAILED("Nach Canvas PSRAM Allokation");
-  
-  LOG_MEMORY_DETAILED("Vor 'new GFXcanvas16'");
+  if (!timeBuffer || !dataBuffer) { Serial.println("FATAL: PSRAM-Allokation für Canvases fehlgeschlagen!"); delay(5000); ESP.restart(); }
   canvasTime = new GFXcanvas16(FULL_WIDTH, TIME_AREA_H, timeBuffer);
   canvasData = new GFXcanvas16(FULL_WIDTH, DATA_AREA_H, dataBuffer);
-  LOG_MEMORY_DETAILED("Nach 'new GFXcanvas16'");
-
   HUB75_I2S_CFG::i2s_pins _pins = { 
     static_cast<int8_t>(hardwareConfig->R1), static_cast<int8_t>(hardwareConfig->G1), static_cast<int8_t>(hardwareConfig->B1), 
     static_cast<int8_t>(hardwareConfig->R2), static_cast<int8_t>(hardwareConfig->G2), static_cast<int8_t>(hardwareConfig->B2), 
-    static_cast<int8_t>(hardwareConfig->A), static_cast<int8_t>(hardwareConfig->B), static_cast<int8_t>(hardwareConfig->C), static_cast<int8_t>(hardwareConfig->D), static_cast<int8_t>(hardwareConfig->E),
+    static_cast<int8_t>(hardwareConfig->A), static_cast<int8_t>(hardwareConfig->B), static_cast<int8_t>(hardwareConfig->C), static_cast<int8_t>(hardwareConfig->D), static_cast<int8_t>(hardwareConfig->E), 
     static_cast<int8_t>(hardwareConfig->LAT), static_cast<int8_t>(hardwareConfig->OE), static_cast<int8_t>(hardwareConfig->CLK) 
   };
   HUB75_I2S_CFG mxconfig(PANEL_RES_X, PANEL_RES_Y, VDISP_NUM_ROWS * VDISP_NUM_COLS, _pins);
-  
   mxconfig.double_buff = false;
   mxconfig.i2sspeed = HUB75_I2S_CFG::HZ_8M;
   mxconfig.clkphase = false;
-  
-  LOG_MEMORY_DETAILED("Vor 'new MatrixPanel_I2S_DMA'");
   dma_display = new MatrixPanel_I2S_DMA(mxconfig);
-  LOG_MEMORY_DETAILED("Nach 'new MatrixPanel_I2S_DMA'");
   dma_display->begin();
   dma_display->setBrightness8(128);
   dma_display->clearScreen();
-  LOG_MEMORY_DETAILED("Nach dma_display->begin()");
-  
-  LOG_MEMORY_DETAILED("Vor 'new VirtualMatrixPanel_T'");
   virtualDisp = new VirtualMatrixPanel_T<PANEL_CHAIN_TYPE>(VDISP_NUM_ROWS, VDISP_NUM_COLS, PANEL_RES_X, PANEL_RES_Y);
-  LOG_MEMORY_DETAILED("Nach 'new VirtualMatrixPanel_T'");
   virtualDisp->setDisplay(*dma_display);
-  LOG_MEMORY_DETAILED("Nach virtualDisp->setDisplay()");
-  
   Serial.println("Display-Initialisierung abgeschlossen.");
-  LOG_MEMORY_STRATEGIC("Nach Display Init");
   displayStatus("Systemstart...");
 
-  // --- PHASE 3: KONFIGURATION & MODULE ---
-  LOG_MEMORY_STRATEGIC("Vor Anwendungslogik Init");
-  displayStatus("Starte Module...");
-  
-  LOG_MEMORY_DETAILED("Vor 'new DeviceConfig'");
+  // --- PHASE 3: ERSTELLE ALLE OBJEKTE ---
+  displayStatus("Erstelle Module...");
   deviceConfig = new DeviceConfig();
-  LOG_MEMORY_DETAILED("Nach 'new DeviceConfig'");
   loadDeviceConfig();
-  LOG_MEMORY_DETAILED("Nach loadDeviceConfig");
-  
-  LOG_MEMORY_DETAILED("Vor 'new MwaveSensorModule'");
-  mwaveSensorModule = new MwaveSensorModule(*deviceConfig, *hardwareConfig, sensorSerial);
-  LOG_MEMORY_DETAILED("Nach 'new MwaveSensorModule'");
-  
-  LOG_MEMORY_DETAILED("Vor 'new WebClientModule'");
-  webClient = new WebClientModule();
-  LOG_MEMORY_DETAILED("Nach 'new WebClientModule'");
-  
-  LOG_MEMORY_DETAILED("Vor 'new GeneralTimeConverter'");
+  connectionManager = new ConnectionManager(*deviceConfig);
   timeConverter = new GeneralTimeConverter();
-  LOG_MEMORY_DETAILED("Nach 'new GeneralTimeConverter'");
-
-  LOG_MEMORY_DETAILED("Vor Modul-Instanziierung");
+  mwaveSensorModule = new MwaveSensorModule(*deviceConfig, *hardwareConfig, sensorSerial);
+  webClient = new WebClientModule();
   clockMod = new ClockModule(*u8g2, *canvasTime, *timeConverter);
-  LOG_MEMORY_DETAILED("Nach ClockModule");
-  
   dataMod = new DataModule(*u8g2, *canvasData, *timeConverter, TIME_AREA_H, webClient);
-  
-  LOG_MEMORY_DETAILED("Nach DataModule");
   calendarMod = new CalendarModule(*u8g2, *canvasData, *timeConverter, webClient);
-  LOG_MEMORY_DETAILED("Nach CalendarModule");
   dartsMod = new DartsRankingModule(*u8g2, *canvasData, webClient);
-  LOG_MEMORY_DETAILED("Nach DartsModule");
   fritzMod = new FritzboxModule(*u8g2, *canvasData, webClient);
-  LOG_MEMORY_DETAILED("Nach FritzboxModule");
-  
-  LOG_MEMORY_DETAILED("Vor Modul-begin()");
-  mwaveSensorModule->begin();
-  webClient->begin();
-  dataMod->begin();
-  
-  BaseType_t app_core = xPortGetCoreID();
-  BaseType_t network_core = (app_core == 0) ? 1 : 0;
-  fritzMod->begin(network_core);
-  LOG_MEMORY_DETAILED("Nach Modul-begin()");
-
-  // --- PHASE 4: NETZWERK ---
-  LOG_MEMORY_STRATEGIC("Vor Netzwerk-Stack Init");
-  LOG_MEMORY_DETAILED("Vor 'new DNSServer'");
   dnsServer = new DNSServer();
-  LOG_MEMORY_DETAILED("Nach 'new DNSServer'");
-  
-  LOG_MEMORY_DETAILED("Vor 'new WebServer'");
   server = new WebServer(80);
-  LOG_MEMORY_DETAILED("Nach 'new WebServer'");
-
-  if (connectToWifi()) {
+  
+  // --- PHASE 4: VERBINDUNG HERSTELLEN & MODULE INITIALISIEREN ---
+  if (connectionManager->begin()) { // Dieser Aufruf blockiert bis WLAN und ZEIT bereit sind
     portalRunning = false;
-    LOG_MEMORY_DETAILED("Nach WiFi-Verbindung");
+    LOG_MEMORY_DETAILED("Nach WiFi & NTP");
+
+    // *** KORREKTE REIHENFOLGE: Starte ALLE Modul-Tasks ERST JETZT ***
+    BaseType_t app_core = xPortGetCoreID();
+    BaseType_t network_core = (app_core == 0) ? 1 : 0;
     
-    configTime(0, 0, "192.168.188.1", "de.pool.ntp.org");
-    Serial.println("NTP-Synchronisation gestartet.");
+    Serial.println("Initialisiere Module (Post-Net)...");
+    mwaveSensorModule->begin();
+    dataMod->begin();
+    webClient->begin();
+    fritzMod->begin(network_core);
 
     WiFi.setHostname(deviceConfig->hostname.c_str());
     if (!deviceConfig->otaPassword.empty()) ArduinoOTA.setPassword(deviceConfig->otaPassword.c_str());
@@ -510,19 +394,21 @@ void setup() {
     setupOtaDisplayStatus();
     ArduinoOTA.begin();
     LOG_MEMORY_DETAILED("Nach OTA-Setup");
-
-    LOG_MEMORY_DETAILED("Vor WebServer-Setup");
+    
     setupWebServer(portalRunning);
     LOG_MEMORY_DETAILED("Nach WebServer-Setup");
     
-  } else {
+  } else { // Fallback, wenn keine WLAN-Verbindung möglich ist
     const char* apSsid = "Panelclock-Setup";
     displayStatus(("Kein WLAN, starte\nKonfig-Portal:\n" + String(apSsid)).c_str());
     WiFi.softAP(apSsid);
     portalRunning = true;
     LOG_MEMORY_DETAILED("Nach AP-Start");
-
-    LOG_MEMORY_DETAILED("Vor WebServer-Setup (AP Mode)");
+    
+    // Im AP-Modus starten wir nur die Module, die keine Netzwerkverbindung brauchen
+    mwaveSensorModule->begin();
+    // dataMod->begin() hier NICHT aufrufen, da es Caches laden könnte, die evtl. Netzwerk erfordern
+    
     setupWebServer(portalRunning);
     LOG_MEMORY_DETAILED("Nach WebServer-Setup (AP Mode)");
   }
@@ -576,13 +462,10 @@ void loop() {
       return;
   }
 
+  if (connectionManager) connectionManager->update();
+
   time_t now_utc;
   time(&now_utc);
-  if (now_utc < 1609459200) {
-    displayStatus("Warte auf Uhrzeit...");
-    delay(500);
-    return;
-  }
 
   if(mwaveSensorModule) mwaveSensorModule->update(now_utc);
 
