@@ -1,0 +1,210 @@
+#include "Application.hpp"
+#include <Arduino.h>
+#include <ESPmDNS.h>
+#include <ArduinoOTA.h>
+#include <LittleFS.h>
+
+Application* Application::_instance = nullptr;
+HardwareConfig* hardwareConfig = nullptr;
+DeviceConfig* deviceConfig = nullptr;
+ConnectionManager* connectionManager = nullptr;
+GeneralTimeConverter* timeConverter = nullptr;
+WebServer* server = nullptr;
+DNSServer* dnsServer = nullptr;
+WebClientModule* webClient = nullptr;
+MwaveSensorModule* mwaveSensorModule = nullptr;
+OtaManager* otaManager = nullptr;
+bool portalRunning = false;
+
+void displayStatus(const char* msg) {
+    if (Application::_instance && Application::_instance->_panelManager) {
+        Application::_instance->_panelManager->displayStatus(msg);
+    } else {
+        Serial.printf("[displayStatus FALLBACK]: %s\n", msg);
+    }
+}
+
+void applyLiveConfig() {
+    if (Application::_instance) {
+        Application::_instance->_configNeedsApplying = true;
+        Serial.println("[Config] Live-Konfiguration angefordert. Wird im nächsten Loop-Durchlauf angewendet.");
+    }
+}
+
+Application::Application() {
+    _instance = this;
+}
+
+Application::~Application() {
+    delete hardwareConfig;
+    delete deviceConfig;
+    delete connectionManager;
+    delete timeConverter;
+    delete server;
+    delete dnsServer;
+    delete webClient;
+    delete mwaveSensorModule;
+    delete otaManager;
+    delete _panelManager;
+    delete _clockMod;
+    delete _dataMod;
+    delete _calendarMod;
+    delete _dartsMod;
+    delete _fritzMod;
+}
+
+void Application::begin() {
+    LOG_MEMORY_STRATEGIC("Application: Start");
+
+    if (!LittleFS.begin()) {
+        Serial.println("FATAL: LittleFS konnte nicht initialisiert werden!");
+        while(true) delay(1000);
+    }
+
+    hardwareConfig = new HardwareConfig();
+    loadHardwareConfig();
+    deviceConfig = new DeviceConfig();
+    loadDeviceConfig();
+
+    timeConverter = new GeneralTimeConverter();
+    _panelManager = new PanelManager(*hardwareConfig, *timeConverter);
+    if (!_panelManager->begin()) {
+        while(true) { delay(1000); }
+    }
+    _panelManager->displayStatus("Systemstart...");
+
+    connectionManager = new ConnectionManager(*deviceConfig);
+    webClient = new WebClientModule();
+    HardwareSerial& sensorSerial = Serial1;
+    mwaveSensorModule = new MwaveSensorModule(*deviceConfig, *hardwareConfig, sensorSerial);
+    otaManager = new OtaManager(_panelManager->getFullCanvas(), _panelManager->getDisplay(), _panelManager->getVirtualDisplay(), _panelManager->getU8g2());
+    dnsServer = new DNSServer();
+    server = new WebServer(80);
+
+    _panelManager->displayStatus("Erstelle Module...");
+    _clockMod = new ClockModule(*_panelManager->getU8g2(), *_panelManager->getCanvasTime(), *timeConverter);
+    _dataMod = new DataModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, TIME_AREA_H, webClient);
+    _calendarMod = new CalendarModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, webClient);
+    _dartsMod = new DartsRankingModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), webClient);
+    _fritzMod = new FritzboxModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), webClient);
+    
+    _panelManager->registerClockModule(_clockMod);
+    _panelManager->registerSensorModule(mwaveSensorModule);
+    _panelManager->registerModule(_fritzMod);
+    _panelManager->registerModule(_dataMod);
+    _panelManager->registerModule(_calendarMod);
+    _panelManager->registerModule(_dartsMod);
+
+    if (connectionManager->begin()) {
+        portalRunning = false;
+        LOG_MEMORY_DETAILED("Nach WiFi & NTP");
+        BaseType_t app_core = xPortGetCoreID();
+        BaseType_t network_core = (app_core == 0) ? 1 : 0;
+        
+        mwaveSensorModule->begin();
+        _dataMod->begin();
+        webClient->begin();
+        _fritzMod->begin(network_core);
+
+        WiFi.setHostname(deviceConfig->hostname.c_str());
+        if (!deviceConfig->otaPassword.empty()) ArduinoOTA.setPassword(deviceConfig->otaPassword.c_str());
+        ArduinoOTA.setHostname(deviceConfig->hostname.c_str());
+        
+        otaManager->begin();
+        ArduinoOTA.begin();
+        setupWebServer(portalRunning);
+        
+    } else {
+        portalRunning = true;
+        WiFi.softAP("Panelclock-Setup");
+        mwaveSensorModule->begin();
+        setupWebServer(portalRunning);
+    }
+    LOG_MEMORY_STRATEGIC("Nach Netzwerk-Stack Init");
+
+    executeApplyLiveConfig();
+    
+    auto redrawCb = [this](){ this->_redrawRequest = true; };
+    _dataMod->onUpdate(redrawCb);
+    _calendarMod->onUpdate(redrawCb);
+    _dartsMod->onUpdate([this](DartsRankingType type){ this->_redrawRequest = true; });
+
+    _panelManager->displayStatus("Startvorgang\nabgeschlossen.");
+    delay(2000);
+    LOG_MEMORY_STRATEGIC("Application: Ende");
+}
+
+void Application::update() {
+    if (_configNeedsApplying) {
+        executeApplyLiveConfig();
+        _configNeedsApplying = false;
+    }
+
+    handleWebServer(portalRunning);
+
+    if (portalRunning) {
+        if (_panelManager) {
+            _panelManager->displayStatus(("Konfig-Portal aktiv\nIP: " + WiFi.softAPIP().toString()).c_str());
+        }
+        delay(100);
+        return;
+    }
+
+    if (_panelManager) {
+        for (auto* mod : _panelManager->getAllModules()) {
+            if (mod && mod->isEnabled()) {
+                mod->periodicTick();
+            }
+        }
+    }
+
+    if (connectionManager) connectionManager->update();
+    
+    time_t now_utc;
+    time(&now_utc);
+    if(mwaveSensorModule) mwaveSensorModule->update(now_utc);
+
+    ArduinoOTA.handle();
+
+    if(_dataMod) _dataMod->queueData();
+    if(_dartsMod) _dartsMod->queueData();
+    if(_calendarMod) _calendarMod->queueData();
+    
+    if(_dataMod) _dataMod->processData();
+    if(_dartsMod) _dartsMod->processData();
+    if(_calendarMod) _calendarMod->processData();
+
+    if (_panelManager) _panelManager->tick();
+
+    bool needsRedraw = _redrawRequest;
+    _redrawRequest = false;
+
+    if (millis() - _lastClockUpdate >= 1000) {
+        needsRedraw = true;
+        _lastClockUpdate = millis();
+    }
+    
+    if (needsRedraw) {
+        if (_panelManager) _panelManager->render();
+    }
+  
+    delay(10);
+}
+
+void Application::executeApplyLiveConfig() {
+    LOG_MEMORY_DETAILED("Vor executeApplyLiveConfig");
+    if (!_dataMod || !_calendarMod || !_dartsMod || !_fritzMod || !timeConverter || !deviceConfig) return;
+    Serial.println("[Config] Wende Live-Konfiguration an...");
+    
+    if (!timeConverter->setTimezone(deviceConfig->timezone.c_str())) {
+        timeConverter->setTimezone("UTC");
+    }
+    
+    _dataMod->setConfig(deviceConfig->tankerApiKey, deviceConfig->tankerkoenigStationIds, deviceConfig->stationFetchIntervalMin, deviceConfig->stationDisplaySec);
+    _calendarMod->setConfig(deviceConfig->icsUrl, deviceConfig->calendarFetchIntervalMin, deviceConfig->calendarDisplaySec, deviceConfig->calendarScrollMs, deviceConfig->calendarDateColor, deviceConfig->calendarTextColor);
+    _dartsMod->applyConfig(deviceConfig->dartsOomEnabled, deviceConfig->dartsProTourEnabled, 5, deviceConfig->dartsDisplaySec, deviceConfig->trackedDartsPlayers);
+    _fritzMod->setConfig(deviceConfig->fritzboxEnabled, deviceConfig->fritzboxIp);
+
+    Serial.println("[Config] Live-Konfiguration angewendet.");
+    LOG_MEMORY_DETAILED("Nach executeApplyLiveConfig");
+}

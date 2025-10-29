@@ -17,6 +17,11 @@
 #include "certs.hpp"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "DrawableModule.hpp"
+
+// Konstanten für die intermittierende Anzeige
+#define URGENT_EVENT_INTERVAL (2 * 60 * 1000UL) // 2 Minuten
+#define URGENT_EVENT_DURATION (20 * 1000UL)     // 20 Sekunden
 
 struct CalendarEvent {
   PsramString summary;
@@ -35,26 +40,27 @@ using PsramEventPair = std::pair<time_t, Event>;
 using PsramEventPairVector = std::vector<PsramEventPair, PsramAllocator<PsramEventPair>>;
 using PsramCalendarEventVector = std::vector<CalendarEvent, PsramAllocator<CalendarEvent>>;
 
-// Funktionsdeklaration
 uint16_t hexColorTo565(const PsramString& hex);
 
-class CalendarModule {
+class CalendarModule : public DrawableModule {
 public:
     CalendarModule(U8G2_FOR_ADAFRUIT_GFX &u8g2, GFXcanvas16 &canvas, const GeneralTimeConverter& converter, WebClientModule* webClient);
     ~CalendarModule();
 
     void onUpdate(std::function<void()> callback);
-    void setICSUrl(const PsramString &url);
-    void setFetchIntervalMinutes(uint32_t minutes);
+    void setConfig(const PsramString& url, unsigned long fetchMinutes, unsigned long displaySec, unsigned long scrollMs, const PsramString& dateColor, const PsramString& textColor);
     
     void queueData();
     void processData();
-    void tickScroll();
-    void draw();
-
-    void setScrollStepInterval(uint32_t ms);
     uint32_t getScrollStepInterval() const;
-    void setColors(const PsramString& dateColorHex, const PsramString& textColorHex);
+
+    // --- Implementierung der Interface-Methoden ---
+    void draw() override;
+    void tick() override;
+    void periodicTick() override;
+    unsigned long getDisplayDuration() override;
+    bool isEnabled() override;
+    void resetPaging() override;
 
 private:
     U8G2_FOR_ADAFRUIT_GFX &u8g2;
@@ -84,8 +90,15 @@ private:
     size_t buffer_size = 0;
     volatile bool data_pending = false;
 
-    int stdOffsetSec = 0;
-    int dstOffsetSec = 0;
+    bool _isEnabled = false;
+    unsigned long _displayDuration = 30000;
+
+    bool _isUrgentViewActive = false;
+    bool _priorityRequested = false;
+
+    unsigned long _lastUrgentDisplayTime = 0;
+    unsigned long _urgentViewStartTime = 0;
+    unsigned long _lastPeriodicCheck = 0;
 
     uint16_t dimColor(uint16_t color, float brightness);
     void parseICS(char* icsBuffer, size_t size);
@@ -95,5 +108,7 @@ private:
     PsramString fitTextToPixelWidth(const char* text, int maxPixel);
     void resetScroll();
     void ensureScrollPos(const PsramCalendarEventVector& upcomming, int maxTextPixel);
+    
+    void drawUrgentView();
 };
 #endif // CALENDARMODULE_HPP

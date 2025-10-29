@@ -1,59 +1,66 @@
 #ifndef APPLICATION_HPP
 #define APPLICATION_HPP
 
-// Alle notwendigen Header für die Module und Manager
+#include "PanelManager.hpp"
 #include "HardwareConfig.hpp"
 #include "webconfig.hpp"
-#include "ConnectionManager.hpp" // *** UM BENANNT ***
+#include "ConnectionManager.hpp"
 #include "GeneralTimeConverter.hpp"
 #include "WebServerManager.hpp"
 #include "WebClientModule.hpp"
 #include "MwaveSensorModule.hpp"
+#include "OtaManager.hpp"
 #include "ClockModule.hpp"
 #include "DataModule.hpp"
 #include "CalendarModule.hpp"
 #include "DartsRankingModule.hpp"
 #include "FritzboxModule.hpp"
+#include "MemoryLogger.hpp"
 
-// *** KORRIGIERT: Notwendige Header direkt einbinden statt fehlerhafter Vorwärtsdeklaration ***
-#include <U8g2_for_Adafruit_GFX.h>
-#include <ESP32-HUB75-VirtualMatrixPanel_T.hpp>
+void applyLiveConfig();
+void displayStatus(const char* msg); // Deklariere die globale Funktion
 
 class Application {
 public:
-    Application() {}
+    Application();
+    ~Application();
 
-    void begin() {
-        // --- WIRD IN PHASE 4 IMPLEMENTIERT ---
-    }
+    void begin();
+    void update();
 
-    void update() {
-        // --- WIRD IN PHASE 4 IMPLEMENTIERT ---
-    }
+    // Mache die globalen Funktionen zu Freunden
+    friend void applyLiveConfig();
+    friend void displayStatus(const char* msg);
 
 private:
-    HardwareConfig* hardwareConfig = nullptr;
-    DeviceConfig* deviceConfig = nullptr;
+    static Application* _instance;
+    static void calendarScrollTask(void* param);
+
+    void executeApplyLiveConfig();
+
+    PanelManager* _panelManager = nullptr;
     
-    WebServer* server = nullptr;
-    DNSServer* dnsServer = nullptr;
+    ClockModule* _clockMod = nullptr;
+    DataModule* _dataMod = nullptr;
+    CalendarModule* _calendarMod = nullptr;
+    DartsRankingModule* _dartsMod = nullptr;
+    FritzboxModule* _fritzMod = nullptr;
 
-    ConnectionManager* connectionManager = nullptr; // *** UM BENANNT ***
-    GeneralTimeConverter* timeConverter = nullptr;
-    WebClientModule* webClient = nullptr;
-    MwaveSensorModule* mwaveSensorModule = nullptr;
-
-    ClockModule* clockMod = nullptr;
-    DataModule* dataMod = nullptr;
-    CalendarModule* calendarMod = nullptr;
-    DartsRankingModule* dartsMod = nullptr;
-    FritzboxModule* fritzMod = nullptr;
-
-    U8G2_FOR_ADAFRUIT_GFX* u8g2 = nullptr;
-    GFXcanvas16* canvasTime = nullptr;
-    GFXcanvas16* canvasData = nullptr;
-    MatrixPanel_I2S_DMA* dma_display = nullptr;
-    VirtualMatrixPanel_T<CHAIN_TOP_LEFT_DOWN>* virtualDisp = nullptr; 
+    volatile bool _configNeedsApplying = false;
+    volatile bool _redrawRequest = false;
+    unsigned long _lastClockUpdate = 0;
 };
+
+// ... (externe Deklarationen bleiben gleich)
+extern HardwareConfig* hardwareConfig;
+extern DeviceConfig* deviceConfig;
+extern ConnectionManager* connectionManager;
+extern GeneralTimeConverter* timeConverter;
+extern WebServer* server;
+extern DNSServer* dnsServer;
+extern WebClientModule* webClient;
+extern MwaveSensorModule* mwaveSensorModule;
+extern OtaManager* otaManager;
+extern bool portalRunning;
 
 #endif // APPLICATION_HPP

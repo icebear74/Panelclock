@@ -195,3 +195,12 @@ time_t GeneralTimeConverter::calculateRuleDate(int year, const Rule& rule, int o
     time_t local_transition_epoch = timegm(&t);
     return local_transition_epoch - offsetForLocalTime;
 }
+
+// NEU: Implementierung der Getter
+int GeneralTimeConverter::getStdOffsetSec() const {
+    return stdOffsetSec;
+}
+
+int GeneralTimeConverter::getDstOffsetSec() const {
+    return dstOffsetSec;
+}

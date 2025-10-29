@@ -32,11 +32,14 @@ void DataModule::onUpdate(std::function<void()> callback) {
     updateCallback = callback;
 }
 
-void DataModule::setConfig(const PsramString& apiKey, const PsramString& stationIds, int fetchIntervalMinutes) {
+void DataModule::setConfig(const PsramString& apiKey, const PsramString& stationIds, int fetchIntervalMinutes, unsigned long pageDisplaySec) {
     this->api_key = apiKey;
     this->station_ids = stationIds;
+    this->_pageDisplayDuration = pageDisplaySec > 0 ? pageDisplaySec * 1000UL : 10000;
     
-    if (!api_key.empty() && !station_ids.empty()) {
+    _isEnabled = !apiKey.empty() && !stationIds.empty();
+
+    if (_isEnabled) {
         this->resource_url = "https://creativecommons.tankerkoenig.de/json/prices.php?ids=";
         this->resource_url += this->station_ids;
         this->resource_url += "&apikey=";
@@ -69,18 +72,18 @@ void DataModule::setConfig(const PsramString& apiKey, const PsramString& station
     }
 }
 
-void DataModule::setPageDisplayTime(unsigned long ms) {
-    pageDisplayDuration = ms > 0 ? ms : 10000;
-}
-
-unsigned long DataModule::getRequiredDisplayDuration() {
-    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) != pdTRUE) return pageDisplayDuration;
+unsigned long DataModule::getDisplayDuration() {
+    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) != pdTRUE) return _pageDisplayDuration;
     
     int num_stations = station_data_list.size();
     int num_pages = (num_stations > 0) ? num_stations : 1;
     
     xSemaphoreGive(dataMutex);
-    return (pageDisplayDuration * num_pages) + 5000;
+    return (_pageDisplayDuration * num_pages);
+}
+
+bool DataModule::isEnabled() {
+    return _isEnabled;
 }
 
 void DataModule::resetPaging() {
@@ -90,7 +93,7 @@ void DataModule::resetPaging() {
 
 void DataModule::tick() {
     unsigned long now = millis();
-    if (pageDisplayDuration > 0 && now - lastPageSwitchTime > pageDisplayDuration) {
+    if (_pageDisplayDuration > 0 && now - lastPageSwitchTime > _pageDisplayDuration) {
         if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
             if (totalPages > 1) {
                 currentPage = (currentPage + 1) % totalPages;

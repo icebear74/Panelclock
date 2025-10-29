@@ -7,8 +7,8 @@
 #include "PsramUtils.hpp"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "DrawableModule.hpp"
 
-// Vorwärtsdeklarationen, um Header-Abhängigkeiten zu reduzieren
 class WebClientModule;
 
 struct DartsDisplayColors {
@@ -44,23 +44,22 @@ struct DartsPlayer {
 
 enum class DartsRankingType { ORDER_OF_MERIT, PRO_TOUR };
 
-class DartsRankingModule {
+class DartsRankingModule : public DrawableModule {
 public:
     DartsRankingModule(U8G2_FOR_ADAFRUIT_GFX& u8g2_ref, GFXcanvas16& canvas_ref, WebClientModule* webClient_ptr);
     ~DartsRankingModule();
 
     void onUpdate(std::function<void(DartsRankingType)> callback);
-    void applyConfig(bool oomEnabled, bool proTourEnabled, uint32_t fetchIntervalMinutes);
-    void setPageDisplayTime(unsigned long ms);
-    void setScrollStepInterval(uint32_t ms);
-    unsigned long getRequiredDisplayDuration(DartsRankingType type);
-    void setTrackedPlayers(const PsramString& playerNames);
-    
+    void applyConfig(bool oomEnabled, bool proTourEnabled, uint32_t fetchIntervalMinutes, unsigned long displaySec, const PsramString& trackedPlayers);
     void queueData();
     void processData();
-    void tick(DartsRankingType type);
-    void resetPaging();
-    void draw(DartsRankingType type);
+
+    // --- Implementierung der Interface-Methoden ---
+    void draw() override;
+    void tick() override;
+    unsigned long getDisplayDuration() override;
+    bool isEnabled() override;
+    void resetPaging() override;
 
 private:
     U8G2_FOR_ADAFRUIT_GFX& u8g2;
@@ -80,7 +79,7 @@ private:
     static const int PLAYERS_PER_PAGE = 5;
     int currentPage = 0;
     int totalPages = 1;
-    unsigned long pageDisplayDuration = 5000;
+    unsigned long _pageDisplayDuration = 5000;
     unsigned long lastPageSwitchTime = 0;
 
     struct ScrollState { int offset = 0; int maxScroll = 0; };
@@ -101,7 +100,13 @@ private:
     
     std::vector<char*, PsramAllocator<char*>> trackedPlayerNames;
     
+    bool _oomEnabled = false;
+    bool _proTourEnabled = false;
+    DartsRankingType _currentInternalMode = DartsRankingType::ORDER_OF_MERIT; // Interner Zustand
+    
     // Private helper methods
+    unsigned long getInternalDisplayDuration(DartsRankingType type);
+    void setTrackedPlayers(const PsramString& playerNames);
     uint16_t dimColor(uint16_t color);
     void clearAllData();
     void filterAndSortPlayers(DartsRankingType type);

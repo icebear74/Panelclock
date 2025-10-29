@@ -24,25 +24,19 @@
 
 class ClockModule {
 public:
-  // --- Konstruktor ---
   ClockModule(U8G2_FOR_ADAFRUIT_GFX &u8g2, GFXcanvas16 &canvas, GeneralTimeConverter& timeConverter);
 
-  // --- Öffentliche Methoden ---
   void setTime(const struct tm &t);
   void setSensorState(bool displayIsOn, time_t onTime, time_t offTime, float onPercentage);
   void tick();
   void draw();
-  uint16_t* getBuffer();
-  int width() const;
-  int height() const;
+  // ENTFERNT: getBuffer(), width(), height() sind nicht mehr nötig.
 
 private:
-  // --- Private Methoden ---
   void drawWifiStrengthBar();
   static int isoWeekNumber(const struct tm &t);
   static uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b);
 
-  // --- Member-Variablen ---
   U8G2_FOR_ADAFRUIT_GFX &u8g2;
   GFXcanvas16 &canvas;
   GeneralTimeConverter& timeConverter;
@@ -54,7 +48,6 @@ private:
   time_t lastOffEventTime = 0;
   float onPercentageValue = 0.0f;
 
-  // --- Konstanten ---
   static constexpr uint16_t BLACK = 0x0000;
   static constexpr uint16_t YELLOW = 0xFFE0;
   static constexpr uint16_t MAGENTA = 0xF81F;

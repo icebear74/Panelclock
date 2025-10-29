@@ -1,10 +1,10 @@
 #include "FritzboxModule.hpp"
 #include "WebClientModule.hpp"
 #include <ArduinoJson.h>
-#include <WiFi.h> // For WiFi.status()
+#include <WiFi.h>
 
 FritzboxModule::FritzboxModule(U8G2_FOR_ADAFRUIT_GFX &u8g2, GFXcanvas16 &canvas, WebClientModule* webClient)
-     : u8g2(u8g2), canvas(canvas), webClient(webClient), enabled(false), callActive(false), needsRedraw(false), lastConnectionAttempt(0) {
+     : u8g2(u8g2), canvas(canvas), webClient(webClient), enabled(false), callActive(false), lastConnectionAttempt(0) {
     dataMutex = xSemaphoreCreateMutex();
     fritzIp.clear();
 }
@@ -31,17 +31,6 @@ void FritzboxModule::setConfig(bool isEnabled, const PsramString& ip) {
     }
 }
 
-bool FritzboxModule::isEnabled() { return this->enabled; }
-bool FritzboxModule::isCallActive() { return callActive; }
-
-bool FritzboxModule::redrawNeeded() {
-    if (needsRedraw) {
-        needsRedraw = false;
-        return true;
-    }
-    return false;
-}
-
 void FritzboxModule::draw() {
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) != pdTRUE) return;
 
@@ -50,14 +39,14 @@ void FritzboxModule::draw() {
 
     if (callActive) {
         u8g2.setFont(u8g2_font_7x14B_tf);
-        u8g2.setForegroundColor(0xF800);
+        u8g2.setForegroundColor(0xF800); // Rot
         int callIndicatorWidth = u8g2.getUTF8Width("ANRUF");
         u8g2.setCursor((canvas.width() - callIndicatorWidth) / 2, 12);
         u8g2.print("ANRUF");
 
         PsramString mainDisplayLine = callerName.empty() ? callerNumber : callerName;
         u8g2.setFont(u8g2_font_logisoso18_tn);
-        u8g2.setForegroundColor(0xFFFF);
+        u8g2.setForegroundColor(0xFFFF); // Weiß
         int nameWidth = u8g2.getUTF8Width(mainDisplayLine.c_str());
         u8g2.setCursor((canvas.width() - nameWidth) / 2, 35);
         u8g2.print(mainDisplayLine.c_str());
@@ -70,7 +59,7 @@ void FritzboxModule::draw() {
                 subline += ")";
             }
             u8g2.setFont(u8g2_font_7x14_tf);
-            u8g2.setForegroundColor(0x07E0);
+            u8g2.setForegroundColor(0x07E0); // Grün
             int sublineWidth = u8g2.getUTF8Width(subline.c_str());
             u8g2.setCursor((canvas.width() - sublineWidth) / 2, 55);
             u8g2.print(subline.c_str());
@@ -79,19 +68,37 @@ void FritzboxModule::draw() {
         u8g2.setFont(u8g2_font_6x13_tf);
         u8g2.setForegroundColor(0x07E0);
         u8g2.setCursor(10, 30);
-        u8g2.print("Warte auf Anrufe...");
+        u8g2.print("Fritz!Box Modul aktiv");
     }
 
     xSemaphoreGive(dataMutex);
 }
+
+// NEU: Implementierung der fehlenden Methoden
+unsigned long FritzboxModule::getDisplayDuration() {
+    // Dieses Modul ist nicht Teil der normalen Rotation, daher ist die Dauer irrelevant.
+    return 0;
+}
+
+bool FritzboxModule::isEnabled() {
+    bool isEnabled = false;
+    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        isEnabled = this->enabled;
+        xSemaphoreGive(dataMutex);
+    }
+    return isEnabled;
+}
+
+void FritzboxModule::resetPaging() {
+    // Dieses Modul hat keine Seiten, daher ist hier nichts zu tun.
+}
+
 
 void FritzboxModule::taskRunner(void *pvParameters) {
     static_cast<FritzboxModule*>(pvParameters)->taskLoop();
 }
 
 void FritzboxModule::taskLoop() {
-    unsigned long lastKeepAlive = 0;
-
     for (;;) {
         bool isModuleEnabled = false;
         PsramString currentFritzIp;
@@ -102,10 +109,7 @@ void FritzboxModule::taskLoop() {
         }
 
         if (!isModuleEnabled || WiFi.status() != WL_CONNECTED || currentFritzIp.empty()) {
-            if (client.connected()) {
-                client.stop();
-                Serial.println("[Fritzbox] Modul deaktiviert, Verbindung getrennt.");
-            }
+            if (client.connected()) client.stop();
             vTaskDelay(pdMS_TO_TICKS(5000));
             continue;
         }
@@ -116,28 +120,17 @@ void FritzboxModule::taskLoop() {
                 lastConnectionAttempt = millis();
                 if (client.connect(currentFritzIp.c_str(), FRITZ_PORT)) {
                     Serial.println("[Fritzbox] Verbunden!");
-                    lastKeepAlive = millis();
                 } else {
                     Serial.println("[Fritzbox] Verbindung fehlgeschlagen.");
                 }
             }
             vTaskDelay(pdMS_TO_TICKS(1000));
         } else {
-            while (client.connected()) {
-                if (client.available()) {
-                    String line = client.readStringUntil('\n');
-                    parseCallMonitorLine(line);
-                    lastKeepAlive = millis();
-                } else {
-                    if (millis() - lastKeepAlive > 5000) {
-                        client.print(" ");
-                        lastKeepAlive = millis();
-                    }
-                }
-                vTaskDelay(pdMS_TO_TICKS(50));
+            while (client.available()) {
+                String line = client.readStringUntil('\n');
+                parseCallMonitorLine(line);
             }
-            Serial.println("[Fritzbox] Verbindung verloren. Starte Neuverbindungsprozess.");
-            client.stop();
+            vTaskDelay(pdMS_TO_TICKS(50));
         }
     }
 }
@@ -158,11 +151,11 @@ void FritzboxModule::parseCallMonitorLine(const String& line) {
             callerLocation.clear();
             queryCallerInfo(callerNumber);
             callActive = true;
-            needsRedraw = true;
+            requestPriority();
         } else if (type == "DISCONNECT") {
             if (callActive) {
                 callActive = false;
-                needsRedraw = true;
+                releasePriority();
             }
         }
         xSemaphoreGive(dataMutex);
@@ -179,8 +172,6 @@ void FritzboxModule::queryCallerInfo(const PsramString& number) {
     PsramString postBody = "tel=";
     postBody += number;
     
-    Serial.printf("[Fritzbox] Frage %s mit Body '%s' an...\n", url.c_str(), postBody.c_str());
-
     webClient->postRequest(url, postBody, "application/x-www-form-urlencoded", 
         [this](const char* buffer, size_t size) {
             if (buffer && size > 0) {
@@ -211,7 +202,7 @@ void FritzboxModule::parseCallerInfo(const char* buffer, size_t size) {
                     callerLocation = result["location"].as<const char*>();
                     Serial.printf("[Fritzbox] Ort gefunden: %s\n", callerLocation.c_str());
                 }
-                needsRedraw = true;
+                requestPriority(); 
                 xSemaphoreGive(dataMutex);
             }
         }

@@ -1,10 +1,8 @@
 #include "ClockModule.hpp"
 
-// --- Konstruktor ---
 ClockModule::ClockModule(U8G2_FOR_ADAFRUIT_GFX &u8g2, GFXcanvas16 &canvas, GeneralTimeConverter& timeConverter)
   : u8g2(u8g2), canvas(canvas), timeConverter(timeConverter) {}
 
-// --- Öffentliche Methoden ---
 void ClockModule::setTime(const struct tm &t) {
   timeinfo = t;
 }
@@ -96,19 +94,8 @@ void ClockModule::draw() {
   }
 }
 
-uint16_t* ClockModule::getBuffer() { 
-  return canvas.getBuffer(); 
-}
+// ENTFERNT: getBuffer(), width(), height()
 
-int ClockModule::width() const { 
-  return canvas.width(); 
-}
-
-int ClockModule::height() const { 
-  return canvas.height(); 
-}
-
-// --- Private Methoden ---
 uint16_t ClockModule::rgb565(uint8_t r,uint8_t g,uint8_t b){
   return ((r/8)<<11)|((g/4)<<5)|(b/8);
 }

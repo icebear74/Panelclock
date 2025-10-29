@@ -17,7 +17,6 @@
 // ##################################################################################
 
 // --- Funktionsdeklarationen für globale Hilfsfunktionen ---
-// Die Implementierungen befinden sich in GeneralTimeConverter.cpp
 extern bool is_leap(unsigned yr);
 extern time_t timegm(struct tm *tm);
 
@@ -30,6 +29,10 @@ public:
     time_t toLocal(time_t utc_epoch) const;
     bool isDST(time_t utc_epoch) const;
     bool isSameDay(time_t epoch1, time_t epoch2) const;
+
+    // NEU: Öffentliche Getter für die Offsets
+    int getStdOffsetSec() const;
+    int getDstOffsetSec() const;
 
 private:
     struct Rule {

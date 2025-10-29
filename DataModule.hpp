@@ -8,12 +8,11 @@
 #include "PsramUtils.hpp"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
-#include <ArduinoJson.h> // NEU: Korrektes Include
+#include <ArduinoJson.h>
+#include "DrawableModule.hpp"
 
-// Vorwärtsdeklarationen
 class WebClientModule;
 class GeneralTimeConverter;
-// class DynamicJsonDocument; // ENTFERNT: Falsch
 
 #define MOVING_AVERAGE_DAYS 30 
 #define STATION_PRICE_STATS_VERSION 3 
@@ -56,25 +55,26 @@ struct StationData {
     float diesel;
     bool isOpen;
     time_t lastPriceChange = 0;
-
     StationData();
 };
 
-class DataModule {
+
+class DataModule : public DrawableModule {
 public:
     DataModule(U8G2_FOR_ADAFRUIT_GFX &u8g2, GFXcanvas16 &canvas, GeneralTimeConverter& timeConverter, int topOffset, WebClientModule* webClient);
     ~DataModule();
 
     void begin();
     void onUpdate(std::function<void()> callback);
-    void setConfig(const PsramString& apiKey, const PsramString& stationIds, int fetchIntervalMinutes);
-    void setPageDisplayTime(unsigned long ms);
-    unsigned long getRequiredDisplayDuration();
-    void resetPaging();
-    void tick();
+    void setConfig(const PsramString& apiKey, const PsramString& stationIds, int fetchIntervalMinutes, unsigned long pageDisplaySec);
     void queueData();
     void processData();
-    void draw();
+
+    void draw() override;
+    void tick() override;
+    unsigned long getDisplayDuration() override;
+    bool isEnabled() override;
+    void resetPaging() override;
 
 private:
     U8G2_FOR_ADAFRUIT_GFX &u8g2;
@@ -97,8 +97,9 @@ private:
 
     int currentPage = 0;
     int totalPages = 1;
-    unsigned long pageDisplayDuration = 10000;
+    unsigned long _pageDisplayDuration = 10000;
     unsigned long lastPageSwitchTime = 0;
+    bool _isEnabled = false;
 
     PsramString truncateString(const PsramString& text, int maxWidth);
     void parseAndProcessJson(const char* buffer, size_t size);
@@ -106,7 +107,7 @@ private:
     void trimPriceStatistics(StationPriceHistory& history);
     void trimAllPriceStatistics();
     AveragePrices calculateAverages(const PsramString& stationId);
-    bool migratePriceStatistics(JsonDocument& doc); // KORREKTUR
+    bool migratePriceStatistics(JsonDocument& doc);
     void savePriceStatistics();
     void loadPriceStatistics();
     void loadStationCache();
