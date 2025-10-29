@@ -228,24 +228,46 @@ void DataModule::draw() {
     const StationData& data = station_data_list[currentPage];
 
     // --- OBERER BEREICH ---
-    u8g2.setFont(u8g2_font_logisoso16_tf);
-    u8g2.setForegroundColor(0xFFFF);
-    u8g2.setCursor(5, 15); // Linksbündig, 2px höher
-    u8g2.print(data.brand.c_str());
+    const int PADDING = 10;
+    const int LEFT_MARGIN = 5;
+    const int RIGHT_MARGIN = 5;
+    const int totalWidth = canvas.width() - LEFT_MARGIN - RIGHT_MARGIN;
+
+    u8g2.setFont(u8g2_font_helvB14_tf); 
+    PsramString brandText = data.brand;
+    int brandWidth = u8g2.getUTF8Width(brandText.c_str());
 
     u8g2.setFont(u8g2_font_5x8_tf);
     PsramString line1 = data.street;
     if (!data.houseNumber.empty()) { line1 += " "; line1 += data.houseNumber; }
     PsramString line2 = data.postCode;
     if (!data.place.empty()) { line2 += " "; line2 += data.place; }
-    
-    u8g2.setCursor(canvas.width() - u8g2.getUTF8Width(line1.c_str()) - 5, 6); // 2px höher
+    int addressWidth = std::max(u8g2.getUTF8Width(line1.c_str()), u8g2.getUTF8Width(line2.c_str()));
+
+    if (brandWidth + addressWidth + PADDING > totalWidth) {
+        int maxPartWidth = (totalWidth - PADDING) / 2;
+        
+        u8g2.setFont(u8g2_font_helvB14_tf);
+        brandText = truncateString(brandText, maxPartWidth);
+
+        u8g2.setFont(u8g2_font_5x8_tf);
+        line1 = truncateString(line1, maxPartWidth);
+        line2 = truncateString(line2, maxPartWidth);
+    }
+
+    u8g2.setFont(u8g2_font_helvB14_tf);
+    u8g2.setForegroundColor(0xFFFF);
+    u8g2.setCursor(LEFT_MARGIN, 15);
+    u8g2.print(brandText.c_str());
+
+    u8g2.setFont(u8g2_font_5x8_tf);
+    u8g2.setCursor(canvas.width() - u8g2.getUTF8Width(line1.c_str()) - RIGHT_MARGIN, 6);
     u8g2.print(line1.c_str());
-    u8g2.setCursor(canvas.width() - u8g2.getUTF8Width(line2.c_str()) - 5, 14); // 2px höher
+    u8g2.setCursor(canvas.width() - u8g2.getUTF8Width(line2.c_str()) - RIGHT_MARGIN, 16);
     u8g2.print(line2.c_str());
     
     // --- TRENNLINIE ---
-    canvas.drawFastHLine(0, 17, canvas.width(), rgb565(128, 128, 128)); // 2px höher
+    canvas.drawFastHLine(0, 17, canvas.width(), rgb565(128, 128, 128));
 
     // --- PREISTABELLE ---
     AveragePrices averages = calculateAverages(data.id);
@@ -258,7 +280,7 @@ void DataModule::draw() {
 
     u8g2.setFont(u8g2_font_5x8_tf);
     u8g2.setForegroundColor(rgb565(0, 255, 255));
-    int y_pos = 25; // 2px höher
+    int y_pos = 25;
 
     if (averages.count > 0) {
         char count_str[12];
@@ -271,11 +293,11 @@ void DataModule::draw() {
         time_t local_change_time = timeConverter.toLocal(data.lastPriceChange);
         struct tm timeinfo; localtime_r(&local_change_time, &timeinfo);
         char time_str[6]; strftime(time_str, sizeof(time_str), "%H:%M", &timeinfo);
-        u8g2.setCursor(84 + (50 - u8g2.getUTF8Width(time_str)) / 2, y_pos); // 8px nach links
+        u8g2.setCursor(84 + (50 - u8g2.getUTF8Width(time_str)) / 2, y_pos);
         u8g2.print(time_str);
     } else {
         const char* no_time_str = "--:--";
-        u8g2.setCursor(84 + (50 - u8g2.getUTF8Width(no_time_str)) / 2, y_pos); // 8px nach links
+        u8g2.setCursor(84 + (50 - u8g2.getUTF8Width(no_time_str)) / 2, y_pos);
         u8g2.print(no_time_str);
     }
     
@@ -305,12 +327,12 @@ void DataModule::drawPriceLine(int y, const char* label, float current, float mi
     int x_min = 42, x_current = 92, x_max = 142;
 
     int min_width = drawPrice(x_min, y, min, rgb565(0, 255, 0));
-    drawTrendArrow(x_min + min_width + 2, y - 5, minTrend);
+    if(min > 0) drawTrendArrow(x_min + min_width + 2, y - 5, minTrend); // KORREKTUR: Y-Position -5
 
     drawPrice(x_current, y, current, calcColor(current, min, max));
     
     int max_width = drawPrice(x_max, y, max, rgb565(255, 0, 0));
-    drawTrendArrow(x_max + max_width + 2, y - 5, maxTrend);
+    if(max > 0) drawTrendArrow(x_max + max_width + 2, y - 5, maxTrend); // KORREKTUR: Y-Position -5
 }
 
 int DataModule::drawPrice(int x, int y, float price, uint16_t color) {
@@ -327,7 +349,7 @@ int DataModule::drawPrice(int x, int y, float price, uint16_t color) {
     u8g2.setCursor(x, y);
     u8g2.print(mainPricePart);
     
-    int superscriptX = x + mainPriceWidth;
+    int superscriptX = x + mainPriceWidth + 1;
     u8g2.setFont(u8g2_font_5x8_tf);
     int superscriptWidth = u8g2.getUTF8Width(last_digit_str);
     u8g2.setCursor(superscriptX, y - 4);
@@ -338,19 +360,19 @@ int DataModule::drawPrice(int x, int y, float price, uint16_t color) {
     u8g2.setCursor(superscriptX + superscriptWidth + 1, y);
     u8g2.print("€");
 
-    return mainPriceWidth + superscriptWidth + 1 + euroWidth;
+    return mainPriceWidth + 1 + superscriptWidth + 1 + euroWidth;
 }
 
 void DataModule::drawTrendArrow(int x, int y, PriceTrend trend) {
     switch (trend) {
-        case PriceTrend::RISING:
-            canvas.fillTriangle(x, y, x + 3, y + 4, x - 3, y + 4, rgb565(255, 0, 0)); // Rotes ▲
+        case PriceTrend::TREND_RISING:
+            canvas.fillTriangle(x, y, x + 2, y + 3, x - 2, y + 3, rgb565(255, 0, 0));
             break;
-        case PriceTrend::FALLING:
-            canvas.fillTriangle(x, y + 4, x + 3, y, x - 3, y, rgb565(0, 255, 0)); // Grünes ▼
+        case PriceTrend::TREND_FALLING:
+            canvas.fillTriangle(x, y + 3, x + 2, y, x - 2, y, rgb565(0, 255, 0));
             break;
-        case PriceTrend::STABLE:
-            canvas.fillCircle(x, y + 2, 2, 0xFFFF); // Weißer ●
+        case PriceTrend::TREND_STABLE:
+            canvas.fillCircle(x, y + 1, 1, 0xFFFF);
             break;
     }
 }
@@ -479,10 +501,10 @@ void DataModule::updateAndDetermineTrends(const PsramString& stationId) {
 
     if (old_avg_ptr && new_avg.count > 0) {
         auto get_trend = [](float old_val, float new_val) {
-            if (old_val == 0) return PriceTrend::STABLE;
-            if (new_val > old_val) return PriceTrend::RISING;
-            if (new_val < old_val) return PriceTrend::FALLING;
-            return PriceTrend::STABLE;
+            if (old_val == 0 || new_val == 0) return PriceTrend::TREND_STABLE;
+            if (new_val > old_val) return PriceTrend::TREND_RISING;
+            if (new_val < old_val) return PriceTrend::TREND_FALLING;
+            return PriceTrend::TREND_STABLE;
         };
         trends.e5_min_trend = get_trend(old_avg_ptr->avgE5Low, new_avg.avgE5Low);
         trends.e5_max_trend = get_trend(old_avg_ptr->avgE5High, new_avg.avgE5High);
@@ -679,9 +701,19 @@ uint16_t DataModule::rgb565(uint8_t r, uint8_t g, uint8_t b) {
     
 uint16_t DataModule::calcColor(float value, float low, float high) {
     if (low >= high || value <= 0) return rgb565(255, 255, 0);
+
     float val = (value < low) ? low : (value > high ? high : value);
-    float factor = (val - low) / (high - low);
-    uint8_t r = (uint8_t)(255 * factor);
-    uint8_t g = (uint8_t)(255 * (1.0 - factor));
-    return rgb565(r, g, 0);
+    
+    int diff = (int)roundf(((high - val) / (high - low)) * 100.0f);
+
+    uint8_t rval, gval;
+
+    if (diff <= 50) { 
+        rval = 255;
+        gval = map(diff, 0, 50, 0, 255);
+    } else { 
+        gval = 255;
+        rval = map(diff, 50, 100, 255, 0);
+    }
+    return rgb565(rval, gval, 0);
 }

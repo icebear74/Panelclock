@@ -66,16 +66,17 @@ struct LastPriceCache {
     time_t timestamp;
 };
 
-enum class PriceTrend { STABLE, RISING, FALLING };
+// KORREKTUR: Umbenannt, um Kollision mit Arduino.h zu vermeiden
+enum class PriceTrend { TREND_STABLE, TREND_RISING, TREND_FALLING };
 
 struct TrendStatus {
     PsramString stationId;
-    PriceTrend e5_min_trend = PriceTrend::STABLE;
-    PriceTrend e5_max_trend = PriceTrend::STABLE;
-    PriceTrend e10_min_trend = PriceTrend::STABLE;
-    PriceTrend e10_max_trend = PriceTrend::STABLE;
-    PriceTrend diesel_min_trend = PriceTrend::STABLE;
-    PriceTrend diesel_max_trend = PriceTrend::STABLE;
+    PriceTrend e5_min_trend = PriceTrend::TREND_STABLE;
+    PriceTrend e5_max_trend = PriceTrend::TREND_STABLE;
+    PriceTrend e10_min_trend = PriceTrend::TREND_STABLE;
+    PriceTrend e10_max_trend = PriceTrend::TREND_STABLE;
+    PriceTrend diesel_min_trend = PriceTrend::TREND_STABLE;
+    PriceTrend diesel_max_trend = PriceTrend::TREND_STABLE;
 };
 
 struct LastAveragePrice {
