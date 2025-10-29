@@ -58,6 +58,14 @@ struct StationData {
     StationData();
 };
 
+// Struktur für den Preis-Cache
+struct LastPriceCache {
+    PsramString stationId;
+    float e5;
+    float e10;
+    float diesel;
+    time_t timestamp;
+};
 
 class DataModule : public DrawableModule {
 public:
@@ -101,8 +109,13 @@ private:
     unsigned long lastPageSwitchTime = 0;
     bool _isEnabled = false;
 
+    // Cache für die letzten Preise als Member-Variable
+    PsramVector<LastPriceCache> _lastPriceCache;
+
     PsramString truncateString(const PsramString& text, int maxWidth);
     void parseAndProcessJson(const char* buffer, size_t size);
+    
+    // Preis-Statistiken für Durchschnitt
     void updatePriceStatistics(const PsramString& stationId, float currentE5, float currentE10, float currentDiesel);
     void trimPriceStatistics(StationPriceHistory& history);
     void trimAllPriceStatistics();
@@ -110,11 +123,20 @@ private:
     bool migratePriceStatistics(JsonDocument& doc);
     void savePriceStatistics();
     void loadPriceStatistics();
+    
+    // Stations-Metadaten
     void loadStationCache();
     
-    static uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b);
-    static uint16_t calcColor(float value, float low, float high);
-    
+    // Private Methoden für den neuen Preis-Cache
+    void loadPriceCache();
+    void savePriceCache();
+    void updatePriceCache(const PsramString& stationId, float e5, float e10, float diesel);
+    bool getPriceFromCache(const PsramString& stationId, float& e5, float& e10, float& diesel);
+    void cleanupOldPriceCacheEntries();
+
+    // KORREKTUR: Fehlende Deklarationen für die draw-Helfermethoden wieder hinzugefügt
+    uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b);
+    uint16_t calcColor(float value, float low, float high);
     void drawPrice(int x, int y, float price, uint16_t color);
     void drawPriceLine(int y, const char* label, float current, float min, float max);
 };

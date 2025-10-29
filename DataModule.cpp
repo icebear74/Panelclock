@@ -7,6 +7,9 @@
 #include <algorithm>
 #include <esp_heap_caps.h>
 
+#define PRICE_CACHE_FILENAME "/last_prices.json"
+#define PRICE_CACHE_LIFETIME_SEC (24 * 3600) // 24 Stunden
+
 StationData::StationData() : e5(0.0f), e10(0.0f), diesel(0.0f), isOpen(false) {}
 
 DataModule::DataModule(U8G2_FOR_ADAFRUIT_GFX &u8g2, GFXcanvas16 &canvas, GeneralTimeConverter& timeConverter, int topOffset, WebClientModule* webClient)
@@ -26,6 +29,8 @@ void DataModule::begin() {
     }
     loadPriceStatistics();
     loadStationCache();
+    loadPriceCache();
+    cleanupOldPriceCacheEntries();
 }
 
 void DataModule::onUpdate(std::function<void()> callback) {
@@ -56,18 +61,32 @@ void DataModule::setConfig(const PsramString& apiKey, const PsramString& station
         char* id_token = strtok_r((char*)temp_ids.c_str(), ",", &strtok_ctx);
         while(id_token != nullptr) { current_id_list.push_back(id_token); id_token = strtok_r(nullptr, ",", &strtok_ctx); }
 
+        // Preis-Statistiken für Durchschnittspreise bereinigen
         price_statistics.erase(
             std::remove_if(price_statistics.begin(), price_statistics.end(), 
                 [&](const StationPriceHistory& history) {
-                    for(const auto& id : current_id_list) {
-                        if (history.stationId == id) return false;
-                    }
-                    Serial.printf("[DataModule] Entferne Preis-Statistik für nicht mehr konfigurierte Tankstelle: %s\n", history.stationId.c_str());
+                    for(const auto& id : current_id_list) { if (history.stationId == id) return false; }
                     return true;
                 }), 
             price_statistics.end());
         
         trimAllPriceStatistics();
+
+        // Cache der letzten Preise bereinigen
+        size_t original_cache_size = _lastPriceCache.size();
+        _lastPriceCache.erase(
+            std::remove_if(_lastPriceCache.begin(), _lastPriceCache.end(),
+                [&](const LastPriceCache& entry) {
+                    for(const auto& id : current_id_list) { if (entry.stationId == id) return false; }
+                    return true;
+                }),
+            _lastPriceCache.end()
+        );
+        if (_lastPriceCache.size() < original_cache_size) {
+            Serial.printf("[DataModule] Preis-Cache: %d nicht mehr konfigurierte Stationen entfernt.\n", original_cache_size - _lastPriceCache.size());
+            savePriceCache();
+        }
+
         xSemaphoreGive(dataMutex);
     }
 }
@@ -135,6 +154,99 @@ void DataModule::processData() {
             if (this->updateCallback) this->updateCallback();
         }
     }
+}
+
+void DataModule::parseAndProcessJson(const char* buffer, size_t size) {
+    const size_t JSON_DOC_SIZE = 8192;
+    void* docMem = ps_malloc(JSON_DOC_SIZE);
+    if (!docMem) { Serial.println("[DataModule] FATAL: PSRAM für JSON-Parsing fehlgeschlagen!"); return; }
+    
+    JsonDocument* doc = new (docMem) JsonDocument();
+    
+    PsramVector<StationData> new_station_data_list;
+    
+    DeserializationError error = deserializeJson(*doc, buffer, size);
+
+    if (!error && (*doc)["ok"] == true) {
+        JsonObject prices = (*doc)["prices"];
+        PsramVector<PsramString> id_list;
+        PsramString temp_ids = station_ids;
+        char* strtok_ctx;
+        char* id_token = strtok_r((char*)temp_ids.c_str(), ",", &strtok_ctx);
+        while(id_token != nullptr) { id_list.push_back(id_token); id_token = strtok_r(nullptr, ",", &strtok_ctx); }
+
+        for (const auto& id : id_list) {
+            if (prices[id.c_str()].is<JsonObject>()) {
+                JsonObject station_json = prices[id.c_str()];
+                StationData new_data;
+                new_data.id = id;
+                
+                bool found_in_cache = false;
+                for(const auto& cache_entry : station_cache) {
+                    if (cache_entry.id == id) {
+                        new_data.name = cache_entry.name; new_data.brand = cache_entry.brand;
+                        new_data.street = cache_entry.street; new_data.houseNumber = cache_entry.houseNumber;
+                        new_data.postCode = cache_entry.postCode; new_data.place = cache_entry.place;
+                        found_in_cache = true;
+                        break;
+                    }
+                }
+                if (!found_in_cache) { new_data.name = "Unbekannt"; }
+
+                bool is_open = (station_json["status"] == "open");
+                new_data.isOpen = is_open;
+
+                const StationData* old_data_ptr = nullptr;
+                for(const auto& old_data : station_data_list) {
+                    if (old_data.id == new_data.id) {
+                        old_data_ptr = &old_data;
+                        break;
+                    }
+                }
+
+                if (is_open) {
+                    new_data.e5 = station_json["e5"].as<float>();
+                    new_data.e10 = station_json["e10"].as<float>();
+                    new_data.diesel = station_json["diesel"].as<float>();
+                    
+                    bool price_changed = false;
+                    if (old_data_ptr) {
+                        if (old_data_ptr->e5 != new_data.e5 || old_data_ptr->e10 != new_data.e10 || old_data_ptr->diesel != new_data.diesel) {
+                            price_changed = true;
+                        }
+                        new_data.lastPriceChange = price_changed ? last_processed_update : old_data_ptr->lastPriceChange;
+                    } else {
+                        new_data.lastPriceChange = last_processed_update;
+                    }
+                    updatePriceStatistics(new_data.id, new_data.e5, new_data.e10, new_data.diesel);
+                } else {
+                    if (old_data_ptr && old_data_ptr->isOpen) {
+                        Serial.printf("[DataModule] Station %s hat geschlossen. Speichere Preise im Cache.\n", new_data.id.c_str());
+                        updatePriceCache(new_data.id, old_data_ptr->e5, old_data_ptr->e10, old_data_ptr->diesel);
+                    }
+
+                    if (old_data_ptr) {
+                        new_data.e5 = old_data_ptr->e5;
+                        new_data.e10 = old_data_ptr->e10;
+                        new_data.diesel = old_data_ptr->diesel;
+                        new_data.lastPriceChange = old_data_ptr->lastPriceChange;
+                    } else {
+                        if (!getPriceFromCache(new_data.id, new_data.e5, new_data.e10, new_data.diesel)) {
+                             Serial.printf("[DataModule] Kein Cache für geschlossene Station %s gefunden.\n", new_data.id.c_str());
+                        } else {
+                             Serial.printf("[DataModule] Preise für geschlossene Station %s aus Cache geladen.\n", new_data.id.c_str());
+                        }
+                    }
+                }
+                
+                new_station_data_list.push_back(new_data);
+            }
+        }
+        station_data_list = new_station_data_list;
+    } else { Serial.printf("[DataModule] JSON-Parsing-Fehler oder API-Antwort nicht ok. Fehler: %s\n", error.c_str()); }
+
+    doc->~JsonDocument();
+    free(docMem);
 }
 
 void DataModule::draw() {
@@ -274,86 +386,107 @@ PsramString DataModule::truncateString(const PsramString& text, int maxWidth) {
     return truncated + "...";
 }
 
-void DataModule::parseAndProcessJson(const char* buffer, size_t size) {
-    const size_t JSON_DOC_SIZE = 8192;
-    void* docMem = ps_malloc(JSON_DOC_SIZE);
-    if (!docMem) { Serial.println("[DataModule] FATAL: PSRAM für JSON-Parsing fehlgeschlagen!"); return; }
-    
-    JsonDocument* doc = new (docMem) JsonDocument();
-    
-    PsramVector<StationData> new_station_data_list;
-    
-    DeserializationError error = deserializeJson(*doc, buffer, size);
-
-    if (!error && (*doc)["ok"] == true) {
-        JsonObject prices = (*doc)["prices"];
-        PsramVector<PsramString> id_list;
-        PsramString temp_ids = station_ids;
-        char* strtok_ctx;
-        char* id_token = strtok_r((char*)temp_ids.c_str(), ",", &strtok_ctx);
-        while(id_token != nullptr) { id_list.push_back(id_token); id_token = strtok_r(nullptr, ",", &strtok_ctx); }
-
-        for (const auto& id : id_list) {
-            if (prices.containsKey(id.c_str())) {
-                JsonObject station_json = prices[id.c_str()];
-                StationData new_data;
-                new_data.id = id;
-                
-                bool found_in_cache = false;
-                for(const auto& cache_entry : station_cache) {
-                    if (cache_entry.id == id) {
-                        new_data.name = cache_entry.name; new_data.brand = cache_entry.brand;
-                        new_data.street = cache_entry.street; new_data.houseNumber = cache_entry.houseNumber;
-                        new_data.postCode = cache_entry.postCode; new_data.place = cache_entry.place;
-                        found_in_cache = true;
-                        break;
-                    }
+void DataModule::loadPriceCache() {
+    if (LittleFS.exists(PRICE_CACHE_FILENAME)) {
+        File file = LittleFS.open(PRICE_CACHE_FILENAME, "r");
+        if (file) {
+            JsonDocument doc;
+            DeserializationError error = deserializeJson(doc, file);
+            if (!error) {
+                JsonArray arr = doc.as<JsonArray>();
+                _lastPriceCache.clear();
+                for (JsonObject obj : arr) {
+                    _lastPriceCache.push_back({
+                        obj["id"].as<const char*>(), // KORREKTUR für ArduinoJson
+                        obj["e5"].as<float>(),
+                        obj["e10"].as<float>(),
+                        obj["diesel"].as<float>(),
+                        obj["ts"].as<time_t>()
+                    });
                 }
-                if (!found_in_cache) { new_data.name = "Unbekannt"; }
-
-                bool is_open = (station_json["status"] == "open");
-                new_data.isOpen = is_open;
-
-                const StationData* old_data_ptr = nullptr;
-                for(const auto& old_data : station_data_list) {
-                    if (old_data.id == new_data.id) {
-                        old_data_ptr = &old_data;
-                        break;
-                    }
-                }
-
-                if (is_open) {
-                    new_data.e5 = station_json["e5"].as<float>();
-                    new_data.e10 = station_json["e10"].as<float>();
-                    new_data.diesel = station_json["diesel"].as<float>();
-                    
-                    bool price_changed = false;
-                    if (old_data_ptr) {
-                        if (old_data_ptr->e5 != new_data.e5 || old_data_ptr->e10 != new_data.e10 || old_data_ptr->diesel != new_data.diesel) {
-                            price_changed = true;
-                        }
-                        new_data.lastPriceChange = price_changed ? last_processed_update : old_data_ptr->lastPriceChange;
-                    } else {
-                        new_data.lastPriceChange = last_processed_update;
-                    }
-                    updatePriceStatistics(new_data.id, new_data.e5, new_data.e10, new_data.diesel);
-                } else {
-                    if (old_data_ptr) {
-                        new_data.e5 = old_data_ptr->e5;
-                        new_data.e10 = old_data_ptr->e10;
-                        new_data.diesel = old_data_ptr->diesel;
-                        new_data.lastPriceChange = old_data_ptr->lastPriceChange;
-                    }
-                }
-                
-                new_station_data_list.push_back(new_data);
+                Serial.printf("[DataModule] Preis-Cache: %d Einträge geladen.\n", _lastPriceCache.size());
+            } else {
+                Serial.printf("[DataModule] Fehler beim Parsen von %s. Datei wird gelöscht.\n", PRICE_CACHE_FILENAME);
+                LittleFS.remove(PRICE_CACHE_FILENAME);
             }
+            file.close();
         }
-        station_data_list = new_station_data_list;
-    } else { Serial.printf("[DataModule] JSON-Parsing-Fehler oder API-Antwort nicht ok. Fehler: %s\n", error.c_str()); }
+    }
+}
 
-    doc->~JsonDocument();
-    free(docMem);
+void DataModule::savePriceCache() {
+    File file = LittleFS.open(PRICE_CACHE_FILENAME, "w");
+    if (file) {
+        JsonDocument doc;
+        JsonArray arr = doc.to<JsonArray>();
+        for (const auto& entry : _lastPriceCache) {
+            JsonObject obj = arr.add<JsonObject>();
+            obj["id"] = entry.stationId;
+            obj["e5"] = entry.e5;
+            obj["e10"] = entry.e10;
+            obj["diesel"] = entry.diesel;
+            obj["ts"] = entry.timestamp;
+        }
+        serializeJson(doc, file);
+        file.close();
+    } else {
+        Serial.printf("[DataModule] Fehler beim Öffnen von %s zum Speichern.\n", PRICE_CACHE_FILENAME);
+    }
+}
+
+void DataModule::updatePriceCache(const PsramString& stationId, float e5, float e10, float diesel) {
+    time_t now;
+    time(&now);
+
+    bool found = false;
+    for (auto& entry : _lastPriceCache) {
+        if (entry.stationId == stationId) {
+            entry.e5 = e5;
+            entry.e10 = e10;
+            entry.diesel = diesel;
+            entry.timestamp = now;
+            found = true;
+            break;
+        }
+    }
+
+    if (!found) {
+        _lastPriceCache.push_back({stationId, e5, e10, diesel, now});
+    }
+    
+    savePriceCache();
+}
+
+bool DataModule::getPriceFromCache(const PsramString& stationId, float& e5, float& e10, float& diesel) {
+    for (const auto& entry : _lastPriceCache) {
+        if (entry.stationId == stationId) {
+            e5 = entry.e5;
+            e10 = entry.e10;
+            diesel = entry.diesel;
+            return true;
+        }
+    }
+    return false;
+}
+
+void DataModule::cleanupOldPriceCacheEntries() {
+    time_t now;
+    time(&now);
+    time_t cutoff = now - PRICE_CACHE_LIFETIME_SEC;
+
+    size_t original_size = _lastPriceCache.size();
+    _lastPriceCache.erase(
+        std::remove_if(_lastPriceCache.begin(), _lastPriceCache.end(),
+            [cutoff](const LastPriceCache& entry) {
+                return entry.timestamp < cutoff;
+            }),
+        _lastPriceCache.end()
+    );
+
+    if (_lastPriceCache.size() < original_size) {
+        Serial.printf("[DataModule] Preis-Cache: %d veraltete Einträge (älter als 24h) entfernt.\n", original_size - _lastPriceCache.size());
+        savePriceCache();
+    }
 }
 
 void DataModule::updatePriceStatistics(const PsramString& stationId, float currentE5, float currentE10, float currentDiesel) {
@@ -464,7 +597,7 @@ AveragePrices DataModule::calculateAverages(const PsramString& stationId) {
 }
 
 bool DataModule::migratePriceStatistics(JsonDocument& doc) {
-    if (!doc.containsKey("version") || doc["version"] == STATION_PRICE_STATS_VERSION) {
+    if (!doc["version"].is<int>() || doc["version"] == STATION_PRICE_STATS_VERSION) {
         return true;
     }
     int file_version = doc["version"];
@@ -484,10 +617,10 @@ void DataModule::savePriceStatistics() {
     
     JsonDocument* doc = new (docMem) JsonDocument();
     (*doc)["version"] = STATION_PRICE_STATS_VERSION;
-    JsonObject prices = doc->createNestedObject("prices");
+    JsonObject prices = (*doc)["prices"].to<JsonObject>();
 
     for (const auto& history : price_statistics) {
-        JsonArray stats_array = prices.createNestedArray(history.stationId.c_str());
+        JsonArray stats_array = prices[history.stationId.c_str()].to<JsonArray>();
         for (const auto& stats : history.dailyStats) {
             JsonObject obj = stats_array.add<JsonObject>();
             obj["date"] = stats.date;
