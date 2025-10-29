@@ -58,13 +58,34 @@ struct StationData {
     StationData();
 };
 
-// Struktur für den Preis-Cache
 struct LastPriceCache {
     PsramString stationId;
     float e5;
     float e10;
     float diesel;
     time_t timestamp;
+};
+
+enum class PriceTrend { STABLE, RISING, FALLING };
+
+struct TrendStatus {
+    PsramString stationId;
+    PriceTrend e5_min_trend = PriceTrend::STABLE;
+    PriceTrend e5_max_trend = PriceTrend::STABLE;
+    PriceTrend e10_min_trend = PriceTrend::STABLE;
+    PriceTrend e10_max_trend = PriceTrend::STABLE;
+    PriceTrend diesel_min_trend = PriceTrend::STABLE;
+    PriceTrend diesel_max_trend = PriceTrend::STABLE;
+};
+
+struct LastAveragePrice {
+    PsramString stationId;
+    float avgE5Low = 0.0;
+    float avgE5High = 0.0;
+    float avgE10Low = 0.0;
+    float avgE10High = 0.0;
+    float avgDieselLow = 0.0;
+    float avgDieselHigh = 0.0;
 };
 
 class DataModule : public DrawableModule {
@@ -109,13 +130,13 @@ private:
     unsigned long lastPageSwitchTime = 0;
     bool _isEnabled = false;
 
-    // Cache für die letzten Preise als Member-Variable
     PsramVector<LastPriceCache> _lastPriceCache;
+    PsramVector<LastAveragePrice> _lastAverageCache;
+    PsramVector<TrendStatus> _trendStatusCache;
 
     PsramString truncateString(const PsramString& text, int maxWidth);
     void parseAndProcessJson(const char* buffer, size_t size);
     
-    // Preis-Statistiken für Durchschnitt
     void updatePriceStatistics(const PsramString& stationId, float currentE5, float currentE10, float currentDiesel);
     void trimPriceStatistics(StationPriceHistory& history);
     void trimAllPriceStatistics();
@@ -124,21 +145,23 @@ private:
     void savePriceStatistics();
     void loadPriceStatistics();
     
-    // Stations-Metadaten
     void loadStationCache();
     
-    // Private Methoden für den neuen Preis-Cache
     void loadPriceCache();
     void savePriceCache();
     void updatePriceCache(const PsramString& stationId, float e5, float e10, float diesel);
     bool getPriceFromCache(const PsramString& stationId, float& e5, float& e10, float& diesel);
     void cleanupOldPriceCacheEntries();
 
-    // KORREKTUR: Fehlende Deklarationen für die draw-Helfermethoden wieder hinzugefügt
+    void loadAverageCache();
+    void saveAverageCache();
+    void updateAndDetermineTrends(const PsramString& stationId);
+
     uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b);
     uint16_t calcColor(float value, float low, float high);
-    void drawPrice(int x, int y, float price, uint16_t color);
-    void drawPriceLine(int y, const char* label, float current, float min, float max);
+    int drawPrice(int x, int y, float price, uint16_t color);
+    void drawPriceLine(int y, const char* label, float current, float min, float max, PriceTrend minTrend, PriceTrend maxTrend);
+    void drawTrendArrow(int x, int y, PriceTrend trend);
 };
 
 #endif // DATAMODULE_HPP

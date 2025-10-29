@@ -8,7 +8,8 @@
 #include <esp_heap_caps.h>
 
 #define PRICE_CACHE_FILENAME "/last_prices.json"
-#define PRICE_CACHE_LIFETIME_SEC (24 * 3600) // 24 Stunden
+#define AVG_CACHE_FILENAME "/avg_price_trends.json"
+#define PRICE_CACHE_LIFETIME_SEC (24 * 3600)
 
 StationData::StationData() : e5(0.0f), e10(0.0f), diesel(0.0f), isOpen(false) {}
 
@@ -31,6 +32,7 @@ void DataModule::begin() {
     loadStationCache();
     loadPriceCache();
     cleanupOldPriceCacheEntries();
+    loadAverageCache();
 }
 
 void DataModule::onUpdate(std::function<void()> callback) {
@@ -61,54 +63,36 @@ void DataModule::setConfig(const PsramString& apiKey, const PsramString& station
         char* id_token = strtok_r((char*)temp_ids.c_str(), ",", &strtok_ctx);
         while(id_token != nullptr) { current_id_list.push_back(id_token); id_token = strtok_r(nullptr, ",", &strtok_ctx); }
 
-        // Preis-Statistiken für Durchschnittspreise bereinigen
-        price_statistics.erase(
-            std::remove_if(price_statistics.begin(), price_statistics.end(), 
-                [&](const StationPriceHistory& history) {
-                    for(const auto& id : current_id_list) { if (history.stationId == id) return false; }
-                    return true;
-                }), 
-            price_statistics.end());
-        
-        trimAllPriceStatistics();
+        auto remove_by_id = [&](const auto& entry){
+            for(const auto& id : current_id_list) { if (entry.stationId == id) return false; }
+            return true;
+        };
 
-        // Cache der letzten Preise bereinigen
+        size_t original_stats_size = price_statistics.size();
+        price_statistics.erase(std::remove_if(price_statistics.begin(), price_statistics.end(), remove_by_id), price_statistics.end());
+        if(price_statistics.size() < original_stats_size) savePriceStatistics();
+
         size_t original_cache_size = _lastPriceCache.size();
-        _lastPriceCache.erase(
-            std::remove_if(_lastPriceCache.begin(), _lastPriceCache.end(),
-                [&](const LastPriceCache& entry) {
-                    for(const auto& id : current_id_list) { if (entry.stationId == id) return false; }
-                    return true;
-                }),
-            _lastPriceCache.end()
-        );
-        if (_lastPriceCache.size() < original_cache_size) {
-            Serial.printf("[DataModule] Preis-Cache: %d nicht mehr konfigurierte Stationen entfernt.\n", original_cache_size - _lastPriceCache.size());
-            savePriceCache();
-        }
+        _lastPriceCache.erase(std::remove_if(_lastPriceCache.begin(), _lastPriceCache.end(), remove_by_id), _lastPriceCache.end());
+        if(_lastPriceCache.size() < original_cache_size) savePriceCache();
 
+        size_t original_avg_size = _lastAverageCache.size();
+        _lastAverageCache.erase(std::remove_if(_lastAverageCache.begin(), _lastAverageCache.end(), remove_by_id), _lastAverageCache.end());
+        if(_lastAverageCache.size() < original_avg_size) saveAverageCache();
+        
         xSemaphoreGive(dataMutex);
     }
 }
 
 unsigned long DataModule::getDisplayDuration() {
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) != pdTRUE) return _pageDisplayDuration;
-    
     int num_stations = station_data_list.size();
-    int num_pages = (num_stations > 0) ? num_stations : 1;
-    
     xSemaphoreGive(dataMutex);
-    return (_pageDisplayDuration * num_pages);
+    return (_pageDisplayDuration * (num_stations > 0 ? num_stations : 1));
 }
 
-bool DataModule::isEnabled() {
-    return _isEnabled;
-}
-
-void DataModule::resetPaging() {
-    currentPage = 0;
-    lastPageSwitchTime = millis();
-}
+bool DataModule::isEnabled() { return _isEnabled; }
+void DataModule::resetPaging() { currentPage = 0; lastPageSwitchTime = millis(); }
 
 void DataModule::tick() {
     unsigned long now = millis();
@@ -126,7 +110,6 @@ void DataModule::tick() {
 
 void DataModule::queueData() {
     if (resource_url.empty() || !webClient) return;
-
     webClient->accessResource(String(resource_url.c_str()), [this](const char* buffer, size_t size, time_t last_update, bool is_stale) {
         if (buffer && size > 0 && last_update > this->last_processed_update) {
             if (pending_buffer) free(pending_buffer);
@@ -145,7 +128,6 @@ void DataModule::queueData() {
 void DataModule::processData() {
     if (data_pending) {
         if (xSemaphoreTake(dataMutex, portMAX_DELAY) == pdTRUE) {
-            Serial.println("[DataModule] Neue Tanker-Daten gefunden, starte Parsing...");
             parseAndProcessJson(pending_buffer, buffer_size);
             free(pending_buffer);
             pending_buffer = nullptr;
@@ -157,51 +139,40 @@ void DataModule::processData() {
 }
 
 void DataModule::parseAndProcessJson(const char* buffer, size_t size) {
-    const size_t JSON_DOC_SIZE = 8192;
-    void* docMem = ps_malloc(JSON_DOC_SIZE);
-    if (!docMem) { Serial.println("[DataModule] FATAL: PSRAM für JSON-Parsing fehlgeschlagen!"); return; }
-    
-    JsonDocument* doc = new (docMem) JsonDocument();
-    
+    JsonDocument doc;
     PsramVector<StationData> new_station_data_list;
-    
-    DeserializationError error = deserializeJson(*doc, buffer, size);
+    DeserializationError error = deserializeJson(doc, buffer, size);
 
-    if (!error && (*doc)["ok"] == true) {
-        JsonObject prices = (*doc)["prices"];
+    if (!error && doc["ok"] == true) {
+        JsonObject prices = doc["prices"];
         PsramVector<PsramString> id_list;
         PsramString temp_ids = station_ids;
         char* strtok_ctx;
         char* id_token = strtok_r((char*)temp_ids.c_str(), ",", &strtok_ctx);
         while(id_token != nullptr) { id_list.push_back(id_token); id_token = strtok_r(nullptr, ",", &strtok_ctx); }
 
+        _trendStatusCache.clear();
         for (const auto& id : id_list) {
             if (prices[id.c_str()].is<JsonObject>()) {
                 JsonObject station_json = prices[id.c_str()];
                 StationData new_data;
                 new_data.id = id;
                 
-                bool found_in_cache = false;
                 for(const auto& cache_entry : station_cache) {
                     if (cache_entry.id == id) {
                         new_data.name = cache_entry.name; new_data.brand = cache_entry.brand;
                         new_data.street = cache_entry.street; new_data.houseNumber = cache_entry.houseNumber;
                         new_data.postCode = cache_entry.postCode; new_data.place = cache_entry.place;
-                        found_in_cache = true;
                         break;
                     }
                 }
-                if (!found_in_cache) { new_data.name = "Unbekannt"; }
 
                 bool is_open = (station_json["status"] == "open");
                 new_data.isOpen = is_open;
 
                 const StationData* old_data_ptr = nullptr;
                 for(const auto& old_data : station_data_list) {
-                    if (old_data.id == new_data.id) {
-                        old_data_ptr = &old_data;
-                        break;
-                    }
+                    if (old_data.id == new_data.id) { old_data_ptr = &old_data; break; }
                 }
 
                 if (is_open) {
@@ -209,44 +180,31 @@ void DataModule::parseAndProcessJson(const char* buffer, size_t size) {
                     new_data.e10 = station_json["e10"].as<float>();
                     new_data.diesel = station_json["diesel"].as<float>();
                     
-                    bool price_changed = false;
-                    if (old_data_ptr) {
-                        if (old_data_ptr->e5 != new_data.e5 || old_data_ptr->e10 != new_data.e10 || old_data_ptr->diesel != new_data.diesel) {
-                            price_changed = true;
-                        }
-                        new_data.lastPriceChange = price_changed ? last_processed_update : old_data_ptr->lastPriceChange;
+                    if (old_data_ptr && (old_data_ptr->e5 != new_data.e5 || old_data_ptr->e10 != new_data.e10 || old_data_ptr->diesel != new_data.diesel)) {
+                        new_data.lastPriceChange = last_processed_update;
+                    } else if (old_data_ptr) {
+                        new_data.lastPriceChange = old_data_ptr->lastPriceChange;
                     } else {
                         new_data.lastPriceChange = last_processed_update;
                     }
                     updatePriceStatistics(new_data.id, new_data.e5, new_data.e10, new_data.diesel);
                 } else {
                     if (old_data_ptr && old_data_ptr->isOpen) {
-                        Serial.printf("[DataModule] Station %s hat geschlossen. Speichere Preise im Cache.\n", new_data.id.c_str());
                         updatePriceCache(new_data.id, old_data_ptr->e5, old_data_ptr->e10, old_data_ptr->diesel);
                     }
-
                     if (old_data_ptr) {
-                        new_data.e5 = old_data_ptr->e5;
-                        new_data.e10 = old_data_ptr->e10;
-                        new_data.diesel = old_data_ptr->diesel;
+                        new_data.e5 = old_data_ptr->e5; new_data.e10 = old_data_ptr->e10; new_data.diesel = old_data_ptr->diesel;
                         new_data.lastPriceChange = old_data_ptr->lastPriceChange;
                     } else {
-                        if (!getPriceFromCache(new_data.id, new_data.e5, new_data.e10, new_data.diesel)) {
-                             Serial.printf("[DataModule] Kein Cache für geschlossene Station %s gefunden.\n", new_data.id.c_str());
-                        } else {
-                             Serial.printf("[DataModule] Preise für geschlossene Station %s aus Cache geladen.\n", new_data.id.c_str());
-                        }
+                        getPriceFromCache(new_data.id, new_data.e5, new_data.e10, new_data.diesel);
                     }
                 }
-                
                 new_station_data_list.push_back(new_data);
+                updateAndDetermineTrends(id);
             }
         }
         station_data_list = new_station_data_list;
-    } else { Serial.printf("[DataModule] JSON-Parsing-Fehler oder API-Antwort nicht ok. Fehler: %s\n", error.c_str()); }
-
-    doc->~JsonDocument();
-    free(docMem);
+    } else { Serial.printf("[DataModule] JSON-Parsing-Fehler: %s\n", error.c_str()); }
 }
 
 void DataModule::draw() {
@@ -259,11 +217,9 @@ void DataModule::draw() {
     u8g2.begin(canvas);
 
     if (station_data_list.empty()) {
-         u8g2.setFont(u8g2_font_7x14_tf);
-         u8g2.setForegroundColor(0xFFFF);
+         u8g2.setFont(u8g2_font_7x14_tf); u8g2.setForegroundColor(0xFFFF);
          const char* text = "Keine Tankstelle konfiguriert.";
-         int x = (canvas.width() - u8g2.getUTF8Width(text)) / 2;
-         u8g2.setCursor(x, 30);
+         u8g2.setCursor((canvas.width() - u8g2.getUTF8Width(text)) / 2, 30);
          u8g2.print(text);
          xSemaphoreGive(dataMutex);
          return;
@@ -271,61 +227,27 @@ void DataModule::draw() {
     
     const StationData& data = station_data_list[currentPage];
 
-    const int PADDING = 10;
-    const int LEFT_MARGIN = 5;
-    const int RIGHT_MARGIN = 5;
-    const int totalWidth = canvas.width() - LEFT_MARGIN - RIGHT_MARGIN;
-
+    // --- OBERER BEREICH ---
     u8g2.setFont(u8g2_font_logisoso16_tf);
-    PsramString brandText = data.brand;
-    int brandWidth = u8g2.getUTF8Width(brandText.c_str());
+    u8g2.setForegroundColor(0xFFFF);
+    u8g2.setCursor(5, 15); // Linksbündig, 2px höher
+    u8g2.print(data.brand.c_str());
 
     u8g2.setFont(u8g2_font_5x8_tf);
     PsramString line1 = data.street;
     if (!data.houseNumber.empty()) { line1 += " "; line1 += data.houseNumber; }
     PsramString line2 = data.postCode;
     if (!data.place.empty()) { line2 += " "; line2 += data.place; }
-    int line1Width = u8g2.getUTF8Width(line1.c_str());
-    int line2Width = u8g2.getUTF8Width(line2.c_str());
-    int addressWidth = std::max(line1Width, line2Width);
-
-    if (brandWidth + addressWidth + PADDING > totalWidth) {
-        bool brandIsProblem = brandWidth > totalWidth - addressWidth - PADDING;
-        bool addressIsProblem = addressWidth > totalWidth - brandWidth - PADDING;
-
-        if (brandIsProblem && addressIsProblem) {
-            int brandMaxWidth = (totalWidth - PADDING) / 2;
-            int addressMaxWidth = totalWidth - brandMaxWidth - PADDING;
-            u8g2.setFont(u8g2_font_logisoso16_tf);
-            brandText = truncateString(brandText, brandMaxWidth);
-            u8g2.setFont(u8g2_font_5x8_tf);
-            line1 = truncateString(line1, addressMaxWidth);
-            line2 = truncateString(line2, addressMaxWidth);
-        } else if (brandIsProblem) {
-            int brandMaxWidth = totalWidth - addressWidth - PADDING;
-            u8g2.setFont(u8g2_font_logisoso16_tf);
-            brandText = truncateString(brandText, brandMaxWidth);
-        } else {
-            int addressMaxWidth = totalWidth - brandWidth - PADDING;
-            u8g2.setFont(u8g2_font_5x8_tf);
-            line1 = truncateString(line1, addressMaxWidth);
-            line2 = truncateString(line2, addressMaxWidth);
-        }
-    }
     
-    u8g2.setFont(u8g2_font_logisoso16_tf);
-    u8g2.setForegroundColor(0xFFFF);
-    u8g2.setCursor(LEFT_MARGIN, 17);
-    u8g2.print(brandText.c_str());
-
-    u8g2.setFont(u8g2_font_5x8_tf);
-    u8g2.setCursor(canvas.width() - u8g2.getUTF8Width(line1.c_str()) - RIGHT_MARGIN, 8);
+    u8g2.setCursor(canvas.width() - u8g2.getUTF8Width(line1.c_str()) - 5, 6); // 2px höher
     u8g2.print(line1.c_str());
-    u8g2.setCursor(canvas.width() - u8g2.getUTF8Width(line2.c_str()) - RIGHT_MARGIN, 18);
+    u8g2.setCursor(canvas.width() - u8g2.getUTF8Width(line2.c_str()) - 5, 14); // 2px höher
     u8g2.print(line2.c_str());
     
-    canvas.drawFastHLine(0, 19, canvas.width(), rgb565(128, 128, 128));
+    // --- TRENNLINIE ---
+    canvas.drawFastHLine(0, 17, canvas.width(), rgb565(128, 128, 128)); // 2px höher
 
+    // --- PREISTABELLE ---
     AveragePrices averages = calculateAverages(data.id);
     if (averages.avgE5Low == 0.0) averages.avgE5Low = data.e5 > 0 ? data.e5 - 0.05 : 0;
     if (averages.avgE5High == 0.0) averages.avgE5High = data.e5 > 0 ? data.e5 + 0.05 : 0;
@@ -336,51 +258,107 @@ void DataModule::draw() {
 
     u8g2.setFont(u8g2_font_5x8_tf);
     u8g2.setForegroundColor(rgb565(0, 255, 255));
-    int y_pos = 27;
+    int y_pos = 25; // 2px höher
 
     if (averages.count > 0) {
         char count_str[12];
         snprintf(count_str, sizeof(count_str), "(%d/%d)", averages.count, MOVING_AVERAGE_DAYS);
-        int count_width = u8g2.getUTF8Width(count_str);
-        u8g2.setCursor(188 - count_width, y_pos);
+        u8g2.setCursor(188 - u8g2.getUTF8Width(count_str), y_pos);
         u8g2.print(count_str);
     }
 
     if (data.lastPriceChange > 0) {
         time_t local_change_time = timeConverter.toLocal(data.lastPriceChange);
-        struct tm timeinfo;
-        localtime_r(&local_change_time, &timeinfo);
-        char time_str[6];
-        strftime(time_str, sizeof(time_str), "%H:%M", &timeinfo);
-        int time_width = u8g2.getUTF8Width(time_str);
-        u8g2.setCursor(96 + (50 - time_width) / 2, y_pos);
+        struct tm timeinfo; localtime_r(&local_change_time, &timeinfo);
+        char time_str[6]; strftime(time_str, sizeof(time_str), "%H:%M", &timeinfo);
+        u8g2.setCursor(84 + (50 - u8g2.getUTF8Width(time_str)) / 2, y_pos); // 8px nach links
         u8g2.print(time_str);
     } else {
         const char* no_time_str = "--:--";
-        int time_width = u8g2.getUTF8Width(no_time_str);
-        u8g2.setCursor(96 + (50 - time_width) / 2, y_pos);
+        u8g2.setCursor(84 + (50 - u8g2.getUTF8Width(no_time_str)) / 2, y_pos); // 8px nach links
         u8g2.print(no_time_str);
     }
+    
+    TrendStatus currentTrend;
+    for(const auto& ts : _trendStatusCache) {
+        if(ts.stationId == data.id) { currentTrend = ts; break; }
+    }
 
-    drawPriceLine(39, "E5", data.e5, averages.avgE5Low, averages.avgE5High);
-    drawPriceLine(52, "E10", data.e10, averages.avgE10Low, averages.avgE10High);
-    drawPriceLine(65, "Diesel", data.diesel, averages.avgDieselLow, averages.avgDieselHigh);
+    drawPriceLine(37, "E5", data.e5, averages.avgE5Low, averages.avgE5High, currentTrend.e5_min_trend, currentTrend.e5_max_trend);
+    drawPriceLine(50, "E10", data.e10, averages.avgE10Low, averages.avgE10High, currentTrend.e10_min_trend, currentTrend.e10_max_trend);
+    drawPriceLine(63, "Dies.", data.diesel, averages.avgDieselLow, averages.avgDieselHigh, currentTrend.diesel_min_trend, currentTrend.diesel_max_trend);
     
     if (!data.isOpen) {
         uint16_t red = rgb565(255, 0, 0);
-        canvas.drawLine(0, 19, canvas.width() - 1, canvas.height() - 1, red);
-        canvas.drawLine(canvas.width() - 1, 19, 0, canvas.height() - 1, red);
+        canvas.drawLine(0, 17, canvas.width() - 1, canvas.height() - 1, red);
+        canvas.drawLine(canvas.width() - 1, 17, 0, canvas.height() - 1, red);
     }
     xSemaphoreGive(dataMutex);
 }
 
-PsramString DataModule::truncateString(const PsramString& text, int maxWidth) {
-    if (u8g2.getUTF8Width(text.c_str()) <= maxWidth) {
-        return text;
+void DataModule::drawPriceLine(int y, const char* label, float current, float min, float max, PriceTrend minTrend, PriceTrend maxTrend) {
+    u8g2.setFont(u8g2_font_7x14_tf);
+    u8g2.setForegroundColor(0xFFFF);
+    u8g2.setCursor(2, y);
+    u8g2.print(label);
+    
+    int x_min = 42, x_current = 92, x_max = 142;
+
+    int min_width = drawPrice(x_min, y, min, rgb565(0, 255, 0));
+    drawTrendArrow(x_min + min_width + 2, y - 5, minTrend);
+
+    drawPrice(x_current, y, current, calcColor(current, min, max));
+    
+    int max_width = drawPrice(x_max, y, max, rgb565(255, 0, 0));
+    drawTrendArrow(x_max + max_width + 2, y - 5, maxTrend);
+}
+
+int DataModule::drawPrice(int x, int y, float price, uint16_t color) {
+    if (price <= 0) return 0;
+    u8g2.setForegroundColor(color);
+    String priceStr = String(price, 3);
+    priceStr.replace('.', ',');
+    String mainPricePart = priceStr.substring(0, priceStr.length() - 1);
+    char last_digit_char = priceStr.charAt(priceStr.length() - 1);
+    char last_digit_str[2] = {last_digit_char, '\0'};
+    
+    u8g2.setFont(u8g2_font_7x14_tf);
+    int mainPriceWidth = u8g2.getUTF8Width(mainPricePart.c_str());
+    u8g2.setCursor(x, y);
+    u8g2.print(mainPricePart);
+    
+    int superscriptX = x + mainPriceWidth;
+    u8g2.setFont(u8g2_font_5x8_tf);
+    int superscriptWidth = u8g2.getUTF8Width(last_digit_str);
+    u8g2.setCursor(superscriptX, y - 4);
+    u8g2.print(last_digit_str);
+
+    u8g2.setFont(u8g2_font_6x13_me);
+    int euroWidth = u8g2.getUTF8Width("€");
+    u8g2.setCursor(superscriptX + superscriptWidth + 1, y);
+    u8g2.print("€");
+
+    return mainPriceWidth + superscriptWidth + 1 + euroWidth;
+}
+
+void DataModule::drawTrendArrow(int x, int y, PriceTrend trend) {
+    switch (trend) {
+        case PriceTrend::RISING:
+            canvas.fillTriangle(x, y, x + 3, y + 4, x - 3, y + 4, rgb565(255, 0, 0)); // Rotes ▲
+            break;
+        case PriceTrend::FALLING:
+            canvas.fillTriangle(x, y + 4, x + 3, y, x - 3, y, rgb565(0, 255, 0)); // Grünes ▼
+            break;
+        case PriceTrend::STABLE:
+            canvas.fillCircle(x, y + 2, 2, 0xFFFF); // Weißer ●
+            break;
     }
+}
+
+PsramString DataModule::truncateString(const PsramString& text, int maxWidth) {
+    if (u8g2.getUTF8Width(text.c_str()) <= maxWidth) { return text; }
     PsramString truncated = text;
-    int ellipsisWidth = u8g2.getUTF8Width("...");
-    while (!truncated.empty() && u8g2.getUTF8Width(truncated.c_str()) + ellipsisWidth > maxWidth) {
+    while (!truncated.empty() && u8g2.getUTF8Width((truncated + "...").c_str()) > maxWidth) {
         truncated.pop_back();
     }
     return truncated + "...";
@@ -391,23 +369,13 @@ void DataModule::loadPriceCache() {
         File file = LittleFS.open(PRICE_CACHE_FILENAME, "r");
         if (file) {
             JsonDocument doc;
-            DeserializationError error = deserializeJson(doc, file);
-            if (!error) {
-                JsonArray arr = doc.as<JsonArray>();
+            if (deserializeJson(doc, file) == DeserializationError::Ok) {
                 _lastPriceCache.clear();
-                for (JsonObject obj : arr) {
+                for (JsonObject obj : doc.as<JsonArray>()) {
                     _lastPriceCache.push_back({
-                        obj["id"].as<const char*>(), // KORREKTUR für ArduinoJson
-                        obj["e5"].as<float>(),
-                        obj["e10"].as<float>(),
-                        obj["diesel"].as<float>(),
-                        obj["ts"].as<time_t>()
+                        obj["id"].as<const char*>(), obj["e5"], obj["e10"], obj["diesel"], obj["ts"]
                     });
                 }
-                Serial.printf("[DataModule] Preis-Cache: %d Einträge geladen.\n", _lastPriceCache.size());
-            } else {
-                Serial.printf("[DataModule] Fehler beim Parsen von %s. Datei wird gelöscht.\n", PRICE_CACHE_FILENAME);
-                LittleFS.remove(PRICE_CACHE_FILENAME);
             }
             file.close();
         }
@@ -421,48 +389,31 @@ void DataModule::savePriceCache() {
         JsonArray arr = doc.to<JsonArray>();
         for (const auto& entry : _lastPriceCache) {
             JsonObject obj = arr.add<JsonObject>();
-            obj["id"] = entry.stationId;
-            obj["e5"] = entry.e5;
-            obj["e10"] = entry.e10;
-            obj["diesel"] = entry.diesel;
-            obj["ts"] = entry.timestamp;
+            obj["id"] = entry.stationId; obj["e5"] = entry.e5; obj["e10"] = entry.e10;
+            obj["diesel"] = entry.diesel; obj["ts"] = entry.timestamp;
         }
         serializeJson(doc, file);
         file.close();
-    } else {
-        Serial.printf("[DataModule] Fehler beim Öffnen von %s zum Speichern.\n", PRICE_CACHE_FILENAME);
     }
 }
 
 void DataModule::updatePriceCache(const PsramString& stationId, float e5, float e10, float diesel) {
-    time_t now;
-    time(&now);
-
+    time_t now; time(&now);
     bool found = false;
     for (auto& entry : _lastPriceCache) {
         if (entry.stationId == stationId) {
-            entry.e5 = e5;
-            entry.e10 = e10;
-            entry.diesel = diesel;
-            entry.timestamp = now;
-            found = true;
-            break;
+            entry.e5 = e5; entry.e10 = e10; entry.diesel = diesel; entry.timestamp = now;
+            found = true; break;
         }
     }
-
-    if (!found) {
-        _lastPriceCache.push_back({stationId, e5, e10, diesel, now});
-    }
-    
+    if (!found) { _lastPriceCache.push_back({stationId, e5, e10, diesel, now}); }
     savePriceCache();
 }
 
 bool DataModule::getPriceFromCache(const PsramString& stationId, float& e5, float& e10, float& diesel) {
     for (const auto& entry : _lastPriceCache) {
         if (entry.stationId == stationId) {
-            e5 = entry.e5;
-            e10 = entry.e10;
-            diesel = entry.diesel;
+            e5 = entry.e5; e10 = entry.e10; diesel = entry.diesel;
             return true;
         }
     }
@@ -470,42 +421,104 @@ bool DataModule::getPriceFromCache(const PsramString& stationId, float& e5, floa
 }
 
 void DataModule::cleanupOldPriceCacheEntries() {
-    time_t now;
-    time(&now);
-    time_t cutoff = now - PRICE_CACHE_LIFETIME_SEC;
-
+    time_t now; time(&now);
     size_t original_size = _lastPriceCache.size();
     _lastPriceCache.erase(
         std::remove_if(_lastPriceCache.begin(), _lastPriceCache.end(),
-            [cutoff](const LastPriceCache& entry) {
-                return entry.timestamp < cutoff;
-            }),
+            [&](const LastPriceCache& entry) { return entry.timestamp < (now - PRICE_CACHE_LIFETIME_SEC); }),
         _lastPriceCache.end()
     );
+    if (_lastPriceCache.size() < original_size) { savePriceCache(); }
+}
 
-    if (_lastPriceCache.size() < original_size) {
-        Serial.printf("[DataModule] Preis-Cache: %d veraltete Einträge (älter als 24h) entfernt.\n", original_size - _lastPriceCache.size());
-        savePriceCache();
+void DataModule::loadAverageCache() {
+    if (LittleFS.exists(AVG_CACHE_FILENAME)) {
+        File file = LittleFS.open(AVG_CACHE_FILENAME, "r");
+        if (file) {
+            JsonDocument doc;
+            if (deserializeJson(doc, file) == DeserializationError::Ok) {
+                _lastAverageCache.clear();
+                for (JsonObject obj : doc.as<JsonArray>()) {
+                    _lastAverageCache.push_back({
+                        obj["id"].as<const char*>(), obj["aE5L"], obj["aE5H"], obj["aE10L"],
+                        obj["aE10H"], obj["aDiL"], obj["aDiH"]
+                    });
+                }
+            }
+            file.close();
+        }
     }
 }
 
-void DataModule::updatePriceStatistics(const PsramString& stationId, float currentE5, float currentE10, float currentDiesel) {
-    time_t now_utc;
-    time(&now_utc);
-    time_t local_epoch = timeConverter.toLocal(now_utc);
-    struct tm timeinfo;
-    localtime_r(&local_epoch, &timeinfo);
+void DataModule::saveAverageCache() {
+    File file = LittleFS.open(AVG_CACHE_FILENAME, "w");
+    if (file) {
+        JsonDocument doc;
+        JsonArray arr = doc.to<JsonArray>();
+        for (const auto& entry : _lastAverageCache) {
+            JsonObject obj = arr.add<JsonObject>();
+            obj["id"] = entry.stationId;
+            obj["aE5L"] = entry.avgE5Low; obj["aE5H"] = entry.avgE5High;
+            obj["aE10L"] = entry.avgE10Low; obj["aE10H"] = entry.avgE10High;
+            obj["aDiL"] = entry.avgDieselLow; obj["aDiH"] = entry.avgDieselHigh;
+        }
+        serializeJson(doc, file);
+        file.close();
+    }
+}
+
+void DataModule::updateAndDetermineTrends(const PsramString& stationId) {
+    LastAveragePrice* old_avg_ptr = nullptr;
+    for(auto& entry : _lastAverageCache) {
+        if(entry.stationId == stationId) { old_avg_ptr = &entry; break; }
+    }
+
+    AveragePrices new_avg = calculateAverages(stationId);
+    TrendStatus trends;
+    trends.stationId = stationId;
+
+    if (old_avg_ptr && new_avg.count > 0) {
+        auto get_trend = [](float old_val, float new_val) {
+            if (old_val == 0) return PriceTrend::STABLE;
+            if (new_val > old_val) return PriceTrend::RISING;
+            if (new_val < old_val) return PriceTrend::FALLING;
+            return PriceTrend::STABLE;
+        };
+        trends.e5_min_trend = get_trend(old_avg_ptr->avgE5Low, new_avg.avgE5Low);
+        trends.e5_max_trend = get_trend(old_avg_ptr->avgE5High, new_avg.avgE5High);
+        trends.e10_min_trend = get_trend(old_avg_ptr->avgE10Low, new_avg.avgE10Low);
+        trends.e10_max_trend = get_trend(old_avg_ptr->avgE10High, new_avg.avgE10High);
+        trends.diesel_min_trend = get_trend(old_avg_ptr->avgDieselLow, new_avg.avgDieselLow);
+        trends.diesel_max_trend = get_trend(old_avg_ptr->avgDieselHigh, new_avg.avgDieselHigh);
+
+        old_avg_ptr->avgE5Low = new_avg.avgE5Low; old_avg_ptr->avgE5High = new_avg.avgE5High;
+        old_avg_ptr->avgE10Low = new_avg.avgE10Low; old_avg_ptr->avgE10High = new_avg.avgE10High;
+        old_avg_ptr->avgDieselLow = new_avg.avgDieselLow; old_avg_ptr->avgDieselHigh = new_avg.avgDieselHigh;
+    } else if (new_avg.count > 0) {
+        _lastAverageCache.push_back({
+            stationId, new_avg.avgE5Low, new_avg.avgE5High, new_avg.avgE10Low, 
+            new_avg.avgE10High, new_avg.avgDieselLow, new_avg.avgDieselHigh
+        });
+    }
+
+    bool trend_found = false;
+    for(auto& ts : _trendStatusCache) {
+        if(ts.stationId == stationId) { ts = trends; trend_found = true; break; }
+    }
+    if(!trend_found) { _trendStatusCache.push_back(trends); }
     
-    char date_str[11];
-    strftime(date_str, sizeof(date_str), "%Y-%m-%d", &timeinfo);
+    saveAverageCache();
+}
+
+void DataModule::updatePriceStatistics(const PsramString& stationId, float currentE5, float currentE10, float currentDiesel) {
+    time_t now_utc; time(&now_utc);
+    struct tm timeinfo; localtime_r(&now_utc, &timeinfo);
+    char date_str[11]; strftime(date_str, sizeof(date_str), "%Y-%m-%d", &timeinfo);
     PsramString today_date(date_str);
 
     StationPriceHistory* history = nullptr;
     for (auto& h : price_statistics) {
-        if (h.stationId == stationId) {
-            history = &h;
-            break;
-        }
+        if (h.stationId == stationId) { history = &h; break; }
     }
     if (!history) {
         price_statistics.push_back({stationId, {}});
@@ -514,16 +527,12 @@ void DataModule::updatePriceStatistics(const PsramString& stationId, float curre
 
     DailyPriceStats* today_stats = nullptr;
     for (auto& s : history->dailyStats) {
-        if (s.date == today_date) {
-            today_stats = &s;
-            break;
-        }
+        if (s.date == today_date) { today_stats = &s; break; }
     }
 
     bool changed = false;
     if (!today_stats) {
-        DailyPriceStats new_stats;
-        new_stats.date = today_date;
+        DailyPriceStats new_stats; new_stats.date = today_date;
         if (currentE5 > 0) { new_stats.e5_low = currentE5; new_stats.e5_high = currentE5; }
         if (currentE10 > 0) { new_stats.e10_low = currentE10; new_stats.e10_high = currentE10; }
         if (currentDiesel > 0) { new_stats.diesel_low = currentDiesel; new_stats.diesel_high = currentDiesel; }
@@ -539,34 +548,24 @@ void DataModule::updatePriceStatistics(const PsramString& stationId, float curre
         if (currentDiesel > 0 && currentDiesel > today_stats->diesel_high) { today_stats->diesel_high = currentDiesel; changed = true; }
     }
 
-    if (changed) {
-        savePriceStatistics();
-    }
+    if (changed) { savePriceStatistics(); }
 }
 
 void DataModule::trimPriceStatistics(StationPriceHistory& history) {
-    time_t now_utc;
-    time(&now_utc);
-    time_t local_epoch = timeConverter.toLocal(now_utc);
-    time_t cutoff_epoch = local_epoch - (MOVING_AVERAGE_DAYS * 86400L);
-    struct tm cutoff_tm;
-    localtime_r(&cutoff_epoch, &cutoff_tm);
-    char cutoff_date_str_buf[11];
-    strftime(cutoff_date_str_buf, sizeof(cutoff_date_str_buf), "%Y-%m-%d", &cutoff_tm);
+    time_t now_utc; time(&now_utc);
+    time_t cutoff_epoch = now_utc - (MOVING_AVERAGE_DAYS * 86400L);
+    struct tm cutoff_tm; localtime_r(&cutoff_epoch, &cutoff_tm);
+    char cutoff_date_str_buf[11]; strftime(cutoff_date_str_buf, sizeof(cutoff_date_str_buf), "%Y-%m-%d", &cutoff_tm);
     PsramString cutoff_date_str(cutoff_date_str_buf);
 
     history.dailyStats.erase(
         std::remove_if(history.dailyStats.begin(), history.dailyStats.end(), 
-            [&](const DailyPriceStats& stats) {
-                return stats.date < cutoff_date_str;
-            }), 
+            [&](const DailyPriceStats& stats) { return stats.date < cutoff_date_str; }), 
         history.dailyStats.end());
 }
 
 void DataModule::trimAllPriceStatistics() {
-    for (auto& history : price_statistics) {
-        trimPriceStatistics(history);
-    }
+    for (auto& history : price_statistics) { trimPriceStatistics(history); }
     savePriceStatistics();
 }
 
@@ -578,9 +577,9 @@ AveragePrices DataModule::calculateAverages(const PsramString& stationId) {
     for (const auto& h : price_statistics) {
         if (h.stationId == stationId) {
             for (const auto& s : h.dailyStats) {
-                sumE5Low += s.e5_low; sumE5High += s.e5_high;
-                sumE10Low += s.e10_low; sumE10High += s.e10_high;
-                sumDieselLow += s.diesel_low; sumDieselHigh += s.diesel_high;
+                if(s.e5_low > 0) { sumE5Low += s.e5_low; sumE5High += s.e5_high; }
+                if(s.e10_low > 0) { sumE10Low += s.e10_low; sumE10High += s.e10_high; }
+                if(s.diesel_low > 0) { sumDieselLow += s.diesel_low; sumDieselHigh += s.diesel_high; }
                 count++;
             }
             break;
@@ -597,27 +596,14 @@ AveragePrices DataModule::calculateAverages(const PsramString& stationId) {
 }
 
 bool DataModule::migratePriceStatistics(JsonDocument& doc) {
-    if (!doc["version"].is<int>() || doc["version"] == STATION_PRICE_STATS_VERSION) {
-        return true;
-    }
-    int file_version = doc["version"];
-    Serial.printf("[DataModule] Migration für station_price_stats.json von v%d auf v%d erforderlich.\n", file_version, STATION_PRICE_STATS_VERSION);
-    if (file_version != STATION_PRICE_STATS_VERSION) {
-        Serial.printf("[DataModule] Migration auf v%d nicht erfolgreich. Konnte v%d nicht erreichen.\n", STATION_PRICE_STATS_VERSION, file_version);
-        return false;
-    }
-    Serial.println("[DataModule] Migration erfolgreich.");
-    return true;
+    if (!doc["version"].is<int>() || doc["version"] == STATION_PRICE_STATS_VERSION) { return true; }
+    return false;
 }
 
 void DataModule::savePriceStatistics() {
-    const size_t JSON_DOC_SIZE = 32768;
-    void* docMem = ps_malloc(JSON_DOC_SIZE);
-    if (!docMem) { Serial.println("[DataModule] FATAL: PSRAM für Statistik-Speichern fehlgeschlagen!"); return; }
-    
-    JsonDocument* doc = new (docMem) JsonDocument();
-    (*doc)["version"] = STATION_PRICE_STATS_VERSION;
-    JsonObject prices = (*doc)["prices"].to<JsonObject>();
+    JsonDocument doc;
+    doc["version"] = STATION_PRICE_STATS_VERSION;
+    JsonObject prices = doc["prices"].to<JsonObject>();
 
     for (const auto& history : price_statistics) {
         JsonArray stats_array = prices[history.stationId.c_str()].to<JsonArray>();
@@ -631,60 +617,32 @@ void DataModule::savePriceStatistics() {
     }
 
     File file = LittleFS.open("/station_price_stats.json", "w");
-    if (file) {
-        serializeJson(*doc, file);
-        file.close();
-    } else {
-        Serial.println("[DataModule] Fehler beim Öffnen von station_price_stats.json zum Schreiben!");
-    }
-
-    doc->~JsonDocument();
-    free(docMem);
+    if (file) { serializeJson(doc, file); file.close(); }
 }
 
 void DataModule::loadPriceStatistics() {
     if (!LittleFS.exists("/station_price_stats.json")) { return; }
-
     File file = LittleFS.open("/station_price_stats.json", "r");
     if(file) {
-        const size_t JSON_DOC_SIZE = 32768;
-        void* docMem = ps_malloc(JSON_DOC_SIZE);
-        if (!docMem) { Serial.println("[DataModule] FATAL: PSRAM für Statistik-Laden fehlgeschlagen!"); file.close(); return; }
-
-        JsonDocument* doc = new (docMem) JsonDocument();
-        DeserializationError error = deserializeJson(*doc, file);
-        file.close();
-
-        if (!error) {
-            if (migratePriceStatistics(*doc)) {
+        JsonDocument doc;
+        if (deserializeJson(doc, file) == DeserializationError::Ok) {
+            if (migratePriceStatistics(doc)) {
                 price_statistics.clear();
-                JsonObject prices = (*doc)["prices"];
+                JsonObject prices = doc["prices"];
                 for (JsonPair kv : prices) {
                     StationPriceHistory history;
                     history.stationId = kv.key().c_str();
-                    JsonArray stats_array = kv.value().as<JsonArray>();
-                    for (JsonObject obj : stats_array) {
-                        DailyPriceStats stats;
-                        stats.date = obj["date"].as<const char*>();
-                        stats.e5_low = obj["e5_low"]; stats.e5_high = obj["e5_high"];
-                        stats.e10_low = obj["e10_low"]; stats.e10_high = obj["e10_high"];
-                        stats.diesel_low = obj["diesel_low"]; stats.diesel_high = obj["diesel_high"];
-                        history.dailyStats.push_back(stats);
+                    for (JsonObject obj : kv.value().as<JsonArray>()) {
+                        history.dailyStats.push_back({
+                            obj["date"].as<const char*>(), obj["e5_low"], obj["e5_high"],
+                            obj["e10_low"], obj["e10_high"], obj["diesel_low"], obj["diesel_high"]
+                        });
                     }
                     price_statistics.push_back(history);
                 }
-                Serial.printf("[DataModule] %d Preis-Statistiken geladen.\n", price_statistics.size());
-            } else {
-                 Serial.println("[DataModule] Migration der Preis-Statistiken fehlgeschlagen. Datei wird gelöscht.");
-                 LittleFS.remove("/station_price_stats.json");
-            }
-        } else {
-            Serial.printf("[DataModule] Fehler beim Deserialisieren von station_price_stats.json (Fehler: %s). Datei wird gelöscht.\n", error.c_str());
-            LittleFS.remove("/station_price_stats.json");
-        }
-        
-        doc->~JsonDocument();
-        free(docMem);
+            } else { LittleFS.remove("/station_price_stats.json"); }
+        } else { LittleFS.remove("/station_price_stats.json"); }
+        file.close();
     }
 }
 
@@ -692,43 +650,26 @@ void DataModule::loadStationCache() {
     if (!LittleFS.exists("/station_cache.json")) { return; }
     File file = LittleFS.open("/station_cache.json", "r");
     if(file) {
-        const size_t JSON_DOC_SIZE = 32768;
-        void* docMem = ps_malloc(JSON_DOC_SIZE);
-        if (!docMem) { Serial.println("[DataModule] FATAL: PSRAM für Cache-Laden fehlgeschlagen!"); file.close(); return; }
-
-        JsonDocument* doc = new (docMem) JsonDocument();
-        DeserializationError error = deserializeJson(*doc, file);
-        file.close();
-
-        if (!error && (*doc)["ok"] == true) {
-            JsonArray stations = (*doc)["stations"];
+        JsonDocument doc;
+        if (deserializeJson(doc, file) == DeserializationError::Ok && doc["ok"] == true) {
             station_cache.clear();
-            for(JsonObject station_json : stations) {
+            for(JsonObject station_json : doc["stations"].as<JsonArray>()) {
                 StationData cache_entry;
-                const char* id_ptr = station_json["id"];
-                if (id_ptr) cache_entry.id = id_ptr;
-                const char* name_ptr = station_json["name"];
-                if (name_ptr) cache_entry.name = name_ptr;
-                const char* brand_ptr = station_json["brand"];
-                if (brand_ptr) cache_entry.brand = brand_ptr;
-                const char* street_ptr = station_json["street"];
-                if (street_ptr) cache_entry.street = street_ptr;
-                const char* houseNumber_ptr = station_json["houseNumber"];
-                if (houseNumber_ptr) cache_entry.houseNumber = houseNumber_ptr;
+                cache_entry.id = station_json["id"].as<const char*>();
+                cache_entry.name = station_json["name"].as<const char*>();
+                cache_entry.brand = station_json["brand"].as<const char*>();
+                cache_entry.street = station_json["street"].as<const char*>();
+                cache_entry.houseNumber = station_json["houseNumber"].as<const char*>();
                 if (station_json["postCode"].is<int>()) {
                     cache_entry.postCode = String(station_json["postCode"].as<int>()).c_str();
-                } else if (station_json["postCode"].is<const char*>()) {
+                } else {
                     cache_entry.postCode = station_json["postCode"].as<const char*>();
                 }
-                const char* place_ptr = station_json["place"];
-                if (place_ptr) cache_entry.place = place_ptr;
+                cache_entry.place = station_json["place"].as<const char*>();
                 station_cache.push_back(cache_entry);
             }
-            Serial.printf("[DataModule] %d Tankstellen aus dem Cache geladen.\n", station_cache.size());
-        } else { Serial.printf("[DataModule] Fehler beim Parsen von station_cache.json: %s\n", error.c_str()); }
-        
-        doc->~JsonDocument();
-        free(docMem);
+        }
+        file.close();
     }
 }
 
@@ -737,45 +678,10 @@ uint16_t DataModule::rgb565(uint8_t r, uint8_t g, uint8_t b) {
 }
     
 uint16_t DataModule::calcColor(float value, float low, float high) {
-    if (low >= high) return rgb565(255, 255, 0);
-    if (value < low) { value = low; }
-    if (value > high) { value = high; }
-    int diff = (int)roundf(((high - value) / (high - low)) * 100.0f);
-    if(diff < 0) diff = 0; if(diff > 100) diff = 100;
-    uint8_t rval = 255, gval = 255;
-    if (diff <= 50) { rval = 255; gval = map(diff, 0, 50, 0, 255); }
-    else { gval = 255; rval = map(diff, 50, 100, 255, 0); }
-    return rgb565(rval, gval, 0);
-}
-
-void DataModule::drawPrice(int x, int y, float price, uint16_t color) {
-    if (price <= 0) return;
-    u8g2.setForegroundColor(color);
-    String priceStr = String(price, 3);
-    priceStr.replace('.', ',');
-    String mainPricePart = priceStr.substring(0, priceStr.length() - 1);
-    char last_digit_char = priceStr.charAt(priceStr.length() - 1);
-    char last_digit_str[2] = {last_digit_char, '\0'};
-    u8g2.setFont(u8g2_font_7x14_tf);
-    u8g2.setCursor(x, y);
-    u8g2.print(mainPricePart);
-    int mainPriceWidth = u8g2.getUTF8Width(mainPricePart.c_str());
-    int superscriptX = x + mainPriceWidth;
-    u8g2.setFont(u8g2_font_5x8_tf);
-    u8g2.setCursor(superscriptX+1, y - 4);
-    u8g2.print(last_digit_str);
-    int superscriptWidth = u8g2.getUTF8Width(last_digit_str);
-    u8g2.setFont(u8g2_font_6x13_me);
-    u8g2.setCursor(superscriptX + superscriptWidth + 3, y);
-    u8g2.print("€");
-}
-
-void DataModule::drawPriceLine(int y, const char* label, float current, float min, float max) {
-    u8g2.setFont(u8g2_font_7x14_tf);
-    u8g2.setForegroundColor(0xFFFF);
-    u8g2.setCursor(2, y);
-    u8g2.print(label);
-    drawPrice(50, y, min, rgb565(0, 255, 0));
-    drawPrice(100, y, current, calcColor(current, min, max));
-    drawPrice(150, y, max, rgb565(255, 0, 0));
+    if (low >= high || value <= 0) return rgb565(255, 255, 0);
+    float val = (value < low) ? low : (value > high ? high : value);
+    float factor = (val - low) / (high - low);
+    uint8_t r = (uint8_t)(255 * factor);
+    uint8_t g = (uint8_t)(255 * (1.0 - factor));
+    return rgb565(r, g, 0);
 }
