@@ -8,10 +8,10 @@
 #include <esp_heap_caps.h>
 
 #define PRICE_CACHE_FILENAME "/last_prices.json"
-#define AVG_CACHE_FILENAME "/avg_price_trends.json"
-#define PRICE_CACHE_LIFETIME_SEC (24 * 3600)
+#define AVG_CACHE_FILENAME "/avg_price_trends.json" // Veraltet
+#define TREND_ANALYSIS_DAYS 10 // Anzahl der Tage für die Trendberechnung
 
-StationData::StationData() : e5(0.0f), e10(0.0f), diesel(0.0f), isOpen(false) {}
+StationData::StationData() : e5(0.0f), e10(0.0f), diesel(0.0f), isOpen(false), lastPriceChange(0) {}
 
 DataModule::DataModule(U8G2_FOR_ADAFRUIT_GFX &u8g2, GFXcanvas16 &canvas, GeneralTimeConverter& timeConverter, int topOffset, WebClientModule* webClient)
      : u8g2(u8g2), canvas(canvas), timeConverter(timeConverter), top_offset(topOffset), webClient(webClient), last_processed_update(0) {
@@ -28,11 +28,14 @@ void DataModule::begin() {
         Serial.println("[DataModule] Altes Preis-Format 'price_history.json' gefunden. Wird gelöscht.");
         LittleFS.remove("/price_history.json");
     }
+    if (LittleFS.exists(AVG_CACHE_FILENAME)) {
+        Serial.println("[DataModule] Veraltete Cache-Datei 'avg_price_trends.json' gefunden. Wird gelöscht.");
+        LittleFS.remove(AVG_CACHE_FILENAME);
+    }
     loadPriceStatistics();
     loadStationCache();
     loadPriceCache();
     cleanupOldPriceCacheEntries();
-    loadAverageCache();
 }
 
 void DataModule::onUpdate(std::function<void()> callback) {
@@ -75,10 +78,6 @@ void DataModule::setConfig(const PsramString& apiKey, const PsramString& station
         size_t original_cache_size = _lastPriceCache.size();
         _lastPriceCache.erase(std::remove_if(_lastPriceCache.begin(), _lastPriceCache.end(), remove_by_id), _lastPriceCache.end());
         if(_lastPriceCache.size() < original_cache_size) savePriceCache();
-
-        size_t original_avg_size = _lastAverageCache.size();
-        _lastAverageCache.erase(std::remove_if(_lastAverageCache.begin(), _lastAverageCache.end(), remove_by_id), _lastAverageCache.end());
-        if(_lastAverageCache.size() < original_avg_size) saveAverageCache();
         
         xSemaphoreGive(dataMutex);
     }
@@ -189,15 +188,11 @@ void DataModule::parseAndProcessJson(const char* buffer, size_t size) {
                     }
                     updatePriceStatistics(new_data.id, new_data.e5, new_data.e10, new_data.diesel);
                 } else {
-                    if (old_data_ptr && old_data_ptr->isOpen) {
-                        updatePriceCache(new_data.id, old_data_ptr->e5, old_data_ptr->e10, old_data_ptr->diesel);
+                    if (old_data_ptr && old_data_ptr->isOpen) { // Gerade geschlossen
+                        updatePriceCache(new_data.id, old_data_ptr->e5, old_data_ptr->e10, old_data_ptr->diesel, old_data_ptr->lastPriceChange);
                     }
-                    if (old_data_ptr) {
-                        new_data.e5 = old_data_ptr->e5; new_data.e10 = old_data_ptr->e10; new_data.diesel = old_data_ptr->diesel;
-                        new_data.lastPriceChange = old_data_ptr->lastPriceChange;
-                    } else {
-                        getPriceFromCache(new_data.id, new_data.e5, new_data.e10, new_data.diesel);
-                    }
+                    
+                    getPriceFromCache(new_data.id, new_data.e5, new_data.e10, new_data.diesel, new_data.lastPriceChange);
                 }
                 new_station_data_list.push_back(new_data);
                 updateAndDetermineTrends(id);
@@ -270,7 +265,7 @@ void DataModule::draw() {
     canvas.drawFastHLine(0, 17, canvas.width(), rgb565(128, 128, 128));
 
     // --- PREISTABELLE ---
-    AveragePrices averages = calculateAverages(data.id);
+    AveragePrices averages = calculateAverages(data.id); 
     if (averages.avgE5Low == 0.0) averages.avgE5Low = data.e5 > 0 ? data.e5 - 0.05 : 0;
     if (averages.avgE5High == 0.0) averages.avgE5High = data.e5 > 0 ? data.e5 + 0.05 : 0;
     if (averages.avgE10Low == 0.0) averages.avgE10Low = data.e10 > 0 ? data.e10 - 0.05 : 0;
@@ -327,12 +322,12 @@ void DataModule::drawPriceLine(int y, const char* label, float current, float mi
     int x_min = 42, x_current = 92, x_max = 142;
 
     int min_width = drawPrice(x_min, y, min, rgb565(0, 255, 0));
-    if(min > 0) drawTrendArrow(x_min + min_width + 2, y - 5, minTrend); // KORREKTUR: Y-Position -5
+    if(min > 0) drawTrendArrow(x_min + min_width + 2, y - 5, minTrend);
 
     drawPrice(x_current, y, current, calcColor(current, min, max));
     
     int max_width = drawPrice(x_max, y, max, rgb565(255, 0, 0));
-    if(max > 0) drawTrendArrow(x_max + max_width + 2, y - 5, maxTrend); // KORREKTUR: Y-Position -5
+    if(max > 0) drawTrendArrow(x_max + max_width + 2, y - 5, maxTrend);
 }
 
 int DataModule::drawPrice(int x, int y, float price, uint16_t color) {
@@ -419,118 +414,147 @@ void DataModule::savePriceCache() {
     }
 }
 
-void DataModule::updatePriceCache(const PsramString& stationId, float e5, float e10, float diesel) {
-    time_t now; time(&now);
+void DataModule::updatePriceCache(const PsramString& stationId, float e5, float e10, float diesel, time_t lastChange) {
     bool found = false;
     for (auto& entry : _lastPriceCache) {
         if (entry.stationId == stationId) {
-            entry.e5 = e5; entry.e10 = e10; entry.diesel = diesel; entry.timestamp = now;
+            entry.e5 = e5; entry.e10 = e10; entry.diesel = diesel; entry.timestamp = lastChange;
             found = true; break;
         }
     }
-    if (!found) { _lastPriceCache.push_back({stationId, e5, e10, diesel, now}); }
+    if (!found) { _lastPriceCache.push_back({stationId, e5, e10, diesel, lastChange}); }
     savePriceCache();
 }
 
-bool DataModule::getPriceFromCache(const PsramString& stationId, float& e5, float& e10, float& diesel) {
+bool DataModule::getPriceFromCache(const PsramString& stationId, float& e5, float& e10, float& diesel, time_t& lastChange) {
     for (const auto& entry : _lastPriceCache) {
         if (entry.stationId == stationId) {
             e5 = entry.e5; e10 = entry.e10; diesel = entry.diesel;
+            lastChange = entry.timestamp;
             return true;
         }
     }
+    e5 = e10 = diesel = 0.0f;
+    lastChange = 0;
     return false;
 }
 
 void DataModule::cleanupOldPriceCacheEntries() {
-    time_t now; time(&now);
     size_t original_size = _lastPriceCache.size();
     _lastPriceCache.erase(
         std::remove_if(_lastPriceCache.begin(), _lastPriceCache.end(),
-            [&](const LastPriceCache& entry) { return entry.timestamp < (now - PRICE_CACHE_LIFETIME_SEC); }),
+            [](const LastPriceCache& entry) { return entry.timestamp == 0; }),
         _lastPriceCache.end()
     );
     if (_lastPriceCache.size() < original_size) { savePriceCache(); }
 }
 
-void DataModule::loadAverageCache() {
-    if (LittleFS.exists(AVG_CACHE_FILENAME)) {
-        File file = LittleFS.open(AVG_CACHE_FILENAME, "r");
-        if (file) {
-            JsonDocument doc;
-            if (deserializeJson(doc, file) == DeserializationError::Ok) {
-                _lastAverageCache.clear();
-                for (JsonObject obj : doc.as<JsonArray>()) {
-                    _lastAverageCache.push_back({
-                        obj["id"].as<const char*>(), obj["aE5L"], obj["aE5H"], obj["aE10L"],
-                        obj["aE10H"], obj["aDiL"], obj["aDiH"]
-                    });
-                }
-            }
-            file.close();
-        }
-    }
-}
+/**
+ * @brief Berechnet den Preistrend mittels linearer Regression.
+ * 
+ * @param x_values Vektor der Zeitwerte (Tage in der Vergangenheit, z.B. -7, -6, ..., 0).
+ * @param y_values Vektor der zugehörigen Preiswerte.
+ * @return PriceTrend Gibt TREND_RISING, TREND_FALLING oder TREND_STABLE zurück.
+ */
+PriceTrend DataModule::calculateTrend(const PsramVector<float>& x_values, const PsramVector<float>& y_values) {
+    // Anzahl der Datenpunkte für die Regression.
+    int n = x_values.size();
 
-void DataModule::saveAverageCache() {
-    File file = LittleFS.open(AVG_CACHE_FILENAME, "w");
-    if (file) {
-        JsonDocument doc;
-        JsonArray arr = doc.to<JsonArray>();
-        for (const auto& entry : _lastAverageCache) {
-            JsonObject obj = arr.add<JsonObject>();
-            obj["id"] = entry.stationId;
-            obj["aE5L"] = entry.avgE5Low; obj["aE5H"] = entry.avgE5High;
-            obj["aE10L"] = entry.avgE10Low; obj["aE10H"] = entry.avgE10High;
-            obj["aDiL"] = entry.avgDieselLow; obj["aDiH"] = entry.avgDieselHigh;
-        }
-        serializeJson(doc, file);
-        file.close();
+    // Für eine Trendlinie benötigen wir mindestens 2 Punkte.
+    if (n < 2) {
+        return PriceTrend::TREND_STABLE;
+    }
+
+    // Summen für die Regressionsformel initialisieren.
+    double sum_x = 0.0, sum_y = 0.0, sum_xy = 0.0, sum_x_squared = 0.0;
+    
+    // Alle benötigten Summen in einer Schleife berechnen.
+    for (int i = 0; i < n; ++i) {
+        sum_x += x_values[i];
+        sum_y += y_values[i];
+        sum_xy += x_values[i] * y_values[i];
+        sum_x_squared += x_values[i] * x_values[i];
+    }
+
+    // Nenner der Steigungsformel berechnen.
+    double denominator = (n * sum_x_squared) - (sum_x * sum_x);
+
+    // Eine Division durch Null verhindern, falls alle x-Werte identisch wären.
+    const double SLOPE_DENOMINATOR_THRESHOLD = 0.000001;
+    if (abs(denominator) < SLOPE_DENOMINATOR_THRESHOLD) {
+        return PriceTrend::TREND_STABLE;
+    }
+
+    // Die Steigung (Slope 'm') der Trendlinie berechnen.
+    // Formel: m = (n * Σ(xy) - Σx * Σy) / (n * Σ(x²) - (Σx)²)
+    double slope = (n * sum_xy - sum_x * sum_y) / denominator;
+
+    // Ein Schwellenwert, um irrelevante, minimale Schwankungen als "stabil" zu werten.
+    // Ein Preisunterschied von 0.1 Cent pro Tag wird hier als relevante Änderung angesehen.
+    const double STABILITY_THRESHOLD = 0.001; 
+    if (slope > STABILITY_THRESHOLD) {
+        return PriceTrend::TREND_RISING; // Positive Steigung -> Trend steigt.
+    } else if (slope < -STABILITY_THRESHOLD) {
+        return PriceTrend::TREND_FALLING; // Negative Steigung -> Trend fällt.
+    } else {
+        return PriceTrend::TREND_STABLE; // Steigung nahe Null -> Trend ist stabil.
     }
 }
 
 void DataModule::updateAndDetermineTrends(const PsramString& stationId) {
-    LastAveragePrice* old_avg_ptr = nullptr;
-    for(auto& entry : _lastAverageCache) {
-        if(entry.stationId == stationId) { old_avg_ptr = &entry; break; }
+    StationPriceHistory* history = nullptr;
+    for (auto& h : price_statistics) {
+        if (h.stationId == stationId) {
+            history = &h;
+            break;
+        }
     }
 
-    AveragePrices new_avg = calculateAverages(stationId);
+    if (!history || history->dailyStats.size() < 2) {
+        return; // Nicht genügend Daten für eine Trendanalyse
+    }
+    
+    PsramVector<float> x_values, y_e5_low, y_e5_high, y_e10_low, y_e10_high, y_diesel_low, y_diesel_high;
+
+    time_t now_utc; time(&now_utc);
+    
+    for (const auto& s : history->dailyStats) {
+        struct tm tm_stat = {0};
+        sscanf(s.date.c_str(), "%d-%d-%d", &tm_stat.tm_year, &tm_stat.tm_mon, &tm_stat.tm_mday);
+        tm_stat.tm_year -= 1900;
+        tm_stat.tm_mon -= 1;
+        time_t stat_time = mktime(&tm_stat);
+        
+        double days_diff = difftime(now_utc, stat_time) / (60 * 60 * 24.0);
+
+        if (days_diff < TREND_ANALYSIS_DAYS) {
+            x_values.push_back(-days_diff); // x-Wert ist die Anzahl der Tage in der Vergangenheit
+            if(s.e5_low > 0) y_e5_low.push_back(s.e5_low);
+            if(s.e5_high > 0) y_e5_high.push_back(s.e5_high);
+            if(s.e10_low > 0) y_e10_low.push_back(s.e10_low);
+            if(s.e10_high > 0) y_e10_high.push_back(s.e10_high);
+            if(s.diesel_low > 0) y_diesel_low.push_back(s.diesel_low);
+            if(s.diesel_high > 0) y_diesel_high.push_back(s.diesel_high);
+        }
+    }
+
     TrendStatus trends;
     trends.stationId = stationId;
 
-    if (old_avg_ptr && new_avg.count > 0) {
-        auto get_trend = [](float old_val, float new_val) {
-            if (old_val == 0 || new_val == 0) return PriceTrend::TREND_STABLE;
-            if (new_val > old_val) return PriceTrend::TREND_RISING;
-            if (new_val < old_val) return PriceTrend::TREND_FALLING;
-            return PriceTrend::TREND_STABLE;
-        };
-        trends.e5_min_trend = get_trend(old_avg_ptr->avgE5Low, new_avg.avgE5Low);
-        trends.e5_max_trend = get_trend(old_avg_ptr->avgE5High, new_avg.avgE5High);
-        trends.e10_min_trend = get_trend(old_avg_ptr->avgE10Low, new_avg.avgE10Low);
-        trends.e10_max_trend = get_trend(old_avg_ptr->avgE10High, new_avg.avgE10High);
-        trends.diesel_min_trend = get_trend(old_avg_ptr->avgDieselLow, new_avg.avgDieselLow);
-        trends.diesel_max_trend = get_trend(old_avg_ptr->avgDieselHigh, new_avg.avgDieselHigh);
-
-        old_avg_ptr->avgE5Low = new_avg.avgE5Low; old_avg_ptr->avgE5High = new_avg.avgE5High;
-        old_avg_ptr->avgE10Low = new_avg.avgE10Low; old_avg_ptr->avgE10High = new_avg.avgE10High;
-        old_avg_ptr->avgDieselLow = new_avg.avgDieselLow; old_avg_ptr->avgDieselHigh = new_avg.avgDieselHigh;
-    } else if (new_avg.count > 0) {
-        _lastAverageCache.push_back({
-            stationId, new_avg.avgE5Low, new_avg.avgE5High, new_avg.avgE10Low, 
-            new_avg.avgE10High, new_avg.avgDieselLow, new_avg.avgDieselHigh
-        });
-    }
+    trends.e5_min_trend = calculateTrend(x_values, y_e5_low);
+    trends.e5_max_trend = calculateTrend(x_values, y_e5_high);
+    trends.e10_min_trend = calculateTrend(x_values, y_e10_low);
+    trends.e10_max_trend = calculateTrend(x_values, y_e10_high);
+    trends.diesel_min_trend = calculateTrend(x_values, y_diesel_low);
+    trends.diesel_max_trend = calculateTrend(x_values, y_diesel_high);
 
     bool trend_found = false;
     for(auto& ts : _trendStatusCache) {
         if(ts.stationId == stationId) { ts = trends; trend_found = true; break; }
     }
     if(!trend_found) { _trendStatusCache.push_back(trends); }
-    
-    saveAverageCache();
 }
+
 
 void DataModule::updatePriceStatistics(const PsramString& stationId, float currentE5, float currentE10, float currentDiesel) {
     time_t now_utc; time(&now_utc);

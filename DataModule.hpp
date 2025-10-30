@@ -3,7 +3,6 @@
 
 #include <Arduino.h>
 #include <U8g2_for_Adafruit_GFX.h>
-#include <vector>
 #include <functional>
 #include "PsramUtils.hpp"
 #include "freertos/FreeRTOS.h"
@@ -66,7 +65,6 @@ struct LastPriceCache {
     time_t timestamp;
 };
 
-// KORREKTUR: Umbenannt, um Kollision mit Arduino.h zu vermeiden
 enum class PriceTrend { TREND_STABLE, TREND_RISING, TREND_FALLING };
 
 struct TrendStatus {
@@ -77,16 +75,6 @@ struct TrendStatus {
     PriceTrend e10_max_trend = PriceTrend::TREND_STABLE;
     PriceTrend diesel_min_trend = PriceTrend::TREND_STABLE;
     PriceTrend diesel_max_trend = PriceTrend::TREND_STABLE;
-};
-
-struct LastAveragePrice {
-    PsramString stationId;
-    float avgE5Low = 0.0;
-    float avgE5High = 0.0;
-    float avgE10Low = 0.0;
-    float avgE10High = 0.0;
-    float avgDieselLow = 0.0;
-    float avgDieselHigh = 0.0;
 };
 
 class DataModule : public DrawableModule {
@@ -132,7 +120,6 @@ private:
     bool _isEnabled = false;
 
     PsramVector<LastPriceCache> _lastPriceCache;
-    PsramVector<LastAveragePrice> _lastAverageCache;
     PsramVector<TrendStatus> _trendStatusCache;
 
     PsramString truncateString(const PsramString& text, int maxWidth);
@@ -150,12 +137,11 @@ private:
     
     void loadPriceCache();
     void savePriceCache();
-    void updatePriceCache(const PsramString& stationId, float e5, float e10, float diesel);
-    bool getPriceFromCache(const PsramString& stationId, float& e5, float& e10, float& diesel);
+    void updatePriceCache(const PsramString& stationId, float e5, float e10, float diesel, time_t lastChange);
+    bool getPriceFromCache(const PsramString& stationId, float& e5, float& e10, float& diesel, time_t& lastChange);
     void cleanupOldPriceCacheEntries();
 
-    void loadAverageCache();
-    void saveAverageCache();
+    PriceTrend calculateTrend(const PsramVector<float>& x_values, const PsramVector<float>& y_values);
     void updateAndDetermineTrends(const PsramString& stationId);
 
     uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b);
