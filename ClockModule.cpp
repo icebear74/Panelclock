@@ -1,4 +1,5 @@
 #include "ClockModule.hpp"
+#include <esp_heap_caps.h> // NEU: Für detaillierte Heap-Informationen
 
 ClockModule::ClockModule(U8G2_FOR_ADAFRUIT_GFX &u8g2, GFXcanvas16 &canvas, GeneralTimeConverter& timeConverter)
   : u8g2(u8g2), canvas(canvas), timeConverter(timeConverter) {}
@@ -35,28 +36,24 @@ void ClockModule::draw() {
   u8g2.setFontDirection(0);
 
   u8g2.setFont(u8g2_font_5x8_tf);
-  u8g2.setForegroundColor(isDisplayOn ? rgb565(0, 255, 0) : rgb565(255, 0, 0));
+  u8g2.setForegroundColor(rgb565(255, 255, 255));
   u8g2.setCursor(7, 8);
   
-  char onTimeStr[6] = "--:--";
-  char offTimeStr[6] = "--:--";
-  struct tm timeStruct;
+  // =================================================================
+  // ===================== PATCH: SPEICHER-ANZEIGE =====================
+  // =================================================================
+  char memBuf[50];
+  multi_heap_info_t heap_info;
+  heap_caps_get_info(&heap_info, MALLOC_CAP_INTERNAL);
 
-  if (lastOnEventTime > 0) {
-      time_t localOnTime = timeConverter.toLocal(lastOnEventTime);
-      localtime_r(&localOnTime, &timeStruct);
-      strftime(onTimeStr, sizeof(onTimeStr), "%H:%M", &timeStruct);
-  }
+  snprintf(memBuf, sizeof(memBuf), "G%.1f F%.1f M%.1f %d",
+      (float)ESP.getHeapSize() / 1024.0,
+      (float)ESP.getFreeHeap() / 1024.0,
+      (float)ESP.getMaxAllocHeap() / 1024.0,
+      heap_info.free_blocks);
+  u8g2.print(memBuf);
+  // ======================== ENDE PATCH ===============================
 
-  if (lastOffEventTime > 0) {
-      time_t localOffTime = timeConverter.toLocal(lastOffEventTime);
-      localtime_r(&localOffTime, &timeStruct);
-      strftime(offTimeStr, sizeof(offTimeStr), "%H:%M", &timeStruct);
-  }
-
-  char sensorBuf[30];
-  snprintf(sensorBuf, sizeof(sensorBuf), "%s %s (%.0f)", onTimeStr, offTimeStr, onPercentageValue);
-  u8g2.print(sensorBuf);
 
   u8g2.setForegroundColor(MAGENTA);
   u8g2.setBackgroundColor(BLACK);
