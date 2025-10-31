@@ -54,12 +54,26 @@ public:
     void queueData();
     void processData();
 
-    // --- Implementierung der Interface-Methoden ---
+    // =================================================================
+    // =========== UMSTELLUNG AUF MODERNE SCHNITTSTELLE ================
+    // =================================================================
     void draw() override;
     void tick() override;
-    unsigned long getDisplayDuration() override;
     bool isEnabled() override;
-    void resetPaging() override;
+
+    // --- Neue Metadaten-Methoden ---
+    const char* getModuleName() const override { return "DartsRankingModule"; }
+    const char* getModuleDisplayName() const override { return "Darts-Rangliste"; }
+    int getCurrentPage() const override;
+    int getTotalPages() const override;
+
+    // --- VERALTETE METHODEN (werden nicht mehr genutzt) ---
+    unsigned long getDisplayDuration() override { return 0; } // Muss implementiert, aber kann 0 zurückgeben
+    void resetPaging() override {} // Muss implementiert, aber kann leer sein
+
+protected:
+    // --- Neue Start-Methode (ersetzt resetPaging) ---
+    void onActivate() override;
 
 private:
     U8G2_FOR_ADAFRUIT_GFX& u8g2;
@@ -77,8 +91,7 @@ private:
     volatile bool protour_data_pending = false;
     
     static const int PLAYERS_PER_PAGE = 5;
-    int currentPage = 0;
-    int totalPages = 1;
+    int currentPage = 0; // Seitenzähler für den aktuellen Modus (OOM oder ProTour)
     unsigned long _pageDisplayDuration = 5000;
     unsigned long lastPageSwitchTime = 0;
 
@@ -102,10 +115,11 @@ private:
     
     bool _oomEnabled = false;
     bool _proTourEnabled = false;
-    DartsRankingType _currentInternalMode = DartsRankingType::ORDER_OF_MERIT; // Interner Zustand
+    DartsRankingType _currentInternalMode = DartsRankingType::ORDER_OF_MERIT;
     
     // Private helper methods
-    unsigned long getInternalDisplayDuration(DartsRankingType type);
+    void updateFailsafeTimeout();
+    int getPageCountForType(DartsRankingType type) const;
     void setTrackedPlayers(const PsramString& playerNames);
     uint16_t dimColor(uint16_t color);
     void clearAllData();

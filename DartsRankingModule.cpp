@@ -6,8 +6,10 @@
 #include <algorithm>
 #include <esp_heap_caps.h>
 
-// --- DartsPlayer Struct Implementierung ---
+#define FAILSAFE_BUFFER_MS 10000 // 10 Sekunden Puffer
 
+// --- DartsPlayer Struct Implementierung (unverändert) ---
+#pragma region DartsPlayer_Implementation
 DartsPlayer::DartsPlayer() = default;
 
 DartsPlayer::DartsPlayer(const DartsPlayer& other) {
@@ -57,6 +59,7 @@ DartsPlayer::~DartsPlayer() {
     if (prizeMoney) free(prizeMoney);
     if (currentRound) free(currentRound);
 }
+#pragma endregion
 
 // --- DartsRankingModule Klassenimplementierung ---
 
@@ -86,24 +89,19 @@ void DartsRankingModule::applyConfig(bool oomEnabled, bool proTourEnabled, uint3
     if (proTourEnabled) webClient->registerResource("https://www.dartsrankings.com/protour", fetchIntervalMinutes, root_ca_pem);
     
     setTrackedPlayers(trackedPlayers);
+    updateFailsafeTimeout(); // NEU: Failsafe-Timeout nach Konfigurationsänderung neu berechnen
 }
 
-// --- Implementierung der Interface-Methoden ---
+// --- Implementierung der MODERN-Interface-Methoden ---
 
 bool DartsRankingModule::isEnabled() {
     return _oomEnabled || _proTourEnabled;
 }
 
-unsigned long DartsRankingModule::getDisplayDuration() {
-    unsigned long totalDuration = 0;
-    if (_oomEnabled) totalDuration += getInternalDisplayDuration(DartsRankingType::ORDER_OF_MERIT);
-    if (_proTourEnabled) totalDuration += getInternalDisplayDuration(DartsRankingType::PRO_TOUR);
-    return totalDuration;
-}
-
-void DartsRankingModule::resetPaging() {
+void DartsRankingModule::onActivate() {
     currentPage = 0;
-    _currentInternalMode = DartsRankingType::ORDER_OF_MERIT; // Immer mit OOM starten
+    // Starte immer mit OOM, wenn es aktiviert ist, ansonsten mit ProTour
+    _currentInternalMode = _oomEnabled ? DartsRankingType::ORDER_OF_MERIT : DartsRankingType::PRO_TOUR;
     lastPageSwitchTime = millis();
     resetScroll();
 }
@@ -119,42 +117,61 @@ void DartsRankingModule::tick() {
         needsRedraw = true;
     }
 
-    // 2. Seiten-Wechsel innerhalb eines Rankings (OOM oder ProTour)
+    // 2. Seiten-Wechsel
     if (_pageDisplayDuration > 0 && now - lastPageSwitchTime > _pageDisplayDuration) {
+        lastPageSwitchTime = now;
+        needsRedraw = true;
+        resetScroll();
+
         if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-            if (totalPages > 1) {
-                currentPage = (currentPage + 1) % totalPages;
-                resetScroll();
-                needsRedraw = true;
+            
+            bool isLastPageOfCurrentMode = (currentPage >= getPageCountForType(_currentInternalMode) - 1);
+
+            if (isLastPageOfCurrentMode) {
+                // Wenn die letzte Seite des aktuellen Modus erreicht ist...
+                if (_currentInternalMode == DartsRankingType::ORDER_OF_MERIT && _proTourEnabled) {
+                    // ...und wir im OOM sind und ProTour aktiviert ist, wechsle zu ProTour.
+                    _currentInternalMode = DartsRankingType::PRO_TOUR;
+                    currentPage = 0;
+                } else {
+                    // ...ansonsten sind wir komplett fertig.
+                    _isFinished = true;
+                }
+            } else {
+                // Ansonsten, einfach zur nächsten Seite blättern.
+                currentPage++;
             }
             xSemaphoreGive(dataMutex);
         }
-        lastPageSwitchTime = now;
     }
 
-    // 3. Wechsel zwischen den Rankings (OOM <-> ProTour)
-    unsigned long currentModeDuration = getInternalDisplayDuration(_currentInternalMode);
-    if (currentModeDuration > 0 && now - lastPageSwitchTime >= currentModeDuration) {
-        DartsRankingType nextMode = _currentInternalMode;
-        if (_currentInternalMode == DartsRankingType::ORDER_OF_MERIT && _proTourEnabled) {
-            nextMode = DartsRankingType::PRO_TOUR;
-        } else if (_currentInternalMode == DartsRankingType::PRO_TOUR && _oomEnabled) {
-            nextMode = DartsRankingType::ORDER_OF_MERIT;
-        }
-
-        if (nextMode != _currentInternalMode) {
-            _currentInternalMode = nextMode;
-            currentPage = 0;
-            lastPageSwitchTime = now;
-            resetScroll();
-            needsRedraw = true;
-        }
-    }
-
-    if (needsRedraw && updateCallback) {
+    if (needsRedraw && updateCallback && !_isFinished) {
         updateCallback(_currentInternalMode);
     }
 }
+
+int DartsRankingModule::getCurrentPage() const {
+    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) != pdTRUE) return 0;
+    
+    int overall_page = 0;
+    if (_currentInternalMode == DartsRankingType::PRO_TOUR && _oomEnabled) {
+        overall_page += getPageCountForType(DartsRankingType::ORDER_OF_MERIT);
+    }
+    overall_page += currentPage;
+
+    xSemaphoreGive(dataMutex);
+    return overall_page;
+}
+
+int DartsRankingModule::getTotalPages() const {
+    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) != pdTRUE) return 1;
+    int oomPages = _oomEnabled ? getPageCountForType(DartsRankingType::ORDER_OF_MERIT) : 0;
+    int proTourPages = _proTourEnabled ? getPageCountForType(DartsRankingType::PRO_TOUR) : 0;
+    xSemaphoreGive(dataMutex);
+    int total = oomPages + proTourPages;
+    return total > 0 ? total : 1;
+}
+
 
 void DartsRankingModule::draw() {
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) != pdTRUE) return;
@@ -163,8 +180,8 @@ void DartsRankingModule::draw() {
     char* mainTitle = (_currentInternalMode == DartsRankingType::ORDER_OF_MERIT) ? oom_mainTitleText : protour_mainTitleText;
     char* subTitle = (_currentInternalMode == DartsRankingType::ORDER_OF_MERIT) ? oom_subTitleText : protour_subTitleText;
     
-    totalPages = (players_list.size() > 0) ? (players_list.size() + PLAYERS_PER_PAGE - 1) / PLAYERS_PER_PAGE : 1;
-    if (currentPage >= totalPages) currentPage = 0;
+    int currentModeTotalPages = getPageCountForType(_currentInternalMode);
+    if (currentPage >= currentModeTotalPages) currentPage = 0;
 
     canvas.fillScreen(0);
     u8g2.begin(canvas);
@@ -183,7 +200,7 @@ void DartsRankingModule::draw() {
         drawScrollingText(subTitle, (canvas.width() - u8g2.getUTF8Width(" ") * 40) / 2, 18, u8g2.getUTF8Width(" ") * 40, -1);
     }
     
-    String page_info = String(currentPage + 1) + "/" + String(totalPages);
+    String page_info = String(currentPage + 1) + "/" + String(currentModeTotalPages);
     u8g2.setFont(u8g2_font_profont10_tf);
     int page_info_width = u8g2.getUTF8Width(page_info.c_str());
     u8g2.setCursor(canvas.width() - page_info_width - 2, 8);
@@ -257,19 +274,61 @@ void DartsRankingModule::draw() {
 
 // --- Private Methoden ---
 
-unsigned long DartsRankingModule::getInternalDisplayDuration(DartsRankingType type) {
-    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) != pdTRUE) return _pageDisplayDuration;
+void DartsRankingModule::updateFailsafeTimeout() {
+    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) != pdTRUE) return;
     
-    auto& players_list = (type == DartsRankingType::ORDER_OF_MERIT) ? oom_players : protour_players;
-    int num_pages = 1;
-    if (players_list.size() > 0) {
-        num_pages = (players_list.size() + PLAYERS_PER_PAGE - 1) / PLAYERS_PER_PAGE;
-    }
+    int oomPages = _oomEnabled ? getPageCountForType(DartsRankingType::ORDER_OF_MERIT) : 0;
+    int proTourPages = _proTourEnabled ? getPageCountForType(DartsRankingType::PRO_TOUR) : 0;
+    
+    int total_pages = oomPages + proTourPages;
+    if (total_pages == 0 && isEnabled()) total_pages = 1;
+    
+    unsigned long totalDuration = total_pages * _pageDisplayDuration;
+    
+    this->maxRuntimeMs =  totalDuration + FAILSAFE_BUFFER_MS;
     
     xSemaphoreGive(dataMutex);
-    return _pageDisplayDuration * num_pages;
+    Serial.printf("[DartsRankingModule] Failsafe-Timeout auf %lu ms gesetzt (%d Seiten).\n", this->maxRuntimeMs, total_pages);
 }
 
+int DartsRankingModule::getPageCountForType(DartsRankingType type) const {
+    const auto& players_list = (type == DartsRankingType::ORDER_OF_MERIT) ? oom_players : protour_players;
+    if (players_list.empty()) return 1;
+    return (players_list.size() + PLAYERS_PER_PAGE - 1) / PLAYERS_PER_PAGE;
+}
+
+void DartsRankingModule::processData() {
+    bool dataWasProcessed = false;
+    if (oom_data_pending) {
+        if (xSemaphoreTake(dataMutex, portMAX_DELAY) == pdTRUE) {
+            parseHtml(oom_pending_buffer, oom_buffer_size, DartsRankingType::ORDER_OF_MERIT);
+            free(oom_pending_buffer);
+            oom_pending_buffer = nullptr;
+            oom_data_pending = false;
+            dataWasProcessed = true;
+            xSemaphoreGive(dataMutex);
+            if (updateCallback) updateCallback(DartsRankingType::ORDER_OF_MERIT);
+        }
+    }
+    if (protour_data_pending) {
+        if (xSemaphoreTake(dataMutex, portMAX_DELAY) == pdTRUE) {
+            parseHtml(protour_pending_buffer, protour_buffer_size, DartsRankingType::PRO_TOUR);
+            free(protour_pending_buffer);
+            protour_pending_buffer = nullptr;
+            protour_data_pending = false;
+            dataWasProcessed = true;
+            xSemaphoreGive(dataMutex);
+            if (updateCallback) updateCallback(DartsRankingType::PRO_TOUR);
+        }
+    }
+    
+    if (dataWasProcessed) {
+        updateFailsafeTimeout(); // NEU: Nach neuen Daten Timeout neu berechnen
+    }
+}
+
+// --- Restliche private Methoden (unverändert) ---
+#pragma region Unchanged_Private_Methods
 void DartsRankingModule::queueData() {
     if (!webClient) return;
     
@@ -303,29 +362,6 @@ void DartsRankingModule::queueData() {
                 }
             }
         });
-    }
-}
-
-void DartsRankingModule::processData() {
-    if (oom_data_pending) {
-        if (xSemaphoreTake(dataMutex, portMAX_DELAY) == pdTRUE) {
-            parseHtml(oom_pending_buffer, oom_buffer_size, DartsRankingType::ORDER_OF_MERIT);
-            free(oom_pending_buffer);
-            oom_pending_buffer = nullptr;
-            oom_data_pending = false;
-            xSemaphoreGive(dataMutex);
-            if (updateCallback) updateCallback(DartsRankingType::ORDER_OF_MERIT);
-        }
-    }
-    if (protour_data_pending) {
-        if (xSemaphoreTake(dataMutex, portMAX_DELAY) == pdTRUE) {
-            parseHtml(protour_pending_buffer, protour_buffer_size, DartsRankingType::PRO_TOUR);
-            free(protour_pending_buffer);
-            protour_pending_buffer = nullptr;
-            protour_data_pending = false;
-            xSemaphoreGive(dataMutex);
-            if (updateCallback) updateCallback(DartsRankingType::PRO_TOUR);
-        }
     }
 }
 
@@ -699,3 +735,4 @@ void DartsRankingModule::ensureScrollPos(size_t requiredSize) {
         scrollPos.assign(requiredSize, ScrollState());
     }
 }
+#pragma endregion

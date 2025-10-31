@@ -113,6 +113,7 @@ void Application::begin() {
     _panelManager->registerModule(_dartsMod);
 
     _panelManager->markAsModern(_tankerkoenigMod);
+    _panelManager->markAsModern(_dartsMod); // <-- DIESE ZEILE HINZUFÜGEN
 
 
     if (connectionManager->begin()) {

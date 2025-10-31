@@ -23,20 +23,16 @@ PanelManager::~PanelManager() {
 
 bool PanelManager::begin() {
     _u8g2 = new U8G2_FOR_ADAFRUIT_GFX();
-
     uint16_t* timeBuffer = (uint16_t*)ps_malloc(FULL_WIDTH * TIME_AREA_H * sizeof(uint16_t));
     uint16_t* dataBuffer = (uint16_t*)ps_malloc(FULL_WIDTH * DATA_AREA_H * sizeof(uint16_t));
     uint16_t* fullBuffer = (uint16_t*)ps_malloc(FULL_WIDTH * FULL_HEIGHT * sizeof(uint16_t));
-
     if (!timeBuffer || !dataBuffer || !fullBuffer) {
         Serial.println("FATAL: PSRAM-Allokation für Canvases fehlgeschlagen!");
         return false;
     }
-
     _canvasTime = new GFXcanvas16(FULL_WIDTH, TIME_AREA_H, timeBuffer);
     _canvasData = new GFXcanvas16(FULL_WIDTH, DATA_AREA_H, dataBuffer);
     _fullCanvas = new GFXcanvas16(FULL_WIDTH, FULL_HEIGHT, fullBuffer);
-
     HUB75_I2S_CFG::i2s_pins _pins = {
         (int8_t)_hwConfig.R1, (int8_t)_hwConfig.G1, (int8_t)_hwConfig.B1,
         (int8_t)_hwConfig.R2, (int8_t)_hwConfig.G2, (int8_t)_hwConfig.B2,
@@ -44,24 +40,19 @@ bool PanelManager::begin() {
         (int8_t)_hwConfig.D,  (int8_t)_hwConfig.E,
         (int8_t)_hwConfig.LAT, (int8_t)_hwConfig.OE, (int8_t)_hwConfig.CLK
     };
-
     HUB75_I2S_CFG mxconfig(PANEL_RES_X, PANEL_RES_Y, VDISP_NUM_ROWS * VDISP_NUM_COLS, _pins);
     mxconfig.double_buff = false;
     mxconfig.i2sspeed = HUB75_I2S_CFG::HZ_8M;
     mxconfig.clkphase = false;
-
     _dma_display = new MatrixPanel_I2S_DMA(mxconfig);
     if (!_dma_display->begin()) {
         Serial.println("FATAL: MatrixPanel_I2S_DMA begin() fehlgeschlagen!");
         return false;
     }
-
     _dma_display->setBrightness8(128);
     _dma_display->clearScreen();
-
     _virtualDisp = new VirtualMatrixPanel_T<PANEL_CHAIN_TYPE>(VDISP_NUM_ROWS, VDISP_NUM_COLS, PANEL_RES_X, PANEL_RES_Y);
     _virtualDisp->setDisplay(*_dma_display);
-
     Serial.println("PanelManager: Display-Initialisierung abgeschlossen.");
     return true;
 }
@@ -71,24 +62,19 @@ void PanelManager::registerSensorModule(MwaveSensorModule* mod) { _sensorMod = m
 
 void PanelManager::registerModule(DrawableModule* mod) {
     if (!mod) return;
-
     mod->setRequestCallback([this](DrawableModule* m){ this->handlePriorityRequest(m); });
     mod->setReleaseCallback([this](DrawableModule* m){ this->handlePriorityRelease(m); });
-
     _dataAreaModules.push_back(mod);
 }
 
-// NEU: Implementierung von markAsModern
 void PanelManager::markAsModern(DrawableModule* mod) {
     if (!mod) return;
-    // Füge das Modul nur hinzu, wenn es noch nicht in der Liste ist
     if (std::find(_modernModules.begin(), _modernModules.end(), mod) == _modernModules.end()) {
         _modernModules.push_back(mod);
         Serial.printf("[PanelManager] Modul '%s' wurde als MODERN markiert.\n", mod->getModuleName());
     }
 }
 
-// NEU: Implementierung von isModern
 bool PanelManager::isModern(const DrawableModule* mod) const {
     if (!mod) return false;
     return std::find(_modernModules.begin(), _modernModules.end(), mod) != _modernModules.end();
@@ -96,7 +82,6 @@ bool PanelManager::isModern(const DrawableModule* mod) const {
 
 void PanelManager::handlePriorityRequest(DrawableModule* mod) {
     Priority prio = mod->getPriority();
-
     if (prio == Priority::Normal) {
         if (!_interruptQueue.empty()) {
             _pendingNormalPriorityModule = mod;
@@ -107,11 +92,9 @@ void PanelManager::handlePriorityRequest(DrawableModule* mod) {
         }
         return;
     }
-
     if (_interruptQueue.empty()) {
         pausePlaylist();
     }
-
     if (std::find(_interruptQueue.begin(), _interruptQueue.end(), mod) == _interruptQueue.end()) {
         _interruptQueue.push_back(mod);
         std::sort(_interruptQueue.begin(), _interruptQueue.end(), [](const DrawableModule* a, const DrawableModule* b) {
@@ -126,7 +109,6 @@ void PanelManager::handlePriorityRelease(DrawableModule* mod) {
     if (it != _interruptQueue.end()) {
         _interruptQueue.erase(it);
         Serial.printf("[PanelManager] Interrupt-Priorität freigegeben (Prio: %d). Verbleibende Interrupts: %d\n", (int)mod->getPriority(), _interruptQueue.size());
-
         if (_interruptQueue.empty()) {
             resumePlaylist();
         }
@@ -134,11 +116,9 @@ void PanelManager::handlePriorityRelease(DrawableModule* mod) {
 }
 
 void PanelManager::tick() {
-    // Interrupt-Logik bleibt unverändert
     if (!_interruptQueue.empty()) {
         DrawableModule* currentInterrupt = _interruptQueue.front();
         currentInterrupt->tick();
-
         if (currentInterrupt != _lastActiveInterrupt) {
             _lastActiveInterrupt = currentInterrupt;
             _interruptStartTime = millis();
@@ -151,49 +131,44 @@ void PanelManager::tick() {
         }
         return;
     } 
-    
     if (_lastActiveInterrupt != nullptr) {
         _lastActiveInterrupt = nullptr;
         _interruptStartTime = 0;
     }
-    
-    // Start der Playlist, falls sie noch nicht läuft
     if (_currentModuleIndex < 0 && !_dataAreaModules.empty()) {
         switchNextModule();
     }
-    
     if (_currentModuleIndex < 0) return;
-
     DrawableModule* currentMod = _dataAreaModules[_currentModuleIndex];
     currentMod->tick();
 
     // =================================================================
-    // =========== NEUE "SWITTER"-LOGIK ZUM MODULWECHSEL ==============
+    // =========== KORRIGIERTE LOGIK ZUM MODULWECHSEL ==================
     // =================================================================
-    bool finished = false;
-    bool timeout = false;
+    bool should_switch = false;
 
     if (isModern(currentMod)) {
         // --- LOGIK FÜR MODERNE MODULE ---
         // Plan A: Hat sich das Modul selbst beendet?
-        finished = currentMod->isFinished();
-        
-        // Plan B: Ist die maximale Zeit um? (Dummy-Config für jetzt)
-        ModuleConfig tempConfig; // Platzhalter, wird in Phase 3 durch echte Config ersetzt
-        timeout = (millis() - _moduleStartTime > tempConfig.maxRuntimeMs);
-        
-        if (timeout && !finished) {
-            currentMod->timeIsUp(); // Informiere das Modul über den harten Abbruch.
+        if (currentMod->isFinished()) {
+            should_switch = true;
+        } 
+        // Plan B: Ist die maximale Zeit um? (Failsafe)
+        else if (millis() - _moduleStartTime > currentMod->getMaxRuntime()) {
+            Serial.printf("[PanelManager] Failsafe! Modul '%s' hat Timeout (%lu ms) überschritten.\n", currentMod->getModuleName(), currentMod->getMaxRuntime());
+            should_switch = true;
         }
 
     } else {
         // --- LOGIK FÜR LEGACY-MODULE (wie bisher) ---
         unsigned long displayDuration = (_pausedModuleRemainingTime > 0) ? _pausedModuleRemainingTime : currentMod->getDisplayDuration();
-        timeout = (millis() - _moduleStartTime > displayDuration);
+        if (millis() - _moduleStartTime > displayDuration) {
+            should_switch = true;
+        }
     }
 
     // DIE EINE, UNIVERSELLE REGEL FÜR DEN WECHSEL
-    if (finished || timeout) {
+    if (should_switch) {
         _pausedModuleRemainingTime = 0;
 
         if (_pendingNormalPriorityModule) {
@@ -211,11 +186,10 @@ void PanelManager::switchNextModule(bool resume) {
         _currentModuleIndex = -1;
         return;
     }
-
     if (resume && _pausedModuleIndex != -1) {
         _currentModuleIndex = _pausedModuleIndex;
         _pausedModuleIndex = -1;
-        _moduleStartTime = millis(); // Timer zurücksetzen für Restzeit
+        _moduleStartTime = millis();
     } else if (_nextNormalPriorityModule) {
         bool found = false;
         for (int i = 0; i < _dataAreaModules.size(); ++i) {
@@ -231,29 +205,25 @@ void PanelManager::switchNextModule(bool resume) {
             _currentModuleIndex = (_currentModuleIndex + 1) % _dataAreaModules.size();
         }
         _nextNormalPriorityModule = nullptr;
-        _moduleStartTime = millis(); // Timer für neues Modul starten
+        _moduleStartTime = millis();
     } else {
         _currentModuleIndex = (_currentModuleIndex + 1) % _dataAreaModules.size();
-        _moduleStartTime = millis(); // Timer für neues Modul starten
+        _moduleStartTime = millis();
     }
-
     int initialIndex = _currentModuleIndex;
     do {
         DrawableModule* modToStart = _dataAreaModules[_currentModuleIndex];
         if (modToStart->isEnabled()) {
-            // NEUE "SWITTER"-LOGIK ZUM STARTEN EINES MODULS
             if (isModern(modToStart)) {
                 modToStart->activateModule();
             } else {
                 modToStart->resetPaging();
             }
-            // Der _moduleStartTime wird bereits oben gesetzt.
             return;
         }
         _currentModuleIndex = (_currentModuleIndex + 1) % _dataAreaModules.size();
     } while (_currentModuleIndex != initialIndex);
-
-    _currentModuleIndex = -1; // Kein aktivierbares Modul gefunden
+    _currentModuleIndex = -1;
 }
 
 void PanelManager::pausePlaylist() {
@@ -262,10 +232,9 @@ void PanelManager::pausePlaylist() {
         unsigned long elapsedTime = millis() - _moduleStartTime;
         unsigned long totalDuration = 0;
 
-        // NEUE "SWITTER"-LOGIK ZUR BERECHNUNG DER RESTZEIT
         if (isModern(currentMod)) {
-            ModuleConfig tempConfig; // Platzhalter
-            totalDuration = tempConfig.maxRuntimeMs;
+            // KORREKTUR: Korrekten Getter für die Restzeit-Berechnung verwenden.
+            totalDuration = currentMod->getMaxRuntime();
         } else {
             totalDuration = currentMod->getDisplayDuration();
         }
@@ -298,12 +267,9 @@ void PanelManager::render() {
         }
         return;
     }
-
     if (!_virtualDisp || !_dma_display || !_canvasTime || !_canvasData) return;
-
     drawClockArea();
     drawDataArea();
-
     _virtualDisp->drawRGBBitmap(0, 0, _canvasTime->getBuffer(), _canvasTime->width(), _canvasTime->height());
     _virtualDisp->drawRGBBitmap(0, TIME_AREA_H, _canvasData->getBuffer(), _canvasData->width(), _canvasData->height());
     _dma_display->flipDMABuffer();
@@ -311,13 +277,11 @@ void PanelManager::render() {
 
 void PanelManager::drawClockArea() {
     if (!_clockMod || !_sensorMod) return;
-
     time_t now_utc;
     time(&now_utc);
     struct tm timeinfo;
     time_t local_epoch = _timeConverter.toLocal(now_utc);
     localtime_r(&local_epoch, &timeinfo);
-
     _clockMod->setTime(timeinfo);
     _clockMod->setSensorState(_sensorMod->isDisplayOn(), _sensorMod->getLastOnTime(), _sensorMod->getLastOffTime(), _sensorMod->getOnPercentage());
     _clockMod->tick();
@@ -329,7 +293,6 @@ void PanelManager::drawDataArea() {
         _interruptQueue.front()->draw();
         return;
     }
-
     if (_currentModuleIndex >= 0 && _currentModuleIndex < _dataAreaModules.size()) {
         _dataAreaModules[_currentModuleIndex]->draw();
     } else {
@@ -339,13 +302,11 @@ void PanelManager::drawDataArea() {
 
 void PanelManager::displayStatus(const char* msg) {
     if (!_dma_display || !_virtualDisp || !_u8g2) return;
-    
     _dma_display->clearScreen();
     _u8g2->begin(*_virtualDisp);
     _u8g2->setFont(u8g2_font_6x13_tf);
     _u8g2->setForegroundColor(0xFFFF);
     _u8g2->setBackgroundColor(0x0000);
-    
     int y = 12;
     char* str = strdup(msg);
     if (!str) return;
@@ -359,6 +320,5 @@ void PanelManager::displayStatus(const char* msg) {
         line = strtok(NULL, "\n");
     }
     free(str);
-    
     _dma_display->flipDMABuffer();
 }
