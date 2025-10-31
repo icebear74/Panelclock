@@ -1,9 +1,163 @@
 #include "WebServerManager.hpp"
 #include "WebPages.hpp" // Die HTML-Konstanten einbinden
 #include <WiFi.h>
+#include <algorithm> // Für std::sort
+
+// Globale Variable für den Dateiupload
 File uploadFile; 
 
-// Definition der Handler-Funktionen
+/**
+ * @brief Handler für die neue Debug-Seite für die Preis-Historie einer einzelnen Tankstelle.
+ */
+void handleDebugStationHistory() {
+    if (!server || !dataModule) return;
+    if (!server->hasArg("id")) {
+        server->send(400, "text/plain", "Fehler: Stations-ID fehlt.");
+        return;
+    }
+    PsramString stationId = server->arg("id").c_str();
+
+    // Stammdaten und Historiendaten abrufen
+    StationData stationInfo;
+    PsramVector<StationData> stationCache = dataModule->getStationCache();
+    for (const auto& station : stationCache) {
+        if (station.id == stationId) {
+            stationInfo = station;
+            break;
+        }
+    }
+
+    StationPriceHistory history = dataModule->getStationPriceHistory(stationId);
+
+    // Seite zusammenbauen
+    PsramString page = (const char*)FPSTR(HTML_PAGE_HEADER);
+    PsramString content = (const char*)FPSTR(HTML_DEBUG_STATION_HISTORY);
+
+    if (stationInfo.id.empty()) {
+        replaceAll(content, "{station_brand}", "Unbekannte Tankstelle");
+        replaceAll(content, "{station_name}", "");
+        replaceAll(content, "{station_address}", "Keine Stammdaten gefunden.");
+        replaceAll(content, "{station_id}", stationId.c_str());
+    } else {
+        replaceAll(content, "{station_brand}", stationInfo.brand.c_str());
+        replaceAll(content, "{station_name}", stationInfo.name.c_str());
+        PsramString address = stationInfo.street;
+        address += " ";
+        address += stationInfo.houseNumber;
+        address += ", ";
+        address += stationInfo.postCode;
+        address += " ";
+        address += stationInfo.place;
+        replaceAll(content, "{station_address}", address.c_str());
+        replaceAll(content, "{station_id}", stationInfo.id.c_str());
+    }
+
+    PsramString table_rows = "";
+    if (history.dailyStats.empty()) {
+        table_rows = "<tr><td colspan='7'>Keine historischen Daten f&uuml;r diese Tankstelle gefunden.</td></tr>";
+    } else {
+        // Sortieren der Daten nach Datum (absteigend)
+        std::sort(history.dailyStats.begin(), history.dailyStats.end(), [](const DailyPriceStats& a, const DailyPriceStats& b) {
+            return a.date > b.date;
+        });
+
+        char buffer[10]; // Puffer für die Umwandlung von float zu string
+        for (const auto& day : history.dailyStats) {
+            table_rows += "<tr><td>";
+            table_rows += day.date;
+            table_rows += "</td>";
+
+            snprintf(buffer, sizeof(buffer), "%.3f", day.e5_low);
+            table_rows += "<td>";
+            table_rows += buffer;
+            table_rows += "</td>";
+            
+            snprintf(buffer, sizeof(buffer), "%.3f", day.e5_high);
+            table_rows += "<td>";
+            table_rows += buffer;
+            table_rows += "</td>";
+
+            snprintf(buffer, sizeof(buffer), "%.3f", day.e10_low);
+            table_rows += "<td>";
+            table_rows += buffer;
+            table_rows += "</td>";
+
+            snprintf(buffer, sizeof(buffer), "%.3f", day.e10_high);
+            table_rows += "<td>";
+            table_rows += buffer;
+            table_rows += "</td>";
+
+            snprintf(buffer, sizeof(buffer), "%.3f", day.diesel_low);
+            table_rows += "<td>";
+            table_rows += buffer;
+            table_rows += "</td>";
+
+            snprintf(buffer, sizeof(buffer), "%.3f", day.diesel_high);
+            table_rows += "<td>";
+            table_rows += buffer;
+            table_rows += "</td></tr>";
+        }
+    }
+    
+    replaceAll(content, "{history_table}", table_rows.c_str());
+    page += content;
+    page += (const char*)FPSTR(HTML_PAGE_FOOTER);
+    server->send(200, "text/html", page.c_str());
+}
+
+
+/**
+ * @brief Handler für die Debug-Seite, die eine Übersicht aller gecachten Tankstellen anzeigt.
+ */
+void handleDebugData() {
+    if (!server) return;
+    
+    PsramString page = (const char*)FPSTR(HTML_PAGE_HEADER);
+    PsramString content = (const char*)FPSTR(HTML_DEBUG_DATA);
+    
+    PsramString table_rows = "";
+    if (dataModule) {
+        PsramVector<StationData> stationCache = dataModule->getStationCache();
+        if (stationCache.empty()) {
+            table_rows = "<tr><td colspan='4'>Keine Tankstellen-Daten im Cache gefunden.</td></tr>";
+        } else {
+            for (const auto& station : stationCache) {
+                table_rows += "<tr><td>";
+                table_rows += station.id;
+                table_rows += "</td><td>";
+                table_rows += station.brand;
+                table_rows += "</td><td><a href=\"/debug/station?id=";
+                table_rows += station.id;
+                table_rows += "\">";
+                table_rows += station.name;
+                table_rows += "</a></td><td>";
+                table_rows += station.street;
+                table_rows += " ";
+                table_rows += station.houseNumber;
+                table_rows += ", ";
+                table_rows += station.postCode;
+                table_rows += " ";
+                table_rows += station.place;
+                table_rows += "</td></tr>";
+            }
+        }
+    } else {
+        table_rows = "<tr><td colspan='4' style='color:red;'>Fehler: DataModule nicht initialisiert.</td></tr>";
+    }
+
+    replaceAll(content, "{station_cache_table}", table_rows.c_str());
+    page += content;
+    page += (const char*)FPSTR(HTML_PAGE_FOOTER);
+
+    server->send(200, "text/html", page.c_str());
+}
+
+/**
+ * @brief Handler für den Upload von Dateien (Zertifikate).
+ * 
+ * Verarbeitet den Dateitransfer in mehreren Phasen und speichert die Datei
+ * im LittleFS unter /certs/.
+ */
 void handleFileUpload() {
     if (!server) return;
     HTTPUpload& upload = server->upload();
@@ -28,6 +182,9 @@ void handleFileUpload() {
     }
 }
 
+/**
+ * @brief Zeigt eine Erfolgsmeldung nach einem erfolgreichen Dateiupload an.
+ */
 void handleUploadSuccess() {
     if (!server) return;
     PsramString page = (const char*)FPSTR(HTML_PAGE_HEADER);
@@ -36,6 +193,9 @@ void handleUploadSuccess() {
     server->send(200, "text/html", page.c_str());
 }
 
+/**
+ * @brief Zeigt die Konfigurationsseite für die Zertifikate an.
+ */
 void handleConfigCerts() {
     if (!server || !deviceConfig) return;
     PsramString page = (const char*)FPSTR(HTML_PAGE_HEADER);
@@ -48,6 +208,9 @@ void handleConfigCerts() {
     server->send(200, "text/html", page.c_str());
 }
 
+/**
+ * @brief Speichert die Konfiguration der Zertifikats-Dateinamen.
+ */
 void handleSaveCerts() {
     if (!server || !deviceConfig || !webClient) return;
     String tankerCert = server->arg("tankerkoenigCertFile");
@@ -74,17 +237,28 @@ void handleSaveCerts() {
     server->send(200, "text/html", page.c_str());
 }
 
+/**
+ * @brief Zeigt die Konfigurationsseite für den Benutzerstandort an.
+ */
 void handleConfigLocation() {
     if (!server || !deviceConfig) return;
     PsramString page = (const char*)FPSTR(HTML_PAGE_HEADER);
     PsramString content = (const char*)FPSTR(HTML_CONFIG_LOCATION);
-    replaceAll(content, "{latitude}", String(deviceConfig->userLatitude, 6).c_str());
-    replaceAll(content, "{longitude}", String(deviceConfig->userLongitude, 6).c_str());
+    
+    char lat_buf[20], lon_buf[20];
+    snprintf(lat_buf, sizeof(lat_buf), "%.6f", deviceConfig->userLatitude);
+    snprintf(lon_buf, sizeof(lon_buf), "%.6f", deviceConfig->userLongitude);
+
+    replaceAll(content, "{latitude}", lat_buf);
+    replaceAll(content, "{longitude}", lon_buf);
     page += content;
     page += (const char*)FPSTR(HTML_PAGE_FOOTER);
     server->send(200, "text/html", page.c_str());
 }
 
+/**
+ * @brief Speichert die Geokoordinaten des Benutzerstandorts.
+ */
 void handleSaveLocation() {
     if (!server || !deviceConfig) return;
     if (server->hasArg("latitude") && server->hasArg("longitude")) {
@@ -99,6 +273,9 @@ void handleSaveLocation() {
     server->send(200, "text/html", page.c_str());
 }
 
+/**
+ * @brief Zeigt die Hauptseite (Index) des Webinterfaces an.
+ */
 void handleRoot() {
     if (!server) return;
     PsramString page = (const char*)FPSTR(HTML_PAGE_HEADER);
@@ -107,6 +284,9 @@ void handleRoot() {
     server->send(200, "text/html", page.c_str());
 }
 
+/**
+ * @brief Zeigt die Seite für die Basiskonfiguration (Netzwerk, Pins) an.
+ */
 void handleConfigBase() {
     if (!server || !deviceConfig || !hardwareConfig) return;
     PsramString page = (const char*)FPSTR(HTML_PAGE_HEADER);
@@ -115,35 +295,46 @@ void handleConfigBase() {
     replaceAll(content, "{ssid}", deviceConfig->ssid.c_str());
     replaceAll(content, "{password}", deviceConfig->password.c_str());
     replaceAll(content, "{otaPassword}", deviceConfig->otaPassword.c_str());
-    replaceAll(content, "{R1}", String(hardwareConfig->R1).c_str());
-    replaceAll(content, "{G1}", String(hardwareConfig->G1).c_str());
-    replaceAll(content, "{B1}", String(hardwareConfig->B1).c_str());
-    replaceAll(content, "{R2}", String(hardwareConfig->R2).c_str());
-    replaceAll(content, "{G2}", String(hardwareConfig->G2).c_str());
-    replaceAll(content, "{B2}", String(hardwareConfig->B2).c_str());
-    replaceAll(content, "{A}", String(hardwareConfig->A).c_str());
-    replaceAll(content, "{B}", String(hardwareConfig->B).c_str());
-    replaceAll(content, "{C}", String(hardwareConfig->C).c_str());
-    replaceAll(content, "{D}", String(hardwareConfig->D).c_str());
-    replaceAll(content, "{E}", String(hardwareConfig->E).c_str());
-    replaceAll(content, "{CLK}", String(hardwareConfig->CLK).c_str());
-    replaceAll(content, "{LAT}", String(hardwareConfig->LAT).c_str());
-    replaceAll(content, "{OE}", String(hardwareConfig->OE).c_str());
+    
+    char pin_buf[5];
+    snprintf(pin_buf, sizeof(pin_buf), "%d", hardwareConfig->R1); replaceAll(content, "{R1}", pin_buf);
+    snprintf(pin_buf, sizeof(pin_buf), "%d", hardwareConfig->G1); replaceAll(content, "{G1}", pin_buf);
+    snprintf(pin_buf, sizeof(pin_buf), "%d", hardwareConfig->B1); replaceAll(content, "{B1}", pin_buf);
+    snprintf(pin_buf, sizeof(pin_buf), "%d", hardwareConfig->R2); replaceAll(content, "{R2}", pin_buf);
+    snprintf(pin_buf, sizeof(pin_buf), "%d", hardwareConfig->G2); replaceAll(content, "{G2}", pin_buf);
+    snprintf(pin_buf, sizeof(pin_buf), "%d", hardwareConfig->B2); replaceAll(content, "{B2}", pin_buf);
+    snprintf(pin_buf, sizeof(pin_buf), "%d", hardwareConfig->A); replaceAll(content, "{A}", pin_buf);
+    snprintf(pin_buf, sizeof(pin_buf), "%d", hardwareConfig->B); replaceAll(content, "{B}", pin_buf);
+    snprintf(pin_buf, sizeof(pin_buf), "%d", hardwareConfig->C); replaceAll(content, "{C}", pin_buf);
+    snprintf(pin_buf, sizeof(pin_buf), "%d", hardwareConfig->D); replaceAll(content, "{D}", pin_buf);
+    snprintf(pin_buf, sizeof(pin_buf), "%d", hardwareConfig->E); replaceAll(content, "{E}", pin_buf);
+    snprintf(pin_buf, sizeof(pin_buf), "%d", hardwareConfig->CLK); replaceAll(content, "{CLK}", pin_buf);
+    snprintf(pin_buf, sizeof(pin_buf), "%d", hardwareConfig->LAT); replaceAll(content, "{LAT}", pin_buf);
+    snprintf(pin_buf, sizeof(pin_buf), "%d", hardwareConfig->OE); replaceAll(content, "{OE}", pin_buf);
+
     page += content;
     page += (const char*)FPSTR(HTML_PAGE_FOOTER);
     server->send(200, "text/html", page.c_str());
 }
 
+/**
+ * @brief Handler für die Live-Suche von Tankstellen über die Tankerkönig-API.
+ */
 void handleTankerkoenigSearchLive() {
     if (!server || !deviceConfig || !webClient) { server->send(500, "application/json", "{\"ok\":false, \"message\":\"Server, Config oder WebClient nicht initialisiert\"}"); return; }
-    if (deviceConfig->userLatitude == 0.0 || deviceConfig->userLongitude == 0.0) { server->send(400, "application/json", "{\"ok\":false, \"message\":\"Kein Standort konfiguriert. Bitte zuerst 'Mein Standort' festlegen.\"}"); return; }
+    if (deviceConfig->userLatitude == 0.0 || deviceConfig->userLongitude == 0.0) { server->send(400, "application/json", "{\"ok\":false, \"message\":\"Kein Standort konfiguriert. Bitte zuerst 'Mein Standort' einrichten.\"}"); return; }
     if (deviceConfig->tankerApiKey.empty()) { server->send(400, "application/json", "{\"ok\":false, \"message\":\"Kein Tankerkönig API-Key konfiguriert.\"}"); return; }
 
     String radius = server->arg("radius");
     String sort = server->arg("sort");
     PsramString url;
     url += "https://creativecommons.tankerkoenig.de/json/list.php?lat=";
-    url += String(deviceConfig->userLatitude, 6).c_str(); url += "&lng="; url += String(deviceConfig->userLongitude, 6).c_str();
+    char coord_buf[20];
+    snprintf(coord_buf, sizeof(coord_buf), "%.6f", deviceConfig->userLatitude);
+    url += coord_buf;
+    url += "&lng=";
+    snprintf(coord_buf, sizeof(coord_buf), "%.6f", deviceConfig->userLongitude);
+    url += coord_buf;
     url += "&rad="; url += radius.c_str(); url += "&sort="; url += sort.c_str(); url += "&type=all&apikey="; url += deviceConfig->tankerApiKey.c_str();
 
     struct Result { int httpCode; PsramString payload; } result;
@@ -151,7 +342,7 @@ void handleTankerkoenigSearchLive() {
 
     webClient->getRequest(url, [&](int httpCode, const char* payload, size_t len) {
         result.httpCode = httpCode;
-        if (payload) { result.payload = payload; }
+        if (payload) { result.payload.assign(payload, len); }
         xSemaphoreGive(sem);
     });
 
@@ -161,7 +352,7 @@ void handleTankerkoenigSearchLive() {
             void* docMem = ps_malloc(JSON_DOC_SIZE);
             if (!docMem) { Serial.println("[WebServer] FATAL: PSRAM für JSON-Merge fehlgeschlagen!"); server->send(500, "application/json", "{\"ok\":false,\"message\":\"Interner Speicherfehler\"}"); vSemaphoreDelete(sem); return; }
             
-            DynamicJsonDocument* currentCacheDoc = new (docMem) DynamicJsonDocument(JSON_DOC_SIZE);
+            JsonDocument* currentCacheDoc = new (docMem) JsonDocument();
             
             if (LittleFS.exists("/station_cache.json")) {
                 File cacheFile = LittleFS.open("/station_cache.json", "r");
@@ -171,10 +362,10 @@ void handleTankerkoenigSearchLive() {
 
             JsonArray cachedStations = (*currentCacheDoc)["stations"].as<JsonArray>();
             if (cachedStations.isNull()) {
-                cachedStations = currentCacheDoc->createNestedArray("stations");
+                cachedStations = (*currentCacheDoc)["stations"].to<JsonArray>();
             }
 
-            DynamicJsonDocument newResultsDoc(8192); 
+            JsonDocument newResultsDoc; 
             deserializeJson(newResultsDoc, result.payload);
 
             if (newResultsDoc["ok"] == true) {
@@ -193,7 +384,7 @@ void handleTankerkoenigSearchLive() {
                 if (cacheFile) { serializeJson(*currentCacheDoc, cacheFile); cacheFile.close(); }
             }
             
-            currentCacheDoc->~DynamicJsonDocument();
+            currentCacheDoc->~JsonDocument();
             free(docMem);
 
             server->send(200, "application/json", result.payload.c_str());
@@ -201,7 +392,9 @@ void handleTankerkoenigSearchLive() {
             PsramString escaped_payload = escapeJsonString(result.payload);
             PsramString error_msg;
             error_msg = "{\"ok\":false, \"message\":\"API Fehler: HTTP ";
-            error_msg += String(result.httpCode).c_str();
+            char code_buf[5];
+            snprintf(code_buf, sizeof(code_buf), "%d", result.httpCode);
+            error_msg += code_buf;
             error_msg += "\", \"details\":\"";
             error_msg += escaped_payload;
             error_msg += "\"}";
@@ -211,6 +404,9 @@ void handleTankerkoenigSearchLive() {
     vSemaphoreDelete(sem);
 }
 
+/**
+ * @brief Zeigt die Konfigurationsseite für alle Anzeigemodule an.
+ */
 void handleConfigModules() {
     if (!server || !deviceConfig) return;
     PsramString page = (const char*)FPSTR(HTML_PAGE_HEADER);
@@ -224,17 +420,22 @@ void handleConfigModules() {
     replaceAll(content, "{tz_options}", tz_options_html.c_str());
     replaceAll(content, "{tankerApiKey}", deviceConfig->tankerApiKey.c_str());
     replaceAll(content, "{tankerkoenigStationIds}", deviceConfig->tankerkoenigStationIds.c_str());
-    replaceAll(content, "{stationFetchIntervalMin}", String(deviceConfig->stationFetchIntervalMin).c_str());
-    replaceAll(content, "{stationDisplaySec}", String(deviceConfig->stationDisplaySec).c_str());
+    
+    char num_buf[20];
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->stationFetchIntervalMin); replaceAll(content, "{stationFetchIntervalMin}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->stationDisplaySec); replaceAll(content, "{stationDisplaySec}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->movingAverageDays); replaceAll(content, "{movingAverageDays}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->trendAnalysisDays); replaceAll(content, "{trendAnalysisDays}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->calendarFetchIntervalMin); replaceAll(content, "{calendarFetchIntervalMin}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->calendarDisplaySec); replaceAll(content, "{calendarDisplaySec}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->calendarScrollMs); replaceAll(content, "{calendarScrollMs}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->dartsDisplaySec); replaceAll(content, "{dartsDisplaySec}", num_buf);
+
     replaceAll(content, "{icsUrl}", deviceConfig->icsUrl.c_str());
-    replaceAll(content, "{calendarFetchIntervalMin}", String(deviceConfig->calendarFetchIntervalMin).c_str());
-    replaceAll(content, "{calendarDisplaySec}", String(deviceConfig->calendarDisplaySec).c_str());
-    replaceAll(content, "{calendarScrollMs}", String(deviceConfig->calendarScrollMs).c_str());
     replaceAll(content, "{calendarDateColor}", deviceConfig->calendarDateColor.c_str());
     replaceAll(content, "{calendarTextColor}", deviceConfig->calendarTextColor.c_str());
     replaceAll(content, "{dartsOomEnabled_checked}", deviceConfig->dartsOomEnabled ? "checked" : "");
     replaceAll(content, "{dartsProTourEnabled_checked}", deviceConfig->dartsProTourEnabled ? "checked" : "");
-    replaceAll(content, "{dartsDisplaySec}", String(deviceConfig->dartsDisplaySec).c_str());
     replaceAll(content, "{trackedDartsPlayers}", deviceConfig->trackedDartsPlayers.c_str());
     replaceAll(content, "{fritzboxEnabled_checked}", deviceConfig->fritzboxEnabled ? "checked" : "");
     replaceAll(content, "{fritzboxIp}", deviceConfig->fritzboxIp.c_str());
@@ -244,19 +445,26 @@ void handleConfigModules() {
     server->send(200, "text/html", page.c_str());
 }
 
+/**
+ * @brief Zeigt die Konfigurationsseite für optionale Hardware (z.B. Bewegungssensor) an.
+ */
 void handleConfigHardware() {
     if (!server || !deviceConfig || !hardwareConfig || !mwaveSensorModule || !timeConverter) return;
     PsramString page = (const char*)FPSTR(HTML_PAGE_HEADER);
     PsramString content = (const char*)FPSTR(HTML_CONFIG_HARDWARE);
 
     replaceAll(content, "{mwaveSensorEnabled_checked}", deviceConfig->mwaveSensorEnabled ? "checked" : "");
-    replaceAll(content, "{mwaveRxPin}", String(hardwareConfig->mwaveRxPin).c_str());
-    replaceAll(content, "{mwaveTxPin}", String(hardwareConfig->mwaveTxPin).c_str());
-    replaceAll(content, "{displayRelayPin}", String(hardwareConfig->displayRelayPin).c_str());
-    replaceAll(content, "{mwaveOnCheckPercentage}", String(deviceConfig->mwaveOnCheckPercentage).c_str());
-    replaceAll(content, "{mwaveOnCheckDuration}", String(deviceConfig->mwaveOnCheckDuration).c_str());
-    replaceAll(content, "{mwaveOffCheckOnPercent}", String(deviceConfig->mwaveOffCheckOnPercent).c_str());
-    replaceAll(content, "{mwaveOffCheckDuration}", String(deviceConfig->mwaveOffCheckDuration).c_str());
+    
+    char num_buf[20];
+    snprintf(num_buf, sizeof(num_buf), "%d", hardwareConfig->mwaveRxPin); replaceAll(content, "{mwaveRxPin}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", hardwareConfig->mwaveTxPin); replaceAll(content, "{mwaveTxPin}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", hardwareConfig->displayRelayPin); replaceAll(content, "{displayRelayPin}", num_buf);
+    
+    snprintf(num_buf, sizeof(num_buf), "%.1f", deviceConfig->mwaveOnCheckPercentage); replaceAll(content, "{mwaveOnCheckPercentage}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->mwaveOnCheckDuration); replaceAll(content, "{mwaveOnCheckDuration}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%.1f", deviceConfig->mwaveOffCheckOnPercent); replaceAll(content, "{mwaveOffCheckOnPercent}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->mwaveOffCheckDuration); replaceAll(content, "{mwaveOffCheckDuration}", num_buf);
+
 
     PsramString table_html = "<table><tr><th>Zeitpunkt</th><th>Zustand</th></tr>";
     const auto& log = mwaveSensorModule->getDisplayStateLog();
@@ -284,6 +492,9 @@ void handleConfigHardware() {
     server->send(200, "text/html", page.c_str());
 }
 
+/**
+ * @brief Speichert die Konfiguration für optionale Hardware.
+ */
 void handleSaveHardware() {
     if (!server || !deviceConfig || !hardwareConfig) return;
     bool restartNeeded = false;
@@ -321,6 +532,9 @@ void handleSaveHardware() {
     }
 }
 
+/**
+ * @brief Speichert die Basiskonfiguration und startet das Gerät neu.
+ */
 void handleSaveBase() {
     if (!server || !deviceConfig || !hardwareConfig) return;
     deviceConfig->hostname = server->arg("hostname").c_str();
@@ -344,12 +558,17 @@ void handleSaveBase() {
     ESP.restart();
 }
 
+/**
+ * @brief Speichert die Konfigurationen der Anzeigemodule im Live-Betrieb.
+ */
 void handleSaveModules() {
     if (!server || !deviceConfig) return;
     deviceConfig->timezone = server->arg("timezone").c_str();
     deviceConfig->tankerApiKey = server->arg("tankerApiKey").c_str();
     deviceConfig->stationFetchIntervalMin = server->arg("stationFetchIntervalMin").toInt();
     deviceConfig->stationDisplaySec = server->arg("stationDisplaySec").toInt();
+    deviceConfig->movingAverageDays = server->arg("movingAverageDays").toInt();
+    deviceConfig->trendAnalysisDays = server->arg("trendAnalysisDays").toInt();
     deviceConfig->tankerkoenigStationIds = server->arg("tankerkoenigStationIds").c_str();
     PsramString ids = deviceConfig->tankerkoenigStationIds;
     if (!ids.empty()) {
@@ -361,7 +580,7 @@ void handleSaveModules() {
     void* docMem = ps_malloc(JSON_DOC_SIZE);
     if (!docMem) { Serial.println("[WebServer] FATAL: PSRAM für JSON-Cleanup fehlgeschlagen!"); }
     else {
-        DynamicJsonDocument* oldCacheDoc = new (docMem) DynamicJsonDocument(JSON_DOC_SIZE);
+        JsonDocument* oldCacheDoc = new (docMem) JsonDocument();
         if (LittleFS.exists("/station_cache.json")) {
             File oldFile = LittleFS.open("/station_cache.json", "r");
             if (oldFile) { deserializeJson(*oldCacheDoc, oldFile); oldFile.close(); }
@@ -371,12 +590,12 @@ void handleSaveModules() {
             void* newDocMem = ps_malloc(JSON_DOC_SIZE);
             if(!newDocMem) { Serial.println("[WebServer] FATAL: PSRAM für neues Cache-Dokument fehlgeschlagen!"); }
             else {
-                DynamicJsonDocument* newCacheDoc = new (newDocMem) DynamicJsonDocument(JSON_DOC_SIZE);
+                JsonDocument* newCacheDoc = new (newDocMem) JsonDocument();
                 (*newCacheDoc)["ok"] = true;
                 (*newCacheDoc)["license"] = (*oldCacheDoc)["license"];
                 (*newCacheDoc)["data-version"] = (*oldCacheDoc)["data-version"];
                 (*newCacheDoc)["status"] = "ok";
-                JsonArray newStations = newCacheDoc->createNestedArray("stations");
+                JsonArray newStations = (*newCacheDoc)["stations"].to<JsonArray>();
 
                 PsramVector<PsramString> final_ids;
                 PsramString temp_ids = deviceConfig->tankerkoenigStationIds;
@@ -396,11 +615,11 @@ void handleSaveModules() {
                 File newFile = LittleFS.open("/station_cache.json", "w");
                 if (newFile) { serializeJson(*newCacheDoc, newFile); newFile.close(); }
                 
-                newCacheDoc->~DynamicJsonDocument();
+                newCacheDoc->~JsonDocument();
                 free(newDocMem);
             }
         }
-        oldCacheDoc->~DynamicJsonDocument();
+        oldCacheDoc->~JsonDocument();
         free(docMem);
     }
     
@@ -418,7 +637,10 @@ void handleSaveModules() {
     if (server->hasArg("fritzboxIp") && server->arg("fritzboxIp").length() > 0) {
         deviceConfig->fritzboxIp = server->arg("fritzboxIp").c_str();
     } else {
-        if(deviceConfig->fritzboxEnabled) { deviceConfig->fritzboxIp = WiFi.gatewayIP().toString().c_str(); }
+        if(deviceConfig->fritzboxEnabled) {
+            String gwIP = WiFi.gatewayIP().toString();
+            deviceConfig->fritzboxIp = gwIP.c_str(); 
+        }
         else { deviceConfig->fritzboxIp = ""; }
     }
 
@@ -431,6 +653,9 @@ void handleSaveModules() {
     server->send(200, "text/html", page.c_str());
 }
 
+/**
+ * @brief Handler für nicht gefundene Seiten (404).
+ */
 void handleNotFound() {
     if (!server) return;
     if (portalRunning && !server->hostHeader().equals(WiFi.softAPIP().toString())) {
@@ -441,6 +666,9 @@ void handleNotFound() {
     server->send(404, "text/plain", "404: Not Found");
 }
 
+/**
+ * @brief Richtet alle Routen und Handler für den Webserver ein.
+ */
 void setupWebServer(bool portalMode) {
     if (!server || !dnsServer) return;
     if (portalMode) {
@@ -459,10 +687,18 @@ void setupWebServer(bool portalMode) {
     server->on("/upload_cert", HTTP_POST, handleUploadSuccess, handleFileUpload);
     server->on("/config_hardware", HTTP_GET, handleConfigHardware);
     server->on("/save_hardware", HTTP_POST, handleSaveHardware);
+    
+    // Routen für die Debug-Seiten
+    server->on("/debug", HTTP_GET, handleDebugData);
+    server->on("/debug/station", HTTP_GET, handleDebugStationHistory);
+
     server->onNotFound(handleNotFound);
     server->begin();
 }
 
+/**
+ * @brief Behandelt eingehende Client-Anfragen an den Webserver und den DNS-Server.
+ */
 void handleWebServer(bool portalIsRunning) {
     if (!server || (portalIsRunning && !dnsServer)) return;
     if (portalIsRunning) {

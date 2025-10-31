@@ -9,12 +9,20 @@
 
 #define PRICE_CACHE_FILENAME "/last_prices.json"
 #define AVG_CACHE_FILENAME "/avg_price_trends.json" // Veraltet
-#define TREND_ANALYSIS_DAYS 10 // Anzahl der Tage für die Trendberechnung
 
 StationData::StationData() : e5(0.0f), e10(0.0f), diesel(0.0f), isOpen(false), lastPriceChange(0) {}
 
-DataModule::DataModule(U8G2_FOR_ADAFRUIT_GFX &u8g2, GFXcanvas16 &canvas, GeneralTimeConverter& timeConverter, int topOffset, WebClientModule* webClient)
-     : u8g2(u8g2), canvas(canvas), timeConverter(timeConverter), top_offset(topOffset), webClient(webClient), last_processed_update(0) {
+/**
+ * @brief Konstruktor für das DataModule.
+ * @param u8g2 Referenz auf die U8G2-Bibliothek für die Textdarstellung.
+ * @param canvas Referenz auf die GFX-Canvas für die Grafikausgabe.
+ * @param timeConverter Referenz auf den Zeitumrechner für lokale Zeit.
+ * @param topOffset Y-Offset für die Zeichnung auf dem Display.
+ * @param webClient Zeiger auf das WebClientModule für API-Anfragen.
+ * @param config Zeiger auf die globale Gerätekongfiguration.
+ */
+DataModule::DataModule(U8G2_FOR_ADAFRUIT_GFX &u8g2, GFXcanvas16 &canvas, GeneralTimeConverter& timeConverter, int topOffset, WebClientModule* webClient, DeviceConfig* config)
+     : u8g2(u8g2), canvas(canvas), timeConverter(timeConverter), _deviceConfig(config), top_offset(topOffset), webClient(webClient), last_processed_update(0) {
     dataMutex = xSemaphoreCreateMutex();
 }
 
@@ -23,6 +31,12 @@ DataModule::~DataModule() {
     if (pending_buffer) free(pending_buffer);
 }
 
+/**
+ * @brief Initialisiert das Modul und lädt Daten aus dem Dateisystem.
+ * 
+ * Bereinigt veraltete Cache-Dateien und lädt die Preis-Statistiken,
+ * den Stations-Cache und den letzten Preis-Cache.
+ */
 void DataModule::begin() {
     if (LittleFS.exists("/price_history.json")) {
         Serial.println("[DataModule] Altes Preis-Format 'price_history.json' gefunden. Wird gelöscht.");
@@ -38,10 +52,21 @@ void DataModule::begin() {
     cleanupOldPriceCacheEntries();
 }
 
+/**
+ * @brief Registriert eine Callback-Funktion, die bei Daten-Updates aufgerufen wird.
+ * @param callback Die aufzurufende Funktion.
+ */
 void DataModule::onUpdate(std::function<void()> callback) {
     updateCallback = callback;
 }
 
+/**
+ * @brief Konfiguriert das Modul mit den notwendigen Parametern.
+ * @param apiKey Der API-Key für Tankerkönig.
+ * @param stationIds Eine kommaseparierte Liste von Tankstellen-IDs.
+ * @param fetchIntervalMinutes Das Abrufintervall in Minuten.
+ * @param pageDisplaySec Die Anzeigedauer pro Tankstelle in Sekunden.
+ */
 void DataModule::setConfig(const PsramString& apiKey, const PsramString& stationIds, int fetchIntervalMinutes, unsigned long pageDisplaySec) {
     this->api_key = apiKey;
     this->station_ids = stationIds;
@@ -83,6 +108,10 @@ void DataModule::setConfig(const PsramString& apiKey, const PsramString& station
     }
 }
 
+/**
+ * @brief Gibt die gesamte Anzeigedauer für alle Seiten des Moduls zurück.
+ * @return Die Dauer in Millisekunden.
+ */
 unsigned long DataModule::getDisplayDuration() {
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) != pdTRUE) return _pageDisplayDuration;
     int num_stations = station_data_list.size();
@@ -90,9 +119,20 @@ unsigned long DataModule::getDisplayDuration() {
     return (_pageDisplayDuration * (num_stations > 0 ? num_stations : 1));
 }
 
+/**
+ * @brief Gibt zurück, ob das Modul aktiviert ist.
+ * @return true, wenn aktiviert, sonst false.
+ */
 bool DataModule::isEnabled() { return _isEnabled; }
+
+/**
+ * @brief Setzt das Paging auf die erste Seite zurück.
+ */
 void DataModule::resetPaging() { currentPage = 0; lastPageSwitchTime = millis(); }
 
+/**
+ * @brief Wird periodisch aufgerufen, um Paging und andere zeitgesteuerte Aktionen zu handhaben.
+ */
 void DataModule::tick() {
     unsigned long now = millis();
     if (_pageDisplayDuration > 0 && now - lastPageSwitchTime > _pageDisplayDuration) {
@@ -107,6 +147,9 @@ void DataModule::tick() {
     }
 }
 
+/**
+ * @brief Stellt eine Anfrage zum Abrufen neuer Daten in die Warteschlange des WebClients.
+ */
 void DataModule::queueData() {
     if (resource_url.empty() || !webClient) return;
     webClient->accessResource(String(resource_url.c_str()), [this](const char* buffer, size_t size, time_t last_update, bool is_stale) {
@@ -124,6 +167,9 @@ void DataModule::queueData() {
     });
 }
 
+/**
+ * @brief Verarbeitet heruntergeladene Daten, falls vorhanden.
+ */
 void DataModule::processData() {
     if (data_pending) {
         if (xSemaphoreTake(dataMutex, portMAX_DELAY) == pdTRUE) {
@@ -202,6 +248,9 @@ void DataModule::parseAndProcessJson(const char* buffer, size_t size) {
     } else { Serial.printf("[DataModule] JSON-Parsing-Fehler: %s\n", error.c_str()); }
 }
 
+/**
+ * @brief Zeichnet den aktuellen Zustand des Moduls auf die Canvas.
+ */
 void DataModule::draw() {
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) != pdTRUE) return;
     
@@ -277,9 +326,9 @@ void DataModule::draw() {
     u8g2.setForegroundColor(rgb565(0, 255, 255));
     int y_pos = 25;
 
-    if (averages.count > 0) {
+    if (averages.count > 0 && _deviceConfig) {
         char count_str[12];
-        snprintf(count_str, sizeof(count_str), "(%d/%d)", averages.count, MOVING_AVERAGE_DAYS);
+        snprintf(count_str, sizeof(count_str), "(%d/%d)", averages.count, _deviceConfig->movingAverageDays);
         u8g2.setCursor(188 - u8g2.getUTF8Width(count_str), y_pos);
         u8g2.print(count_str);
     }
@@ -457,18 +506,12 @@ void DataModule::cleanupOldPriceCacheEntries() {
  * @return PriceTrend Gibt TREND_RISING, TREND_FALLING oder TREND_STABLE zurück.
  */
 PriceTrend DataModule::calculateTrend(const PsramVector<float>& x_values, const PsramVector<float>& y_values) {
-    // Anzahl der Datenpunkte für die Regression.
     int n = x_values.size();
-
-    // Für eine Trendlinie benötigen wir mindestens 2 Punkte.
     if (n < 2) {
         return PriceTrend::TREND_STABLE;
     }
 
-    // Summen für die Regressionsformel initialisieren.
     double sum_x = 0.0, sum_y = 0.0, sum_xy = 0.0, sum_x_squared = 0.0;
-    
-    // Alle benötigten Summen in einer Schleife berechnen.
     for (int i = 0; i < n; ++i) {
         sum_x += x_values[i];
         sum_y += y_values[i];
@@ -476,32 +519,27 @@ PriceTrend DataModule::calculateTrend(const PsramVector<float>& x_values, const 
         sum_x_squared += x_values[i] * x_values[i];
     }
 
-    // Nenner der Steigungsformel berechnen.
-    double denominator = (n * sum_x_squared) - (sum_x * sum_x);
-
-    // Eine Division durch Null verhindern, falls alle x-Werte identisch wären.
     const double SLOPE_DENOMINATOR_THRESHOLD = 0.000001;
+    double denominator = (n * sum_x_squared) - (sum_x * sum_x);
     if (abs(denominator) < SLOPE_DENOMINATOR_THRESHOLD) {
         return PriceTrend::TREND_STABLE;
     }
 
-    // Die Steigung (Slope 'm') der Trendlinie berechnen.
-    // Formel: m = (n * Σ(xy) - Σx * Σy) / (n * Σ(x²) - (Σx)²)
     double slope = (n * sum_xy - sum_x * sum_y) / denominator;
 
-    // Ein Schwellenwert, um irrelevante, minimale Schwankungen als "stabil" zu werten.
-    // Ein Preisunterschied von 0.1 Cent pro Tag wird hier als relevante Änderung angesehen.
     const double STABILITY_THRESHOLD = 0.001; 
     if (slope > STABILITY_THRESHOLD) {
-        return PriceTrend::TREND_RISING; // Positive Steigung -> Trend steigt.
+        return PriceTrend::TREND_RISING;
     } else if (slope < -STABILITY_THRESHOLD) {
-        return PriceTrend::TREND_FALLING; // Negative Steigung -> Trend fällt.
+        return PriceTrend::TREND_FALLING;
     } else {
-        return PriceTrend::TREND_STABLE; // Steigung nahe Null -> Trend ist stabil.
+        return PriceTrend::TREND_STABLE;
     }
 }
 
 void DataModule::updateAndDetermineTrends(const PsramString& stationId) {
+    if (!_deviceConfig) return;
+
     StationPriceHistory* history = nullptr;
     for (auto& h : price_statistics) {
         if (h.stationId == stationId) {
@@ -511,7 +549,7 @@ void DataModule::updateAndDetermineTrends(const PsramString& stationId) {
     }
 
     if (!history || history->dailyStats.size() < 2) {
-        return; // Nicht genügend Daten für eine Trendanalyse
+        return;
     }
     
     PsramVector<float> x_values, y_e5_low, y_e5_high, y_e10_low, y_e10_high, y_diesel_low, y_diesel_high;
@@ -527,8 +565,8 @@ void DataModule::updateAndDetermineTrends(const PsramString& stationId) {
         
         double days_diff = difftime(now_utc, stat_time) / (60 * 60 * 24.0);
 
-        if (days_diff < TREND_ANALYSIS_DAYS) {
-            x_values.push_back(-days_diff); // x-Wert ist die Anzahl der Tage in der Vergangenheit
+        if (days_diff < _deviceConfig->trendAnalysisDays) {
+            x_values.push_back(-days_diff);
             if(s.e5_low > 0) y_e5_low.push_back(s.e5_low);
             if(s.e5_high > 0) y_e5_high.push_back(s.e5_high);
             if(s.e10_low > 0) y_e10_low.push_back(s.e10_low);
@@ -598,8 +636,9 @@ void DataModule::updatePriceStatistics(const PsramString& stationId, float curre
 }
 
 void DataModule::trimPriceStatistics(StationPriceHistory& history) {
+    if (!_deviceConfig) return;
     time_t now_utc; time(&now_utc);
-    time_t cutoff_epoch = now_utc - (MOVING_AVERAGE_DAYS * 86400L);
+    time_t cutoff_epoch = now_utc - (_deviceConfig->movingAverageDays * 86400L);
     struct tm cutoff_tm; localtime_r(&cutoff_epoch, &cutoff_tm);
     char cutoff_date_str_buf[11]; strftime(cutoff_date_str_buf, sizeof(cutoff_date_str_buf), "%Y-%m-%d", &cutoff_tm);
     PsramString cutoff_date_str(cutoff_date_str_buf);
@@ -740,4 +779,36 @@ uint16_t DataModule::calcColor(float value, float low, float high) {
         rval = map(diff, 50, 100, 255, 0);
     }
     return rgb565(rval, gval, 0);
+}
+
+/**
+ * @brief Gibt eine thread-sichere Kopie des Stations-Caches zurück.
+ * @return Eine PsramVector<StationData> mit den gecachten Stationsinformationen.
+ */
+PsramVector<StationData> DataModule::getStationCache() {
+    PsramVector<StationData> cache_copy;
+    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+        cache_copy = station_cache;
+        xSemaphoreGive(dataMutex);
+    }
+    return cache_copy;
+}
+
+/**
+ * @brief Ruft die Preis-Historie für eine bestimmte Tankstelle ab.
+ * @param stationId Die ID der Tankstelle.
+ * @return Eine Kopie der StationPriceHistory für die angegebene ID. Wenn nicht gefunden, ist das Objekt leer.
+ */
+StationPriceHistory DataModule::getStationPriceHistory(const PsramString& stationId) {
+    StationPriceHistory history_copy;
+    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+        for (const auto& history : price_statistics) {
+            if (history.stationId == stationId) {
+                history_copy = history;
+                break;
+            }
+        }
+        xSemaphoreGive(dataMutex);
+    }
+    return history_copy;
 }

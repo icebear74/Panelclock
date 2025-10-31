@@ -82,8 +82,13 @@ void PanelManager::handlePriorityRequest(DrawableModule* mod) {
     Priority prio = mod->getPriority();
 
     if (prio == Priority::Normal) {
-        _nextNormalPriorityModule = mod;
-        Serial.println("[PanelManager] 'Play-Next'-Anfrage (Prio: Normal) erhalten.");
+        if (!_interruptQueue.empty()) {
+            _pendingNormalPriorityModule = mod;
+            Serial.println("[PanelManager] 'Play-Next'-Anfrage (Prio: Normal) erhalten und geparkt, da Interrupt aktiv ist.");
+        } else {
+            _nextNormalPriorityModule = mod;
+            Serial.println("[PanelManager] 'Play-Next'-Anfrage (Prio: Normal) erhalten.");
+        }
         return;
     }
 
@@ -144,15 +149,17 @@ void PanelManager::tick() {
     DrawableModule* currentMod = _dataAreaModules[_currentModuleIndex];
     currentMod->tick();
 
-    unsigned long displayDuration;
-    if (_pausedModuleRemainingTime > 0) {
-        displayDuration = _pausedModuleRemainingTime;
-    } else {
-        displayDuration = currentMod->getDisplayDuration();
-    }
+    unsigned long displayDuration = (_pausedModuleRemainingTime > 0) ? _pausedModuleRemainingTime : currentMod->getDisplayDuration();
 
     if (millis() - _lastSwitchTime > displayDuration) {
         _pausedModuleRemainingTime = 0;
+
+        if (_pendingNormalPriorityModule) {
+            _nextNormalPriorityModule = _pendingNormalPriorityModule;
+            _pendingNormalPriorityModule = nullptr;
+            Serial.println("[PanelManager] Geparkte 'Play-Next'-Anfrage wird beim nächsten Wechsel aktiv.");
+        }
+        
         switchNextModule();
     }
 }
@@ -166,6 +173,11 @@ void PanelManager::switchNextModule(bool resume) {
     if (resume && _pausedModuleIndex != -1) {
         _currentModuleIndex = _pausedModuleIndex;
         _pausedModuleIndex = -1;
+        
+        // KORREKTUR: Setze den Timer zurück, damit das wiederaufgenommene Modul
+        // seine volle Restzeit bekommt, bevor weitergeschaltet wird.
+        _lastSwitchTime = millis();
+
     } else if (_nextNormalPriorityModule) {
         bool found = false;
         for (int i = 0; i < _dataAreaModules.size(); ++i) {
@@ -177,20 +189,21 @@ void PanelManager::switchNextModule(bool resume) {
         }
         if (found) {
             Serial.println("[PanelManager] 'Play-Next'-Modul wird jetzt angezeigt.");
-            _nextNormalPriorityModule = nullptr;
         } else {
-            _nextNormalPriorityModule = nullptr;
             _currentModuleIndex = (_currentModuleIndex + 1) % _dataAreaModules.size();
         }
+        _nextNormalPriorityModule = nullptr;
+        _lastSwitchTime = millis(); // Auch hier den Timer zurücksetzen
     } else {
         _currentModuleIndex = (_currentModuleIndex + 1) % _dataAreaModules.size();
+        _lastSwitchTime = millis(); // Und auch hier
     }
 
     int initialIndex = _currentModuleIndex;
     do {
         if (_dataAreaModules[_currentModuleIndex]->isEnabled()) {
             _dataAreaModules[_currentModuleIndex]->resetPaging();
-            _lastSwitchTime = millis();
+            // Der _lastSwitchTime wird bereits oben gesetzt, hier nicht noch einmal.
             return;
         }
         _currentModuleIndex = (_currentModuleIndex + 1) % _dataAreaModules.size();
@@ -215,6 +228,10 @@ void PanelManager::resumePlaylist() {
         Serial.printf("[PanelManager] Playlist wird fortgesetzt mit Modul %d.\n", _pausedModuleIndex);
         switchNextModule(true);
     } else {
+        if (_pendingNormalPriorityModule) {
+            _nextNormalPriorityModule = _pendingNormalPriorityModule;
+            _pendingNormalPriorityModule = nullptr;
+        }
         switchNextModule(false);
     }
 }

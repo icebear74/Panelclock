@@ -3,7 +3,16 @@
 #include <ESPmDNS.h>
 #include <ArduinoOTA.h>
 #include <LittleFS.h>
+#include "ConnectionManager.hpp"
+#include "GeneralTimeConverter.hpp"
+#include "WebServerManager.hpp"
+#include "webconfig.hpp"
+#include "HardwareConfig.hpp"
+#include "MwaveSensorModule.hpp"
+#include "OtaManager.hpp"
+#include "MemoryLogger.hpp"
 
+// --- Globale Variablen ---
 Application* Application::_instance = nullptr;
 HardwareConfig* hardwareConfig = nullptr;
 DeviceConfig* deviceConfig = nullptr;
@@ -15,10 +24,15 @@ WebClientModule* webClient = nullptr;
 MwaveSensorModule* mwaveSensorModule = nullptr;
 OtaManager* otaManager = nullptr;
 bool portalRunning = false;
+DataModule* dataModule = nullptr;
+
+// Forward-Deklaration, da in WebServerManager.cpp definiert
+void setupWebServer(bool portalMode);
+void handleWebServer(bool portalIsRunning);
 
 void displayStatus(const char* msg) {
-    if (Application::_instance && Application::_instance->_panelManager) {
-        Application::_instance->_panelManager->displayStatus(msg);
+    if (Application::_instance && Application::_instance->getPanelManager()) {
+        Application::_instance->getPanelManager()->displayStatus(msg);
     } else {
         Serial.printf("[displayStatus FALLBACK]: %s\n", msg);
     }
@@ -83,7 +97,10 @@ void Application::begin() {
 
     _panelManager->displayStatus("Erstelle Module...");
     _clockMod = new ClockModule(*_panelManager->getU8g2(), *_panelManager->getCanvasTime(), *timeConverter);
-    _dataMod = new DataModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, TIME_AREA_H, webClient);
+    
+    _dataMod = new DataModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, TIME_AREA_H, webClient, deviceConfig);
+    dataModule = _dataMod; 
+    
     _calendarMod = new CalendarModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, webClient);
     _dartsMod = new DartsRankingModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), webClient);
     _fritzMod = new FritzboxModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), webClient);
@@ -124,10 +141,17 @@ void Application::begin() {
 
     executeApplyLiveConfig();
     
+    // Setze die Callbacks für alle Module
     auto redrawCb = [this](){ this->_redrawRequest = true; };
     _dataMod->onUpdate(redrawCb);
     _calendarMod->onUpdate(redrawCb);
-    _dartsMod->onUpdate([this](DartsRankingType type){ this->_redrawRequest = true; });
+
+    // KORREKTUR: Der Callback für das Darts-Modul wird so geändert, dass er
+    // nur noch eine Neuzeichnung anfordert und KEINE Prioritätsanfrage mehr stellt.
+    // Dies verhindert, dass ein einfaches Datenupdate die Modul-Rotation stört.
+    _dartsMod->onUpdate([this](DartsRankingType type){ 
+        this->_redrawRequest = true; 
+    });
 
     _panelManager->displayStatus("Startvorgang\nabgeschlossen.");
     delay(2000);

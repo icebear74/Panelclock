@@ -4,7 +4,7 @@
 #include <Arduino.h> // Erforderlich für PROGMEM
 
 const char HTML_PAGE_HEADER[] PROGMEM = R"rawliteral(
-<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">
+<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><meta charset="UTF-8">
 <title>Panelclock Config</title><style>body{font-family:sans-serif;background:#222;color:#eee;}
 .container{max-width:800px;margin:0 auto;padding:20px;}h1,h2{color:#4CAF50;border-bottom:1px solid #444;padding-bottom:10px;}
 label{display:block;margin-top:15px;color:#bbb;}input[type="text"],input[type="password"],input[type="number"],select{width:100%;padding:8px;margin-top:5px;border-radius:4px;border:1px solid #555;background:#333;color:#eee;box-sizing:border-box;}
@@ -22,6 +22,7 @@ table{width:100%;border-collapse:collapse;margin-top:20px;}th,td{border:1px soli
 .tab button:hover{background-color:#444;}
 .tab button.active{color:#4CAF50;border-bottom:2px solid #4CAF50;}
 .tabcontent{display:none;}
+a {color:#4CAF50;}
 </style></head><body><div class="container">
 )rawliteral";
 const char HTML_PAGE_FOOTER[] PROGMEM = R"rawliteral(</div></body></html>)rawliteral";
@@ -33,6 +34,8 @@ const char HTML_INDEX[] PROGMEM = R"rawliteral(
 <a href="/config_modules" class="button">Anzeige-Module (Live-Update)</a>
 <a href="/config_hardware" class="button">Optionale Hardware</a>
 <a href="/config_certs" class="button">Zertifikat-Management</a>
+<hr>
+<a href="/debug" class="button" style="background-color:#555;">Debug Daten</a>
 )rawliteral";
 
 const char HTML_CONFIG_BASE[] PROGMEM = R"rawliteral(
@@ -163,7 +166,12 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
         <h4>API &amp; Allgemein</h4>
         <label for="tankerApiKey">Tankerk&ouml;nig API-Key</label><input type="text" id="tankerApiKey" name="tankerApiKey" value="{tankerApiKey}">
         <label for="stationFetchIntervalMin">Abrufintervall (Minuten)</label><input type="number" id="stationFetchIntervalMin" name="stationFetchIntervalMin" value="{stationFetchIntervalMin}">
-        <label for="stationDisplaySec">Anzeigedauer (Sekunden)</label><input type="number" id="stationDisplaySec" name="stationDisplaySec" value="{stationDisplaySec}">
+        <label for="stationDisplaySec">Anzeigedauer pro Tankstelle (Sekunden)</label><input type="number" id="stationDisplaySec" name="stationDisplaySec" value="{stationDisplaySec}">
+    </div>
+    <div class="group">
+        <h4>Berechnungs-Parameter</h4>
+        <label for="movingAverageDays">Tage f&uuml;r Durchschnittspreis (Min/Max)</label><input type="number" id="movingAverageDays" name="movingAverageDays" value="{movingAverageDays}">
+        <label for="trendAnalysisDays">Tage f&uuml;r Trend-Analyse</label><input type="number" id="trendAnalysisDays" name="trendAnalysisDays" value="{trendAnalysisDays}">
     </div>
     <div class="group">
         <h4>Tankstellen-Suche &amp; Auswahl</h4>
@@ -196,7 +204,7 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
     <div class="group">
         <h3>Darts-Ranglisten</h3>
         <input type="checkbox" id="dartsOomEnabled" name="dartsOomEnabled" {dartsOomEnabled_checked}><label for="dartsOomEnabled" style="display:inline;">Order of Merit anzeigen</label><br>
-        <input type="checkbox" id="dartsProTourEnabled" name="dartsProTourEnabled" {dartsProTourEnabled_checked}><label for="dartsProTourEnabled" style="display:inline;">Pro Tour anzeigen</label><br><br>
+        <input type="checkbox" id="dartsProTourEnabled" name="dartsProTourEnabled" {dartsProTourEnabled_checked}><label for="dartsProTourEnabled" style="display:inline;">Pro Tour anzeigen</label><br>
         <label for="dartsDisplaySec">Anzeigedauer (Sekunden)</label><input type="number" id="dartsDisplaySec" name="dartsDisplaySec" value="{dartsDisplaySec}">
         <label for="trackedDartsPlayers">Lieblingsspieler (kommagetrennt)</label><input type="text" id="trackedDartsPlayers" name="trackedDartsPlayers" value="{trackedDartsPlayers}">
     </div>
@@ -345,6 +353,57 @@ const char HTML_CONFIG_HARDWARE[] PROGMEM = R"rawliteral(
     {debug_log_table}
 </div>
 <div class="footer-link"><a href="/">&laquo; Zur&uuml;ck zum Hauptmen&uuml;</a></div>
+)rawliteral";
+
+const char HTML_DEBUG_DATA[] PROGMEM = R"rawliteral(
+<h2>Debug Daten</h2>
+<div class="group">
+    <h3>Gecachte Tankstellen-Stammdaten</h3>
+    <p>Dies sind alle Tankstellen, die jemals durch eine Umkreissuche gefunden und im Ger&auml;t gespeichert wurden. Klicke auf eine Tankstelle, um die Preis-Historie anzuzeigen.</p>
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Marke</th>
+                <th>Name</th>
+                <th>Adresse</th>
+            </tr>
+        </thead>
+        <tbody>
+            {station_cache_table}
+        </tbody>
+    </table>
+</div>
+<div class="footer-link"><a href="/">&laquo; Zur&uuml;ck zum Hauptmen&uuml;</a></div>
+)rawliteral";
+
+const char HTML_DEBUG_STATION_HISTORY[] PROGMEM = R"rawliteral(
+<h2>Preis-Historie</h2>
+<div class="group">
+    <h3>{station_brand} - {station_name}</h3>
+    <p>{station_address}<br>ID: {station_id}</p>
+</div>
+<div class="group">
+    <h3>Gespeicherte Tagespreise</h3>
+    <p>Zeigt die aufgezeichneten Minimal- und Maximalpreise pro Tag.</p>
+    <table>
+        <thead>
+            <tr>
+                <th>Datum</th>
+                <th>E5 Min</th>
+                <th>E5 Max</th>
+                <th>E10 Min</th>
+                <th>E10 Max</th>
+                <th>Diesel Min</th>
+                <th>Diesel Max</th>
+            </tr>
+        </thead>
+        <tbody>
+            {history_table}
+        </tbody>
+    </table>
+</div>
+<div class="footer-link"><a href="/debug">&laquo; Zur&uuml;ck zur &Uuml;bersicht</a></div>
 )rawliteral";
 
 #endif // WEB_PAGES_HPP
