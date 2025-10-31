@@ -72,15 +72,20 @@ public:
     void registerModule(DrawableModule* mod);
 
     /**
+     * @brief [NEU] Markiert ein bereits registriertes Modul als "MODERN".
+     * Der PanelManager wird für dieses Modul die neue Steuerungslogik verwenden.
+     * @param mod Ein Zeiger auf das umgestellte Modul.
+     */
+    void markAsModern(DrawableModule* mod);
+
+    /**
      * @brief Wird in der Hauptschleife aufgerufen, um die Modul-Logik zu steuern.
-     * 
      * Handhabt die Rotation der Module, die Anzeigezeit und die Logik von Interrupts.
      */
     void tick();
 
     /**
      * @brief Zeichnet den kompletten Bildschirminhalt und sendet ihn an das Panel.
-     * 
      * Ruft die `draw`-Methoden der aktiven Module auf und kombiniert die Canvases.
      */
     void render();
@@ -112,56 +117,53 @@ private:
     void pausePlaylist();
     void resumePlaylist();
 
+    /**
+     * @brief [NEU] Prüft, ob ein Modul als "MODERN" markiert wurde.
+     * @param mod Der Zeiger auf das zu prüfende Modul.
+     * @return true, wenn das Modul die neue Schnittstelle verwendet.
+     */
+    bool isModern(const DrawableModule* mod) const;
+
     // --- Kernkomponenten und Konfiguration ---
-    /// @brief Referenz auf die globale Hardware-Konfiguration (Pins).
     HardwareConfig& _hwConfig;
-    /// @brief Referenz auf den globalen Zeitumrechner.
     GeneralTimeConverter& _timeConverter;
 
     // --- Display-Objekte ---
-    /// @brief Der DMA-Treiber für das HUB75-Panel.
     MatrixPanel_I2S_DMA* _dma_display = nullptr;
-    /// @brief Die virtuelle Matrix, die mehrere Panels zu einer großen Anzeige verbindet.
     VirtualMatrixPanel_T<PANEL_CHAIN_TYPE>* _virtualDisp = nullptr;
-    /// @brief Der Grafikpuffer (Canvas) für den oberen Uhrenbereich.
     GFXcanvas16* _canvasTime = nullptr;
-    /// @brief Der Grafikpuffer (Canvas) für den unteren Datenbereich.
     GFXcanvas16* _canvasData = nullptr;
-    /// @brief Ein Grafikpuffer für die gesamte Anzeigefläche.
     GFXcanvas16* _fullCanvas = nullptr;
-    /// @brief Die U8G2-Bibliothek für Text-Rendering.
     U8G2_FOR_ADAFRUIT_GFX* _u8g2 = nullptr;
 
     // --- Spezielle Module ---
-    /// @brief Zeiger auf das immer präsente Uhren-Modul.
     ClockModule* _clockMod = nullptr;
-    /// @brief Zeiger auf das Sensor-Modul zur Steuerung der Display-Helligkeit/des Status.
     MwaveSensorModule* _sensorMod = nullptr;
     
     // --- Playlist-Logik für rotierende Module ---
     /// @brief Vektor aller registrierten Module für den Datenbereich.
     PsramVector<DrawableModule*> _dataAreaModules;
+    
+    /**
+     * @brief [NEU] Vektor, der Zeiger auf alle Module enthält, die als "MODERN" markiert wurden.
+     * Dient als Nachschlagetabelle für die "Switter"-Logik.
+     */
+    PsramVector<DrawableModule*> _modernModules;
+
     /// @brief Index des aktuell in der Playlist angezeigten Moduls.
     int _currentModuleIndex = -1;
-    /// @brief Zeitstempel des letzten Modulwechsels.
-    unsigned long _lastSwitchTime = 0;
+    /// @brief Zeitstempel, wann das aktuelle Modul gestartet wurde (ersetzt _lastSwitchTime).
+    unsigned long _moduleStartTime = 0;
 
     // --- Zustand für "Pause & Resume" bei Interrupts ---
-    /// @brief Index des Moduls, das durch einen Interrupt pausiert wurde.
     int _pausedModuleIndex = -1;
-    /// @brief Verbleibende Anzeigezeit des pausierten Moduls.
     unsigned long _pausedModuleRemainingTime = 0;
 
     // --- Prioritäts- und Interrupt-Handling ---
-    /// @brief Warteschlange für aktive Interrupt-Anfragen, sortiert nach Priorität.
     PsramVector<DrawableModule*> _interruptQueue;
-    /// @brief Zeiger auf ein Modul, das als nächstes angezeigt werden soll (Priorität Normal).
     DrawableModule* _nextNormalPriorityModule = nullptr;
-    /// @brief Zeiger auf das zuletzt aktive Interrupt-Modul, um Timeouts zu überwachen.
     DrawableModule* _lastActiveInterrupt = nullptr;
-    /// @brief Zeitstempel, wann der aktuelle Interrupt gestartet wurde.
     unsigned long _interruptStartTime = 0;
-    /// @brief Zeiger auf eine "Play-Next"-Anfrage, die während eines Interrupts eintraf und geparkt wurde.
     DrawableModule* _pendingNormalPriorityModule = nullptr;
 };
 

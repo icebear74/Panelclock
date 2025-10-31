@@ -78,6 +78,22 @@ void PanelManager::registerModule(DrawableModule* mod) {
     _dataAreaModules.push_back(mod);
 }
 
+// NEU: Implementierung von markAsModern
+void PanelManager::markAsModern(DrawableModule* mod) {
+    if (!mod) return;
+    // Füge das Modul nur hinzu, wenn es noch nicht in der Liste ist
+    if (std::find(_modernModules.begin(), _modernModules.end(), mod) == _modernModules.end()) {
+        _modernModules.push_back(mod);
+        Serial.printf("[PanelManager] Modul '%s' wurde als MODERN markiert.\n", mod->getModuleName());
+    }
+}
+
+// NEU: Implementierung von isModern
+bool PanelManager::isModern(const DrawableModule* mod) const {
+    if (!mod) return false;
+    return std::find(_modernModules.begin(), _modernModules.end(), mod) != _modernModules.end();
+}
+
 void PanelManager::handlePriorityRequest(DrawableModule* mod) {
     Priority prio = mod->getPriority();
 
@@ -118,6 +134,7 @@ void PanelManager::handlePriorityRelease(DrawableModule* mod) {
 }
 
 void PanelManager::tick() {
+    // Interrupt-Logik bleibt unverändert
     if (!_interruptQueue.empty()) {
         DrawableModule* currentInterrupt = _interruptQueue.front();
         currentInterrupt->tick();
@@ -140,6 +157,7 @@ void PanelManager::tick() {
         _interruptStartTime = 0;
     }
     
+    // Start der Playlist, falls sie noch nicht läuft
     if (_currentModuleIndex < 0 && !_dataAreaModules.empty()) {
         switchNextModule();
     }
@@ -149,9 +167,33 @@ void PanelManager::tick() {
     DrawableModule* currentMod = _dataAreaModules[_currentModuleIndex];
     currentMod->tick();
 
-    unsigned long displayDuration = (_pausedModuleRemainingTime > 0) ? _pausedModuleRemainingTime : currentMod->getDisplayDuration();
+    // =================================================================
+    // =========== NEUE "SWITTER"-LOGIK ZUM MODULWECHSEL ==============
+    // =================================================================
+    bool finished = false;
+    bool timeout = false;
 
-    if (millis() - _lastSwitchTime > displayDuration) {
+    if (isModern(currentMod)) {
+        // --- LOGIK FÜR MODERNE MODULE ---
+        // Plan A: Hat sich das Modul selbst beendet?
+        finished = currentMod->isFinished();
+        
+        // Plan B: Ist die maximale Zeit um? (Dummy-Config für jetzt)
+        ModuleConfig tempConfig; // Platzhalter, wird in Phase 3 durch echte Config ersetzt
+        timeout = (millis() - _moduleStartTime > tempConfig.maxRuntimeMs);
+        
+        if (timeout && !finished) {
+            currentMod->timeIsUp(); // Informiere das Modul über den harten Abbruch.
+        }
+
+    } else {
+        // --- LOGIK FÜR LEGACY-MODULE (wie bisher) ---
+        unsigned long displayDuration = (_pausedModuleRemainingTime > 0) ? _pausedModuleRemainingTime : currentMod->getDisplayDuration();
+        timeout = (millis() - _moduleStartTime > displayDuration);
+    }
+
+    // DIE EINE, UNIVERSELLE REGEL FÜR DEN WECHSEL
+    if (finished || timeout) {
         _pausedModuleRemainingTime = 0;
 
         if (_pendingNormalPriorityModule) {
@@ -173,11 +215,7 @@ void PanelManager::switchNextModule(bool resume) {
     if (resume && _pausedModuleIndex != -1) {
         _currentModuleIndex = _pausedModuleIndex;
         _pausedModuleIndex = -1;
-        
-        // KORREKTUR: Setze den Timer zurück, damit das wiederaufgenommene Modul
-        // seine volle Restzeit bekommt, bevor weitergeschaltet wird.
-        _lastSwitchTime = millis();
-
+        _moduleStartTime = millis(); // Timer zurücksetzen für Restzeit
     } else if (_nextNormalPriorityModule) {
         bool found = false;
         for (int i = 0; i < _dataAreaModules.size(); ++i) {
@@ -193,29 +231,45 @@ void PanelManager::switchNextModule(bool resume) {
             _currentModuleIndex = (_currentModuleIndex + 1) % _dataAreaModules.size();
         }
         _nextNormalPriorityModule = nullptr;
-        _lastSwitchTime = millis(); // Auch hier den Timer zurücksetzen
+        _moduleStartTime = millis(); // Timer für neues Modul starten
     } else {
         _currentModuleIndex = (_currentModuleIndex + 1) % _dataAreaModules.size();
-        _lastSwitchTime = millis(); // Und auch hier
+        _moduleStartTime = millis(); // Timer für neues Modul starten
     }
 
     int initialIndex = _currentModuleIndex;
     do {
-        if (_dataAreaModules[_currentModuleIndex]->isEnabled()) {
-            _dataAreaModules[_currentModuleIndex]->resetPaging();
-            // Der _lastSwitchTime wird bereits oben gesetzt, hier nicht noch einmal.
+        DrawableModule* modToStart = _dataAreaModules[_currentModuleIndex];
+        if (modToStart->isEnabled()) {
+            // NEUE "SWITTER"-LOGIK ZUM STARTEN EINES MODULS
+            if (isModern(modToStart)) {
+                modToStart->activateModule();
+            } else {
+                modToStart->resetPaging();
+            }
+            // Der _moduleStartTime wird bereits oben gesetzt.
             return;
         }
         _currentModuleIndex = (_currentModuleIndex + 1) % _dataAreaModules.size();
     } while (_currentModuleIndex != initialIndex);
 
-    _currentModuleIndex = -1;
+    _currentModuleIndex = -1; // Kein aktivierbares Modul gefunden
 }
 
 void PanelManager::pausePlaylist() {
     if (_currentModuleIndex != -1) {
-        unsigned long elapsedTime = millis() - _lastSwitchTime;
-        unsigned long totalDuration = _dataAreaModules[_currentModuleIndex]->getDisplayDuration();
+        DrawableModule* currentMod = _dataAreaModules[_currentModuleIndex];
+        unsigned long elapsedTime = millis() - _moduleStartTime;
+        unsigned long totalDuration = 0;
+
+        // NEUE "SWITTER"-LOGIK ZUR BERECHNUNG DER RESTZEIT
+        if (isModern(currentMod)) {
+            ModuleConfig tempConfig; // Platzhalter
+            totalDuration = tempConfig.maxRuntimeMs;
+        } else {
+            totalDuration = currentMod->getDisplayDuration();
+        }
+
         _pausedModuleRemainingTime = (elapsedTime < totalDuration) ? (totalDuration - elapsedTime) : 0;
         _pausedModuleIndex = _currentModuleIndex;
         _currentModuleIndex = -1;
