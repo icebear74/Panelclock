@@ -24,7 +24,7 @@ WebClientModule* webClient = nullptr;
 MwaveSensorModule* mwaveSensorModule = nullptr;
 OtaManager* otaManager = nullptr;
 bool portalRunning = false;
-DataModule* dataModule = nullptr;
+TankerkoenigModule* tankerkoenigModule = nullptr;
 
 // Forward-Deklaration, da in WebServerManager.cpp definiert
 void setupWebServer(bool portalMode);
@@ -61,7 +61,7 @@ Application::~Application() {
     delete otaManager;
     delete _panelManager;
     delete _clockMod;
-    delete _dataMod;
+    delete _tankerkoenigMod;
     delete _calendarMod;
     delete _dartsMod;
     delete _fritzMod;
@@ -98,8 +98,8 @@ void Application::begin() {
     _panelManager->displayStatus("Erstelle Module...");
     _clockMod = new ClockModule(*_panelManager->getU8g2(), *_panelManager->getCanvasTime(), *timeConverter);
     
-    _dataMod = new DataModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, TIME_AREA_H, webClient, deviceConfig);
-    dataModule = _dataMod; 
+    _tankerkoenigMod = new TankerkoenigModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, TIME_AREA_H, webClient, deviceConfig);
+    tankerkoenigModule = _tankerkoenigMod; 
     
     _calendarMod = new CalendarModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, webClient);
     _dartsMod = new DartsRankingModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), webClient);
@@ -108,9 +108,12 @@ void Application::begin() {
     _panelManager->registerClockModule(_clockMod);
     _panelManager->registerSensorModule(mwaveSensorModule);
     _panelManager->registerModule(_fritzMod);
-    _panelManager->registerModule(_dataMod);
+    _panelManager->registerModule(_tankerkoenigMod);
     _panelManager->registerModule(_calendarMod);
     _panelManager->registerModule(_dartsMod);
+
+    _panelManager->markAsModern(_tankerkoenigMod);
+
 
     if (connectionManager->begin()) {
         portalRunning = false;
@@ -119,7 +122,7 @@ void Application::begin() {
         BaseType_t network_core = (app_core == 0) ? 1 : 0;
         
         mwaveSensorModule->begin();
-        _dataMod->begin();
+        _tankerkoenigMod->begin();
         webClient->begin();
         _fritzMod->begin(network_core);
 
@@ -141,14 +144,10 @@ void Application::begin() {
 
     executeApplyLiveConfig();
     
-    // Setze die Callbacks für alle Module
     auto redrawCb = [this](){ this->_redrawRequest = true; };
-    _dataMod->onUpdate(redrawCb);
+    _tankerkoenigMod->onUpdate(redrawCb);
     _calendarMod->onUpdate(redrawCb);
 
-    // KORREKTUR: Der Callback für das Darts-Modul wird so geändert, dass er
-    // nur noch eine Neuzeichnung anfordert und KEINE Prioritätsanfrage mehr stellt.
-    // Dies verhindert, dass ein einfaches Datenupdate die Modul-Rotation stört.
     _dartsMod->onUpdate([this](DartsRankingType type){ 
         this->_redrawRequest = true; 
     });
@@ -190,11 +189,11 @@ void Application::update() {
 
     ArduinoOTA.handle();
 
-    if(_dataMod) _dataMod->queueData();
+    if(_tankerkoenigMod) _tankerkoenigMod->queueData();
     if(_dartsMod) _dartsMod->queueData();
     if(_calendarMod) _calendarMod->queueData();
     
-    if(_dataMod) _dataMod->processData();
+    if(_tankerkoenigMod) _tankerkoenigMod->processData();
     if(_dartsMod) _dartsMod->processData();
     if(_calendarMod) _calendarMod->processData();
 
@@ -217,14 +216,15 @@ void Application::update() {
 
 void Application::executeApplyLiveConfig() {
     LOG_MEMORY_DETAILED("Vor executeApplyLiveConfig");
-    if (!_dataMod || !_calendarMod || !_dartsMod || !_fritzMod || !timeConverter || !deviceConfig) return;
+    if (!_tankerkoenigMod || !_calendarMod || !_dartsMod || !_fritzMod || !timeConverter || !deviceConfig) return;
     Serial.println("[Config] Wende Live-Konfiguration an...");
     
     if (!timeConverter->setTimezone(deviceConfig->timezone.c_str())) {
         timeConverter->setTimezone("UTC");
     }
     
-    _dataMod->setConfig(deviceConfig->tankerApiKey, deviceConfig->tankerkoenigStationIds, deviceConfig->stationFetchIntervalMin, deviceConfig->stationDisplaySec);
+    _tankerkoenigMod->setConfig(deviceConfig->tankerApiKey, deviceConfig->tankerkoenigStationIds, deviceConfig->stationFetchIntervalMin, deviceConfig->stationDisplaySec);
+    // KORRIGIERT: Überflüssige Parameter entfernt
     _calendarMod->setConfig(deviceConfig->icsUrl, deviceConfig->calendarFetchIntervalMin, deviceConfig->calendarDisplaySec, deviceConfig->calendarScrollMs, deviceConfig->calendarDateColor, deviceConfig->calendarTextColor);
     _dartsMod->applyConfig(deviceConfig->dartsOomEnabled, deviceConfig->dartsProTourEnabled, 5, deviceConfig->dartsDisplaySec, deviceConfig->trackedDartsPlayers);
     _fritzMod->setConfig(deviceConfig->fritzboxEnabled, deviceConfig->fritzboxIp);

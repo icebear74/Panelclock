@@ -1,5 +1,5 @@
-#ifndef DRAWABLEMODULE_HPP
-#define DRAWABLEMODULE_HPP
+#ifndef DRAWABLE_MODULE_HPP
+#define DRAWABLE_MODULE_HPP
 
 #include <functional>
 #include <ArduinoJson.h>
@@ -185,6 +185,16 @@ protected:
      * darauf zugreifen können.
      */
     bool _isFinished = false;
+
+    // =================================================================
+    // =========== DIE EINZIGE ÄNDERUNG IN DIESER DATEI ================
+    // =================================================================
+    /**
+     * @brief [MODERN & LEGACY] Failsafe-Timeout in Millisekunden.
+     * Wenn ein Modul länger als diese Zeit läuft, wird es vom PanelManager zwangsweise beendet.
+     * Kann von abgeleiteten MODERN-Modulen dynamisch überschrieben werden.
+     */
+    uint32_t maxRuntimeMs = 30000; // 30 Sekunden als sicherer Standardwert
 
 private:
     std::function<void(DrawableModule*)> requestCallback;
