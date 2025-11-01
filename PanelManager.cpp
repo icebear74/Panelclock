@@ -116,20 +116,16 @@ void PanelManager::handlePriorityRelease(DrawableModule* mod) {
 }
 
 void PanelManager::tick() {
-    // Schritt 1: Alle Module im Hintergrund ticken lassen, damit sie ggf. Priorität anfordern.
+    // Schritt 1: IMMER alle Module im Hintergrund ticken lassen.
     for (auto* mod : _dataAreaModules) {
         if (mod && mod->isEnabled()) {
             mod->periodicTick();
         }
     }
 
-    // =================================================================
-    // FINALE KORREKTUR: Logik in einen exklusiven if/else-Block aufgeteilt
-    // =================================================================
-
-    // Schritt 2: Liegt ein Interrupt vor?
+    // Schritt 2: EXKLUSIVE Logik-Pfade für Interrupt vs. normale Playlist.
     if (!_interruptQueue.empty()) {
-        // ---- INTERRUPT-LOGIK ----
+        // ---- INTERRUPT-MODUS ----
         DrawableModule* currentInterrupt = _interruptQueue.front();
         currentInterrupt->tick();
 
@@ -144,30 +140,26 @@ void PanelManager::tick() {
             Serial.printf("[PanelManager] WARNUNG: Interrupt-Timeout für Modul (Prio: %d) überschritten! Erzwinge Freigabe.\n", (int)currentInterrupt->getPriority());
             handlePriorityRelease(currentInterrupt);
         }
-        // Die normale Playlist-Logik wird komplett übersprungen.
         
     } else {
-        // ---- NORMALE PLAYLIST-LOGIK ----
-        
-        // Wurde gerade ein Interrupt beendet?
+        // ---- NORMALER PLAYLIST-MODUS ----
         if (_lastActiveInterrupt != nullptr) {
             _lastActiveInterrupt = nullptr;
             _interruptStartTime = 0;
         }
 
-        // Ist die Playlist pausiert (z.B. durch `pausePlaylist`) oder am Anfang?
         if (_currentModuleIndex < 0 && !_dataAreaModules.empty()) {
             switchNextModule();
         }
 
-        // Wenn immer noch kein Modul aktiv ist (leere Playlist), beenden.
-        if (_currentModuleIndex < 0) return;
+        if (_currentModuleIndex < 0) {
+            // Wenn nach switchNextModule immer noch kein Modul aktiv ist (z.B. alle deaktiviert), nichts tun.
+            return;
+        }
 
-        // Das jetzt aktive Modul ticken lassen.
         DrawableModule* currentMod = _dataAreaModules[_currentModuleIndex];
         currentMod->tick();
 
-        // Prüfen, ob zum nächsten Modul gewechselt werden soll.
         bool should_switch = false;
         if (isModern(currentMod)) {
             if (currentMod->isFinished()) {
@@ -184,7 +176,6 @@ void PanelManager::tick() {
             }
         }
 
-        // Wenn ein Wechsel ansteht, durchführen.
         if (should_switch) {
             _pausedModuleRemainingTime = 0;
             if (_pendingNormalPriorityModule) {
@@ -215,9 +206,7 @@ void PanelManager::switchNextModule(bool resume) {
                 break;
             }
         }
-        if (found) {
-            Serial.println("[PanelManager] 'Play-Next'-Modul wird jetzt angezeigt.");
-        } else {
+        if (!found) {
             _currentModuleIndex = (_currentModuleIndex + 1) % _dataAreaModules.size();
         }
         _nextNormalPriorityModule = nullptr;
