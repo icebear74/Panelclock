@@ -11,6 +11,12 @@ uint16_t hexColorTo565(const PsramString& hex) {
 CalendarModule::CalendarModule(U8G2_FOR_ADAFRUIT_GFX &u8g2, GFXcanvas16 &canvas, const GeneralTimeConverter& converter, WebClientModule* webClient)
     : u8g2(u8g2), canvas(canvas), timeConverter(converter), webClient(webClient), last_processed_update(0) {
     dataMutex = xSemaphoreCreateMutex();
+    
+    // Standardwerte für konfigurierbare Parameter setzen
+    highlightThresholdMinutes = 120;
+    urgentViewThresholdMinutes = 60;
+    urgentViewDurationMs = 20 * 1000UL;
+    urgentViewIntervalMs = 2 * 60 * 1000UL;
 }
 
 CalendarModule::~CalendarModule() {
@@ -22,7 +28,12 @@ void CalendarModule::onUpdate(std::function<void()> callback) {
     updateCallback = callback; 
 }
 
-void CalendarModule::setConfig(const PsramString& url, unsigned long fetchMinutes, unsigned long displaySec, unsigned long scrollMs, const PsramString& dateColorHex, const PsramString& textColorHex) {
+// =================================================================
+// KORREKTUR: Vereinfachte Implementierung ohne Prüfung auf 0
+// =================================================================
+void CalendarModule::setConfig(const PsramString& url, unsigned long fetchMinutes, unsigned long displaySec, unsigned long scrollMs, 
+                               const PsramString& dateColorHex, const PsramString& textColorHex,
+                               uint16_t highlightMin, uint16_t urgentMin, uint16_t urgentDurationSec, uint16_t urgentIntervalMin) {
     this->icsUrl = url;
     this->_isEnabled = !url.empty();
     
@@ -33,11 +44,16 @@ void CalendarModule::setConfig(const PsramString& url, unsigned long fetchMinute
     this->dateColor = hexColorTo565(dateColorHex);
     this->textColor = hexColorTo565(textColorHex);
 
-    // NEU: Failsafe-Timeout für den PanelManager setzen
+    // Direkte Zuweisung der (optionalen) Parameter
+    this->highlightThresholdMinutes = highlightMin;
+    this->urgentViewThresholdMinutes = urgentMin;
+    this->urgentViewDurationMs = urgentDurationSec * 1000UL;
+    this->urgentViewIntervalMs = urgentIntervalMin * 60 * 1000UL;
+
     this->maxRuntimeMs = _displayDuration + FAILSAFE_BUFFER_MS;
 
     if (_isEnabled) {
-        webClient->registerResource(String(icsUrl.c_str()), fetchIntervalMinutes, root_ca_pem);
+        webClient->registerResource(String(icsUrl.c_str()), this->fetchIntervalMinutes, root_ca_pem);
     }
 }
 
@@ -50,13 +66,11 @@ void CalendarModule::onActivate() {
 void CalendarModule::tick() {
     unsigned long now = millis();
 
-    // 1. Prüfen, ob die reguläre Anzeigezeit abgelaufen ist
     if (now - _startTime > _displayDuration) {
         _isFinished = true;
-        return; // Keine weitere Logik ausführen
+        return;
     }
 
-    // 2. Scroll-Animation ticken (wie bisher)
     if (scrollStepInterval > 0 && now - lastScrollStep >= scrollStepInterval) {
         lastScrollStep = now;
         bool scrolled = false;
@@ -91,14 +105,14 @@ void CalendarModule::periodicTick() {
     for (const auto& ev : events) {
         if (ev.isAllDay) continue;
         if (ev.startEpoch > now_utc) {
-            if ((ev.startEpoch - now_utc) < 3600) { // Weniger als 60 Minuten
+            if ((ev.startEpoch - now_utc) < (urgentViewThresholdMinutes * 60)) {
                 isAnyEventUrgent = true;
             }
             break; 
         }
     }
 
-    if (isAnyEventUrgent && !_isUrgentViewActive && (now - _lastUrgentDisplayTime > URGENT_EVENT_INTERVAL)) {
+    if (isAnyEventUrgent && !_isUrgentViewActive && (now - _lastUrgentDisplayTime > urgentViewIntervalMs)) {
         _isUrgentViewActive = true;
         _priorityRequested = true;
         _urgentViewStartTime = now;
@@ -106,7 +120,7 @@ void CalendarModule::periodicTick() {
         requestPriority();
         Serial.println("[Calendar] Dringender Termin Intervall erreicht. Fordere Priorität an.");
     } 
-    else if (_isUrgentViewActive && (now - _urgentViewStartTime > URGENT_EVENT_DURATION)) {
+    else if (_isUrgentViewActive && (now - _urgentViewStartTime > urgentViewDurationMs)) {
         _isUrgentViewActive = false;
         _priorityRequested = false;
         releasePriority();
@@ -188,12 +202,13 @@ void CalendarModule::draw() {
         time_t now_utc;
         time(&now_utc);
         
-        time_t local_now = timeConverter.toLocal(now_utc);
+        time_t now_local = timeConverter.toLocal(now_utc);
         struct tm tm_local_now;
-        localtime_r(&local_now, &tm_local_now);
+        gmtime_r(&now_local, &tm_local_now);
         tm_local_now.tm_hour = 0; tm_local_now.tm_min = 0; tm_local_now.tm_sec = 0;
-        time_t today_start_local_epoch = mktime(&tm_local_now);
-
+        
+        time_t today_start_local_epoch = timegm(&tm_local_now);
+        
         int currentOffset = timeConverter.isDST(today_start_local_epoch) ? timeConverter.getDstOffsetSec() : timeConverter.getStdOffsetSec();
         time_t today_start_utc = today_start_local_epoch - currentOffset;
         time_t tomorrow_start_utc = today_start_utc + 86400;
@@ -205,7 +220,7 @@ void CalendarModule::draw() {
             const auto& ev = upcomming[i];
             struct tm tStart;
             time_t localStartEpoch = timeConverter.toLocal(ev.startEpoch);
-            localtime_r(&localStartEpoch, &tStart);
+            gmtime_r(&localStartEpoch, &tStart);
             char buf[12];
             
             uint16_t currentTextColor = textColor;
@@ -215,7 +230,7 @@ void CalendarModule::draw() {
             long minutesUntilStart = (ev.startEpoch > now_utc) ? (ev.startEpoch - now_utc) / 60 : -1;
 
             if (isToday) {
-                float pulse_period_ms = (!ev.isAllDay && minutesUntilStart >= 0 && minutesUntilStart < 120) ? 1000.0f : 2000.0f;
+                float pulse_period_ms = (!ev.isAllDay && minutesUntilStart >= 0 && minutesUntilStart < highlightThresholdMinutes) ? 1000.0f : 2000.0f;
                 const float min_brightness = 0.25f;
                 float cos_input = (millis() % (int)pulse_period_ms) / pulse_period_ms * 2.0f * PI;
                 float pulseFactor = min_brightness + (1.0f - min_brightness) * (cos(cos_input) + 1.0f) / 2.0f;
@@ -234,7 +249,7 @@ void CalendarModule::draw() {
                     struct tm tEnd;
                     time_t end_date_epoch = ev.startEpoch + ev.duration - 86400;
                     time_t localEndEpoch = timeConverter.toLocal(end_date_epoch);
-                    localtime_r(&localEndEpoch, &tEnd);
+                    gmtime_r(&localEndEpoch, &tEnd);
                     strftime(buf, sizeof(buf), "%d.%m.%y", &tEnd);
                     u8g2.setCursor(xEndZeit, y); u8g2.print(buf);
                 }
@@ -287,9 +302,11 @@ void CalendarModule::drawUrgentView() {
     for (const auto& ev : events) {
         if (ev.isAllDay) continue;
         if (ev.startEpoch > now_utc) {
-            long minutesUntilStart = (ev.startEpoch - now_utc) / 60;
-            if (minutesUntilStart < 60) {
+            if ((ev.startEpoch - now_utc) < (urgentViewThresholdMinutes * 60)) {
                 urgentEvents.push_back(ev);
+                if (urgentEvents.size() >= 2) {
+                    break;
+                }
             }
         }
     }
@@ -301,20 +318,18 @@ void CalendarModule::drawUrgentView() {
         return;
     }
 
-    // Start-Y-Position für den ersten Block
     int y = 12; 
-    for (size_t i = 0; i < urgentEvents.size() && i < 2; ++i) {
+    for (size_t i = 0; i < urgentEvents.size(); ++i) {
         const auto& ev = urgentEvents[i];
         
-        // --- Datum/Uhrzeit-Zeile ---
         u8g2.setFont(u8g2_font_7x14_tf);
         u8g2.setForegroundColor(dateColor);
 
         struct tm tStart, tEnd;
         time_t localStartEpoch = timeConverter.toLocal(ev.startEpoch);
         time_t localEndEpoch = timeConverter.toLocal(ev.startEpoch + ev.duration);
-        localtime_r(&localStartEpoch, &tStart);
-        localtime_r(&localEndEpoch, &tEnd);
+        gmtime_r(&localStartEpoch, &tStart);
+        gmtime_r(&localEndEpoch, &tEnd);
 
         char dateTimeStr[40];
         char endTimeStr[6];
@@ -332,18 +347,17 @@ void CalendarModule::drawUrgentView() {
         int width = u8g2.getUTF8Width(finalDateTimeStr.c_str());
         u8g2.setCursor((canvas.width() - width) / 2, y);
         u8g2.print(finalDateTimeStr.c_str());
-        y += 12; // Abstand für die nächste Zeile
+        y += 12;
 
-        // --- Termintext-Zeile ---
-        // KORREKTUR: Füge hier den zusätzlichen Abstand von 5 Pixeln hinzu
         y += 5;
 
-        u8g2.setFont(u8g2_font_logisoso16_tf);
+        u8g2.setFont(u8g2_font_helvB12_tf);
+        
         u8g2.setForegroundColor(textColor);
         width = u8g2.getUTF8Width(ev.summary.c_str());
         u8g2.setCursor((canvas.width() - width) / 2, y);
         u8g2.print(ev.summary.c_str());
-        y += 20; // Abstand für den nächsten Terminblock
+        y += 16;
     }
 }
 

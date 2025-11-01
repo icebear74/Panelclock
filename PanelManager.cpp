@@ -116,6 +116,20 @@ void PanelManager::handlePriorityRelease(DrawableModule* mod) {
 }
 
 void PanelManager::tick() {
+    // =================================================================
+    // =========== KORREKTUR: periodicTick für ALLE Module aufrufen ====
+    // =================================================================
+    // Diese Schleife stellt sicher, dass jedes Modul im Hintergrund
+    // seinen Status prüfen und ggf. eine Prioritätsanfrage stellen kann.
+    for (auto* mod : _dataAreaModules) {
+        if (mod && mod->isEnabled()) {
+            mod->periodicTick();
+        }
+    }
+    // =================================================================
+    // =========== ENDE DER KORREKTUR ==================================
+    // =================================================================
+
     if (!_interruptQueue.empty()) {
         DrawableModule* currentInterrupt = _interruptQueue.front();
         currentInterrupt->tick();
@@ -142,32 +156,24 @@ void PanelManager::tick() {
     DrawableModule* currentMod = _dataAreaModules[_currentModuleIndex];
     currentMod->tick();
 
-    // =================================================================
-    // =========== KORRIGIERTE LOGIK ZUM MODULWECHSEL ==================
-    // =================================================================
     bool should_switch = false;
 
     if (isModern(currentMod)) {
-        // --- LOGIK FÜR MODERNE MODULE ---
-        // Plan A: Hat sich das Modul selbst beendet?
         if (currentMod->isFinished()) {
             should_switch = true;
         } 
-        // Plan B: Ist die maximale Zeit um? (Failsafe)
         else if (millis() - _moduleStartTime > currentMod->getMaxRuntime()) {
             Serial.printf("[PanelManager] Failsafe! Modul '%s' hat Timeout (%lu ms) überschritten.\n", currentMod->getModuleName(), currentMod->getMaxRuntime());
             should_switch = true;
         }
 
     } else {
-        // --- LOGIK FÜR LEGACY-MODULE (wie bisher) ---
         unsigned long displayDuration = (_pausedModuleRemainingTime > 0) ? _pausedModuleRemainingTime : currentMod->getDisplayDuration();
         if (millis() - _moduleStartTime > displayDuration) {
             should_switch = true;
         }
     }
 
-    // DIE EINE, UNIVERSELLE REGEL FÜR DEN WECHSEL
     if (should_switch) {
         _pausedModuleRemainingTime = 0;
 
@@ -192,7 +198,7 @@ void PanelManager::switchNextModule(bool resume) {
         _moduleStartTime = millis();
     } else if (_nextNormalPriorityModule) {
         bool found = false;
-        for (int i = 0; i < _dataAreaModules.size(); ++i) {
+        for (size_t i = 0; i < _dataAreaModules.size(); ++i) {
             if (_dataAreaModules[i] == _nextNormalPriorityModule) {
                 _currentModuleIndex = i;
                 found = true;
@@ -233,7 +239,6 @@ void PanelManager::pausePlaylist() {
         unsigned long totalDuration = 0;
 
         if (isModern(currentMod)) {
-            // KORREKTUR: Korrekten Getter für die Restzeit-Berechnung verwenden.
             totalDuration = currentMod->getMaxRuntime();
         } else {
             totalDuration = currentMod->getDisplayDuration();
@@ -293,7 +298,7 @@ void PanelManager::drawDataArea() {
         _interruptQueue.front()->draw();
         return;
     }
-    if (_currentModuleIndex >= 0 && _currentModuleIndex < _dataAreaModules.size()) {
+    if (_currentModuleIndex >= 0 && (size_t)_currentModuleIndex < _dataAreaModules.size()) {
         _dataAreaModules[_currentModuleIndex]->draw();
     } else {
         if (_canvasData) _canvasData->fillScreen(0);
