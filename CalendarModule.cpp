@@ -33,46 +33,31 @@ void CalendarModule::setConfig(const PsramString& url, unsigned long fetchMinute
     this->dateColor = hexColorTo565(dateColorHex);
     this->textColor = hexColorTo565(textColorHex);
 
+    // NEU: Failsafe-Timeout für den PanelManager setzen
+    this->maxRuntimeMs = _displayDuration + FAILSAFE_BUFFER_MS;
+
     if (_isEnabled) {
         webClient->registerResource(String(icsUrl.c_str()), fetchIntervalMinutes, root_ca_pem);
     }
 }
 
-void CalendarModule::queueData() {
-    if (icsUrl.empty() || !webClient) return;
-    webClient->accessResource(String(icsUrl.c_str()), [this](const char* buffer, size_t size, time_t last_update, bool is_stale){
-        if (buffer && size > 0 && last_update > this->last_processed_update) {
-            if (pending_buffer) free(pending_buffer);
-            pending_buffer = (char*)ps_malloc(size + 1);
-            if (pending_buffer) {
-                memcpy(pending_buffer, buffer, size);
-                pending_buffer[size] = '\0';
-                buffer_size = size;
-                last_processed_update = last_update;
-                data_pending = true;
-            }
-        }
-    });
-}
-
-void CalendarModule::processData() {
-    if (data_pending) {
-        if (xSemaphoreTake(dataMutex, portMAX_DELAY) == pdTRUE) {
-            this->parseICS(pending_buffer, buffer_size);
-            this->onSuccessfulUpdate();
-            free(pending_buffer);
-            pending_buffer = nullptr;
-            data_pending = false;
-            xSemaphoreGive(dataMutex);
-            if (this->updateCallback) this->updateCallback();
-        }
-    }
+void CalendarModule::onActivate() {
+    _startTime = millis();
+    lastScrollStep = _startTime;
+    resetScroll();
 }
 
 void CalendarModule::tick() {
-    if (scrollStepInterval == 0) return;
     unsigned long now = millis();
-    if (now - lastScrollStep >= scrollStepInterval) {
+
+    // 1. Prüfen, ob die reguläre Anzeigezeit abgelaufen ist
+    if (now - _startTime > _displayDuration) {
+        _isFinished = true;
+        return; // Keine weitere Logik ausführen
+    }
+
+    // 2. Scroll-Animation ticken (wie bisher)
+    if (scrollStepInterval > 0 && now - lastScrollStep >= scrollStepInterval) {
         lastScrollStep = now;
         bool scrolled = false;
         if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
@@ -135,6 +120,41 @@ void CalendarModule::periodicTick() {
     }
 
     xSemaphoreGive(dataMutex);
+}
+
+bool CalendarModule::isEnabled() {
+    return _isEnabled;
+}
+
+void CalendarModule::queueData() {
+    if (icsUrl.empty() || !webClient) return;
+    webClient->accessResource(String(icsUrl.c_str()), [this](const char* buffer, size_t size, time_t last_update, bool is_stale){
+        if (buffer && size > 0 && last_update > this->last_processed_update) {
+            if (pending_buffer) free(pending_buffer);
+            pending_buffer = (char*)ps_malloc(size + 1);
+            if (pending_buffer) {
+                memcpy(pending_buffer, buffer, size);
+                pending_buffer[size] = '\0';
+                buffer_size = size;
+                last_processed_update = last_update;
+                data_pending = true;
+            }
+        }
+    });
+}
+
+void CalendarModule::processData() {
+    if (data_pending) {
+        if (xSemaphoreTake(dataMutex, portMAX_DELAY) == pdTRUE) {
+            this->parseICS(pending_buffer, buffer_size);
+            this->onSuccessfulUpdate();
+            free(pending_buffer);
+            pending_buffer = nullptr;
+            data_pending = false;
+            xSemaphoreGive(dataMutex);
+            if (this->updateCallback) this->updateCallback();
+        }
+    }
 }
 
 void CalendarModule::draw() {
@@ -325,18 +345,6 @@ void CalendarModule::drawUrgentView() {
         u8g2.print(ev.summary.c_str());
         y += 20; // Abstand für den nächsten Terminblock
     }
-}
-
-unsigned long CalendarModule::getDisplayDuration() {
-    return _displayDuration;
-}
-
-bool CalendarModule::isEnabled() {
-    return _isEnabled;
-}
-
-void CalendarModule::resetPaging() {
-    // Leer
 }
 
 uint32_t CalendarModule::getScrollStepInterval() const { 

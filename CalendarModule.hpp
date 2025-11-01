@@ -22,6 +22,7 @@
 // Konstanten für die intermittierende Anzeige
 #define URGENT_EVENT_INTERVAL (2 * 60 * 1000UL) // 2 Minuten
 #define URGENT_EVENT_DURATION (20 * 1000UL)     // 20 Sekunden
+#define FAILSAFE_BUFFER_MS 10000 // 10 Sekunden Puffer
 
 struct CalendarEvent {
   PsramString summary;
@@ -54,13 +55,25 @@ public:
     void processData();
     uint32_t getScrollStepInterval() const;
 
-    // --- Implementierung der Interface-Methoden ---
+    // =================================================================
+    // =========== UMSTELLUNG AUF MODERNE SCHNITTSTELLE ================
+    // =================================================================
     void draw() override;
     void tick() override;
     void periodicTick() override;
-    unsigned long getDisplayDuration() override;
     bool isEnabled() override;
-    void resetPaging() override;
+
+    // --- Neue Metadaten-Methoden ---
+    const char* getModuleName() const override { return "CalendarModule"; }
+    const char* getModuleDisplayName() const override { return "Kalender"; }
+
+    // --- VERALTETE METHODEN (werden nicht mehr genutzt) ---
+    unsigned long getDisplayDuration() override { return 0; } // Muss implementiert, aber kann 0 zurückgeben
+    void resetPaging() override {} // Muss implementiert, aber kann leer sein
+
+protected:
+    // --- Neue Start-Methode (ersetzt resetPaging) ---
+    void onActivate() override;
 
 private:
     U8G2_FOR_ADAFRUIT_GFX &u8g2;
@@ -92,6 +105,7 @@ private:
 
     bool _isEnabled = false;
     unsigned long _displayDuration = 30000;
+    unsigned long _startTime = 0; // NEU: für die Zeitmessung im modernen Modus
 
     bool _isUrgentViewActive = false;
     bool _priorityRequested = false;
