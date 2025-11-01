@@ -124,11 +124,12 @@ void PanelManager::tick() {
     }
 
     // =================================================================
-    // KORREKTUR: Die Logik wurde umstrukturiert, um auf Interrupts zu priorisieren.
+    // FINALE KORREKTUR: Logik in einen exklusiven if/else-Block aufgeteilt
     // =================================================================
 
-    // Schritt 2: IMMER zuerst prüfen, ob ein Interrupt vorliegt (auch einer, der in Schritt 1 angefordert wurde).
+    // Schritt 2: Liegt ein Interrupt vor?
     if (!_interruptQueue.empty()) {
+        // ---- INTERRUPT-LOGIK ----
         DrawableModule* currentInterrupt = _interruptQueue.front();
         currentInterrupt->tick();
 
@@ -143,51 +144,59 @@ void PanelManager::tick() {
             Serial.printf("[PanelManager] WARNUNG: Interrupt-Timeout für Modul (Prio: %d) überschritten! Erzwinge Freigabe.\n", (int)currentInterrupt->getPriority());
             handlePriorityRelease(currentInterrupt);
         }
-        return; // Interrupts haben Vorrang, die normale Playlist-Logik wird übersprungen.
-    } 
-    
-    // Schritt 3: Nur wenn KEIN Interrupt aktiv ist, wird die normale Playlist-Logik ausgeführt.
-    if (_lastActiveInterrupt != nullptr) {
-        _lastActiveInterrupt = nullptr;
-        _interruptStartTime = 0;
-    }
-
-    if (_currentModuleIndex < 0 && !_dataAreaModules.empty()) {
-        switchNextModule();
-    }
-
-    if (_currentModuleIndex < 0) return;
-
-    DrawableModule* currentMod = _dataAreaModules[_currentModuleIndex];
-    currentMod->tick();
-
-    bool should_switch = false;
-    if (isModern(currentMod)) {
-        if (currentMod->isFinished()) {
-            should_switch = true;
-        } 
-        else if (millis() - _moduleStartTime > currentMod->getMaxRuntime()) {
-            Serial.printf("[PanelManager] Failsafe! Modul '%s' hat Timeout (%lu ms) überschritten.\n", currentMod->getModuleName(), currentMod->getMaxRuntime());
-            should_switch = true;
-        }
+        // Die normale Playlist-Logik wird komplett übersprungen.
+        
     } else {
-        unsigned long displayDuration = (_pausedModuleRemainingTime > 0) ? _pausedModuleRemainingTime : currentMod->getDisplayDuration();
-        if (millis() - _moduleStartTime > displayDuration) {
-            should_switch = true;
+        // ---- NORMALE PLAYLIST-LOGIK ----
+        
+        // Wurde gerade ein Interrupt beendet?
+        if (_lastActiveInterrupt != nullptr) {
+            _lastActiveInterrupt = nullptr;
+            _interruptStartTime = 0;
         }
-    }
 
-    if (should_switch) {
-        _pausedModuleRemainingTime = 0;
-        if (_pendingNormalPriorityModule) {
-            _nextNormalPriorityModule = _pendingNormalPriorityModule;
-            _pendingNormalPriorityModule = nullptr;
-            Serial.println("[PanelManager] Geparkte 'Play-Next'-Anfrage wird beim nächsten Wechsel aktiv.");
+        // Ist die Playlist pausiert (z.B. durch `pausePlaylist`) oder am Anfang?
+        if (_currentModuleIndex < 0 && !_dataAreaModules.empty()) {
+            switchNextModule();
         }
-        switchNextModule();
+
+        // Wenn immer noch kein Modul aktiv ist (leere Playlist), beenden.
+        if (_currentModuleIndex < 0) return;
+
+        // Das jetzt aktive Modul ticken lassen.
+        DrawableModule* currentMod = _dataAreaModules[_currentModuleIndex];
+        currentMod->tick();
+
+        // Prüfen, ob zum nächsten Modul gewechselt werden soll.
+        bool should_switch = false;
+        if (isModern(currentMod)) {
+            if (currentMod->isFinished()) {
+                should_switch = true;
+            } 
+            else if (millis() - _moduleStartTime > currentMod->getMaxRuntime()) {
+                Serial.printf("[PanelManager] Failsafe! Modul '%s' hat Timeout (%lu ms) überschritten.\n", currentMod->getModuleName(), currentMod->getMaxRuntime());
+                should_switch = true;
+            }
+        } else {
+            unsigned long displayDuration = (_pausedModuleRemainingTime > 0) ? _pausedModuleRemainingTime : currentMod->getDisplayDuration();
+            if (millis() - _moduleStartTime > displayDuration) {
+                should_switch = true;
+            }
+        }
+
+        // Wenn ein Wechsel ansteht, durchführen.
+        if (should_switch) {
+            _pausedModuleRemainingTime = 0;
+            if (_pendingNormalPriorityModule) {
+                _nextNormalPriorityModule = _pendingNormalPriorityModule;
+                _pendingNormalPriorityModule = nullptr;
+                Serial.println("[PanelManager] Geparkte 'Play-Next'-Anfrage wird beim nächsten Wechsel aktiv.");
+            }
+            switchNextModule();
+        }
     }
 }
-//... (Rest der Datei ist unverändert)
+
 void PanelManager::switchNextModule(bool resume) {
     if (_dataAreaModules.empty()) {
         _currentModuleIndex = -1;
