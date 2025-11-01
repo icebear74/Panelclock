@@ -12,14 +12,13 @@ CalendarModule::CalendarModule(U8G2_FOR_ADAFRUIT_GFX &u8g2, GFXcanvas16 &canvas,
     : u8g2(u8g2), canvas(canvas), timeConverter(converter), webClient(webClient), last_processed_update(0) {
     dataMutex = xSemaphoreCreateMutex();
     
+    // Standardwerte für konfigurierbare Parameter setzen
     highlightThresholdMinutes = 120;
     urgentViewThresholdMinutes = 60;
-    urgentViewDurationMs = 20 * 1000UL;
-    urgentViewIntervalMs = 2 * 60 * 1000UL;
-    
-    // =================================================================
-    // KORREKTUR 2: Sofort-Anzeige nach Start ermöglichen
-    // =================================================================
+    urgentViewDurationMs = 10 * 1000UL;
+    urgentViewIntervalMs = 1 * 60 * 1000UL;
+
+    // KORREKTUR 3: Startverzögerung beheben
     _lastUrgentDisplayTime = millis() > urgentViewIntervalMs ? millis() - urgentViewIntervalMs : 0;
 }
 
@@ -58,6 +57,7 @@ void CalendarModule::setConfig(const PsramString& url, unsigned long fetchMinute
 }
 
 void CalendarModule::onActivate() {
+    _isFinished = false;
     _startTime = millis();
     lastScrollStep = _startTime;
     resetScroll();
@@ -66,26 +66,33 @@ void CalendarModule::onActivate() {
 void CalendarModule::tick() {
     unsigned long now = millis();
 
-    if (now - _startTime > _displayDuration) {
-        _isFinished = true;
-        return;
-    }
+    // =================================================================
+    // KORREKTUR 4: Logik für reguläre Anzeige nur ausführen, wenn KEIN UrgentView aktiv ist
+    // =================================================================
+    if (!_isUrgentViewActive) {
+        if (now - _startTime > _displayDuration) {
+            _isFinished = true;
+            return;
+        }
 
-    if (scrollStepInterval > 0 && now - lastScrollStep >= scrollStepInterval) {
-        lastScrollStep = now;
-        bool scrolled = false;
-        if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-            for (auto& s : scrollPos) {
-                if (s.maxScroll > 0) {
-                    s.offset = (s.offset + 1) % s.maxScroll;
-                    scrolled = true;
+        if (scrollStepInterval > 0 && now - lastScrollStep >= scrollStepInterval) {
+            lastScrollStep = now;
+            bool scrolled = false;
+            if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+                for (auto& s : scrollPos) {
+                    if (s.maxScroll > 0) {
+                        s.offset = (s.offset + 1) % s.maxScroll;
+                        scrolled = true;
+                    }
                 }
+                xSemaphoreGive(dataMutex);
             }
-            xSemaphoreGive(dataMutex);
+            if (scrolled && updateCallback) {
+                updateCallback();
+            }
         }
-        if (scrolled && updateCallback) {
-            updateCallback();
-        }
+    } else {
+        if(updateCallback) updateCallback();
     }
 }
 
@@ -103,7 +110,7 @@ void CalendarModule::periodicTick() {
 
     bool isAnyEventUrgent = false;
     // =================================================================
-    // KORREKTUR 1: `break` an die richtige Stelle verschoben
+    // KORREKTUR 2: `break` an die richtige Stelle verschoben
     // =================================================================
     for (const auto& ev : events) {
         if (ev.isAllDay) continue;
@@ -138,8 +145,7 @@ void CalendarModule::periodicTick() {
 
     xSemaphoreGive(dataMutex);
 }
-// ... Rest der Datei bleibt unverändert ...
-
+//... (Rest der Datei ist unverändert)
 bool CalendarModule::isEnabled() {
     return _isEnabled;
 }

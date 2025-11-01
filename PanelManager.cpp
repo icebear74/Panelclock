@@ -117,18 +117,13 @@ void PanelManager::handlePriorityRelease(DrawableModule* mod) {
 
 void PanelManager::tick() {
     // =================================================================
-    // =========== KORREKTUR: periodicTick für ALLE Module aufrufen ====
+    // KORREKTUR 1: Globale periodicTick-Schleife HINZUGEFÜGT
     // =================================================================
-    // Diese Schleife stellt sicher, dass jedes Modul im Hintergrund
-    // seinen Status prüfen und ggf. eine Prioritätsanfrage stellen kann.
     for (auto* mod : _dataAreaModules) {
         if (mod && mod->isEnabled()) {
             mod->periodicTick();
         }
     }
-    // =================================================================
-    // =========== ENDE DER KORREKTUR ==================================
-    // =================================================================
 
     if (!_interruptQueue.empty()) {
         DrawableModule* currentInterrupt = _interruptQueue.front();
@@ -186,7 +181,7 @@ void PanelManager::tick() {
         switchNextModule();
     }
 }
-
+//... (Rest der Datei ist unverändert)
 void PanelManager::switchNextModule(bool resume) {
     if (_dataAreaModules.empty()) {
         _currentModuleIndex = -1;
