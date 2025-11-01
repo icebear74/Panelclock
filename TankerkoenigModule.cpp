@@ -38,6 +38,10 @@ void TankerkoenigModule::onActivate() {
 }
 
 void TankerkoenigModule::tick() {
+    // Die Animationen erfordern ein häufigeres Neuzeichnen.
+    // Wir fordern es hier an, damit die Animationen flüssig sind.
+    if (updateCallback) updateCallback();
+
     unsigned long now = millis();
     if (now - lastPageSwitchTime > _pageDisplayDuration) {
         if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
@@ -314,11 +318,15 @@ void TankerkoenigModule::draw() {
     
     const StationData& data = station_data_list[currentPage];
 
+    // =================================================================
+    // =========== NEUE LOGIK ZUR PLATZAUFTEILUNG ======================
+    // =================================================================
     const int PADDING = 10;
     const int LEFT_MARGIN = 5;
     const int RIGHT_MARGIN = 5;
     const int totalWidth = canvas.width() - LEFT_MARGIN - RIGHT_MARGIN;
 
+    // 1. Ungekürzte Texte und Breiten ermitteln
     u8g2.setFont(u8g2_font_helvB14_tf); 
     PsramString brandText = data.brand;
     int brandWidth = u8g2.getUTF8Width(brandText.c_str());
@@ -330,16 +338,40 @@ void TankerkoenigModule::draw() {
     if (!data.place.empty()) { line2 += " "; line2 += data.place; }
     int addressWidth = std::max(u8g2.getUTF8Width(line1.c_str()), u8g2.getUTF8Width(line2.c_str()));
 
+    // 2. Prüfen, ob eine Kürzung überhaupt nötig ist
     if (brandWidth + addressWidth + PADDING > totalWidth) {
-        int maxPartWidth = (totalWidth - PADDING) / 2;
-        
-        u8g2.setFont(u8g2_font_helvB14_tf);
-        brandText = truncateString(brandText, maxPartWidth);
+        // 3. Intelligente Platzvergabe
+        int availableForBrand = brandWidth;
+        int availableForAddress = addressWidth;
 
-        u8g2.setFont(u8g2_font_5x8_tf);
-        line1 = truncateString(line1, maxPartWidth);
-        line2 = truncateString(line2, maxPartWidth);
+        // Wenn die Marke kürzer als die Hälfte ist, gib den Rest der Adresse
+        if (brandWidth < (totalWidth - PADDING) / 2) {
+            availableForAddress = totalWidth - PADDING - brandWidth;
+        }
+        // Wenn die Adresse kürzer als die Hälfte ist, gib den Rest der Marke
+        else if (addressWidth < (totalWidth - PADDING) / 2) {
+            availableForBrand = totalWidth - PADDING - addressWidth;
+        }
+        // Ansonsten bekommt jeder die Hälfte
+        else {
+            availableForBrand = (totalWidth - PADDING) / 2;
+            availableForAddress = (totalWidth - PADDING) / 2;
+        }
+
+        // 4. Texte nur kürzen, wenn nötig
+        if (brandWidth > availableForBrand) {
+            u8g2.setFont(u8g2_font_helvB14_tf);
+            brandText = truncateString(brandText, availableForBrand);
+        }
+        if (addressWidth > availableForAddress) {
+            u8g2.setFont(u8g2_font_5x8_tf);
+            line1 = truncateString(line1, availableForAddress);
+            line2 = truncateString(line2, availableForAddress);
+        }
     }
+    // =================================================================
+    // =========== ENDE DER NEUEN LOGIK ================================
+    // =================================================================
 
     u8g2.setFont(u8g2_font_helvB14_tf);
     u8g2.setForegroundColor(0xFFFF);
@@ -375,7 +407,8 @@ void TankerkoenigModule::draw() {
 
     if (data.lastPriceChange > 0) {
         time_t local_change_time = timeConverter.toLocal(data.lastPriceChange);
-        struct tm timeinfo; localtime_r(&local_change_time, &timeinfo);
+        struct tm timeinfo; 
+        gmtime_r(&local_change_time, &timeinfo); // KORREKTUR: gmtime_r statt localtime_r
         char time_str[6]; strftime(time_str, sizeof(time_str), "%H:%M", &timeinfo);
         u8g2.setCursor(84 + (50 - u8g2.getUTF8Width(time_str)) / 2, y_pos);
         u8g2.print(time_str);
@@ -416,7 +449,7 @@ void TankerkoenigModule::drawPriceLine(int y, const char* label, float current, 
     drawPrice(x_current, y, current, calcColor(current, min, max));
     
     int max_width = drawPrice(x_max, y, max, rgb565(255, 0, 0));
-    if(max > 0) drawTrendArrow(x_max + max_width + 2, y - 5, maxTrend);
+    if(max > 0) drawTrendArrow(x_max + max_width + 3, y - 6, maxTrend);
 }
 
 int TankerkoenigModule::drawPrice(int x, int y, float price, uint16_t color) {
@@ -448,15 +481,62 @@ int TankerkoenigModule::drawPrice(int x, int y, float price, uint16_t color) {
 }
 
 void TankerkoenigModule::drawTrendArrow(int x, int y, PriceTrend trend) {
+    // =================================================================
+    // =========== FINALE LOGIK FÜR GEWÜNSCHTE ANIMATION ==============
+    // =================================================================
+    const int anim_cycle = 1200; // Dauer einer vollen Animation in ms
+    const int pattern_height = 4; // Höhe des Musters: 3px Pfeil + 1px Lücke
+    const int visible_height = 8; // Sichtbarer Bereich für die Animation
+
+    // Berechnet einen pixelweisen Offset (0, 1, 2, 3, 0, 1, ...)
+    int pixel_offset = (millis() % anim_cycle) * pattern_height / anim_cycle;
+
+    int y_base = y; // Startposition der Animation 
+    int y_base_arrow = y - 3;
+    uint16_t color;
+
     switch (trend) {
         case PriceTrend::TREND_RISING:
-            canvas.fillTriangle(x, y, x + 2, y + 3, x - 2, y + 3, rgb565(255, 0, 0));
+            color = rgb565(255, 0, 0);
+            for (int i = 0; i < visible_height; ++i) {
+                int current_y = y_base_arrow + i;
+                int pattern_step = (i + pixel_offset) % pattern_height;
+                if (pattern_step == 0) {
+                    canvas.drawPixel(x, current_y, color);
+                } else if (pattern_step == 1) {
+                    canvas.drawFastHLine(x - 1, current_y, 3, color);
+                } else if (pattern_step == 2) {
+                    canvas.drawFastHLine(x - 2, current_y, 5, color);
+                }
+            }
             break;
+
         case PriceTrend::TREND_FALLING:
-            canvas.fillTriangle(x, y + 3, x + 2, y, x - 2, y, rgb565(0, 255, 0));
+            color = rgb565(0, 255, 0);
+            for (int i = 0; i < visible_height; ++i) {
+                int current_y = y_base_arrow + i;
+                int pattern_step = (i - pixel_offset + pattern_height) % pattern_height;
+                if (pattern_step == 0) {
+                    canvas.drawFastHLine(x - 2, current_y, 5, color);
+                } else if (pattern_step == 1) {
+                    canvas.drawFastHLine(x - 1, current_y, 3, color);
+                } else if (pattern_step == 2) {
+                    canvas.drawPixel(x, current_y, color);
+                }
+            }
             break;
+
         case PriceTrend::TREND_STABLE:
-            canvas.fillCircle(x, y + 1, 1, 0xFFFF);
+            color = rgb565(200,0,200);
+            int x_offset;
+            if ((millis() % anim_cycle) < (anim_cycle / 2)) {
+                x_offset = -2;
+            } else {
+                x_offset = 2;
+            }
+            canvas.drawPixel(x + x_offset, y_base, color);
+            canvas.drawFastHLine(x + x_offset - 1, y_base + 1, 3, color);
+            canvas.drawPixel(x + x_offset, y_base + 2, color);
             break;
     }
 }
@@ -647,9 +727,22 @@ void TankerkoenigModule::updateAndDetermineTrends(const PsramString& stationId) 
 
 
 void TankerkoenigModule::updatePriceStatistics(const PsramString& stationId, float currentE5, float currentE10, float currentDiesel) {
-    time_t now_utc; time(&now_utc);
-    struct tm timeinfo; localtime_r(&now_utc, &timeinfo);
-    char date_str[11]; strftime(date_str, sizeof(date_str), "%Y-%m-%d", &timeinfo);
+    // =================================================================
+    // =========== HIER IST DIE KORREKTE IMPLEMENTIERUNG ===============
+    // =================================================================
+    time_t now_utc; 
+    time(&now_utc);
+    
+    // 1. Konvertiere UTC-Zeit in die LOKALE Zeit unter Verwendung des timeConverter
+    time_t now_local = timeConverter.toLocal(now_utc);
+    
+    // 2. Zerlege die LOKALE Epoche in ihre Komponenten, OHNE weitere Zeitzonenkonvertierung
+    struct tm timeinfo;
+    gmtime_r(&now_local, &timeinfo);
+
+    // 3. Erzeuge den Datumsstring aus der korrekten lokalen Zeit
+    char date_str[11]; 
+    strftime(date_str, sizeof(date_str), "%Y-%m-%d", &timeinfo);
     PsramString today_date(date_str);
 
     StationPriceHistory* history = nullptr;
@@ -691,7 +784,12 @@ void TankerkoenigModule::trimPriceStatistics(StationPriceHistory& history) {
     if (!_deviceConfig) return;
     time_t now_utc; time(&now_utc);
     time_t cutoff_epoch = now_utc - (_deviceConfig->movingAverageDays * 86400L);
-    struct tm cutoff_tm; localtime_r(&cutoff_epoch, &cutoff_tm);
+    
+    // KORREKTUR: Auch hier die korrekte lokale Zeit verwenden
+    time_t cutoff_local = timeConverter.toLocal(cutoff_epoch);
+    struct tm cutoff_tm; 
+    gmtime_r(&cutoff_local, &cutoff_tm);
+
     char cutoff_date_str_buf[11]; strftime(cutoff_date_str_buf, sizeof(cutoff_date_str_buf), "%Y-%m-%d", &cutoff_tm);
     PsramString cutoff_date_str(cutoff_date_str_buf);
 
