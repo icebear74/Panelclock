@@ -1,3 +1,9 @@
+/**
+ * @file PanelManager.cpp
+ * @author icebear74, copilot
+ * @brief Finale, zustandsbasierte Implementierung des PanelManagers.
+ * @version 6.1
+ */
 #include "PanelManager.hpp"
 #include "ClockModule.hpp"
 #include "MwaveSensorModule.hpp"
@@ -5,9 +11,8 @@
 #include <time.h>
 #include <algorithm>
 
-const PsramVector<DrawableModule*>& PanelManager::getAllModules() const {
-    return _dataAreaModules;
-}
+// Helper für Debug-Logging
+#define PM_DEBUG_LOG(format, ...) Serial.printf("[PM_DEBUG] " format "\n", ##__VA_ARGS__)
 
 PanelManager::PanelManager(HardwareConfig& hwConfig, GeneralTimeConverter& timeConverter) 
     : _hwConfig(hwConfig), _timeConverter(timeConverter) {}
@@ -17,22 +22,13 @@ PanelManager::~PanelManager() {
     delete _virtualDisp;
     delete _canvasTime;
     delete _canvasData;
-    delete _fullCanvas;
     delete _u8g2;
 }
 
 bool PanelManager::begin() {
     _u8g2 = new U8G2_FOR_ADAFRUIT_GFX();
-    uint16_t* timeBuffer = (uint16_t*)ps_malloc(FULL_WIDTH * TIME_AREA_H * sizeof(uint16_t));
-    uint16_t* dataBuffer = (uint16_t*)ps_malloc(FULL_WIDTH * DATA_AREA_H * sizeof(uint16_t));
-    uint16_t* fullBuffer = (uint16_t*)ps_malloc(FULL_WIDTH * FULL_HEIGHT * sizeof(uint16_t));
-    if (!timeBuffer || !dataBuffer || !fullBuffer) {
-        Serial.println("FATAL: PSRAM-Allokation für Canvases fehlgeschlagen!");
-        return false;
-    }
-    _canvasTime = new GFXcanvas16(FULL_WIDTH, TIME_AREA_H, timeBuffer);
-    _canvasData = new GFXcanvas16(FULL_WIDTH, DATA_AREA_H, dataBuffer);
-    _fullCanvas = new GFXcanvas16(FULL_WIDTH, FULL_HEIGHT, fullBuffer);
+    _canvasTime = new GFXcanvas16(FULL_WIDTH, TIME_AREA_H);
+    _canvasData = new GFXcanvas16(FULL_WIDTH, DATA_AREA_H);
     HUB75_I2S_CFG::i2s_pins _pins = {
         (int8_t)_hwConfig.R1, (int8_t)_hwConfig.G1, (int8_t)_hwConfig.B1,
         (int8_t)_hwConfig.R2, (int8_t)_hwConfig.G2, (int8_t)_hwConfig.B2,
@@ -43,72 +39,83 @@ bool PanelManager::begin() {
     HUB75_I2S_CFG mxconfig(PANEL_RES_X, PANEL_RES_Y, VDISP_NUM_ROWS * VDISP_NUM_COLS, _pins);
     mxconfig.double_buff = false;
     mxconfig.i2sspeed = HUB75_I2S_CFG::HZ_8M;
-    mxconfig.clkphase = false;
     _dma_display = new MatrixPanel_I2S_DMA(mxconfig);
-    if (!_dma_display->begin()) {
-        Serial.println("FATAL: MatrixPanel_I2S_DMA begin() fehlgeschlagen!");
-        return false;
-    }
+    _dma_display->begin();
     _dma_display->setBrightness8(128);
     _dma_display->clearScreen();
-    _virtualDisp = new VirtualMatrixPanel_T<PANEL_CHAIN_TYPE>(VDISP_NUM_ROWS, VDISP_NUM_COLS, PANEL_RES_X, PANEL_RES_Y);
+    _virtualDisp = new VirtualMatrixPanel_T<1, 1>(VDISP_NUM_ROWS, VDISP_NUM_COLS, PANEL_RES_X, PANEL_RES_Y);
     _virtualDisp->setDisplay(*_dma_display);
-    Serial.println("PanelManager: Display-Initialisierung abgeschlossen.");
+    _lastTickTimestamp = millis();
+    PM_DEBUG_LOG("PanelManager initialisiert. Drei-Listen-Architektur aktiv.");
     return true;
 }
 
 void PanelManager::registerClockModule(ClockModule* mod) { _clockMod = mod; }
 void PanelManager::registerSensorModule(MwaveSensorModule* mod) { _sensorMod = mod; }
 
-void PanelManager::registerModule(DrawableModule* mod) {
+void PanelManager::registerModule(DrawableModule* mod, bool isHidden, bool isDisabled) {
     if (!mod) return;
     mod->setRequestCallback([this](DrawableModule* m){ this->handlePriorityRequest(m); });
     mod->setReleaseCallback([this](DrawableModule* m){ this->handlePriorityRelease(m); });
-    _dataAreaModules.push_back(mod);
-}
+    
+    _moduleCatalog.push_back({
+        mod,
+        mod->getModuleName(),      // moduleNameShort
+        mod->getModuleDisplayName(), // moduleNameDisplay
+        false, false, isHidden, isDisabled, 0, 0,
+        mod->getPriority()
+    });
+    PM_DEBUG_LOG("Modul '%s' zum Katalog hinzugefügt (Hidden: %d, Disabled: %d)", mod->getModuleName(), isHidden, isDisabled);
 
-void PanelManager::markAsModern(DrawableModule* mod) {
-    if (!mod) return;
-    if (std::find(_modernModules.begin(), _modernModules.end(), mod) == _modernModules.end()) {
-        _modernModules.push_back(mod);
-        Serial.printf("[PanelManager] Modul '%s' wurde als MODERN markiert.\n", mod->getModuleName());
+    if (!isHidden && !isDisabled) {
+        PlaylistEntry newEntry = _moduleCatalog.back();
+        newEntry.totalRuntimeMs = newEntry.module->getMaxRuntime();
+        _playlist.push_back(newEntry);
+        PM_DEBUG_LOG("...und zur Default-Playlist hinzugefügt mit Laufzeit %lu ms.", newEntry.totalRuntimeMs);
     }
-}
-
-bool PanelManager::isModern(const DrawableModule* mod) const {
-    if (!mod) return false;
-    return std::find(_modernModules.begin(), _modernModules.end(), mod) != _modernModules.end();
 }
 
 void PanelManager::handlePriorityRequest(DrawableModule* mod) {
-    Priority prio = mod->getPriority();
-    if (prio == Priority::Normal) {
-        if (!_interruptQueue.empty()) {
-            _pendingNormalPriorityModule = mod;
-            Serial.println("[PanelManager] 'Play-Next'-Anfrage (Prio: Normal) erhalten und geparkt, da Interrupt aktiv ist.");
-        } else {
-            _nextNormalPriorityModule = mod;
-            Serial.println("[PanelManager] 'Play-Next'-Anfrage (Prio: Normal) erhalten.");
+    const PlaylistEntry* catalogEntry = nullptr;
+    for (const auto& entry : _moduleCatalog) {
+        if (entry.module == mod) {
+            catalogEntry = &entry;
+            break;
         }
+    }
+    if (!catalogEntry || catalogEntry->isDisabled) return;
+
+    if (catalogEntry->priority == Priority::Normal) {
+        if (!_interruptQueue.empty()) _pendingNormalPriorityModule = mod;
+        else _nextNormalPriorityModule = mod;
+        PM_DEBUG_LOG("Play-Next Anfrage für '%s' erhalten.", catalogEntry->moduleNameShort.c_str());
         return;
     }
+
     if (_interruptQueue.empty()) {
         pausePlaylist();
     }
-    if (std::find(_interruptQueue.begin(), _interruptQueue.end(), mod) == _interruptQueue.end()) {
-        _interruptQueue.push_back(mod);
-        std::sort(_interruptQueue.begin(), _interruptQueue.end(), [](const DrawableModule* a, const DrawableModule* b) {
-            return a->getPriority() > b->getPriority();
-        });
-        Serial.printf("[PanelManager] Interrupt-Anfrage erhalten (Prio: %d). Aktive Interrupts: %d\n", (int)prio, _interruptQueue.size());
-    }
+
+    for (const auto& entry : _interruptQueue) { if (entry.module == mod) return; }
+
+    PlaylistEntry interruptEntry = *catalogEntry;
+    _interruptQueue.push_back(interruptEntry);
+    
+    std::sort(_interruptQueue.begin(), _interruptQueue.end(), [](const PlaylistEntry& a, const PlaylistEntry& b) {
+        return a.priority > b.priority;
+    });
+
+    PM_DEBUG_LOG("Interrupt-Anfrage für '%s' (Prio: %d) verarbeitet. Queue-Größe: %d", catalogEntry->moduleNameShort.c_str(), (int)interruptEntry.priority, _interruptQueue.size());
 }
 
 void PanelManager::handlePriorityRelease(DrawableModule* mod) {
-    auto it = std::find(_interruptQueue.begin(), _interruptQueue.end(), mod);
+    auto it = std::remove_if(_interruptQueue.begin(), _interruptQueue.end(), 
+        [mod](const PlaylistEntry& entry) { return entry.module == mod; });
+
     if (it != _interruptQueue.end()) {
-        _interruptQueue.erase(it);
-        Serial.printf("[PanelManager] Interrupt-Priorität freigegeben (Prio: %d). Verbleibende Interrupts: %d\n", (int)mod->getPriority(), _interruptQueue.size());
+        PM_DEBUG_LOG("Interrupt für '%s' freigegeben. Verbleibende Interrupts: %d", it->moduleNameShort.c_str(), _interruptQueue.size() - 1);
+        _interruptQueue.erase(it, _interruptQueue.end());
+        
         if (_interruptQueue.empty()) {
             resumePlaylist();
         }
@@ -116,192 +123,201 @@ void PanelManager::handlePriorityRelease(DrawableModule* mod) {
 }
 
 void PanelManager::tick() {
-    // Schritt 1: IMMER alle Module im Hintergrund ticken lassen.
-    for (auto* mod : _dataAreaModules) {
-        if (mod && mod->isEnabled()) {
-            mod->periodicTick();
+    unsigned long now = millis();
+    unsigned long deltaTime = now - _lastTickTimestamp;
+    _lastTickTimestamp = now;
+
+    for (const auto& entry : _moduleCatalog) {
+        if (entry.module && !entry.isDisabled) {
+            entry.module->periodicTick();
         }
     }
 
-    // Schritt 2: EXKLUSIVE Logik-Pfade für Interrupt vs. normale Playlist.
     if (!_interruptQueue.empty()) {
-        // ---- INTERRUPT-MODUS ----
-        DrawableModule* currentInterrupt = _interruptQueue.front();
-        currentInterrupt->tick();
+        // --- INTERRUPT-MODUS ---
+        PlaylistEntry* winner = &_interruptQueue.front();
 
-        if (currentInterrupt != _lastActiveInterrupt) {
-            _lastActiveInterrupt = currentInterrupt;
-            _interruptStartTime = millis();
-            Serial.printf("[PanelManager] Neuer aktiver Interrupt (Prio: %d). Watchdog gestartet.\n", (int)currentInterrupt->getPriority());
-        }
-
-        unsigned long maxDuration = currentInterrupt->getMaxInterruptDuration();
-        if (maxDuration > 0 && millis() - _interruptStartTime > maxDuration) {
-            Serial.printf("[PanelManager] WARNUNG: Interrupt-Timeout für Modul (Prio: %d) überschritten! Erzwinge Freigabe.\n", (int)currentInterrupt->getPriority());
-            handlePriorityRelease(currentInterrupt);
+        for (auto& entry : _interruptQueue) {
+            if (&entry != winner && entry.isRunning && !entry.isPaused) {
+                PM_DEBUG_LOG("Pausiere niederprioren Interrupt '%s'.", entry.moduleNameShort.c_str());
+                entry.isPaused = true;
+            }
         }
         
+        if (!winner->isRunning) {
+            activateEntry(*winner);
+        }
+        if (winner->isPaused) {
+             winner->isPaused = false;
+             PM_DEBUG_LOG("Setze hochprioren Interrupt '%s' fort.", winner->moduleNameShort.c_str());
+        }
+        
+        if (winner->remainingTimeMs > deltaTime) winner->remainingTimeMs -= deltaTime;
+        else winner->remainingTimeMs = 0;
+
+        winner->module->tick();
+        
+        if (winner->remainingTimeMs == 0 || winner->module->isFinished()) {
+            PM_DEBUG_LOG("Interrupt '%s' ist beendet.", winner->moduleNameShort.c_str());
+            handlePriorityRelease(winner->module);
+        }
+
     } else {
-        // ---- NORMALER PLAYLIST-MODUS ----
-        if (_lastActiveInterrupt != nullptr) {
-            _lastActiveInterrupt = nullptr;
-            _interruptStartTime = 0;
-        }
-
-        if (_currentModuleIndex < 0 && !_dataAreaModules.empty()) {
-            switchNextModule();
-        }
-
-        if (_currentModuleIndex < 0) {
-            // Wenn nach switchNextModule immer noch kein Modul aktiv ist (z.B. alle deaktiviert), nichts tun.
-            return;
-        }
-
-        DrawableModule* currentMod = _dataAreaModules[_currentModuleIndex];
-        currentMod->tick();
-
-        bool should_switch = false;
-        if (isModern(currentMod)) {
-            if (currentMod->isFinished()) {
-                should_switch = true;
-            } 
-            else if (millis() - _moduleStartTime > currentMod->getMaxRuntime()) {
-                Serial.printf("[PanelManager] Failsafe! Modul '%s' hat Timeout (%lu ms) überschritten.\n", currentMod->getModuleName(), currentMod->getMaxRuntime());
-                should_switch = true;
-            }
-        } else {
-            unsigned long displayDuration = (_pausedModuleRemainingTime > 0) ? _pausedModuleRemainingTime : currentMod->getDisplayDuration();
-            if (millis() - _moduleStartTime > displayDuration) {
-                should_switch = true;
-            }
-        }
-
-        if (should_switch) {
-            _pausedModuleRemainingTime = 0;
-            if (_pendingNormalPriorityModule) {
-                _nextNormalPriorityModule = _pendingNormalPriorityModule;
-                _pendingNormalPriorityModule = nullptr;
-                Serial.println("[PanelManager] Geparkte 'Play-Next'-Anfrage wird beim nächsten Wechsel aktiv.");
-            }
-            switchNextModule();
-        }
-    }
-}
-
-void PanelManager::switchNextModule(bool resume) {
-    if (_dataAreaModules.empty()) {
-        _currentModuleIndex = -1;
-        return;
-    }
-    if (resume && _pausedModuleIndex != -1) {
-        _currentModuleIndex = _pausedModuleIndex;
-        _pausedModuleIndex = -1;
-        _moduleStartTime = millis();
-    } else if (_nextNormalPriorityModule) {
-        bool found = false;
-        for (size_t i = 0; i < _dataAreaModules.size(); ++i) {
-            if (_dataAreaModules[i] == _nextNormalPriorityModule) {
-                _currentModuleIndex = i;
-                found = true;
+        // --- NORMALER PLAYLIST-MODUS ---
+        int runningIndex = -1;
+        for (int i = 0; i < _playlist.size(); ++i) {
+            if (_playlist[i].isRunning) {
+                runningIndex = i;
                 break;
             }
         }
-        if (!found) {
-            _currentModuleIndex = (_currentModuleIndex + 1) % _dataAreaModules.size();
-        }
-        _nextNormalPriorityModule = nullptr;
-        _moduleStartTime = millis();
-    } else {
-        _currentModuleIndex = (_currentModuleIndex + 1) % _dataAreaModules.size();
-        _moduleStartTime = millis();
-    }
-    int initialIndex = _currentModuleIndex;
-    do {
-        DrawableModule* modToStart = _dataAreaModules[_currentModuleIndex];
-        if (modToStart->isEnabled()) {
-            if (isModern(modToStart)) {
-                modToStart->activateModule();
-            } else {
-                modToStart->resetPaging();
-            }
+
+        if (runningIndex == -1) {
+            PM_DEBUG_LOG("Kein Modul aktiv, starte nächstes.");
+            switchNextModule();
             return;
         }
-        _currentModuleIndex = (_currentModuleIndex + 1) % _dataAreaModules.size();
-    } while (_currentModuleIndex != initialIndex);
-    _currentModuleIndex = -1;
+
+        PlaylistEntry& currentEntry = _playlist[runningIndex];
+        if (currentEntry.isPaused) return;
+
+        if (currentEntry.remainingTimeMs > deltaTime) currentEntry.remainingTimeMs -= deltaTime;
+        else currentEntry.remainingTimeMs = 0;
+
+        currentEntry.module->tick();
+
+        if (currentEntry.remainingTimeMs == 0 || currentEntry.module->isFinished()) {
+            PM_DEBUG_LOG("Modul '%s' beendet. Wechsle zum nächsten.", currentEntry.moduleNameShort.c_str());
+            currentEntry.isRunning = false;
+            if (_pendingNormalPriorityModule) {
+                _nextNormalPriorityModule = _pendingNormalPriorityModule;
+                _pendingNormalPriorityModule = nullptr;
+            }
+            switchNextModule();
+        }
+    }
+}
+
+void PanelManager::switchNextModule() {
+    if (_playlist.empty()) return;
+
+    int startIndex = (_currentPlaylistIndex == -1) ? 0 : (_currentPlaylistIndex + 1);
+
+    if (_nextNormalPriorityModule) {
+        for (int i = 0; i < _playlist.size(); ++i) {
+            if (_playlist[i].module == _nextNormalPriorityModule) {
+                startIndex = i;
+                PM_DEBUG_LOG("Play-Next: Springe zu Modul '%s'.", _playlist[i].moduleNameShort.c_str());
+                break;
+            }
+        }
+        _nextNormalPriorityModule = nullptr;
+    }
+
+    for (int i = 0; i < _playlist.size(); ++i) {
+        int indexToCheck = (startIndex + i) % _playlist.size();
+        PlaylistEntry& entry = _playlist[indexToCheck];
+
+        if (entry.module && !entry.isDisabled && !entry.isHidden) {
+            _currentPlaylistIndex = indexToCheck;
+            activateEntry(entry);
+            return;
+        }
+    }
+    _currentPlaylistIndex = -1;
+    PM_DEBUG_LOG("Kein aktivierbares Modul in der Playlist gefunden.");
 }
 
 void PanelManager::pausePlaylist() {
-    if (_currentModuleIndex != -1) {
-        DrawableModule* currentMod = _dataAreaModules[_currentModuleIndex];
-        unsigned long elapsedTime = millis() - _moduleStartTime;
-        unsigned long totalDuration = 0;
-
-        if (isModern(currentMod)) {
-            totalDuration = currentMod->getMaxRuntime();
-        } else {
-            totalDuration = currentMod->getDisplayDuration();
+    int runningIndex = -1;
+    for (int i = 0; i < _playlist.size(); ++i) {
+        if (_playlist[i].isRunning) {
+            runningIndex = i;
+            break;
         }
-
-        _pausedModuleRemainingTime = (elapsedTime < totalDuration) ? (totalDuration - elapsedTime) : 0;
-        _pausedModuleIndex = _currentModuleIndex;
-        _currentModuleIndex = -1;
-        Serial.printf("[PanelManager] Playlist pausiert. Modul %d hat %lu ms Restzeit.\n", _pausedModuleIndex, _pausedModuleRemainingTime);
+    }
+    
+    if (runningIndex != -1) {
+        PlaylistEntry& entry = _playlist[runningIndex];
+        if (!entry.isPaused) {
+            entry.isPaused = true;
+            PM_DEBUG_LOG("Playlist pausiert. Modul '%s' (isRunning: %d, isPaused: %d).", entry.moduleNameShort.c_str(), entry.isRunning, entry.isPaused);
+        }
     }
 }
 
 void PanelManager::resumePlaylist() {
-    if (_pausedModuleIndex != -1) {
-        Serial.printf("[PanelManager] Playlist wird fortgesetzt mit Modul %d.\n", _pausedModuleIndex);
-        switchNextModule(true);
-    } else {
-        if (_pendingNormalPriorityModule) {
-            _nextNormalPriorityModule = _pendingNormalPriorityModule;
-            _pendingNormalPriorityModule = nullptr;
+    int pausedIndex = -1;
+    for (int i = 0; i < _playlist.size(); ++i) {
+        if (_playlist[i].isRunning && _playlist[i].isPaused) {
+            pausedIndex = i;
+            break;
         }
-        switchNextModule(false);
     }
+
+    if (pausedIndex != -1) {
+        PlaylistEntry& entry = _playlist[pausedIndex];
+        entry.isPaused = false;
+        _currentPlaylistIndex = pausedIndex;
+        PM_DEBUG_LOG("Playlist fortgesetzt mit Modul '%s'. Restzeit: %lu ms.", entry.moduleNameShort.c_str(), entry.remainingTimeMs);
+    } else {
+        PM_DEBUG_LOG("Resume aufgerufen, aber kein pausiertes Modul gefunden. Starte Playlist neu.");
+        switchNextModule();
+    }
+}
+
+void PanelManager::activateEntry(PlaylistEntry& entry) {
+    PM_DEBUG_LOG("Aktiviere Modul '%s'.", entry.moduleNameShort.c_str());
+    entry.totalRuntimeMs = entry.module->getMaxRuntime();
+    entry.remainingTimeMs = entry.totalRuntimeMs;
+    entry.isRunning = true;
+    entry.isPaused = false; 
+    entry.module->activateModule();
+    PM_DEBUG_LOG("...Laufzeit auf %lu ms gesetzt.", entry.totalRuntimeMs);
 }
 
 void PanelManager::render() {
     if (!_sensorMod || !_sensorMod->isDisplayOn()) {
-        if (_dma_display) {
-            _dma_display->clearScreen();
-            _dma_display->flipDMABuffer();
-        }
+        if (_dma_display) _dma_display->clearScreen();
         return;
     }
-    if (!_virtualDisp || !_dma_display || !_canvasTime || !_canvasData) return;
+    
     drawClockArea();
-    drawDataArea();
-    _virtualDisp->drawRGBBitmap(0, 0, _canvasTime->getBuffer(), _canvasTime->width(), _canvasTime->height());
-    _virtualDisp->drawRGBBitmap(0, TIME_AREA_H, _canvasData->getBuffer(), _canvasData->width(), _canvasData->height());
-    _dma_display->flipDMABuffer();
+    
+    if (!_interruptQueue.empty()) {
+        if (_interruptQueue.front().isRunning) {
+            _interruptQueue.front().module->draw();
+        }
+    } else {
+        int runningIndex = -1;
+        for(int i = 0; i < _playlist.size(); ++i) {
+            if (_playlist[i].isRunning && !_playlist[i].isPaused) {
+                runningIndex = i;
+                break;
+            }
+        }
+        if (runningIndex != -1) {
+            _playlist[runningIndex].module->draw();
+        } else {
+            if (_canvasData) _canvasData->fillScreen(0);
+        }
+    }
+
+    _virtualDisp->drawRGBBitmap(0, 0, _canvasTime->getBuffer(), FULL_WIDTH, TIME_AREA_H);
+    _virtualDisp->drawRGBBitmap(0, TIME_AREA_H, _canvasData->getBuffer(), FULL_WIDTH, DATA_AREA_H);
 }
 
 void PanelManager::drawClockArea() {
-    if (!_clockMod || !_sensorMod) return;
+    if (!_clockMod) return;
     time_t now_utc;
     time(&now_utc);
     struct tm timeinfo;
     time_t local_epoch = _timeConverter.toLocal(now_utc);
     localtime_r(&local_epoch, &timeinfo);
     _clockMod->setTime(timeinfo);
-    _clockMod->setSensorState(_sensorMod->isDisplayOn(), _sensorMod->getLastOnTime(), _sensorMod->getLastOffTime(), _sensorMod->getOnPercentage());
+    if (_sensorMod) _clockMod->setSensorState(_sensorMod->isDisplayOn(), _sensorMod->getLastOnTime(), _sensorMod->getLastOffTime(), _sensorMod->getOnPercentage());
     _clockMod->tick();
     _clockMod->draw();
-}
-
-void PanelManager::drawDataArea() {
-    if (!_interruptQueue.empty()) {
-        _interruptQueue.front()->draw();
-        return;
-    }
-    if (_currentModuleIndex >= 0 && (size_t)_currentModuleIndex < _dataAreaModules.size()) {
-        _dataAreaModules[_currentModuleIndex]->draw();
-    } else {
-        if (_canvasData) _canvasData->fillScreen(0);
-    }
 }
 
 void PanelManager::displayStatus(const char* msg) {
@@ -324,5 +340,4 @@ void PanelManager::displayStatus(const char* msg) {
         line = strtok(NULL, "\n");
     }
     free(str);
-    _dma_display->flipDMABuffer();
 }
