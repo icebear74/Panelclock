@@ -52,7 +52,7 @@ public:
     // =================================================================
     void setConfig(const PsramString& url, unsigned long fetchMinutes, unsigned long displaySec, unsigned long scrollMs, 
                    const PsramString& dateColor, const PsramString& textColor,
-                   uint16_t highlightMin = 120, uint16_t urgentMin = 60, uint16_t urgentDurationSec = 10, uint16_t urgentIntervalMin = 1);
+                   uint16_t highlightMin = 120, uint16_t urgentMin = 60, uint16_t urgentDurationSec = 20, uint16_t urgentIntervalMin = 1);
     
     void queueData();
     void processData();

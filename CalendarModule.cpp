@@ -12,11 +12,15 @@ CalendarModule::CalendarModule(U8G2_FOR_ADAFRUIT_GFX &u8g2, GFXcanvas16 &canvas,
     : u8g2(u8g2), canvas(canvas), timeConverter(converter), webClient(webClient), last_processed_update(0) {
     dataMutex = xSemaphoreCreateMutex();
     
-    // Standardwerte für konfigurierbare Parameter setzen
     highlightThresholdMinutes = 120;
     urgentViewThresholdMinutes = 60;
     urgentViewDurationMs = 20 * 1000UL;
     urgentViewIntervalMs = 2 * 60 * 1000UL;
+    
+    // =================================================================
+    // KORREKTUR 2: Sofort-Anzeige nach Start ermöglichen
+    // =================================================================
+    _lastUrgentDisplayTime = millis() > urgentViewIntervalMs ? millis() - urgentViewIntervalMs : 0;
 }
 
 CalendarModule::~CalendarModule() {
@@ -28,9 +32,6 @@ void CalendarModule::onUpdate(std::function<void()> callback) {
     updateCallback = callback; 
 }
 
-// =================================================================
-// KORREKTUR: Vereinfachte Implementierung ohne Prüfung auf 0
-// =================================================================
 void CalendarModule::setConfig(const PsramString& url, unsigned long fetchMinutes, unsigned long displaySec, unsigned long scrollMs, 
                                const PsramString& dateColorHex, const PsramString& textColorHex,
                                uint16_t highlightMin, uint16_t urgentMin, uint16_t urgentDurationSec, uint16_t urgentIntervalMin) {
@@ -44,7 +45,6 @@ void CalendarModule::setConfig(const PsramString& url, unsigned long fetchMinute
     this->dateColor = hexColorTo565(dateColorHex);
     this->textColor = hexColorTo565(textColorHex);
 
-    // Direkte Zuweisung der (optionalen) Parameter
     this->highlightThresholdMinutes = highlightMin;
     this->urgentViewThresholdMinutes = urgentMin;
     this->urgentViewDurationMs = urgentDurationSec * 1000UL;
@@ -102,13 +102,16 @@ void CalendarModule::periodicTick() {
     time(&now_utc);
 
     bool isAnyEventUrgent = false;
+    // =================================================================
+    // KORREKTUR 1: `break` an die richtige Stelle verschoben
+    // =================================================================
     for (const auto& ev : events) {
         if (ev.isAllDay) continue;
         if (ev.startEpoch > now_utc) {
             if ((ev.startEpoch - now_utc) < (urgentViewThresholdMinutes * 60)) {
                 isAnyEventUrgent = true;
+                break; // Schleife nur beenden, WENN ein dringender Termin gefunden wurde
             }
-            break; 
         }
     }
 
@@ -135,6 +138,7 @@ void CalendarModule::periodicTick() {
 
     xSemaphoreGive(dataMutex);
 }
+// ... Rest der Datei bleibt unverändert ...
 
 bool CalendarModule::isEnabled() {
     return _isEnabled;
