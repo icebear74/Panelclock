@@ -48,6 +48,18 @@ struct DeviceConfig {
     /// @brief Die Anzeigedauer pro Tankstelle im Tankstellen-Modul in Sekunden.
     int stationDisplaySec = 15;
 
+    /// @brief Schneller Blinken: Zeitraum (in Stunden) bevor eines Termins, in dem für "pulsing" schneller geblinkt wird.
+    int calendarFastBlinkHours = 2; // Default: 2 Stunden
+
+    /// @brief Ab wann (in Stunden vor Start) soll die Urgent-View gezeigt werden.
+    int calendarUrgentThresholdHours = 1; // Default: 1 Stunde
+
+    /// @brief Wie lang (in Sekunden) die Urgent-View angezeigt wird.
+    int calendarUrgentDurationSec = 20; // Default: 20 Sekunden
+
+    /// @brief Wiederholungs-Intervall (in Minuten) bis zur nächsten Darstellung eines dringenden Termins.
+    int calendarUrgentRepeatMin = 5; // Default: 5 Minuten
+
     /// @brief Schaltet die Anzeige der Darts Order of Merit Rangliste ein/aus.
     bool dartsOomEnabled = false;
     /// @brief Schaltet die Anzeige der Darts Pro Tour Rangliste ein/aus.

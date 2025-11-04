@@ -26,143 +26,199 @@ const int TIME_AREA_H = 30;
 const int DATA_AREA_H = FULL_HEIGHT - TIME_AREA_H;
 
 /**
+ * @brief PlaylistEntry - Wrapper für Module in Playlist und InterruptQueue
+ */
+struct PlaylistEntry {
+    DrawableModule* module = nullptr;
+    bool isRunning = false;
+    bool isPaused = false;
+    bool isDisabled = false;
+    uint32_t uid = 0;
+    Priority priority = Priority::Normal;
+    unsigned long startTime = 0;
+    unsigned long pausedDuration = 0;
+    unsigned long pauseStartTime = 0;
+    uint32_t logicTickCounter = 0;
+    
+    // Konstruktor
+    PlaylistEntry(DrawableModule* mod, uint32_t id = 0, Priority prio = Priority::Normal, unsigned long duration = 0) 
+        : module(mod), uid(id), priority(prio) {
+        // Keine Duration speichern - wird dynamisch geholt!
+    }
+    
+    // PSRAM-Allokation
+    void* operator new(size_t size) {
+        void* p = ps_malloc(size);
+        if (!p) {
+            Serial.println("FATAL: PlaylistEntry PSRAM-Allokation fehlgeschlagen!");
+        }
+        return p;
+    }
+    
+    void operator delete(void* p) {
+        free(p);
+    }
+    
+    // Utility-Funktionen
+    bool canActivate() const {
+        return module && !isDisabled && module->isEnabled();
+    }
+    
+    bool isOneShot() const {
+        return priority == Priority::PlayNext;
+    }
+    
+    bool isInterrupt() const {
+        return priority > Priority::PlayNext;
+    }
+    
+    void activate() {
+        if (!module) return;
+        isRunning = true;
+        isPaused = false;
+        startTime = millis();
+        pausedDuration = 0;
+        logicTickCounter = 0;
+        module->activateModule(uid);
+        Serial.printf("[PlaylistEntry] Aktiviere Modul '%s' (UID: %lu, Prio: %d)\n", 
+                     module->getModuleName(), uid, (int)priority);
+    }
+    
+    void deactivate() {
+        isRunning = false;
+        isPaused = false;
+        pausedDuration = 0;
+        if (module) {
+            Serial.printf("[PlaylistEntry] Deaktiviere Modul '%s' (UID: %lu)\n", 
+                         module->getModuleName(), uid);
+        }
+    }
+    
+    void pause() {
+        if (!isRunning || isPaused) return;
+        isPaused = true;
+        pauseStartTime = millis();
+        
+        if (module) {
+            module->pause();
+            Serial.printf("[PlaylistEntry] Pausiere Modul '%s'\n", module->getModuleName());
+        }
+    }
+    
+    void resume() {
+        if (!isPaused) return;
+        isPaused = false;
+        
+        // Akkumuliere Pause-Zeit
+        pausedDuration += (millis() - pauseStartTime);
+        
+        if (module) {
+            module->resume();
+            Serial.printf("[PlaylistEntry] Setze Modul '%s' fort (pausiert: %lu ms)\n", 
+                         module->getModuleName(), pausedDuration);
+        }
+    }
+    
+    bool isFinished() const {
+        if (!module || !isRunning) return false;
+        
+        // 1. Modul selbst sagt es ist fertig
+        if (module->isFinished()) {
+            return true;
+        }
+        
+        // 2. Wenn pausiert, nie Timeout
+        if (isPaused) return false;
+        
+        // 3. Timeout-Check - DYNAMISCH Duration holen!
+        unsigned long maxDuration = module->getDisplayDuration();
+        
+        // Sicherheitspuffer hinzufügen (10% oder min 1 Sekunde)
+        unsigned long safetyBuffer = max(1000UL, maxDuration / 10);
+        maxDuration += safetyBuffer;
+        
+        unsigned long elapsed = millis() - startTime - pausedDuration;
+        
+        if (elapsed >= maxDuration) {
+            Serial.printf("[PlaylistEntry] Timeout: '%s' nach %lums (max: %lums)\n",
+                         module->getModuleName(), elapsed, maxDuration);
+            return true;
+        }
+        
+        return false;
+    }
+};
+
+/**
  * @brief Verwaltet das LED-Panel, die Modul-Rotation und Prioritätsanfragen.
- * 
- * Diese Klasse ist das Herzstück der Anzeige. Sie initialisiert das Display,
- * verwaltet eine "Playlist" von anzeigbaren Modulen, steuert die Rotation
- * zwischen ihnen und handhabt ein Prioritätssystem, das es Modulen erlaubt,
- * die normale Rotation für wichtige Anzeigen (Interrupts) zu unterbrechen.
  */
 class PanelManager {
 public:
-    /**
-     * @brief Konstruktor für den PanelManager.
-     * @param hwConfig Referenz auf die Hardware-Konfiguration mit den Pin-Belegungen.
-     * @param timeConverter Referenz auf den Zeitumrechner.
-     */
     PanelManager(HardwareConfig& hwConfig, GeneralTimeConverter& timeConverter);
-    
-    /**
-     * @brief Destruktor. Gibt alle dynamisch alloziierten Display-Objekte frei.
-     */
     ~PanelManager();
 
-    /**
-     * @brief Initialisiert das Display, die Canvases und die virtuellen Panels.
-     * @return true bei Erfolg, andernfalls false.
-     */
     bool begin();
-
-    /**
-     * @brief Registriert das dedizierte Uhren-Modul.
-     * @param mod Ein Zeiger auf das ClockModule.
-     */
     void registerClockModule(ClockModule* mod);
-
-    /**
-     * @brief Registriert das dedizierte Sensor-Modul.
-     * @param mod Ein Zeiger auf das MwaveSensorModule.
-     */
     void registerSensorModule(MwaveSensorModule* mod);
-
-    /**
-     * @brief Registriert ein allgemeines, anzeigbares Modul für die Daten-Area.
-     * @param mod Ein Zeiger auf ein DrawableModule.
-     */
     void registerModule(DrawableModule* mod);
-
-    /**
-     * @brief Wird in der Hauptschleife aufgerufen, um die Modul-Logik zu steuern.
-     * 
-     * Handhabt die Rotation der Module, die Anzeigezeit und die Logik von Interrupts.
-     */
+    
     void tick();
-
-    /**
-     * @brief Zeichnet den kompletten Bildschirminhalt und sendet ihn an das Panel.
-     * 
-     * Ruft die `draw`-Methoden der aktiven Module auf und kombiniert die Canvases.
-     */
     void render();
-
-    /**
-     * @brief Zeigt eine zentrierte Statusmeldung auf dem gesamten Display an.
-     * @param msg Die anzuzeigende Nachricht (kann Zeilenumbrüche enthalten).
-     */
     void displayStatus(const char* msg);
-
-    // --- Öffentliche Getter ---
+    
+    // NEU: Erweiterte Priority-Handler mit UID und Duration
+    bool handlePriorityRequest(DrawableModule* mod, Priority prio, uint32_t uid, unsigned long durationMs);
+    void handlePriorityRelease(DrawableModule* mod, uint32_t uid);
+    
+    // Getter für Display-Komponenten
     U8G2_FOR_ADAFRUIT_GFX* getU8g2() { return _u8g2; }
     GFXcanvas16* getCanvasTime() { return _canvasTime; }
     GFXcanvas16* getCanvasData() { return _canvasData; }
     GFXcanvas16* getFullCanvas() { return _fullCanvas; }
     MatrixPanel_I2S_DMA* getDisplay() { return _dma_display; }
     VirtualMatrixPanel_T<PANEL_CHAIN_TYPE>* getVirtualDisplay() { return _virtualDisp; }
-    const PsramVector<DrawableModule*>& getAllModules() const;
+    
+    // Für Kompatibilität
+    const PsramVector<DrawableModule*>& getAllModules() const { return _moduleCatalog; }
 
 private:
-    // --- Interne Handler für die Modul-Callbacks ---
-    void handlePriorityRequest(DrawableModule* mod);
-    void handlePriorityRelease(DrawableModule* mod);
-
-    // --- Interne Logik- und Zeichenmethoden ---
+    // Kernfunktionen
+    void switchNextModule();
+    PlaylistEntry* findActiveEntry();
+    void tickActiveModule();
+    
+    // Helper-Funktionen
     void drawClockArea();
     void drawDataArea();
-    void switchNextModule(bool resume = false);
-    void pausePlaylist();
-    void resumePlaylist();
-
-    // --- Kernkomponenten und Konfiguration ---
-    /// @brief Referenz auf die globale Hardware-Konfiguration (Pins).
+    PlaylistEntry* findEntryByModuleAndUID(DrawableModule* mod, uint32_t uid);
+    PlaylistEntry* findRunningInPlaylist();
+    PlaylistEntry* findPausedInPlaylist();
+    int findPlaylistIndex(PlaylistEntry* entry);
+    
+    // Hardware & Konfiguration
     HardwareConfig& _hwConfig;
-    /// @brief Referenz auf den globalen Zeitumrechner.
     GeneralTimeConverter& _timeConverter;
-
-    // --- Display-Objekte ---
-    /// @brief Der DMA-Treiber für das HUB75-Panel.
+    
+    // Display-Objekte
     MatrixPanel_I2S_DMA* _dma_display = nullptr;
-    /// @brief Die virtuelle Matrix, die mehrere Panels zu einer großen Anzeige verbindet.
     VirtualMatrixPanel_T<PANEL_CHAIN_TYPE>* _virtualDisp = nullptr;
-    /// @brief Der Grafikpuffer (Canvas) für den oberen Uhrenbereich.
     GFXcanvas16* _canvasTime = nullptr;
-    /// @brief Der Grafikpuffer (Canvas) für den unteren Datenbereich.
     GFXcanvas16* _canvasData = nullptr;
-    /// @brief Ein Grafikpuffer für die gesamte Anzeigefläche.
     GFXcanvas16* _fullCanvas = nullptr;
-    /// @brief Die U8G2-Bibliothek für Text-Rendering.
     U8G2_FOR_ADAFRUIT_GFX* _u8g2 = nullptr;
-
-    // --- Spezielle Module ---
-    /// @brief Zeiger auf das immer präsente Uhren-Modul.
+    
+    // Spezielle Module
     ClockModule* _clockMod = nullptr;
-    /// @brief Zeiger auf das Sensor-Modul zur Steuerung der Display-Helligkeit/des Status.
     MwaveSensorModule* _sensorMod = nullptr;
     
-    // --- Playlist-Logik für rotierende Module ---
-    /// @brief Vektor aller registrierten Module für den Datenbereich.
-    PsramVector<DrawableModule*> _dataAreaModules;
-    /// @brief Index des aktuell in der Playlist angezeigten Moduls.
-    int _currentModuleIndex = -1;
-    /// @brief Zeitstempel des letzten Modulwechsels.
-    unsigned long _lastSwitchTime = 0;
-
-    // --- Zustand für "Pause & Resume" bei Interrupts ---
-    /// @brief Index des Moduls, das durch einen Interrupt pausiert wurde.
-    int _pausedModuleIndex = -1;
-    /// @brief Verbleibende Anzeigezeit des pausierten Moduls.
-    unsigned long _pausedModuleRemainingTime = 0;
-
-    // --- Prioritäts- und Interrupt-Handling ---
-    /// @brief Warteschlange für aktive Interrupt-Anfragen, sortiert nach Priorität.
-    PsramVector<DrawableModule*> _interruptQueue;
-    /// @brief Zeiger auf ein Modul, das als nächstes angezeigt werden soll (Priorität Normal).
-    DrawableModule* _nextNormalPriorityModule = nullptr;
-    /// @brief Zeiger auf das zuletzt aktive Interrupt-Modul, um Timeouts zu überwachen.
-    DrawableModule* _lastActiveInterrupt = nullptr;
-    /// @brief Zeitstempel, wann der aktuelle Interrupt gestartet wurde.
-    unsigned long _interruptStartTime = 0;
-    /// @brief Zeiger auf eine "Play-Next"-Anfrage, die während eines Interrupts eintraf und geparkt wurde.
-    DrawableModule* _pendingNormalPriorityModule = nullptr;
+    // Die drei Kern-Listen (alle in PSRAM)
+    PsramVector<DrawableModule*> _moduleCatalog;
+    PsramVector<PlaylistEntry*> _playlist;
+    PsramVector<PlaylistEntry*> _interruptQueue;
+    
+    // Timing für Logic-Tick
+    unsigned long _lastLogicTick = 0;
+    const unsigned long LOGIC_TICK_INTERVAL = 100; // ms
 };
 
 #endif // PANELMANAGER_HPP

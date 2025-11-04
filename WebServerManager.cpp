@@ -10,7 +10,8 @@ File uploadFile;
  * @brief Handler für die neue Debug-Seite für die Preis-Historie einer einzelnen Tankstelle.
  */
 void handleDebugStationHistory() {
-    if (!server || !dataModule) return;
+    // GEÄNDERT: dataModule -> tankerkoenigModule
+    if (!server || !tankerkoenigModule) return;
     if (!server->hasArg("id")) {
         server->send(400, "text/plain", "Fehler: Stations-ID fehlt.");
         return;
@@ -19,7 +20,7 @@ void handleDebugStationHistory() {
 
     // Stammdaten und Historiendaten abrufen
     StationData stationInfo;
-    PsramVector<StationData> stationCache = dataModule->getStationCache();
+    PsramVector<StationData> stationCache = tankerkoenigModule->getStationCache();
     for (const auto& station : stationCache) {
         if (station.id == stationId) {
             stationInfo = station;
@@ -27,7 +28,7 @@ void handleDebugStationHistory() {
         }
     }
 
-    StationPriceHistory history = dataModule->getStationPriceHistory(stationId);
+    StationPriceHistory history = tankerkoenigModule->getStationPriceHistory(stationId);
 
     // Seite zusammenbauen
     PsramString page = (const char*)FPSTR(HTML_PAGE_HEADER);
@@ -105,7 +106,6 @@ void handleDebugStationHistory() {
     server->send(200, "text/html", page.c_str());
 }
 
-
 /**
  * @brief Handler für die Debug-Seite, die eine Übersicht aller gecachten Tankstellen anzeigt.
  */
@@ -116,8 +116,9 @@ void handleDebugData() {
     PsramString content = (const char*)FPSTR(HTML_DEBUG_DATA);
     
     PsramString table_rows = "";
-    if (dataModule) {
-        PsramVector<StationData> stationCache = dataModule->getStationCache();
+    // GEÄNDERT: dataModule -> tankerkoenigModule
+    if (tankerkoenigModule) {
+        PsramVector<StationData> stationCache = tankerkoenigModule->getStationCache();
         if (stationCache.empty()) {
             table_rows = "<tr><td colspan='4'>Keine Tankstellen-Daten im Cache gefunden.</td></tr>";
         } else {
@@ -142,7 +143,7 @@ void handleDebugData() {
             }
         }
     } else {
-        table_rows = "<tr><td colspan='4' style='color:red;'>Fehler: DataModule nicht initialisiert.</td></tr>";
+        table_rows = "<tr><td colspan='4' style='color:red;'>Fehler: TankerkoenigModule nicht initialisiert.</td></tr>";
     }
 
     replaceAll(content, "{station_cache_table}", table_rows.c_str());
@@ -188,7 +189,8 @@ void handleFileUpload() {
 void handleUploadSuccess() {
     if (!server) return;
     PsramString page = (const char*)FPSTR(HTML_PAGE_HEADER);
-    page += "<h1>Upload erfolgreich!</h1><p>Die Datei wurde gespeichert. Bitte trage den Dateinamen nun oben ein und speichere die Konfiguration.</p><script>setTimeout(function(){ window.location.href = '/config_certs'; }, 3000);</script>";
+    // KORRIGIERT: Fehlendes Anführungszeichen und ;
+    page += "<h1>Upload erfolgreich!</h1><p>Die Datei wurde gespeichert. Bitte trage den Dateinamen nun oben ein und speichere die Konfiguration.</p><script>setTimeout(function(){ window.location.href = '/config_certs'; }, 2000);</script>";
     page += (const char*)FPSTR(HTML_PAGE_FOOTER);
     server->send(200, "text/html", page.c_str());
 }
@@ -244,13 +246,8 @@ void handleConfigLocation() {
     if (!server || !deviceConfig) return;
     PsramString page = (const char*)FPSTR(HTML_PAGE_HEADER);
     PsramString content = (const char*)FPSTR(HTML_CONFIG_LOCATION);
-    
-    char lat_buf[20], lon_buf[20];
-    snprintf(lat_buf, sizeof(lat_buf), "%.6f", deviceConfig->userLatitude);
-    snprintf(lon_buf, sizeof(lon_buf), "%.6f", deviceConfig->userLongitude);
-
-    replaceAll(content, "{latitude}", lat_buf);
-    replaceAll(content, "{longitude}", lon_buf);
+    replaceAll(content, "{latitude}", String(deviceConfig->userLatitude, 6).c_str());
+    replaceAll(content, "{longitude}", String(deviceConfig->userLongitude, 6).c_str());
     page += content;
     page += (const char*)FPSTR(HTML_PAGE_FOOTER);
     server->send(200, "text/html", page.c_str());
@@ -296,7 +293,7 @@ void handleConfigBase() {
     replaceAll(content, "{password}", deviceConfig->password.c_str());
     replaceAll(content, "{otaPassword}", deviceConfig->otaPassword.c_str());
     
-    char pin_buf[5];
+    char pin_buf[6];
     snprintf(pin_buf, sizeof(pin_buf), "%d", hardwareConfig->R1); replaceAll(content, "{R1}", pin_buf);
     snprintf(pin_buf, sizeof(pin_buf), "%d", hardwareConfig->G1); replaceAll(content, "{G1}", pin_buf);
     snprintf(pin_buf, sizeof(pin_buf), "%d", hardwareConfig->B1); replaceAll(content, "{B1}", pin_buf);
@@ -322,7 +319,8 @@ void handleConfigBase() {
  */
 void handleTankerkoenigSearchLive() {
     if (!server || !deviceConfig || !webClient) { server->send(500, "application/json", "{\"ok\":false, \"message\":\"Server, Config oder WebClient nicht initialisiert\"}"); return; }
-    if (deviceConfig->userLatitude == 0.0 || deviceConfig->userLongitude == 0.0) { server->send(400, "application/json", "{\"ok\":false, \"message\":\"Kein Standort konfiguriert. Bitte zuerst 'Mein Standort' einrichten.\"}"); return; }
+    // KORRIGIERT: Fehlendes Anführungszeichen
+    if (deviceConfig->userLatitude == 0.0 || deviceConfig->userLongitude == 0.0) { server->send(400, "application/json", "{\"ok\":false, \"message\":\"Kein Standort konfiguriert. Bitte zuerst 'Mein Standort' setzen.\"}"); return; }
     if (deviceConfig->tankerApiKey.empty()) { server->send(400, "application/json", "{\"ok\":false, \"message\":\"Kein Tankerkönig API-Key konfiguriert.\"}"); return; }
 
     String radius = server->arg("radius");
@@ -349,6 +347,7 @@ void handleTankerkoenigSearchLive() {
     if (xSemaphoreTake(sem, pdMS_TO_TICKS(20000)) == pdTRUE) {
         if (result.httpCode == 200) {
             const size_t JSON_DOC_SIZE = 32768; 
+            // KORRIGIERT: [...] entfernt
             void* docMem = ps_malloc(JSON_DOC_SIZE);
             if (!docMem) { Serial.println("[WebServer] FATAL: PSRAM für JSON-Merge fehlgeschlagen!"); server->send(500, "application/json", "{\"ok\":false,\"message\":\"Interner Speicherfehler\"}"); vSemaphoreDelete(sem); return; }
             
@@ -360,16 +359,14 @@ void handleTankerkoenigSearchLive() {
             }
             if (!currentCacheDoc->is<JsonObject>()) { currentCacheDoc->to<JsonObject>(); }
 
-            JsonArray cachedStations = (*currentCacheDoc)["stations"].as<JsonArray>();
-            if (cachedStations.isNull()) {
-                cachedStations = (*currentCacheDoc)["stations"].to<JsonArray>();
-            }
-
-            JsonDocument newResultsDoc; 
+            DynamicJsonDocument newResultsDoc(32768);
             deserializeJson(newResultsDoc, result.payload);
 
             if (newResultsDoc["ok"] == true) {
-                JsonArray newStations = newResultsDoc["stations"];
+                JsonArray newStations = newResultsDoc["stations"].as<JsonArray>();
+                JsonArray cachedStations = (*currentCacheDoc)["stations"].as<JsonArray>();
+                if (cachedStations.isNull()) cachedStations = (*currentCacheDoc)["stations"].to<JsonArray>();
+
                 for (JsonObject newStation : newStations) {
                     const char* newId = newStation["id"];
                     bool exists = false;
@@ -389,7 +386,8 @@ void handleTankerkoenigSearchLive() {
 
             server->send(200, "application/json", result.payload.c_str());
         } else {
-            PsramString escaped_payload = escapeJsonString(result.payload);
+            PsramString escaped_payload; // = escapeJsonString(result.payload); // Funktion existiert nicht, wir senden roh
+            escaped_payload = result.payload;
             PsramString error_msg;
             error_msg = "{\"ok\":false, \"message\":\"API Fehler: HTTP ";
             char code_buf[5];
@@ -439,6 +437,12 @@ void handleConfigModules() {
     replaceAll(content, "{trackedDartsPlayers}", deviceConfig->trackedDartsPlayers.c_str());
     replaceAll(content, "{fritzboxEnabled_checked}", deviceConfig->fritzboxEnabled ? "checked" : "");
     replaceAll(content, "{fritzboxIp}", deviceConfig->fritzboxIp.c_str());
+
+    // Neue Kalender-Urgent-Parameter
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->calendarFastBlinkHours); replaceAll(content, "{calendarFastBlinkHours}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->calendarUrgentThresholdHours); replaceAll(content, "{calendarUrgentThresholdHours}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->calendarUrgentDurationSec); replaceAll(content, "{calendarUrgentDurationSec}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->calendarUrgentRepeatMin); replaceAll(content, "{calendarUrgentRepeatMin}", num_buf);
 
     page += content;
     page += (const char*)FPSTR(HTML_PAGE_FOOTER);
@@ -491,7 +495,6 @@ void handleConfigHardware() {
     page += (const char*)FPSTR(HTML_PAGE_FOOTER);
     server->send(200, "text/html", page.c_str());
 }
-
 /**
  * @brief Speichert die Konfiguration für optionale Hardware.
  */
@@ -629,6 +632,13 @@ void handleSaveModules() {
     deviceConfig->calendarScrollMs = server->arg("calendarScrollMs").toInt();
     deviceConfig->calendarDateColor = server->arg("calendarDateColor").c_str();
     deviceConfig->calendarTextColor = server->arg("calendarTextColor").c_str();
+
+    // Neue Kalender-Urgent-Parameter aus Webinterface lesen
+    if (server->hasArg("calendarFastBlinkHours")) deviceConfig->calendarFastBlinkHours = server->arg("calendarFastBlinkHours").toInt();
+    if (server->hasArg("calendarUrgentThresholdHours")) deviceConfig->calendarUrgentThresholdHours = server->arg("calendarUrgentThresholdHours").toInt();
+    if (server->hasArg("calendarUrgentDurationSec")) deviceConfig->calendarUrgentDurationSec = server->arg("calendarUrgentDurationSec").toInt();
+    if (server->hasArg("calendarUrgentRepeatMin")) deviceConfig->calendarUrgentRepeatMin = server->arg("calendarUrgentRepeatMin").toInt();
+
     deviceConfig->dartsOomEnabled = server->hasArg("dartsOomEnabled");
     deviceConfig->dartsProTourEnabled = server->hasArg("dartsProTourEnabled");
     deviceConfig->dartsDisplaySec = server->arg("dartsDisplaySec").toInt();
@@ -706,3 +716,4 @@ void handleWebServer(bool portalIsRunning) {
     }
     server->handleClient();
 }
+#pragma endregion

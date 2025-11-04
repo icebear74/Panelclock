@@ -1,76 +1,182 @@
-#include "DataModule.hpp"
+#include "TankerkoenigModule.hpp"
 #include "WebClientModule.hpp"
 #include "GeneralTimeConverter.hpp"
-#include "certs.hpp"
 #include <ArduinoJson.h>
 #include <LittleFS.h>
 #include <algorithm>
 #include <esp_heap_caps.h>
+#include "webconfig.hpp"
 
 #define PRICE_CACHE_FILENAME "/last_prices.json"
-#define AVG_CACHE_FILENAME "/avg_price_trends.json" // Veraltet
+#define FAILSAFE_BUFFER_MS 10000 // 10 Sekunden Puffer
 
 StationData::StationData() : e5(0.0f), e10(0.0f), diesel(0.0f), isOpen(false), lastPriceChange(0) {}
 
-/**
- * @brief Konstruktor für das DataModule.
- * @param u8g2 Referenz auf die U8G2-Bibliothek für die Textdarstellung.
- * @param canvas Referenz auf die GFX-Canvas für die Grafikausgabe.
- * @param timeConverter Referenz auf den Zeitumrechner für lokale Zeit.
- * @param topOffset Y-Offset für die Zeichnung auf dem Display.
- * @param webClient Zeiger auf das WebClientModule für API-Anfragen.
- * @param config Zeiger auf die globale Gerätekongfiguration.
- */
-DataModule::DataModule(U8G2_FOR_ADAFRUIT_GFX &u8g2, GFXcanvas16 &canvas, GeneralTimeConverter& timeConverter, int topOffset, WebClientModule* webClient, DeviceConfig* config)
+TankerkoenigModule::TankerkoenigModule(U8G2_FOR_ADAFRUIT_GFX &u8g2, GFXcanvas16 &canvas, GeneralTimeConverter& timeConverter, int topOffset, WebClientModule* webClient, DeviceConfig* config)
      : u8g2(u8g2), canvas(canvas), timeConverter(timeConverter), _deviceConfig(config), top_offset(topOffset), webClient(webClient), last_processed_update(0) {
     dataMutex = xSemaphoreCreateMutex();
 }
 
-DataModule::~DataModule() {
+TankerkoenigModule::~TankerkoenigModule() {
     if (dataMutex) vSemaphoreDelete(dataMutex);
     if (pending_buffer) free(pending_buffer);
 }
 
-/**
- * @brief Initialisiert das Modul und lädt Daten aus dem Dateisystem.
- * 
- * Bereinigt veraltete Cache-Dateien und lädt die Preis-Statistiken,
- * den Stations-Cache und den letzten Preis-Cache.
- */
-void DataModule::begin() {
-    if (LittleFS.exists("/price_history.json")) {
-        Serial.println("[DataModule] Altes Preis-Format 'price_history.json' gefunden. Wird gelöscht.");
-        LittleFS.remove("/price_history.json");
-    }
-    if (LittleFS.exists(AVG_CACHE_FILENAME)) {
-        Serial.println("[DataModule] Veraltete Cache-Datei 'avg_price_trends.json' gefunden. Wird gelöscht.");
-        LittleFS.remove(AVG_CACHE_FILENAME);
-    }
-    loadPriceStatistics();
-    loadStationCache();
-    loadPriceCache();
-    cleanupOldPriceCacheEntries();
+// =================================================================
+// =========== IMPLEMENTIERUNG DER MODERN-SCHNITTSTELLE ============
+// =================================================================
+
+void TankerkoenigModule::configure(const ModuleConfig& config) {
+    _modConfig = config;
 }
 
-/**
- * @brief Registriert eine Callback-Funktion, die bei Daten-Updates aufgerufen wird.
- * @param callback Die aufzurufende Funktion.
- */
-void DataModule::onUpdate(std::function<void()> callback) {
-    updateCallback = callback;
+void TankerkoenigModule::onActivate() {
+    if (_modConfig.resetOnActivate) {
+        currentPage = 0;
+    }
+    _logicTicksSincePageSwitch = 0;
 }
 
-/**
- * @brief Konfiguriert das Modul mit den notwendigen Parametern.
- * @param apiKey Der API-Key für Tankerkönig.
- * @param stationIds Eine kommaseparierte Liste von Tankstellen-IDs.
- * @param fetchIntervalMinutes Das Abrufintervall in Minuten.
- * @param pageDisplaySec Die Anzeigedauer pro Tankstelle in Sekunden.
- */
-void DataModule::setConfig(const PsramString& apiKey, const PsramString& stationIds, int fetchIntervalMinutes, unsigned long pageDisplaySec) {
+void TankerkoenigModule::resetPaging() {
+    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        currentPage = 0;
+        _logicTicksSincePageSwitch = 0;
+        _isFinished = false;
+        xSemaphoreGive(dataMutex);
+    }
+}
+
+unsigned long TankerkoenigModule::getDisplayDuration() {
+    // Berechne Gesamtdauer basierend auf Anzahl Stationen * Dauer pro Station
+    unsigned long duration;
+    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        int num_pages = station_data_list.size() > 0 ? station_data_list.size() : 1;
+        duration = num_pages * _pageDisplayDuration;
+        xSemaphoreGive(dataMutex);
+    } else {
+        duration = _pageDisplayDuration; // Fallback
+    }
+    return duration;
+}
+
+void TankerkoenigModule::tick() {
+    // Fordert Neuzeichnung an für flüssige Animationen
+    if (updateCallback) updateCallback();
+}
+
+void TankerkoenigModule::logicTick() {
+    // Wird alle 100ms aufgerufen
+    _logicTicksSincePageSwitch++;
+    
+    if (_logicTicksSincePageSwitch >= _currentTicksPerPage) {
+        if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            int numPages = station_data_list.size() > 0 ? station_data_list.size() : 1;
+            currentPage++;
+            
+            // Wenn alle Seiten durch -> Modul ist fertig
+            if (currentPage >= numPages) {
+                currentPage = 0;
+                _isFinished = true;
+                Serial.printf("[Tanker] Alle %d Seiten gezeigt -> Modul beendet sich selbst\n", numPages);
+            } else if (totalPages > 1) {
+                if (updateCallback) updateCallback();
+            }
+            xSemaphoreGive(dataMutex);
+        }
+        _logicTicksSincePageSwitch = 0;
+    }
+}
+
+JsonObject TankerkoenigModule::backup(JsonDocument& doc) {
+    JsonObject root = doc.to<JsonObject>();
+    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+        JsonObject stats_root = root["price_statistics"].to<JsonObject>();
+        for (const auto& history : price_statistics) {
+            JsonArray stats_array = stats_root[history.stationId.c_str()].to<JsonArray>();
+            for (const auto& stats : history.dailyStats) {
+                JsonObject obj = stats_array.add<JsonObject>();
+                obj["date"] = stats.date;
+                obj["e5_low"] = stats.e5_low; obj["e5_high"] = stats.e5_high;
+                obj["e10_low"] = stats.e10_low; obj["e10_high"] = stats.e10_high;
+                obj["diesel_low"] = stats.diesel_low; obj["diesel_high"] = stats.diesel_high;
+            }
+        }
+        JsonArray cache_array = root["last_price_cache"].to<JsonArray>();
+        for (const auto& entry : _lastPriceCache) {
+            JsonObject obj = cache_array.add<JsonObject>();
+            obj["id"] = entry.stationId; obj["e5"] = entry.e5; obj["e10"] = entry.e10;
+            obj["diesel"] = entry.diesel; obj["ts"] = entry.timestamp;
+        }
+        xSemaphoreGive(dataMutex);
+    }
+    return root;
+}
+
+void TankerkoenigModule::restore(JsonObject& obj) {
+    bool restored_something = false;
+    if (obj["price_statistics"].is<JsonObject>()) {
+        JsonDocument stats_doc;
+        stats_doc["version"] = STATION_PRICE_STATS_VERSION;
+        stats_doc["prices"] = obj["price_statistics"]; 
+        
+        File file = LittleFS.open("/station_price_stats.json", "w");
+        if (file) {
+            serializeJson(stats_doc, file);
+            file.close();
+            restored_something = true;
+        }
+    }
+
+    if (obj["last_price_cache"].is<JsonArray>()) {
+        JsonDocument cache_doc;
+        cache_doc.set(obj["last_price_cache"]); 
+
+        File file = LittleFS.open(PRICE_CACHE_FILENAME, "w");
+        if (file) {
+            serializeJson(cache_doc, file);
+            file.close();
+            restored_something = true;
+        }
+    }
+
+    if (restored_something) {
+        Serial.println("[TankerkoenigModule] Restore abgeschlossen. Reboot erforderlich.");
+    }
+}
+
+void TankerkoenigModule::updateFailsafeTimeout() {
+    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        int num_pages = 0;
+        if (!_isEnabled) {
+            num_pages = 1;
+        } else {
+            PsramString temp_ids = this->station_ids;
+            if (temp_ids.empty()) {
+                num_pages = 1;
+            } else {
+                num_pages = 1;
+                for (char c : temp_ids) {
+                    if (c == ',') {
+                        num_pages++;
+                    }
+                }
+            }
+        }
+        unsigned long expectedRuntime = (num_pages > 0 ? num_pages : 1) * _pageDisplayDuration;
+        this->maxRuntimeMs = expectedRuntime + FAILSAFE_BUFFER_MS;
+        xSemaphoreGive(dataMutex);
+        Serial.printf("[TankerkoenigModule] Failsafe-Timeout auf %lu ms gesetzt (%d Seiten).\n", this->maxRuntimeMs, num_pages);
+    }
+}
+
+void TankerkoenigModule::setConfig(const PsramString& apiKey, const PsramString& stationIds, int fetchIntervalMinutes, unsigned long pageDisplaySec) {
     this->api_key = apiKey;
     this->station_ids = stationIds;
     this->_pageDisplayDuration = pageDisplaySec > 0 ? pageDisplaySec * 1000UL : 10000;
+    
+    // Berechne Ticks pro Seite für logicTick (100ms pro Tick)
+    _currentTicksPerPage = _pageDisplayDuration / 100; // z.B. 15000ms / 100ms = 150 Ticks
+    if (_currentTicksPerPage == 0) _currentTicksPerPage = 1; // Mindestens 1 Tick
     
     _isEnabled = !apiKey.empty() && !stationIds.empty();
 
@@ -79,10 +185,12 @@ void DataModule::setConfig(const PsramString& apiKey, const PsramString& station
         this->resource_url += this->station_ids;
         this->resource_url += "&apikey=";
         this->resource_url += this->api_key;
-        webClient->registerResource(String(this->resource_url.c_str()), fetchIntervalMinutes, root_ca_pem);
+        webClient->registerResource(String(this->resource_url.c_str()), fetchIntervalMinutes, nullptr);
     } else {
         this->resource_url.clear();
     }
+
+    updateFailsafeTimeout();
 
     if (xSemaphoreTake(dataMutex, portMAX_DELAY) == pdTRUE) {
         PsramVector<PsramString> current_id_list;
@@ -98,7 +206,11 @@ void DataModule::setConfig(const PsramString& apiKey, const PsramString& station
 
         size_t original_stats_size = price_statistics.size();
         price_statistics.erase(std::remove_if(price_statistics.begin(), price_statistics.end(), remove_by_id), price_statistics.end());
-        if(price_statistics.size() < original_stats_size) savePriceStatistics();
+        if(price_statistics.size() < original_stats_size) {
+            #if TANKERKOENIG_SAVE_HISTORY
+            savePriceStatistics();
+            #endif
+        }
 
         size_t original_cache_size = _lastPriceCache.size();
         _lastPriceCache.erase(std::remove_if(_lastPriceCache.begin(), _lastPriceCache.end(), remove_by_id), _lastPriceCache.end());
@@ -108,49 +220,35 @@ void DataModule::setConfig(const PsramString& apiKey, const PsramString& station
     }
 }
 
-/**
- * @brief Gibt die gesamte Anzeigedauer für alle Seiten des Moduls zurück.
- * @return Die Dauer in Millisekunden.
- */
-unsigned long DataModule::getDisplayDuration() {
-    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) != pdTRUE) return _pageDisplayDuration;
-    int num_stations = station_data_list.size();
-    xSemaphoreGive(dataMutex);
-    return (_pageDisplayDuration * (num_stations > 0 ? num_stations : 1));
-}
-
-/**
- * @brief Gibt zurück, ob das Modul aktiviert ist.
- * @return true, wenn aktiviert, sonst false.
- */
-bool DataModule::isEnabled() { return _isEnabled; }
-
-/**
- * @brief Setzt das Paging auf die erste Seite zurück.
- */
-void DataModule::resetPaging() { currentPage = 0; lastPageSwitchTime = millis(); }
-
-/**
- * @brief Wird periodisch aufgerufen, um Paging und andere zeitgesteuerte Aktionen zu handhaben.
- */
-void DataModule::tick() {
-    unsigned long now = millis();
-    if (_pageDisplayDuration > 0 && now - lastPageSwitchTime > _pageDisplayDuration) {
-        if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-            if (totalPages > 1) {
-                currentPage = (currentPage + 1) % totalPages;
-                if (updateCallback) updateCallback();
-            }
-            xSemaphoreGive(dataMutex);
-        }
-        lastPageSwitchTime = now;
+void TankerkoenigModule::begin() {
+    if (LittleFS.exists("/price_history.json")) {
+        Serial.println("[TankerkoenigModule] Altes Preis-Format 'price_history.json' gefunden. Wird gelöscht.");
+        LittleFS.remove("/price_history.json");
     }
+    if (LittleFS.exists("/avg_price_trends.json")) {
+        Serial.println("[TankerkoenigModule] Veraltete Cache-Datei 'avg_price_trends.json' gefunden. Wird gelöscht.");
+        LittleFS.remove("/avg_price_trends.json");
+    }
+    
+    // IMMER laden (unabhängig vom SAVE_HISTORY Flag)
+    loadPriceStatistics();
+    
+    #if !TANKERKOENIG_SAVE_HISTORY
+    Serial.println("[TankerkoenigModule] Historie-Speicherung DEAKTIVIERT (TANKERKOENIG_SAVE_HISTORY = false) - Daten werden NICHT persistiert");
+    #endif
+    
+    loadStationCache();
+    loadPriceCache();
+    cleanupOldPriceCacheEntries();
 }
 
-/**
- * @brief Stellt eine Anfrage zum Abrufen neuer Daten in die Warteschlange des WebClients.
- */
-void DataModule::queueData() {
+void TankerkoenigModule::onUpdate(std::function<void()> callback) {
+    updateCallback = callback;
+}
+
+bool TankerkoenigModule::isEnabled() { return _isEnabled; }
+
+void TankerkoenigModule::queueData() {
     if (resource_url.empty() || !webClient) return;
     webClient->accessResource(String(resource_url.c_str()), [this](const char* buffer, size_t size, time_t last_update, bool is_stale) {
         if (buffer && size > 0 && last_update > this->last_processed_update) {
@@ -167,10 +265,7 @@ void DataModule::queueData() {
     });
 }
 
-/**
- * @brief Verarbeitet heruntergeladene Daten, falls vorhanden.
- */
-void DataModule::processData() {
+void TankerkoenigModule::processData() {
     if (data_pending) {
         if (xSemaphoreTake(dataMutex, portMAX_DELAY) == pdTRUE) {
             parseAndProcessJson(pending_buffer, buffer_size);
@@ -183,7 +278,7 @@ void DataModule::processData() {
     }
 }
 
-void DataModule::parseAndProcessJson(const char* buffer, size_t size) {
+void TankerkoenigModule::parseAndProcessJson(const char* buffer, size_t size) {
     JsonDocument doc;
     PsramVector<StationData> new_station_data_list;
     DeserializationError error = deserializeJson(doc, buffer, size);
@@ -232,26 +327,27 @@ void DataModule::parseAndProcessJson(const char* buffer, size_t size) {
                     } else {
                         new_data.lastPriceChange = last_processed_update;
                     }
+                    
+                    // IMMER Statistiken aktualisieren (Speichern wird intern geprüft)
                     updatePriceStatistics(new_data.id, new_data.e5, new_data.e10, new_data.diesel);
                 } else {
-                    if (old_data_ptr && old_data_ptr->isOpen) { // Gerade geschlossen
+                    if (old_data_ptr && old_data_ptr->isOpen) {
                         updatePriceCache(new_data.id, old_data_ptr->e5, old_data_ptr->e10, old_data_ptr->diesel, old_data_ptr->lastPriceChange);
                     }
                     
                     getPriceFromCache(new_data.id, new_data.e5, new_data.e10, new_data.diesel, new_data.lastPriceChange);
                 }
                 new_station_data_list.push_back(new_data);
+                
+                // IMMER Trends berechnen (unabhängig vom Speichern)
                 updateAndDetermineTrends(id);
             }
         }
         station_data_list = new_station_data_list;
-    } else { Serial.printf("[DataModule] JSON-Parsing-Fehler: %s\n", error.c_str()); }
+    } else { Serial.printf("[TankerkoenigModule] JSON-Parsing-Fehler: %s\n", error.c_str()); }
 }
 
-/**
- * @brief Zeichnet den aktuellen Zustand des Moduls auf die Canvas.
- */
-void DataModule::draw() {
+void TankerkoenigModule::draw() {
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) != pdTRUE) return;
     
     totalPages = station_data_list.size() > 0 ? station_data_list.size() : 1;
@@ -271,7 +367,6 @@ void DataModule::draw() {
     
     const StationData& data = station_data_list[currentPage];
 
-    // --- OBERER BEREICH ---
     const int PADDING = 10;
     const int LEFT_MARGIN = 5;
     const int RIGHT_MARGIN = 5;
@@ -289,14 +384,29 @@ void DataModule::draw() {
     int addressWidth = std::max(u8g2.getUTF8Width(line1.c_str()), u8g2.getUTF8Width(line2.c_str()));
 
     if (brandWidth + addressWidth + PADDING > totalWidth) {
-        int maxPartWidth = (totalWidth - PADDING) / 2;
-        
-        u8g2.setFont(u8g2_font_helvB14_tf);
-        brandText = truncateString(brandText, maxPartWidth);
+        int availableForBrand = brandWidth;
+        int availableForAddress = addressWidth;
 
-        u8g2.setFont(u8g2_font_5x8_tf);
-        line1 = truncateString(line1, maxPartWidth);
-        line2 = truncateString(line2, maxPartWidth);
+        if (brandWidth < (totalWidth - PADDING) / 2) {
+            availableForAddress = totalWidth - PADDING - brandWidth;
+        }
+        else if (addressWidth < (totalWidth - PADDING) / 2) {
+            availableForBrand = totalWidth - PADDING - addressWidth;
+        }
+        else {
+            availableForBrand = (totalWidth - PADDING) / 2;
+            availableForAddress = (totalWidth - PADDING) / 2;
+        }
+
+        if (brandWidth > availableForBrand) {
+            u8g2.setFont(u8g2_font_helvB14_tf);
+            brandText = truncateString(brandText, availableForBrand);
+        }
+        if (addressWidth > availableForAddress) {
+            u8g2.setFont(u8g2_font_5x8_tf);
+            line1 = truncateString(line1, availableForAddress);
+            line2 = truncateString(line2, availableForAddress);
+        }
     }
 
     u8g2.setFont(u8g2_font_helvB14_tf);
@@ -310,10 +420,8 @@ void DataModule::draw() {
     u8g2.setCursor(canvas.width() - u8g2.getUTF8Width(line2.c_str()) - RIGHT_MARGIN, 16);
     u8g2.print(line2.c_str());
     
-    // --- TRENNLINIE ---
     canvas.drawFastHLine(0, 17, canvas.width(), rgb565(128, 128, 128));
 
-    // --- PREISTABELLE ---
     AveragePrices averages = calculateAverages(data.id); 
     if (averages.avgE5Low == 0.0) averages.avgE5Low = data.e5 > 0 ? data.e5 - 0.05 : 0;
     if (averages.avgE5High == 0.0) averages.avgE5High = data.e5 > 0 ? data.e5 + 0.05 : 0;
@@ -335,7 +443,8 @@ void DataModule::draw() {
 
     if (data.lastPriceChange > 0) {
         time_t local_change_time = timeConverter.toLocal(data.lastPriceChange);
-        struct tm timeinfo; localtime_r(&local_change_time, &timeinfo);
+        struct tm timeinfo; 
+        gmtime_r(&local_change_time, &timeinfo);
         char time_str[6]; strftime(time_str, sizeof(time_str), "%H:%M", &timeinfo);
         u8g2.setCursor(84 + (50 - u8g2.getUTF8Width(time_str)) / 2, y_pos);
         u8g2.print(time_str);
@@ -362,7 +471,7 @@ void DataModule::draw() {
     xSemaphoreGive(dataMutex);
 }
 
-void DataModule::drawPriceLine(int y, const char* label, float current, float min, float max, PriceTrend minTrend, PriceTrend maxTrend) {
+void TankerkoenigModule::drawPriceLine(int y, const char* label, float current, float min, float max, PriceTrend minTrend, PriceTrend maxTrend) {
     u8g2.setFont(u8g2_font_7x14_tf);
     u8g2.setForegroundColor(0xFFFF);
     u8g2.setCursor(2, y);
@@ -376,10 +485,10 @@ void DataModule::drawPriceLine(int y, const char* label, float current, float mi
     drawPrice(x_current, y, current, calcColor(current, min, max));
     
     int max_width = drawPrice(x_max, y, max, rgb565(255, 0, 0));
-    if(max > 0) drawTrendArrow(x_max + max_width + 2, y - 5, maxTrend);
+    if(max > 0) drawTrendArrow(x_max + max_width + 3, y - 6, maxTrend);
 }
 
-int DataModule::drawPrice(int x, int y, float price, uint16_t color) {
+int TankerkoenigModule::drawPrice(int x, int y, float price, uint16_t color) {
     if (price <= 0) return 0;
     u8g2.setForegroundColor(color);
     String priceStr = String(price, 3);
@@ -407,21 +516,83 @@ int DataModule::drawPrice(int x, int y, float price, uint16_t color) {
     return mainPriceWidth + 1 + superscriptWidth + 1 + euroWidth;
 }
 
-void DataModule::drawTrendArrow(int x, int y, PriceTrend trend) {
+void TankerkoenigModule::drawTrendArrow(int x, int y, PriceTrend trend) {
+    const int anim_cycle = 1200;
+    const int pattern_height = 4;
+    const int visible_height = 8;
+
+    int pixel_offset = (millis() % anim_cycle) * pattern_height / anim_cycle;
+
+    int y_base = y;
+    int y_base_arrow = y - 3;
+    uint16_t color;
+
     switch (trend) {
         case PriceTrend::TREND_RISING:
-            canvas.fillTriangle(x, y, x + 2, y + 3, x - 2, y + 3, rgb565(255, 0, 0));
+            color = rgb565(255, 0, 0);
+            for (int i = 0; i < visible_height; ++i) {
+                int current_y = y_base_arrow + i;
+                int pattern_step = (i + pixel_offset) % pattern_height;
+                if (pattern_step == 0) {
+                    canvas.drawPixel(x, current_y, color);
+                } else if (pattern_step == 1) {
+                    canvas.drawFastHLine(x - 1, current_y, 3, color);
+                } else if (pattern_step == 2) {
+                    canvas.drawFastHLine(x - 2, current_y, 5, color);
+                }
+            }
             break;
+
         case PriceTrend::TREND_FALLING:
-            canvas.fillTriangle(x, y + 3, x + 2, y, x - 2, y, rgb565(0, 255, 0));
+            color = rgb565(0, 255, 0);
+            for (int i = 0; i < visible_height; ++i) {
+                int current_y = y_base_arrow + i;
+                int pattern_step = (i - pixel_offset + pattern_height) % pattern_height;
+                if (pattern_step == 0) {
+                    canvas.drawFastHLine(x - 2, current_y, 5, color);
+                } else if (pattern_step == 1) {
+                    canvas.drawFastHLine(x - 1, current_y, 3, color);
+                } else if (pattern_step == 2) {
+                    canvas.drawPixel(x, current_y, color);
+                }
+            }
             break;
+
         case PriceTrend::TREND_STABLE:
-            canvas.fillCircle(x, y + 1, 1, 0xFFFF);
+            color = rgb565(200,0,200);
+            int x_offset;
+            if ((millis() % anim_cycle) < (anim_cycle / 2)) {
+                x_offset = -2;
+            } else {
+                x_offset = 2;
+            }
+            canvas.drawPixel(x + x_offset, y_base, color);
+            canvas.drawFastHLine(x + x_offset - 1, y_base + 1, 3, color);
+            canvas.drawPixel(x + x_offset, y_base + 2, color);
             break;
     }
 }
 
-PsramString DataModule::truncateString(const PsramString& text, int maxWidth) {
+uint16_t TankerkoenigModule::calcColor(float value, float low, float high) {
+    if (low >= high || value <= 0) return rgb565(255, 255, 0);
+
+    float val = (value < low) ? low : (value > high ? high : value);
+    
+    int diff = (int)roundf(((high - val) / (high - low)) * 100.0f);
+
+    uint8_t rval, gval;
+
+    if (diff <= 50) { 
+        rval = 255;
+        gval = map(diff, 0, 50, 0, 255);
+    } else { 
+        gval = 255;
+        rval = map(diff, 50, 100, 255, 0);
+    }
+    return rgb565(rval, gval, 0);
+}
+
+PsramString TankerkoenigModule::truncateString(const PsramString& text, int maxWidth) {
     if (u8g2.getUTF8Width(text.c_str()) <= maxWidth) { return text; }
     PsramString truncated = text;
     while (!truncated.empty() && u8g2.getUTF8Width((truncated + "...").c_str()) > maxWidth) {
@@ -430,7 +601,7 @@ PsramString DataModule::truncateString(const PsramString& text, int maxWidth) {
     return truncated + "...";
 }
 
-void DataModule::loadPriceCache() {
+void TankerkoenigModule::loadPriceCache() {
     if (LittleFS.exists(PRICE_CACHE_FILENAME)) {
         File file = LittleFS.open(PRICE_CACHE_FILENAME, "r");
         if (file) {
@@ -448,7 +619,7 @@ void DataModule::loadPriceCache() {
     }
 }
 
-void DataModule::savePriceCache() {
+void TankerkoenigModule::savePriceCache() {
     File file = LittleFS.open(PRICE_CACHE_FILENAME, "w");
     if (file) {
         JsonDocument doc;
@@ -463,7 +634,7 @@ void DataModule::savePriceCache() {
     }
 }
 
-void DataModule::updatePriceCache(const PsramString& stationId, float e5, float e10, float diesel, time_t lastChange) {
+void TankerkoenigModule::updatePriceCache(const PsramString& stationId, float e5, float e10, float diesel, time_t lastChange) {
     bool found = false;
     for (auto& entry : _lastPriceCache) {
         if (entry.stationId == stationId) {
@@ -475,7 +646,7 @@ void DataModule::updatePriceCache(const PsramString& stationId, float e5, float 
     savePriceCache();
 }
 
-bool DataModule::getPriceFromCache(const PsramString& stationId, float& e5, float& e10, float& diesel, time_t& lastChange) {
+bool TankerkoenigModule::getPriceFromCache(const PsramString& stationId, float& e5, float& e10, float& diesel, time_t& lastChange) {
     for (const auto& entry : _lastPriceCache) {
         if (entry.stationId == stationId) {
             e5 = entry.e5; e10 = entry.e10; diesel = entry.diesel;
@@ -488,7 +659,7 @@ bool DataModule::getPriceFromCache(const PsramString& stationId, float& e5, floa
     return false;
 }
 
-void DataModule::cleanupOldPriceCacheEntries() {
+void TankerkoenigModule::cleanupOldPriceCacheEntries() {
     size_t original_size = _lastPriceCache.size();
     _lastPriceCache.erase(
         std::remove_if(_lastPriceCache.begin(), _lastPriceCache.end(),
@@ -498,14 +669,7 @@ void DataModule::cleanupOldPriceCacheEntries() {
     if (_lastPriceCache.size() < original_size) { savePriceCache(); }
 }
 
-/**
- * @brief Berechnet den Preistrend mittels linearer Regression.
- * 
- * @param x_values Vektor der Zeitwerte (Tage in der Vergangenheit, z.B. -7, -6, ..., 0).
- * @param y_values Vektor der zugehörigen Preiswerte.
- * @return PriceTrend Gibt TREND_RISING, TREND_FALLING oder TREND_STABLE zurück.
- */
-PriceTrend DataModule::calculateTrend(const PsramVector<float>& x_values, const PsramVector<float>& y_values) {
+PriceTrend TankerkoenigModule::calculateTrend(const PsramVector<float>& x_values, const PsramVector<float>& y_values) {
     int n = x_values.size();
     if (n < 2) {
         return PriceTrend::TREND_STABLE;
@@ -537,7 +701,7 @@ PriceTrend DataModule::calculateTrend(const PsramVector<float>& x_values, const 
     }
 }
 
-void DataModule::updateAndDetermineTrends(const PsramString& stationId) {
+void TankerkoenigModule::updateAndDetermineTrends(const PsramString& stationId) {
     if (!_deviceConfig) return;
 
     StationPriceHistory* history = nullptr;
@@ -593,11 +757,16 @@ void DataModule::updateAndDetermineTrends(const PsramString& stationId) {
     if(!trend_found) { _trendStatusCache.push_back(trends); }
 }
 
+void TankerkoenigModule::updatePriceStatistics(const PsramString& stationId, float currentE5, float currentE10, float currentDiesel) {
+    time_t now_utc; 
+    time(&now_utc);
+    
+    time_t now_local = timeConverter.toLocal(now_utc);
+    struct tm timeinfo;
+    gmtime_r(&now_local, &timeinfo);
 
-void DataModule::updatePriceStatistics(const PsramString& stationId, float currentE5, float currentE10, float currentDiesel) {
-    time_t now_utc; time(&now_utc);
-    struct tm timeinfo; localtime_r(&now_utc, &timeinfo);
-    char date_str[11]; strftime(date_str, sizeof(date_str), "%Y-%m-%d", &timeinfo);
+    char date_str[11]; 
+    strftime(date_str, sizeof(date_str), "%Y-%m-%d", &timeinfo);
     PsramString today_date(date_str);
 
     StationPriceHistory* history = nullptr;
@@ -632,14 +801,20 @@ void DataModule::updatePriceStatistics(const PsramString& stationId, float curre
         if (currentDiesel > 0 && currentDiesel > today_stats->diesel_high) { today_stats->diesel_high = currentDiesel; changed = true; }
     }
 
+    #if TANKERKOENIG_SAVE_HISTORY
     if (changed) { savePriceStatistics(); }
+    #endif
 }
 
-void DataModule::trimPriceStatistics(StationPriceHistory& history) {
+void TankerkoenigModule::trimPriceStatistics(StationPriceHistory& history) {
     if (!_deviceConfig) return;
     time_t now_utc; time(&now_utc);
     time_t cutoff_epoch = now_utc - (_deviceConfig->movingAverageDays * 86400L);
-    struct tm cutoff_tm; localtime_r(&cutoff_epoch, &cutoff_tm);
+    
+    time_t cutoff_local = timeConverter.toLocal(cutoff_epoch);
+    struct tm cutoff_tm; 
+    gmtime_r(&cutoff_local, &cutoff_tm);
+
     char cutoff_date_str_buf[11]; strftime(cutoff_date_str_buf, sizeof(cutoff_date_str_buf), "%Y-%m-%d", &cutoff_tm);
     PsramString cutoff_date_str(cutoff_date_str_buf);
 
@@ -649,12 +824,12 @@ void DataModule::trimPriceStatistics(StationPriceHistory& history) {
         history.dailyStats.end());
 }
 
-void DataModule::trimAllPriceStatistics() {
+void TankerkoenigModule::trimAllPriceStatistics() {
     for (auto& history : price_statistics) { trimPriceStatistics(history); }
     savePriceStatistics();
 }
 
-AveragePrices DataModule::calculateAverages(const PsramString& stationId) {
+AveragePrices TankerkoenigModule::calculateAverages(const PsramString& stationId) {
     AveragePrices averages;
     float sumE5Low = 0.0, sumE5High = 0.0, sumE10Low = 0.0, sumE10High = 0.0, sumDieselLow = 0.0, sumDieselHigh = 0.0;
     int count = 0;
@@ -680,12 +855,16 @@ AveragePrices DataModule::calculateAverages(const PsramString& stationId) {
     return averages;
 }
 
-bool DataModule::migratePriceStatistics(JsonDocument& doc) {
+bool TankerkoenigModule::migratePriceStatistics(JsonDocument& doc) {
     if (!doc["version"].is<int>() || doc["version"] == STATION_PRICE_STATS_VERSION) { return true; }
     return false;
 }
 
-void DataModule::savePriceStatistics() {
+void TankerkoenigModule::savePriceStatistics() {
+    #if !TANKERKOENIG_SAVE_HISTORY
+    return;
+    #endif
+    
     JsonDocument doc;
     doc["version"] = STATION_PRICE_STATS_VERSION;
     JsonObject prices = doc["prices"].to<JsonObject>();
@@ -705,8 +884,11 @@ void DataModule::savePriceStatistics() {
     if (file) { serializeJson(doc, file); file.close(); }
 }
 
-void DataModule::loadPriceStatistics() {
-    if (!LittleFS.exists("/station_price_stats.json")) { return; }
+void TankerkoenigModule::loadPriceStatistics() {
+    if (!LittleFS.exists("/station_price_stats.json")) { 
+        Serial.println("[TankerkoenigModule] Keine gespeicherten Preisstatistiken gefunden");
+        return; 
+    }
     File file = LittleFS.open("/station_price_stats.json", "r");
     if(file) {
         JsonDocument doc;
@@ -725,13 +907,20 @@ void DataModule::loadPriceStatistics() {
                     }
                     price_statistics.push_back(history);
                 }
-            } else { LittleFS.remove("/station_price_stats.json"); }
-        } else { LittleFS.remove("/station_price_stats.json"); }
+                Serial.printf("[TankerkoenigModule] %d Stationen mit Preisstatistiken geladen\n", price_statistics.size());
+            } else { 
+                Serial.println("[TankerkoenigModule] Inkompatible Statistik-Version, Datei wird gelöscht");
+                LittleFS.remove("/station_price_stats.json"); 
+            }
+        } else { 
+            Serial.println("[TankerkoenigModule] Fehler beim Parsen der Statistiken, Datei wird gelöscht");
+            LittleFS.remove("/station_price_stats.json"); 
+        }
         file.close();
     }
 }
 
-void DataModule::loadStationCache() {
+void TankerkoenigModule::loadStationCache() {
     if (!LittleFS.exists("/station_cache.json")) { return; }
     File file = LittleFS.open("/station_cache.json", "r");
     if(file) {
@@ -758,34 +947,11 @@ void DataModule::loadStationCache() {
     }
 }
 
-uint16_t DataModule::rgb565(uint8_t r, uint8_t g, uint8_t b) { 
+uint16_t TankerkoenigModule::rgb565(uint8_t r, uint8_t g, uint8_t b) { 
     return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3); 
 }
-    
-uint16_t DataModule::calcColor(float value, float low, float high) {
-    if (low >= high || value <= 0) return rgb565(255, 255, 0);
 
-    float val = (value < low) ? low : (value > high ? high : value);
-    
-    int diff = (int)roundf(((high - val) / (high - low)) * 100.0f);
-
-    uint8_t rval, gval;
-
-    if (diff <= 50) { 
-        rval = 255;
-        gval = map(diff, 0, 50, 0, 255);
-    } else { 
-        gval = 255;
-        rval = map(diff, 50, 100, 255, 0);
-    }
-    return rgb565(rval, gval, 0);
-}
-
-/**
- * @brief Gibt eine thread-sichere Kopie des Stations-Caches zurück.
- * @return Eine PsramVector<StationData> mit den gecachten Stationsinformationen.
- */
-PsramVector<StationData> DataModule::getStationCache() {
+PsramVector<StationData> TankerkoenigModule::getStationCache() {
     PsramVector<StationData> cache_copy;
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
         cache_copy = station_cache;
@@ -794,12 +960,7 @@ PsramVector<StationData> DataModule::getStationCache() {
     return cache_copy;
 }
 
-/**
- * @brief Ruft die Preis-Historie für eine bestimmte Tankstelle ab.
- * @param stationId Die ID der Tankstelle.
- * @return Eine Kopie der StationPriceHistory für die angegebene ID. Wenn nicht gefunden, ist das Objekt leer.
- */
-StationPriceHistory DataModule::getStationPriceHistory(const PsramString& stationId) {
+StationPriceHistory TankerkoenigModule::getStationPriceHistory(const PsramString& stationId) {
     StationPriceHistory history_copy;
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
         for (const auto& history : price_statistics) {

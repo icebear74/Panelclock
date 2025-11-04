@@ -25,7 +25,9 @@ void loadDeviceConfig() {
     if (LittleFS.exists("/config.json")) {
         File configFile = LittleFS.open("/config.json", "r");
         if (configFile) {
-            JsonDocument doc; // KORREKTUR
+            // Use a sufficiently sized StaticJsonDocument on stack for reading small config
+            // (On memory constrained systems you might want to allocate dynamically)
+            StaticJsonDocument<4096> doc;
             DeserializationError error = deserializeJson(doc, configFile);
             if (!error) {
                 deviceConfig->hostname = doc["hostname"] | "Panel-Clock";
@@ -44,6 +46,12 @@ void loadDeviceConfig() {
                 deviceConfig->calendarTextColor = doc["calendarTextColor"] | "#FFFFFF";
                 deviceConfig->calendarDisplaySec = doc["calendarDisplaySec"] | 30;
                 deviceConfig->stationDisplaySec = doc["stationDisplaySec"] | 15;
+
+                // Neue Kalender-Urgent-Parameter
+                deviceConfig->calendarFastBlinkHours = doc["calendarFastBlinkHours"] | 2;
+                deviceConfig->calendarUrgentThresholdHours = doc["calendarUrgentThresholdHours"] | 1;
+                deviceConfig->calendarUrgentDurationSec = doc["calendarUrgentDurationSec"] | 20;
+                deviceConfig->calendarUrgentRepeatMin = doc["calendarUrgentRepeatMin"] | 5;
                 
                 deviceConfig->dartsOomEnabled = doc["dartsOomEnabled"] | false;
                 deviceConfig->dartsProTourEnabled = doc["dartsProTourEnabled"] | false;
@@ -70,6 +78,9 @@ void loadDeviceConfig() {
                 deviceConfig->userLatitude = doc["userLatitude"] | 51.581619;
                 deviceConfig->userLongitude = doc["userLongitude"] | 6.729940;
 
+                deviceConfig->movingAverageDays = doc["movingAverageDays"] | 30;
+                deviceConfig->trendAnalysisDays = doc["trendAnalysisDays"] | 7;
+
                 Serial.println("Geräte-Konfiguration geladen.");
             } else {
                 Serial.println("Fehler beim Parsen der Konfigurationsdatei.");
@@ -83,7 +94,7 @@ void loadDeviceConfig() {
 
 void saveDeviceConfig() {
     if (!deviceConfig) return;
-    JsonDocument doc; // KORREKTUR
+    StaticJsonDocument<4096> doc;
     doc["hostname"] = deviceConfig->hostname.c_str();
     doc["ssid"] = deviceConfig->ssid.c_str();
     doc["password"] = deviceConfig->password.c_str();
@@ -100,6 +111,12 @@ void saveDeviceConfig() {
     doc["calendarTextColor"] = deviceConfig->calendarTextColor.c_str();
     doc["calendarDisplaySec"] = deviceConfig->calendarDisplaySec;
     doc["stationDisplaySec"] = deviceConfig->stationDisplaySec;
+
+    // Neue Kalender-Urgent-Parameter
+    doc["calendarFastBlinkHours"] = deviceConfig->calendarFastBlinkHours;
+    doc["calendarUrgentThresholdHours"] = deviceConfig->calendarUrgentThresholdHours;
+    doc["calendarUrgentDurationSec"] = deviceConfig->calendarUrgentDurationSec;
+    doc["calendarUrgentRepeatMin"] = deviceConfig->calendarUrgentRepeatMin;
 
     doc["dartsOomEnabled"] = deviceConfig->dartsOomEnabled;
     doc["dartsProTourEnabled"] = deviceConfig->dartsProTourEnabled;
@@ -125,6 +142,9 @@ void saveDeviceConfig() {
 
     doc["userLatitude"] = deviceConfig->userLatitude;
     doc["userLongitude"] = deviceConfig->userLongitude;
+
+    doc["movingAverageDays"] = deviceConfig->movingAverageDays;
+    doc["trendAnalysisDays"] = deviceConfig->trendAnalysisDays;
 
     File configFile = LittleFS.open("/config.json", "w");
     if (configFile) {

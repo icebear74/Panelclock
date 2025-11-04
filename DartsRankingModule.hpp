@@ -50,16 +50,21 @@ public:
     ~DartsRankingModule();
 
     void onUpdate(std::function<void(DartsRankingType)> callback);
-    void applyConfig(bool oomEnabled, bool proTourEnabled, uint32_t fetchIntervalMinutes, unsigned long displaySec, const PsramString& trackedPlayers);
+    void setConfig(bool oomEnabled, bool proTourEnabled, uint32_t fetchIntervalMinutes, unsigned long displaySec, const PsramString& trackedPlayers);
     void queueData();
     void processData();
 
-    // --- Implementierung der Interface-Methoden ---
+    // DrawableModule Interface
+    const char* getModuleName() const override { return "DartsRankingModule"; }
+    const char* getModuleDisplayName() const override { return "Darts Rankings"; }
     void draw() override;
     void tick() override;
+    void logicTick() override;
     unsigned long getDisplayDuration() override;
     bool isEnabled() override;
     void resetPaging() override;
+    int getCurrentPage() const override { return currentPage; }
+    int getTotalPages() const override { return totalPages; }
 
 private:
     U8G2_FOR_ADAFRUIT_GFX& u8g2;
@@ -80,7 +85,9 @@ private:
     int currentPage = 0;
     int totalPages = 1;
     unsigned long _pageDisplayDuration = 5000;
-    unsigned long lastPageSwitchTime = 0;
+    uint32_t _logicTicksSincePageSwitch = 0;
+    uint32_t _currentTicksPerPage = 50; // 50 * 100ms = 5 Sekunden
+    uint32_t _logicTicksSinceRankingSwitch = 0;
 
     struct ScrollState { int offset = 0; int maxScroll = 0; };
     std::vector<ScrollState, PsramAllocator<ScrollState>> scrollPos;
@@ -102,10 +109,11 @@ private:
     
     bool _oomEnabled = false;
     bool _proTourEnabled = false;
-    DartsRankingType _currentInternalMode = DartsRankingType::ORDER_OF_MERIT; // Interner Zustand
+    DartsRankingType _currentInternalMode = DartsRankingType::ORDER_OF_MERIT;
     
     // Private helper methods
     unsigned long getInternalDisplayDuration(DartsRankingType type);
+    uint32_t getInternalTickDuration(DartsRankingType type);
     void setTrackedPlayers(const PsramString& playerNames);
     uint16_t dimColor(uint16_t color);
     void clearAllData();

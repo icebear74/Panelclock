@@ -74,12 +74,6 @@ void FritzboxModule::draw() {
     xSemaphoreGive(dataMutex);
 }
 
-// NEU: Implementierung der fehlenden Methoden
-unsigned long FritzboxModule::getDisplayDuration() {
-    // Dieses Modul ist nicht Teil der normalen Rotation, daher ist die Dauer irrelevant.
-    return 0;
-}
-
 bool FritzboxModule::isEnabled() {
     bool isEnabled = false;
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
@@ -88,11 +82,6 @@ bool FritzboxModule::isEnabled() {
     }
     return isEnabled;
 }
-
-void FritzboxModule::resetPaging() {
-    // Dieses Modul hat keine Seiten, daher ist hier nichts zu tun.
-}
-
 
 void FritzboxModule::taskRunner(void *pvParameters) {
     static_cast<FritzboxModule*>(pvParameters)->taskLoop();
@@ -116,10 +105,10 @@ void FritzboxModule::taskLoop() {
 
         if (!client.connected()) {
             if (millis() - lastConnectionAttempt > 10000) { 
-                Serial.printf("[Fritzbox] Verbinde mit Call Monitor auf %s...\n", currentFritzIp.c_str());
+                //Serial.printf("[Fritzbox] Verbinde mit Call Monitor auf %s...\n", currentFritzIp.c_str());
                 lastConnectionAttempt = millis();
                 if (client.connect(currentFritzIp.c_str(), FRITZ_PORT)) {
-                    Serial.println("[Fritzbox] Verbunden!");
+                   // Serial.println("[Fritzbox] Verbunden!");
                 } else {
                     Serial.println("[Fritzbox] Verbindung fehlgeschlagen.");
                 }
@@ -151,11 +140,22 @@ void FritzboxModule::parseCallMonitorLine(const String& line) {
             callerLocation.clear();
             queryCallerInfo(callerNumber);
             callActive = true;
-            requestPriority();
+            
+            // NEU: Nutze das neue Priority-System mit fester UID und Duration
+            bool success = requestPriorityEx(Priority::High, FRITZBOX_CALL_UID, FRITZBOX_MAX_DURATION_MS);
+            if (success) {
+                Serial.println("[Fritzbox] Anruf-Interrupt erfolgreich angefordert (max 15 Min)");
+            } else {
+                Serial.println("[Fritzbox] WARNUNG: Anruf-Interrupt wurde abgelehnt!");
+            }
+            
         } else if (type == "DISCONNECT") {
             if (callActive) {
                 callActive = false;
-                releasePriority();
+                
+                // NEU: Release mit UID
+                releasePriorityEx(FRITZBOX_CALL_UID);
+                Serial.println("[Fritzbox] Anruf beendet, Interrupt freigegeben");
             }
         }
         xSemaphoreGive(dataMutex);
@@ -202,7 +202,10 @@ void FritzboxModule::parseCallerInfo(const char* buffer, size_t size) {
                     callerLocation = result["location"].as<const char*>();
                     Serial.printf("[Fritzbox] Ort gefunden: %s\n", callerLocation.c_str());
                 }
-                requestPriority(); 
+                
+                // Kein erneuter Request nötig - der Request wurde bereits bei RING gestellt
+                // Wir müssen hier nur neu zeichnen lassen (passiert automatisch im Render-Loop)
+                
                 xSemaphoreGive(dataMutex);
             }
         }

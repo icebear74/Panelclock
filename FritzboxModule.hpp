@@ -11,6 +11,7 @@ class WebClientModule;
 
 #define FRITZ_PORT 1012
 #define FRITZBOX_MAX_DURATION_MS 900000 // 15 Minuten
+#define FRITZBOX_CALL_UID 1 // Feste UID für Anruf-Interrupts
 
 class FritzboxModule : public DrawableModule {
 public:
@@ -22,13 +23,14 @@ public:
     
     // --- Implementierung der Interface-Methoden ---
     void draw() override;
-    Priority getPriority() const override { return Priority::Highest; }
-    unsigned long getMaxInterruptDuration() const override { return FRITZBOX_MAX_DURATION_MS; }
-
-    // NEU: Implementierung der fehlenden puren virtuellen Funktionen
-    unsigned long getDisplayDuration() override;
+    const char* getModuleName() const override { return "FritzboxModule"; }
+    const char* getModuleDisplayName() const override { return "Fritzbox"; }
+    
+    // Modul-Eigenschaften
+    unsigned long getDisplayDuration() override { return 10000; } // Fallback, wird nicht genutzt
     bool isEnabled() override;
-    void resetPaging() override;
+    void resetPaging() override {} // Keine Seiten
+    bool canBeInPlaylist() const override { return false; } // Nur Interrupts
 
 private:
     U8G2_FOR_ADAFRUIT_GFX &u8g2;

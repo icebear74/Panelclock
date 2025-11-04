@@ -34,7 +34,24 @@ void CalendarModule::setConfig(const PsramString& url, unsigned long fetchMinute
     this->textColor = hexColorTo565(textColorHex);
 
     if (_isEnabled) {
-        webClient->registerResource(String(icsUrl.c_str()), fetchIntervalMinutes, root_ca_pem);
+        webClient->registerResource(String(icsUrl.c_str()), fetchIntervalMinutes, nullptr);
+    }
+}
+
+void CalendarModule::setUrgentParams(int fastBlinkHours, int urgentThresholdHours, int urgentDurationSec, int urgentRepeatMin) {
+    // Schütze ggf. concurrent access
+    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        _fastBlinkHours = (fastBlinkHours >= 0) ? fastBlinkHours : _fastBlinkHours;
+        _urgentThresholdHours = (urgentThresholdHours >= 0) ? urgentThresholdHours : _urgentThresholdHours;
+        _urgentDurationMs = (urgentDurationSec > 0) ? (unsigned long)urgentDurationSec * 1000UL : _urgentDurationMs;
+        _urgentRepeatMs = (urgentRepeatMin > 0) ? (unsigned long)urgentRepeatMin * 60UL * 1000UL : _urgentRepeatMs;
+        xSemaphoreGive(dataMutex);
+    } else {
+        // Wenn Mutex nicht erhältlich, setze ohne Schutz (fallback)
+        _fastBlinkHours = (fastBlinkHours >= 0) ? fastBlinkHours : _fastBlinkHours;
+        _urgentThresholdHours = (urgentThresholdHours >= 0) ? urgentThresholdHours : _urgentThresholdHours;
+        _urgentDurationMs = (urgentDurationSec > 0) ? (unsigned long)urgentDurationSec * 1000UL : _urgentDurationMs;
+        _urgentRepeatMs = (urgentRepeatMin > 0) ? (unsigned long)urgentRepeatMin * 60UL * 1000UL : _urgentRepeatMs;
     }
 }
 
@@ -90,6 +107,25 @@ void CalendarModule::tick() {
     }
 }
 
+void CalendarModule::logicTick() {
+    // Wird alle 100ms aufgerufen
+    _logicTicksSinceStart++;
+    
+    // Wenn Urgent-View aktiv ist, KEINE normale Duration-Prüfung!
+    if (_isUrgentViewActive) {
+        return;
+    }
+    
+    // Berechne wie viele Ticks für die Display-Duration nötig sind
+    // _displayDuration ist in ms, logicTick wird alle 100ms aufgerufen
+    uint32_t ticksNeeded = _displayDuration / 100;
+    
+    if (_logicTicksSinceStart >= ticksNeeded) {
+        _isFinished = true;
+        Serial.printf("[Calendar] Display-Duration erreicht (%lu ms) -> Modul beendet sich selbst\n", _displayDuration);
+    }
+}
+
 void CalendarModule::periodicTick() {
     if (!_isEnabled) return;
     
@@ -103,42 +139,64 @@ void CalendarModule::periodicTick() {
     time(&now_utc);
 
     bool isAnyEventUrgent = false;
+    time_t nearestUrgentEventStart = 0;
+    long urgentThresholdMin = (long)_urgentThresholdHours * 60L;
+    
     for (const auto& ev : events) {
         if (ev.isAllDay) continue;
         if (ev.startEpoch > now_utc) {
-            if ((ev.startEpoch - now_utc) < 3600) { // Weniger als 60 Minuten
+            long minutesUntilStart = (ev.startEpoch - now_utc) / 60;
+            if (minutesUntilStart < urgentThresholdMin) {
                 isAnyEventUrgent = true;
+                nearestUrgentEventStart = ev.startEpoch;
             }
             break; 
         }
     }
 
-    if (isAnyEventUrgent && !_isUrgentViewActive && (now - _lastUrgentDisplayTime > URGENT_EVENT_INTERVAL)) {
-        _isUrgentViewActive = true;
-        _priorityRequested = true;
-        _urgentViewStartTime = now;
-        _lastUrgentDisplayTime = now;
-        requestPriority();
-        Serial.println("[Calendar] Dringender Termin Intervall erreicht. Fordere Priorität an.");
+    if (isAnyEventUrgent) {
+        // Beim Erststart (_lastUrgentDisplayTime == 0) sofort zeigen!
+        unsigned long minInterval = (_lastUrgentDisplayTime == 0) ? 0 : _urgentRepeatMs;
+        
+        if (!_isUrgentViewActive && (now - _lastUrgentDisplayTime > minInterval)) {
+            _isUrgentViewActive = true;
+            _urgentViewStartTime = now;
+            
+            _currentUrgentUID = URGENT_EVENT_UID_BASE + (nearestUrgentEventStart % 1000);
+            
+            unsigned long safeDuration = _urgentDurationMs + 10000UL;
+            bool success = requestPriorityEx(Priority::Medium, _currentUrgentUID, safeDuration);
+            if (success) {
+                Serial.printf("[Calendar] Dringender Termin Interrupt angefordert (UID=%lu, %lums Dauer, %lums Notnagel)\n", 
+                             _currentUrgentUID, _urgentDurationMs, safeDuration);
+            } else {
+                Serial.println("[Calendar] WARNUNG: Interrupt wurde abgelehnt!");
+                _isUrgentViewActive = false;
+            }
+        }
+        else if (_isUrgentViewActive && (now - _urgentViewStartTime > _urgentDurationMs)) {
+            // Selbst-Beendigung nach konfigurierter Urgent-Dauer
+            releasePriorityEx(_currentUrgentUID);
+            _isUrgentViewActive = false;
+            _lastUrgentDisplayTime = now;
+            Serial.println("[Calendar] Interrupt-Zyklus selbst beendet, nächster in konfigurierter Pause");
+        }
     } 
-    else if (_isUrgentViewActive && (now - _urgentViewStartTime > URGENT_EVENT_DURATION)) {
+    else if (_isUrgentViewActive) {
+        // Event ist nicht mehr dringend (über Schwelle) → vorzeitig beenden
+        releasePriorityEx(_currentUrgentUID);
         _isUrgentViewActive = false;
-        _priorityRequested = false;
-        releasePriority();
-        Serial.println("[Calendar] Anzeigedauer für dringenden Termin abgelaufen. Gebe Priorität frei.");
-    }
-    else if (!isAnyEventUrgent && _isUrgentViewActive) {
-        _isUrgentViewActive = false;
-        _priorityRequested = false;
-        releasePriority();
-        Serial.println("[Calendar] Kein dringender Termin mehr vorhanden. Gebe Priorität frei.");
+        Serial.println("[Calendar] Kein dringender Termin mehr, Interrupt freigegeben");
     }
 
     xSemaphoreGive(dataMutex);
 }
 
 void CalendarModule::draw() {
-    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) != pdTRUE) return;
+    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+        Serial.println("[Calendar::draw] FEHLER: Konnte Mutex nicht erhalten!");
+        return;
+    }
 
     if (_isUrgentViewActive) {
         drawUrgentView();
@@ -195,7 +253,9 @@ void CalendarModule::draw() {
             long minutesUntilStart = (ev.startEpoch > now_utc) ? (ev.startEpoch - now_utc) / 60 : -1;
 
             if (isToday) {
-                float pulse_period_ms = (!ev.isAllDay && minutesUntilStart >= 0 && minutesUntilStart < 120) ? 1000.0f : 2000.0f;
+                // Verwende konfigurierbaren fastBlink-Wert (in Stunden)
+                long fastBlinkMinutes = (long)_fastBlinkHours * 60L;
+                float pulse_period_ms = (!ev.isAllDay && minutesUntilStart >= 0 && minutesUntilStart < fastBlinkMinutes) ? 1000.0f : 2000.0f;
                 const float min_brightness = 0.25f;
                 float cos_input = (millis() % (int)pulse_period_ms) / pulse_period_ms * 2.0f * PI;
                 float pulseFactor = min_brightness + (1.0f - min_brightness) * (cos(cos_input) + 1.0f) / 2.0f;
@@ -253,6 +313,7 @@ void CalendarModule::draw() {
             y += fontH;
         }
     }
+    
     xSemaphoreGive(dataMutex);
 }
 
@@ -264,11 +325,12 @@ void CalendarModule::drawUrgentView() {
     time(&now_utc);
 
     PsramCalendarEventVector urgentEvents;
+    long urgentThresholdMin = (long)_urgentThresholdHours * 60L;
     for (const auto& ev : events) {
         if (ev.isAllDay) continue;
         if (ev.startEpoch > now_utc) {
             long minutesUntilStart = (ev.startEpoch - now_utc) / 60;
-            if (minutesUntilStart < 60) {
+            if (minutesUntilStart < urgentThresholdMin) {
                 urgentEvents.push_back(ev);
             }
         }
@@ -277,57 +339,67 @@ void CalendarModule::drawUrgentView() {
     if (urgentEvents.empty()) {
         u8g2.setFont(u8g2_font_6x13_tf);
         u8g2.setForegroundColor(textColor);
-        u8g2.setCursor(2, 20); u8g2.print("Kein dringender Termin");
-        return;
-    }
+        u8g2.setCursor(2, 20); 
+        u8g2.print("Kein dringender Termin");
+        // KEIN RETURN - Funktion läuft normal zu Ende damit Mutex freigegeben wird!
+    } else {
+        int y = 12; 
+        for (size_t i = 0; i < urgentEvents.size() && i < 2; ++i) {
+            const auto& ev = urgentEvents[i];
+            
+            u8g2.setFont(u8g2_font_7x14_tf);
+            u8g2.setForegroundColor(dateColor);
 
-    // Start-Y-Position für den ersten Block
-    int y = 12; 
-    for (size_t i = 0; i < urgentEvents.size() && i < 2; ++i) {
-        const auto& ev = urgentEvents[i];
-        
-        // --- Datum/Uhrzeit-Zeile ---
-        u8g2.setFont(u8g2_font_7x14_tf);
-        u8g2.setForegroundColor(dateColor);
+            struct tm tStart, tEnd;
+            time_t localStartEpoch = timeConverter.toLocal(ev.startEpoch);
+            time_t localEndEpoch = timeConverter.toLocal(ev.startEpoch + ev.duration);
+            localtime_r(&localStartEpoch, &tStart);
+            localtime_r(&localEndEpoch, &tEnd);
 
-        struct tm tStart, tEnd;
-        time_t localStartEpoch = timeConverter.toLocal(ev.startEpoch);
-        time_t localEndEpoch = timeConverter.toLocal(ev.startEpoch + ev.duration);
-        localtime_r(&localStartEpoch, &tStart);
-        localtime_r(&localEndEpoch, &tEnd);
+            char dateTimeStr[40];
+            char endTimeStr[6];
+            strftime(endTimeStr, sizeof(endTimeStr), "%H:%M", &tEnd);
 
-        char dateTimeStr[40];
-        char endTimeStr[6];
-        strftime(endTimeStr, sizeof(endTimeStr), "%H:%M", &tEnd);
+            if (tStart.tm_year == tEnd.tm_year && tStart.tm_yday == tEnd.tm_yday) {
+                 strftime(dateTimeStr, sizeof(dateTimeStr), "%d.%m. %H:%M - ", &tStart);
+            } else {
+                 strftime(dateTimeStr, sizeof(dateTimeStr), "%d.%m. %H:%M - %d.%m. ", &tStart);
+            }
+            
+            PsramString finalDateTimeStr = dateTimeStr;
+            finalDateTimeStr += endTimeStr;
+            
+            int width = u8g2.getUTF8Width(finalDateTimeStr.c_str());
+            u8g2.setCursor((canvas.width() - width) / 2, y);
+            u8g2.print(finalDateTimeStr.c_str());
+            y += 14;
 
-        if (tStart.tm_year == tEnd.tm_year && tStart.tm_yday == tEnd.tm_yday) {
-             strftime(dateTimeStr, sizeof(dateTimeStr), "%d.%m. %H:%M - ", &tStart);
-        } else {
-             strftime(dateTimeStr, sizeof(dateTimeStr), "%d.%m. %H:%M - %d.%m. ", &tStart);
+            y += 3;
+
+            u8g2.setFont(u8g2_font_logisoso16_tf);
+            u8g2.setForegroundColor(textColor);
+            
+            const char* summaryText = ev.summary.c_str();
+            width = u8g2.getUTF8Width(summaryText);
+            
+            if (width > canvas.width() - 4) {
+                u8g2.setFont(u8g2_font_helvB12_tf);
+                width = u8g2.getUTF8Width(summaryText);
+            }
+            
+            u8g2.setCursor((canvas.width() - width) / 2, y);
+            u8g2.print(summaryText);
+            y += 22;
         }
-        
-        PsramString finalDateTimeStr = dateTimeStr;
-        finalDateTimeStr += endTimeStr;
-        
-        int width = u8g2.getUTF8Width(finalDateTimeStr.c_str());
-        u8g2.setCursor((canvas.width() - width) / 2, y);
-        u8g2.print(finalDateTimeStr.c_str());
-        y += 12; // Abstand für die nächste Zeile
-
-        // --- Termintext-Zeile ---
-        // KORREKTUR: Füge hier den zusätzlichen Abstand von 5 Pixeln hinzu
-        y += 5;
-
-        u8g2.setFont(u8g2_font_logisoso16_tf);
-        u8g2.setForegroundColor(textColor);
-        width = u8g2.getUTF8Width(ev.summary.c_str());
-        u8g2.setCursor((canvas.width() - width) / 2, y);
-        u8g2.print(ev.summary.c_str());
-        y += 20; // Abstand für den nächsten Terminblock
     }
 }
 
 unsigned long CalendarModule::getDisplayDuration() {
+    // Wenn Urgent-View aktiv, nutze konfigurierbare Urgent-Duration
+    if (_isUrgentViewActive) {
+        return _urgentDurationMs;
+    }
+    // Für normale Ansicht: Nutze konfigurierte Duration
     return _displayDuration;
 }
 
@@ -336,7 +408,8 @@ bool CalendarModule::isEnabled() {
 }
 
 void CalendarModule::resetPaging() {
-    // Leer
+    _logicTicksSinceStart = 0;
+    _isFinished = false;
 }
 
 uint32_t CalendarModule::getScrollStepInterval() const { 

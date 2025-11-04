@@ -10,7 +10,7 @@
 #include "WebClientModule.hpp"
 #include "MwaveSensorModule.hpp"
 #include "GeneralTimeConverter.hpp"
-#include "DataModule.hpp"
+#include "TankerkoenigModule.hpp" // GEÄNDERT: DataModule -> TankerkoenigModule
 
 // Globale Variablen aus der .ino-Datei bekannt machen
 extern bool portalRunning; 
@@ -21,7 +21,7 @@ extern HardwareConfig* hardwareConfig;
 extern WebClientModule* webClient;
 extern MwaveSensorModule* mwaveSensorModule;
 extern GeneralTimeConverter* timeConverter;
-extern DataModule* dataModule;
+extern TankerkoenigModule* tankerkoenigModule; // GEÄNDERT: dataModule -> tankerkoenigModule
 
 // Globale Funktionen aus der .ino-Datei bekannt machen
 void saveDeviceConfig();

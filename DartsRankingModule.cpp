@@ -1,7 +1,6 @@
 #include "DartsRankingModule.hpp"
 #include "WebClientModule.hpp"
 #include "webconfig.hpp"
-#include "certs.hpp"
 #include <Arduino.h>
 #include <algorithm>
 #include <esp_heap_caps.h>
@@ -76,14 +75,18 @@ void DartsRankingModule::onUpdate(std::function<void(DartsRankingType)> callback
     updateCallback = callback; 
 }
 
-void DartsRankingModule::applyConfig(bool oomEnabled, bool proTourEnabled, uint32_t fetchIntervalMinutes, unsigned long displaySec, const PsramString& trackedPlayers) {
+void DartsRankingModule::setConfig(bool oomEnabled, bool proTourEnabled, uint32_t fetchIntervalMinutes, unsigned long displaySec, const PsramString& trackedPlayers) {
     if (!webClient) return;
     this->_oomEnabled = oomEnabled;
     this->_proTourEnabled = proTourEnabled;
     this->_pageDisplayDuration = displaySec > 0 ? displaySec * 1000UL : 5000;
+    
+    // Berechne Ticks pro Seite für logicTick (100ms pro Tick)
+    _currentTicksPerPage = _pageDisplayDuration / 100;
+    if (_currentTicksPerPage == 0) _currentTicksPerPage = 1;
 
-    if (oomEnabled) webClient->registerResource("https://www.dartsrankings.com/", fetchIntervalMinutes, root_ca_pem);
-    if (proTourEnabled) webClient->registerResource("https://www.dartsrankings.com/protour", fetchIntervalMinutes, root_ca_pem);
+    if (oomEnabled) webClient->registerResource("https://www.dartsrankings.com/", fetchIntervalMinutes, nullptr);
+    if (proTourEnabled) webClient->registerResource("https://www.dartsrankings.com/protour", fetchIntervalMinutes, nullptr);
     
     setTrackedPlayers(trackedPlayers);
 }
@@ -103,51 +106,82 @@ unsigned long DartsRankingModule::getDisplayDuration() {
 
 void DartsRankingModule::resetPaging() {
     currentPage = 0;
-    _currentInternalMode = DartsRankingType::ORDER_OF_MERIT; // Immer mit OOM starten
-    lastPageSwitchTime = millis();
+    _currentInternalMode = DartsRankingType::ORDER_OF_MERIT;
+    _logicTicksSincePageSwitch = 0;
+    _logicTicksSinceRankingSwitch = 0;
+    _isFinished = false;  // ← NEU!
     resetScroll();
 }
 
 void DartsRankingModule::tick() {
+    // Nur für Scroll-Animation
     unsigned long now = millis();
-    bool needsRedraw = false;
-
-    // 1. Scroll-Animation ticken
     if (now - lastScrollStepTime > scrollStepInterval) {
         tickScroll();
         lastScrollStepTime = now;
-        needsRedraw = true;
+        if (updateCallback) {
+            updateCallback(_currentInternalMode);
+        }
     }
+}
 
-    // 2. Seiten-Wechsel innerhalb eines Rankings (OOM oder ProTour)
-    if (_pageDisplayDuration > 0 && now - lastPageSwitchTime > _pageDisplayDuration) {
+void DartsRankingModule::logicTick() {
+    // Wird alle 100ms aufgerufen
+    _logicTicksSincePageSwitch++;
+    _logicTicksSinceRankingSwitch++;
+    
+    bool needsRedraw = false;
+
+    // 1. Seiten-Wechsel innerhalb eines Rankings (OOM oder ProTour)
+    if (_logicTicksSincePageSwitch >= _currentTicksPerPage) {
         if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
             if (totalPages > 1) {
-                currentPage = (currentPage + 1) % totalPages;
-                resetScroll();
-                needsRedraw = true;
+                currentPage++;
+                if (currentPage >= totalPages) {
+                    currentPage = 0;
+                    // Alle Seiten durch -> prüfe ob Ranking-Wechsel nötig
+                } else {
+                    resetScroll();
+                    needsRedraw = true;
+                    _logicTicksSincePageSwitch = 0;
+                    xSemaphoreGive(dataMutex);
+                    if (needsRedraw && updateCallback) {
+                        updateCallback(_currentInternalMode);
+                    }
+                    return;
+                }
             }
             xSemaphoreGive(dataMutex);
         }
-        lastPageSwitchTime = now;
+        _logicTicksSincePageSwitch = 0;
     }
 
-    // 3. Wechsel zwischen den Rankings (OOM <-> ProTour)
-    unsigned long currentModeDuration = getInternalDisplayDuration(_currentInternalMode);
-    if (currentModeDuration > 0 && now - lastPageSwitchTime >= currentModeDuration) {
+    // 2. Wechsel zwischen den Rankings (OOM <-> ProTour)
+    uint32_t currentModeTicks = getInternalTickDuration(_currentInternalMode);
+    if (currentModeTicks > 0 && _logicTicksSinceRankingSwitch >= currentModeTicks) {
         DartsRankingType nextMode = _currentInternalMode;
         if (_currentInternalMode == DartsRankingType::ORDER_OF_MERIT && _proTourEnabled) {
             nextMode = DartsRankingType::PRO_TOUR;
         } else if (_currentInternalMode == DartsRankingType::PRO_TOUR && _oomEnabled) {
             nextMode = DartsRankingType::ORDER_OF_MERIT;
+        } else {
+            // Nur ein Ranking aktiviert -> wir sind fertig
+            _isFinished = true;
+            Serial.printf("[Darts] Alle Seiten des einzigen Rankings gezeigt -> Modul beendet sich selbst\n");
+            return;
         }
 
         if (nextMode != _currentInternalMode) {
             _currentInternalMode = nextMode;
             currentPage = 0;
-            lastPageSwitchTime = now;
+            _logicTicksSincePageSwitch = 0;
+            _logicTicksSinceRankingSwitch = 0;
             resetScroll();
             needsRedraw = true;
+        } else {
+            // Beide Rankings durch -> fertig
+            _isFinished = true;
+            Serial.printf("[Darts] Beide Rankings komplett gezeigt -> Modul beendet sich selbst\n");
         }
     }
 
@@ -268,6 +302,19 @@ unsigned long DartsRankingModule::getInternalDisplayDuration(DartsRankingType ty
     
     xSemaphoreGive(dataMutex);
     return _pageDisplayDuration * num_pages;
+}
+
+uint32_t DartsRankingModule::getInternalTickDuration(DartsRankingType type) {
+    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) != pdTRUE) return _currentTicksPerPage;
+    
+    auto& players_list = (type == DartsRankingType::ORDER_OF_MERIT) ? oom_players : protour_players;
+    int num_pages = 1;
+    if (players_list.size() > 0) {
+        num_pages = (players_list.size() + PLAYERS_PER_PAGE - 1) / PLAYERS_PER_PAGE;
+    }
+    
+    xSemaphoreGive(dataMutex);
+    return _currentTicksPerPage * num_pages;
 }
 
 void DartsRankingModule::queueData() {

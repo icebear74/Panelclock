@@ -4,7 +4,7 @@
 #include <Arduino.h>
 #include "PanelManager.hpp"
 #include "ClockModule.hpp"
-#include "DataModule.hpp"
+#include "TankerkoenigModule.hpp" // GEÄNDERT: DataModule -> TankerkoenigModule
 #include "CalendarModule.hpp"
 #include "DartsRankingModule.hpp"
 #include "FritzboxModule.hpp"
@@ -12,7 +12,7 @@
 // Forward-Deklarationen, um zirkuläre Abhängigkeiten in Headern zu vermeiden
 class PanelManager;
 class ClockModule;
-class DataModule;
+class TankerkoenigModule; // GEÄNDERT: DataModule -> TankerkoenigModule
 class CalendarModule;
 class DartsRankingModule;
 class FritzboxModule;
@@ -83,7 +83,7 @@ private:
     /// @brief Zeiger auf das Uhren-Modul.
     ClockModule* _clockMod = nullptr;
     /// @brief Zeiger auf das Tankstellen-Datenmodul.
-    DataModule* _dataMod = nullptr;
+    TankerkoenigModule* _tankerkoenigMod = nullptr; // GEÄNDERT: DataModule* _dataMod -> TankerkoenigModule* _tankerkoenigMod
     /// @brief Zeiger auf das Kalender-Modul.
     CalendarModule* _calendarMod = nullptr;
     /// @brief Zeiger auf das Darts-Ranking-Modul.

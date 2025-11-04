@@ -14,14 +14,14 @@
 #include "GeneralTimeConverter.hpp"
 #include "WebClientModule.hpp"
 #include "PsramUtils.hpp"
-#include "certs.hpp"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "DrawableModule.hpp"
 
-// Konstanten für die intermittierende Anzeige
-#define URGENT_EVENT_INTERVAL (2 * 60 * 1000UL) // 2 Minuten
-#define URGENT_EVENT_DURATION (20 * 1000UL)     // 20 Sekunden
+// Konstanten für dringende Termine (Fallbacks)
+#define URGENT_EVENT_INTERVAL (2 * 60 * 1000UL) // 2 Minuten zwischen Anzeigen (Fallback)
+#define URGENT_EVENT_DURATION (20 * 1000UL)     // 20 Sekunden Anzeigedauer (Fallback)
+#define URGENT_EVENT_UID_BASE 1000              // Basis-UID für dringende Termine
 
 struct CalendarEvent {
   PsramString summary;
@@ -49,15 +49,21 @@ public:
 
     void onUpdate(std::function<void()> callback);
     void setConfig(const PsramString& url, unsigned long fetchMinutes, unsigned long displaySec, unsigned long scrollMs, const PsramString& dateColor, const PsramString& textColor);
+
+    // Neue Funktion, um Urgent-View-Parameter zu setzen (von Anwendung / Webinterface)
+    void setUrgentParams(int fastBlinkHours, int urgentThresholdHours, int urgentDurationSec, int urgentRepeatMin);
     
     void queueData();
     void processData();
     uint32_t getScrollStepInterval() const;
 
-    // --- Implementierung der Interface-Methoden ---
+    // DrawableModule Interface
+    const char* getModuleName() const override { return "CalendarModule"; }
+    const char* getModuleDisplayName() const override { return "Kalender"; }
     void draw() override;
     void tick() override;
     void periodicTick() override;
+    void logicTick() override;
     unsigned long getDisplayDuration() override;
     bool isEnabled() override;
     void resetPaging() override;
@@ -93,12 +99,19 @@ private:
     bool _isEnabled = false;
     unsigned long _displayDuration = 30000;
 
+    // Urgent Event Handling
     bool _isUrgentViewActive = false;
-    bool _priorityRequested = false;
-
-    unsigned long _lastUrgentDisplayTime = 0;
+    uint32_t _currentUrgentUID = 0;
+    uint32_t _logicTicksSinceStart = 0;
     unsigned long _urgentViewStartTime = 0;
+    unsigned long _lastUrgentDisplayTime = 0;
     unsigned long _lastPeriodicCheck = 0;
+
+    // Konfigurierbare Urgent-Parameter (Defaults stimmen mit Makros überein)
+    int _fastBlinkHours = 2; // wenn innerhalb dieses Zeitraums vor Termin -> schnelleres pulsen
+    int _urgentThresholdHours = 1; // ab wieviel Stunden vor Termin wird UrgentView gezeigt
+    unsigned long _urgentDurationMs = URGENT_EVENT_DURATION; // wie lange die Urgent-View angezeigt wird
+    unsigned long _urgentRepeatMs = URGENT_EVENT_INTERVAL; // Pause bis zur nächsten Anzeige (wiederholung)
 
     uint16_t dimColor(uint16_t color, float brightness);
     void parseICS(char* icsBuffer, size_t size);

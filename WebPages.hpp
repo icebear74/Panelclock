@@ -7,7 +7,7 @@ const char HTML_PAGE_HEADER[] PROGMEM = R"rawliteral(
 <!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><meta charset="UTF-8">
 <title>Panelclock Config</title><style>body{font-family:sans-serif;background:#222;color:#eee;}
 .container{max-width:800px;margin:0 auto;padding:20px;}h1,h2{color:#4CAF50;border-bottom:1px solid #444;padding-bottom:10px;}
-label{display:block;margin-top:15px;color:#bbb;}input[type="text"],input[type="password"],input[type="number"],select{width:100%;padding:8px;margin-top:5px;border-radius:4px;border:1px solid #555;background:#333;color:#eee;box-sizing:border-box;}
+label{display:block;margin-top:15px;color:#bbb;}input[type="text"],input[type="password"],input[type="number"],select{width:100%;padding:8px;margin-top:5px;border-radius:4px;border:1px solid #555;box-sizing:border-box;}
 input[type="checkbox"]{margin-right:10px;transform:scale(1.5);}
 input[type="color"]{width:100%;height:40px;padding:5px;margin-top:5px;border-radius:4px;border:1px solid #555;box-sizing:border-box;}
 input[type="submit"],.button{background-color:#4CAF50;color:white;padding:14px 20px;margin-top:20px;border:none;border-radius:4px;cursor:pointer;width:100%;font-size:16px;text-align:center;text-decoration:none;display:inline-block;}
@@ -197,6 +197,12 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
         <label for="calendarScrollMs">Scroll-Geschwindigkeit (ms)</label><input type="number" id="calendarScrollMs" name="calendarScrollMs" value="{calendarScrollMs}">
         <label for="calendarDateColor">Farbe Datum</label><input type="color" id="calendarDateColor" name="calendarDateColor" value="{calendarDateColor}">
         <label for="calendarTextColor">Farbe Text</label><input type="color" id="calendarTextColor" name="calendarTextColor" value="{calendarTextColor}">
+        <hr>
+        <h4>Urgent-View Einstellungen</h4>
+        <label for="calendarFastBlinkHours">Schneller Blinken (Stunden vor Termin)</label><input type="number" id="calendarFastBlinkHours" name="calendarFastBlinkHours" min="0" value="{calendarFastBlinkHours}">
+        <label for="calendarUrgentThresholdHours">Ab wann Urgent-View zeigen (Stunden vor Termin)</label><input type="number" id="calendarUrgentThresholdHours" name="calendarUrgentThresholdHours" min="0" value="{calendarUrgentThresholdHours}">
+        <label for="calendarUrgentDurationSec">Dauer Urgent-View (Sekunden)</label><input type="number" id="calendarUrgentDurationSec" name="calendarUrgentDurationSec" min="1" value="{calendarUrgentDurationSec}">
+        <label for="calendarUrgentRepeatMin">Wiederholung (Minuten) bis nächste Anzeige</label><input type="number" id="calendarUrgentRepeatMin" name="calendarUrgentRepeatMin" min="0" value="{calendarUrgentRepeatMin}">
     </div>
 </div>
 
@@ -330,7 +336,7 @@ const char HTML_CONFIG_HARDWARE[] PROGMEM = R"rawliteral(
 <form action="/save_hardware" method="POST">
 <div class="group">
     <h3>Mikrowellen-Sensor &amp; Display-Steuerung</h3>
-    <input type="checkbox" id="mwaveSensorEnabled" name="mwaveSensorEnabled" {mwaveSensorEnabled_checked}><label for="mwaveSensorEnabled" style="display:inline;">Sensor-gesteuerte Anzeige aktivieren</label><br><br>
+    <input type="checkbox" id="mwaveSensorEnabled" name="mwaveSensorEnabled" {mwaveSensorEnabled_checked}><label for="mwaveSensorEnabled" style="display:inline;">Sensor-gesteuerte Anzeige aktivieren</label>
     
     <h4>Pins</h4>
     <p style="color:#ff8c00;">Warnung: &Auml;nderungen an den Pins l&ouml;sen einen Neustart aus!</p>
