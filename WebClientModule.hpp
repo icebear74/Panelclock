@@ -87,6 +87,10 @@ private:
     TaskHandle_t workerTaskHandle;
     QueueHandle_t jobQueue;
 
+    // Timing control: start delay and minimum pause between downloads (ms)
+    unsigned long _startMs = 0;
+    unsigned long _lastDownloadMs = 0;
+
     bool reallocateBuffer(size_t new_size);
     void performJob(const WebJob& job);
     void performUpdate(ManagedResource& resource);

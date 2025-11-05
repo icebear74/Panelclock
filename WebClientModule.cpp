@@ -90,7 +90,7 @@ ManagedResource::ManagedResource(ManagedResource&& other) noexcept
 
 // --- WebClientModule Implementierung ---
 
-WebClientModule::WebClientModule() : workerTaskHandle(NULL), jobQueue(NULL) {}
+WebClientModule::WebClientModule() : workerTaskHandle(NULL), jobQueue(NULL), _startMs(0), _lastDownloadMs(0) {}
 
 WebClientModule::~WebClientModule() {
     if (workerTaskHandle) vTaskDelete(workerTaskHandle);
@@ -103,6 +103,9 @@ void WebClientModule::begin() {
     jobQueue = xQueueCreate(10, sizeof(WebJob*));
     BaseType_t app_core = xPortGetCoreID();
     BaseType_t network_core = (app_core == 0) ? 1 : 0;
+    // record start time so we can delay the very first download by 10s
+    _startMs = millis();
+    _lastDownloadMs = 0;
     xTaskCreatePinnedToCore(webWorkerTask, "WebDataManager", 8192, this, 2, &workerTaskHandle, network_core);
 }
 
@@ -186,7 +189,7 @@ void WebClientModule::getRequest(const PsramString& url, std::function<void(int 
         return;
     }
     if (xQueueSend(jobQueue, &job, pdMS_TO_TICKS(100)) != pdTRUE) {
-        Serial.println("[WebClientModule] FEHLER: Konnte GET-Job (detailed) nicht zur Queue hinzufügen.");
+        Serial.println("[WebDataManager] FEHLER: Konnte GET-Job (detailed) nicht zur Queue hinzufügen.");
         delete job;
         detailed_callback(-1, "Queue full", 10);
     }
@@ -230,6 +233,8 @@ bool WebClientModule::reallocateBuffer(size_t new_size) {
     }
 }
 
+// --- Updated performJob: stream response into _downloadStream (avoid http.getString())
+//     and make connect + download two distinct steps to reduce certificate issues and heap fragmentation.
 void WebClientModule::performJob(const WebJob& job) {
     Serial.printf("[WebDataManager] Führe %s-Job für %s aus...\n", (job.type == WebJob::GET ? "GET" : "POST"), job.url.c_str());
     HTTPClient http;
@@ -238,11 +243,13 @@ void WebClientModule::performJob(const WebJob& job) {
     WiFiClientSecure secure_client;
     WiFiClient plain_client;
 
-    if (job.url.rfind("https://", 0) == 0) {
-        PsramString cert_data;
-        bool cert_loaded = false;
-        
-        PsramString cert_filename;
+    bool using_https = (job.url.rfind("https://", 0) == 0);
+    PsramString cert_data;
+    bool cert_loaded = false;
+    PsramString cert_filename;
+
+    // determine cert filename heuristics (same as performUpdate)
+    if (using_https) {
         if (indexOf(job.url, "creativecommons.tankerkoenig.de") != -1) {
             cert_filename = deviceConfig->tankerkoenigCertFile;
         } else if (indexOf(job.url, "dartsrankings.com") != -1) {
@@ -270,16 +277,40 @@ void WebClientModule::performJob(const WebJob& job) {
             Serial.printf("[WebDataManager] Job: WARNUNG, kein Zertifikat für %s gefunden, benutze unsichere Verbindung.\n", job.url.c_str());
             secure_client.setInsecure();
         }
+    }
 
-        PsramString host;
-        uint16_t port = 443;
-        int hostStart = indexOf(job.url, "://") + 3;
-        int pathStart = indexOf(job.url, "/", hostStart);
-        host = (pathStart != -1) ? job.url.substr(hostStart, pathStart - hostStart) : job.url.substr(hostStart);
-        
-        if (!secure_client.connect(host.c_str(), port)) {
+    // Parse host and port (works for both http and https)
+    int hostStart = indexOf(job.url, "://");
+    if (hostStart != -1) hostStart += 3; else hostStart = 0;
+    int pathStart = indexOf(job.url, "/", hostStart);
+    PsramString host = (pathStart != -1) ? job.url.substr(hostStart, pathStart - hostStart) : job.url.substr(hostStart);
+
+    uint16_t port = using_https ? 443 : 80;
+    // if host contains ":port", try to parse (simple)
+    int colonPos = indexOf(host, ":");
+    if (colonPos != -1) {
+        PsramString portStr = host.substr(colonPos + 1);
+        port = (uint16_t)atoi(portStr.c_str());
+        host = host.substr(0, colonPos);
+    }
+
+    // Step 1: explicit connect using client
+    bool connected = false;
+    if (using_https) {
+        connected = secure_client.connect(host.c_str(), port);
+        if (!connected) {
+            httpCode = -1; // connect failed
+        }
+    } else {
+        connected = plain_client.connect(host.c_str(), port);
+        if (!connected) {
             httpCode = -1;
-        } else {
+        }
+    }
+
+    // If connected, start HTTP and perform request
+    if (connected) {
+        if (using_https) {
             if (http.begin(secure_client, job.url.c_str())) {
                 if (job.type == WebJob::GET) {
                     httpCode = http.GET();
@@ -290,45 +321,86 @@ void WebClientModule::performJob(const WebJob& job) {
             } else {
                 httpCode = -10;
             }
-        }
-    } else { 
-        if (http.begin(plain_client, job.url.c_str())) {
-            if (job.type == WebJob::GET) {
-                httpCode = http.GET();
+        } else {
+            if (http.begin(plain_client, job.url.c_str())) {
+                if (job.type == WebJob::GET) {
+                    httpCode = http.GET();
+                } else {
+                    http.addHeader("Content-Type", job.contentType.c_str());
+                    httpCode = http.POST(job.body.c_str());
+                }
             } else {
-                http.addHeader("Content-Type", job.contentType.c_str());
-                httpCode = http.POST(job.body.c_str());
+                httpCode = -10;
+            }
+        }
+    }
+
+    // Now stream result into download buffer (avoid http.getString())
+    _downloadStream.begin(_downloadBuffer, _bufferCapacity);
+
+    if (httpCode == HTTP_CODE_OK) {
+        http.writeToStream(&_downloadStream);
+        if (_downloadStream.hasOverflowed()) {
+            Serial.printf("[WebDataManager] LERNEN: Pufferüberlauf bei Job %s. Puffergröße=%u. Job liefert mehr Daten als erwartet.\n", job.url.c_str(), (unsigned)_downloadStream.getCapacity());
+            // Try to notify callbacks about failure / overflow
+            if (job.detailed_callback) {
+                job.detailed_callback(-2, "Buffer overflow", strlen("Buffer overflow"));
+            } else if (job.callback) {
+                job.callback(nullptr, 0);
             }
         } else {
-            httpCode = -10;
+            size_t downloaded_size = _downloadStream.getSize();
+            if (downloaded_size > 0) {
+                // allocate temporary buffer to hand to callback (synchronous only)
+                char* tmp_buf = (char*)ps_malloc(downloaded_size + 1);
+                if (tmp_buf) {
+                    memcpy(tmp_buf, _downloadStream.getBuffer(), downloaded_size);
+                    tmp_buf[downloaded_size] = '\0';
+
+                    if (job.detailed_callback) {
+                        job.detailed_callback((int)httpCode, tmp_buf, downloaded_size);
+                    } else if (job.callback) {
+                        job.callback(tmp_buf, downloaded_size);
+                    }
+
+                    free(tmp_buf);
+                } else {
+                    Serial.printf("[WebDataManager] FEHLER: Konnte temporären Buffer (%u) für Job nicht allozieren.\n", (unsigned)downloaded_size);
+                    if (job.detailed_callback) {
+                        job.detailed_callback(-3, "Malloc failed", strlen("Malloc failed"));
+                    } else if (job.callback) {
+                        job.callback(nullptr, 0);
+                    }
+                }
+            } else {
+                // empty body but HTTP_OK - still call callback with zero size
+                if (job.detailed_callback) job.detailed_callback((int)httpCode, "", 0);
+                else if (job.callback) job.callback("", 0);
+            }
+        }
+    } else {
+        // error path - prepare small error description
+        char errbuf[256];
+        if (httpCode == -1 && using_https) {
+            secure_client.lastError(errbuf, sizeof(errbuf));
+            size_t l = strnlen(errbuf, sizeof(errbuf));
+            if (job.detailed_callback) job.detailed_callback(httpCode, errbuf, l);
+            else if (job.callback) job.callback(nullptr, 0);
+        } else {
+            // http.errorToString may allocate a String internally; use it but keep short-lived
+            String err = http.errorToString(httpCode);
+            size_t l = err.length();
+            if (l >= sizeof(errbuf)) l = sizeof(errbuf) - 1;
+            memcpy(errbuf, err.c_str(), l);
+            errbuf[l] = '\0';
+            if (job.detailed_callback) job.detailed_callback(httpCode, errbuf, l);
+            else if (job.callback) job.callback(nullptr, 0);
         }
     }
-
-    String payload;
-    if(httpCode > 0) {
-        payload = http.getString();
-    } else {
-        payload = http.errorToString(httpCode).c_str();
-    }
-    
-    Serial.printf("[WebDataManager] DEBUG: HTTP-Code: %d\n", httpCode);
-    Serial.println("[WebDataManager] DEBUG: Empfangener Payload (erste 100 Zeichen):");
-    Serial.println("--------------------------------------------------");
-    Serial.println(payload.substring(0, 100));
-    Serial.println("--------------------------------------------------");
 
     http.end();
-    
-    if (job.detailed_callback) {
-        job.detailed_callback(httpCode, payload.c_str(), payload.length());
-    } else if (job.callback) {
-        if (httpCode == HTTP_CODE_OK) {
-            job.callback(payload.c_str(), payload.length());
-        } else {
-            Serial.printf("[WebDataManager] %s-Job FEHLER: HTTP %d\n", (job.type == WebJob::GET ? "GET" : "POST"), httpCode);
-            job.callback(nullptr, 0);
-        }
-    }
+    // free cert_data (if any) as early as possible (will be freed on scope exit anyway)
+    cert_data.clear();
 }
 
 void WebClientModule::webWorkerTask(void* param) {
@@ -336,13 +408,38 @@ void WebClientModule::webWorkerTask(void* param) {
     Serial.printf("[WebDataManager] Worker-Task gestartet auf Core %d.\n", xPortGetCoreID());
     
     WebJob* receivedJob;
+    const unsigned long MIN_PAUSE_BETWEEN_DOWNLOADS_MS = 10000UL; // 10 seconds
+
     while (true) {
+        unsigned long nowMs = millis();
+
+        // enforce initial start delay of 10 seconds before any download happens
+        if (nowMs - self->_startMs < MIN_PAUSE_BETWEEN_DOWNLOADS_MS) {
+            vTaskDelay(pdMS_TO_TICKS(500));
+            continue;
+        }
+
         if (WiFi.status() == WL_CONNECTED) {
+            // Process queued jobs, but ensure minimum pause between downloads
             if (xQueueReceive(self->jobQueue, &receivedJob, 0) == pdTRUE) {
-                self->performJob(*receivedJob);
-                delete receivedJob;
+                // If last download happened too recently, push job back to front and wait
+                if (self->_lastDownloadMs != 0 && (nowMs - self->_lastDownloadMs) < MIN_PAUSE_BETWEEN_DOWNLOADS_MS) {
+                    // push back to queue front (so it will be retried)
+                    if (xQueueSendToFront(self->jobQueue, &receivedJob, pdMS_TO_TICKS(100)) != pdTRUE) {
+                        // if failed to put back, drop it gracefully after short wait
+                        Serial.println("[WebDataManager] WARNUNG: Konnte Job nicht zurück in Queue einreihen, verwerfe.");
+                        delete receivedJob;
+                    }
+                    vTaskDelay(pdMS_TO_TICKS(200));
+                } else {
+                    // mark last download time and perform job
+                    self->_lastDownloadMs = millis();
+                    self->performJob(*receivedJob);
+                    delete receivedJob;
+                }
             }
 
+            // Periodic resource updates
             time_t now;
             time(&now);
             for (auto& resource : self->resources) {
@@ -358,6 +455,15 @@ void WebClientModule::webWorkerTask(void* param) {
                 }
 
                 if (should_run) {
+                    // Respect global minimum pause between downloads
+                    unsigned long nowMsInner = millis();
+                    if (self->_lastDownloadMs != 0 && (nowMsInner - self->_lastDownloadMs) < MIN_PAUSE_BETWEEN_DOWNLOADS_MS) {
+                        // skip this resource for now; next loop will retry
+                        continue;
+                    }
+
+                    // All good: perform update and record last download time
+                    self->_lastDownloadMs = millis();
                     self->performUpdate(resource);
                 }
             }
