@@ -33,7 +33,8 @@ const char HTML_INDEX[] PROGMEM = R"rawliteral(
 <a href="/config_location" class="button">Mein Standort</a>
 <a href="/config_modules" class="button">Anzeige-Module (Live-Update)</a>
 <a href="/config_hardware" class="button">Optionale Hardware</a>
-<a href="/config_certs" class="button">Zertifikat-Management</a>
+<!-- File manager button added to main menu -->
+<a href="/fs" class="button">Dateimanager</a>
 <hr>
 <a href="/debug" class="button" style="background-color:#555;">Debug Daten</a>
 )rawliteral";
@@ -305,38 +306,12 @@ function collectStationIds() {
 </script>
 )rawliteral";
 
-const char HTML_CONFIG_CERTS[] PROGMEM = R"rawliteral(
-<h2>Zertifikat-Management</h2>
-<p>Hier k&ouml;nnen PEM-Zertifikate hochgeladen und die Dateinamen f&uuml;r die Dienste konfiguriert werden.</p>
-<div class="group">
-    <h3>Dateinamen zuweisen (Live-Update)</h3>
-    <form action="/save_certs" method="POST">
-        <label for="tankerkoenigCertFile">Tankerk&ouml;nig Zertifikat (z.B. tanker.pem)</label>
-        <input type="text" id="tankerkoenigCertFile" name="tankerkoenigCertFile" value="{tankerkoenigCertFile}">
-        <label for="dartsCertFile">Darts-Ranking Zertifikat (z.B. darts.pem)</label>
-        <input type="text" id="dartsCertFile" name="dartsCertFile" value="{dartsCertFile}">
-        <label for="googleCertFile">Google Kalender Zertifikat (z.B. google.pem)</label>
-        <input type="text" id="googleCertFile" name="googleCertFile" value="{googleCertFile}">
-        <input type="submit" value="Dateinamen speichern (Live-Update)">
-    </form>
-</div>
-<div class="group">
-    <h3>Zertifikat hochladen</h3>
-    <p>Die hochgeladene Datei wird im Verzeichnis <code>/certs/</code> gespeichert.</p>
-    <form method='POST' action='/upload_cert' enctype='multipart/form-data'>
-        <input type='file' name='upload' class="button" style="padding:0;width:auto;">
-        <input type='submit' value='Datei hochladen'>
-    </form>
-</div>
-<div class="footer-link"><a href="/">&laquo; Zur&uuml;ck zum Hauptmen&uuml;</a></div>
-)rawliteral";
-
 const char HTML_CONFIG_HARDWARE[] PROGMEM = R"rawliteral(
 <h2>Optionale Hardware</h2>
 <form action="/save_hardware" method="POST">
 <div class="group">
     <h3>Mikrowellen-Sensor &amp; Display-Steuerung</h3>
-    <input type="checkbox" id="mwaveSensorEnabled" name="mwaveSensorEnabled" {mwaveSensorEnabled_checked}><label for="mwaveSensorEnabled" style="display:inline;">Sensor-gesteuerte Anzeige aktivieren</label>
+    <input type="checkbox" id="mwaveSensorEnabled" name="mwaveSensorEnabled" {mwaveSensorEnabled_checked}><label for="mwaveSensorEnabled" style="display:inline;">Sensor-gesteuerte Anzeige aktivieren</label><br>
     
     <h4>Pins</h4>
     <p style="color:#ff8c00;">Warnung: &Auml;nderungen an den Pins l&ouml;sen einen Neustart aus!</p>

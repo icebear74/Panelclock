@@ -81,7 +81,7 @@ public:
     // --- Display-Eigenschaften ---
     virtual void draw() = 0;
     virtual unsigned long getDisplayDuration() = 0;
-    virtual unsigned long getSafetyBuffer() { return 2000; } // 2s Standard-Puffer
+    virtual unsigned long getSafetyBuffer() { return 10000; } // 2s Standard-Puffer
     virtual void resetPaging() = 0;
     
     // --- Playlist-Zugehörigkeit ---

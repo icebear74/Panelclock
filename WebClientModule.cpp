@@ -1,12 +1,35 @@
 #include "WebClientModule.hpp"
 #include "webconfig.hpp"
-#include "certs.hpp"
+// removed include of certs.hpp on purpose — cert files are discovered dynamically in /certs
 #include "MemoryLogger.hpp"
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <WiFi.h>
 #include <LittleFS.h>
 #include <esp_heap_caps.h>
+
+// --- Helper: find cert filename for a host (try full host first, then strip subdomains) ---
+// Returns an Arduino String with the filename (e.g. "calendar.google.com.pem" or "google.com.pem") or empty if none found
+static String findCertFilenameForHost(const String& hostWithOptionalPort) {
+    String host = hostWithOptionalPort;
+    // strip port if present
+    int colon = host.indexOf(':');
+    if (colon != -1) host = host.substring(0, colon);
+
+    String candidate = host;
+    while (true) {
+        if (candidate.length() == 0) break;
+        String fname = candidate + ".pem";
+        String path = "/certs/" + fname;
+        if (LittleFS.exists(path)) {
+            return fname;
+        }
+        int dot = candidate.indexOf('.');
+        if (dot == -1) break;
+        candidate = candidate.substring(dot + 1);
+    }
+    return String(); // not found
+}
 
 // --- PsramBufferStream Implementierung ---
 
@@ -99,6 +122,7 @@ WebClientModule::~WebClientModule() {
 }
 
 void WebClientModule::begin() {
+    // Keep original behavior: use deviceConfig->webClientBufferSize as before
     reallocateBuffer(deviceConfig->webClientBufferSize);
     jobQueue = xQueueCreate(10, sizeof(WebJob*));
     BaseType_t app_core = xPortGetCoreID();
@@ -120,15 +144,8 @@ void WebClientModule::registerResource(const String& url, uint32_t update_interv
     resources.emplace_back(url.c_str(), interval_ms, root_ca);
     ManagedResource& new_res = resources.back();
 
-    if (indexOf(new_res.url, "dartsrankings.com") != -1) {
-        new_res.cert_filename = deviceConfig->dartsCertFile;
-    } else if (indexOf(new_res.url, "creativecommons.tankerkoenig.de") != -1) {
-        new_res.cert_filename = deviceConfig->tankerkoenigCertFile;
-    } else if (indexOf(new_res.url, "google.com") != -1) {
-        new_res.cert_filename = deviceConfig->googleCertFile;
-    }
-
-    Serial.printf("[WebDataManager] Ressource registriert: %s (Cert-File: '%s')\n", new_res.url.c_str(), new_res.cert_filename.c_str());
+    // remove the old deviceConfig-based cert selection here (we'll discover certs dynamically)
+    Serial.printf("[WebDataManager] Ressource registriert: %s (initial Cert-File: '%s')\n", new_res.url.c_str(), new_res.cert_filename.c_str());
 }
 
 void WebClientModule::accessResource(const String& url, std::function<void(const char* data, size_t size, time_t last_update, bool is_stale)> callback) {
@@ -248,37 +265,6 @@ void WebClientModule::performJob(const WebJob& job) {
     bool cert_loaded = false;
     PsramString cert_filename;
 
-    // determine cert filename heuristics (same as performUpdate)
-    if (using_https) {
-        if (indexOf(job.url, "creativecommons.tankerkoenig.de") != -1) {
-            cert_filename = deviceConfig->tankerkoenigCertFile;
-        } else if (indexOf(job.url, "dartsrankings.com") != -1) {
-            cert_filename = deviceConfig->dartsCertFile;
-        } else if (indexOf(job.url, "google.com") != -1) {
-            cert_filename = deviceConfig->googleCertFile;
-        }
-
-        if (!cert_filename.empty()) {
-            String filepath = "/certs/" + String(cert_filename.c_str());
-            if (LittleFS.exists(filepath)) {
-                File certFile = LittleFS.open(filepath, "r");
-                if (certFile) {
-                    cert_data = readFromStream(certFile);
-                    certFile.close();
-                    cert_loaded = true;
-                }
-            }
-        }
-
-        if(cert_loaded) {
-            Serial.printf("[WebDataManager] Job: Verwende Zertifikat '%s'\n", cert_filename.c_str());
-            secure_client.setCACert(cert_data.c_str());
-        } else {
-            Serial.printf("[WebDataManager] Job: WARNUNG, kein Zertifikat für %s gefunden, benutze unsichere Verbindung.\n", job.url.c_str());
-            secure_client.setInsecure();
-        }
-    }
-
     // Parse host and port (works for both http and https)
     int hostStart = indexOf(job.url, "://");
     if (hostStart != -1) hostStart += 3; else hostStart = 0;
@@ -292,6 +278,53 @@ void WebClientModule::performJob(const WebJob& job) {
         PsramString portStr = host.substr(colonPos + 1);
         port = (uint16_t)atoi(portStr.c_str());
         host = host.substr(0, colonPos);
+    }
+
+    // determine cert filename by searching cert files in /certs (full host first, then progressively remove subdomains)
+    if (using_https) {
+        String found = findCertFilenameForHost(String(host.c_str()));
+        if (!found.isEmpty()) {
+            cert_filename = PsramString(found.c_str());
+            String filepath = "/certs/" + found;
+            if (LittleFS.exists(filepath)) {
+                File certFile = LittleFS.open(filepath, "r");
+                if (certFile) {
+                    cert_data = readFromStream(certFile);
+                    certFile.close();
+                    cert_loaded = true;
+                }
+            }
+        }
+
+        // fallback: if resource already has cert_filename configured, try it
+        if (!cert_loaded && !cert_filename.empty()) {
+            String filepath = "/certs/" + String(cert_filename.c_str());
+            if (LittleFS.exists(filepath)) {
+                File certFile = LittleFS.open(filepath, "r");
+                if (certFile) {
+                    cert_data = readFromStream(certFile);
+                    certFile.close();
+                    cert_loaded = true;
+                }
+            }
+        }
+
+        // fallback to resource.root_ca_fallback or insecure
+        if (!cert_loaded && job.detailed_callback == nullptr) {
+            // nothing special here — keep previous fallback behaviour but prefer resource.root_ca_fallback
+        }
+
+        if(cert_loaded) {
+            Serial.printf("[WebDataManager] Job: Verwende Zertifikat '%s'\n", cert_filename.c_str());
+            secure_client.setCACert(cert_data.c_str());
+        } else if (job.detailed_callback == nullptr) {
+            // if no cert loaded, try resource.root_ca_fallback (if any)
+            // Note: performJob does not have direct access to ManagedResource here; rely on local behavior: if caller wants to set cert per resource, they can use updateResourceCertificateByHost()
+            Serial.printf("[WebDataManager] Job: WARNUNG, kein Zertifikat für %s gefunden, benutze unsichere Verbindung.\n", job.url.c_str());
+            secure_client.setInsecure();
+        } else {
+            secure_client.setInsecure();
+        }
     }
 
     // Step 1: explicit connect using client
@@ -472,6 +505,7 @@ void WebClientModule::webWorkerTask(void* param) {
     }
 }
 
+// performUpdate unchanged except cert discovery replaces previous deviceConfig cert-field usage
 void WebClientModule::performUpdate(ManagedResource& resource) {
     Serial.printf("[WebDataManager] Starte Update für %s...\n", resource.url.c_str());
     resource.last_check_attempt = time(nullptr);
@@ -490,7 +524,37 @@ void WebClientModule::performUpdate(ManagedResource& resource) {
             PsramString cert_data;
             bool cert_loaded = false;
             String filepath;
-            if (!resource.cert_filename.empty()) {
+
+            // determine host
+            PsramString host;
+            uint16_t port = 443;
+            int hostStart = indexOf(resource.url, "://") + 3;
+            int pathStart = indexOf(resource.url, "/", hostStart);
+            host = (pathStart != -1) ? resource.url.substr(hostStart, pathStart - hostStart) : resource.url.substr(hostStart);
+            int colonPos = indexOf(host, ":");
+            if (colonPos != -1) {
+                PsramString portStr = host.substr(colonPos + 1);
+                port = (uint16_t)atoi(portStr.c_str());
+                host = host.substr(0, colonPos);
+            }
+
+            // first try to find cert by host names in /certs
+            String found = findCertFilenameForHost(String(host.c_str()));
+            if (!found.isEmpty()) {
+                filepath = "/certs/" + found;
+                if (LittleFS.exists(filepath)) {
+                    File certFile = LittleFS.open(filepath, "r");
+                    if (certFile) {
+                        cert_data = readFromStream(certFile);
+                        certFile.close();
+                        cert_loaded = true;
+                        resource.cert_filename = found.c_str(); // record which file was used
+                    }
+                }
+            }
+
+            // fallback: if resource already has cert_filename configured, try it
+            if (!cert_loaded && !resource.cert_filename.empty()) {
                 filepath = "/certs/" + String(resource.cert_filename.c_str());
                 if (LittleFS.exists(filepath)) {
                     File certFile = LittleFS.open(filepath, "r");
@@ -502,22 +566,17 @@ void WebClientModule::performUpdate(ManagedResource& resource) {
                 }
             }
 
-            if (cert_loaded) {
-                Serial.printf("[WebDataManager] Verwende Zertifikat aus Datei '%s' für %s.\n", filepath.c_str(), resource.url.c_str());
-                secure_client.setCACert(cert_data.c_str());
-            } else if (resource.root_ca_fallback) {
+            // fallback to root_ca_fallback in resource
+            if (!cert_loaded && resource.root_ca_fallback) {
                 Serial.printf("[WebDataManager] Verwende Fallback-Zertifikat für %s.\n", resource.url.c_str());
                 secure_client.setCACert(resource.root_ca_fallback);
-            } else {
+            } else if (!cert_loaded) {
                 Serial.printf("[WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für %s.\n", resource.url.c_str());
                 secure_client.setInsecure();
+            } else {
+                Serial.printf("[WebDataManager] Verwende Zertifikat aus Datei '%s' für %s.\n", filepath.c_str(), resource.url.c_str());
+                secure_client.setCACert(cert_data.c_str());
             }
-            
-            PsramString host;
-            uint16_t port = 443;
-            int hostStart = indexOf(resource.url, "://") + 3;
-            int pathStart = indexOf(resource.url, "/", hostStart);
-            host = (pathStart != -1) ? resource.url.substr(hostStart, pathStart - hostStart) : resource.url.substr(hostStart);
             
             if (!secure_client.connect(host.c_str(), port)) {
                 httpCode = -1;
@@ -571,7 +630,7 @@ void WebClientModule::performUpdate(ManagedResource& resource) {
                             free(new_permanent_buffer);
                         }
                     } else {
-                        Serial.printf("[WebDataManager] FEHLER: Konnte keinen passgenauen Puffer für %s allozieren.\n", resource.url.c_str());
+                        Serial.printf("[WebClientModule] FEHLER: Konnte keinen passgenauen Puffer für %s allozieren.\n", resource.url.c_str());
                     }
                 }
                 resource.retry_count = 0;
