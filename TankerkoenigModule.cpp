@@ -51,7 +51,7 @@ unsigned long TankerkoenigModule::getDisplayDuration() {
     unsigned long duration;
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
         int num_pages = station_data_list.size() > 0 ? station_data_list.size() : 1;
-        duration = num_pages * _pageDisplayDuration;
+        duration = (num_pages * _pageDisplayDuration) + runtime_safe_buffer;
         xSemaphoreGive(dataMutex);
     } else {
         duration = _pageDisplayDuration; // Fallback
@@ -67,13 +67,12 @@ void TankerkoenigModule::tick() {
 void TankerkoenigModule::logicTick() {
     // Wird alle 100ms aufgerufen
     _logicTicksSincePageSwitch++;
-    
+    Serial.printf("[Tanker] TICK: %d\n", _logicTicksSincePageSwitch);            
     if (_logicTicksSincePageSwitch >= _currentTicksPerPage) {
-        if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        
             int numPages = station_data_list.size() > 0 ? station_data_list.size() : 1;
             currentPage++;
-            
-            // Wenn alle Seiten durch -> Modul ist fertig
+                Serial.printf("[Tanker] Zeige %d von %d - ,%d\n", currentPage, numPages,_logicTicksSincePageSwitch);            
             if (currentPage >= numPages) {
                 currentPage = 0;
                 _isFinished = true;
@@ -82,7 +81,7 @@ void TankerkoenigModule::logicTick() {
                 if (updateCallback) updateCallback();
             }
             xSemaphoreGive(dataMutex);
-        }
+        
         _logicTicksSincePageSwitch = 0;
     }
 }
@@ -348,11 +347,10 @@ void TankerkoenigModule::parseAndProcessJson(const char* buffer, size_t size) {
 }
 
 void TankerkoenigModule::draw() {
-    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) != pdTRUE) return;
+    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
     
     totalPages = station_data_list.size() > 0 ? station_data_list.size() : 1;
-    if (currentPage >= totalPages) currentPage = 0;
-
+    
     canvas.fillScreen(0);
     u8g2.begin(canvas);
 

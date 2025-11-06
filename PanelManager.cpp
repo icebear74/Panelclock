@@ -12,6 +12,7 @@
 PanelManager::PanelManager(HardwareConfig& hwConfig, GeneralTimeConverter& timeConverter) 
     : _hwConfig(hwConfig), _timeConverter(timeConverter) {
     Serial.println("[PanelManager] Konstruktor - PlaylistEntry-basierte Version mit UID-System");
+    _logicTickMutex = xSemaphoreCreateMutex();
 }
 
 PanelManager::~PanelManager() {
@@ -30,6 +31,10 @@ PanelManager::~PanelManager() {
     delete _canvasData;
     delete _fullCanvas;
     delete _u8g2;
+    
+    // NEU: Cleanup für Logic-Tick-Task
+    if (_logicTickTaskHandle) vTaskDelete(_logicTickTaskHandle);
+    if (_logicTickMutex) vSemaphoreDelete(_logicTickMutex);
 }
 
 // ============================================================================
@@ -82,6 +87,9 @@ bool PanelManager::begin() {
         VDISP_NUM_ROWS, VDISP_NUM_COLS, PANEL_RES_X, PANEL_RES_Y
     );
     _virtualDisp->setDisplay(*_dma_display);
+    
+    // NEU: Logic-Tick-Task starten
+    xTaskCreate(logicTickTaskWrapper, "LogicTickTask", 2048, this, 1, &_logicTickTaskHandle);
     
     Serial.println("[PanelManager] Display-Initialisierung erfolgreich abgeschlossen.");
     return true;
@@ -464,12 +472,30 @@ void PanelManager::tickActiveModule() {
     // Normal tick (für Animationen)
     activeEntry->module->tick();
     
-    // Logic tick (alle ~100ms für Seitensteuerung)
-    unsigned long now = millis();
-    if (now - _lastLogicTick >= LOGIC_TICK_INTERVAL) {
-        activeEntry->module->logicTick();
-        activeEntry->logicTickCounter++;
-        _lastLogicTick = now;
+    // Logic tick entfernt - läuft jetzt im separaten Task
+}
+
+// ============================================================================
+// NEU: Separater Logic-Tick-Task
+// ============================================================================
+
+void PanelManager::logicTickTaskWrapper(void* param) {
+    PanelManager* self = static_cast<PanelManager*>(param);
+    self->logicTickTask();
+}
+
+void PanelManager::logicTickTask() {
+    while (true) {
+        vTaskDelay(pdMS_TO_TICKS(100));  // Genau 100ms
+        
+        if (xSemaphoreTake(_logicTickMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+            PlaylistEntry* activeEntry = findActiveEntry();
+            if (activeEntry && activeEntry->module && !activeEntry->isPaused) {
+                activeEntry->module->logicTick();
+                activeEntry->logicTickCounter++;
+            }
+            xSemaphoreGive(_logicTickMutex);
+        }
     }
 }
 

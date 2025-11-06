@@ -8,6 +8,9 @@
 #include <LittleFS.h>
 #include <esp_heap_caps.h>
 
+// MODIFIKATION: Flag zum Deaktivieren der Datenübergabe an Module (für Test der Fragmentierung)
+static bool disableModuleDataAccess = false; // Setze auf true, um Module "keine Daten" denken zu lassen
+
 // --- Helper: find cert filename for a host (try full host first, then strip subdomains) ---
 // Returns an Arduino String with the filename (e.g. "calendar.google.com.pem" or "google.com.pem") or empty if none found
 static String findCertFilenameForHost(const String& hostWithOptionalPort) {
@@ -152,7 +155,12 @@ void WebClientModule::accessResource(const String& url, std::function<void(const
     for (auto& resource : resources) {
         if (resource.url.compare(url.c_str()) == 0) {
             if (xSemaphoreTake(resource.mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
-                callback(resource.data_buffer, resource.data_size, resource.last_successful_update, resource.is_data_stale);
+                // MODIFIKATION: Wenn disableModuleDataAccess true, gebe leere Daten zurück
+                if (disableModuleDataAccess) {
+                    callback(nullptr, 0, resource.last_successful_update, true); // "keine Daten" simulieren
+                } else {
+                    callback(resource.data_buffer, resource.data_size, resource.last_successful_update, resource.is_data_stale);
+                }
                 xSemaphoreGive(resource.mutex);
             } else {
                 Serial.printf("[WebDataManager] Timeout beim Warten auf Mutex für %s\n", url.c_str());
@@ -253,6 +261,7 @@ bool WebClientModule::reallocateBuffer(size_t new_size) {
 // --- Updated performJob: stream response into _downloadStream (avoid http.getString())
 //     and make connect + download two distinct steps to reduce certificate issues and heap fragmentation.
 void WebClientModule::performJob(const WebJob& job) {
+    LOG_MEMORY_STRATEGIC("WebClient: Begin performJob");
     Serial.printf("[WebDataManager] Führe %s-Job für %s aus...\n", (job.type == WebJob::GET ? "GET" : "POST"), job.url.c_str());
     HTTPClient http;
     int httpCode = 0;
@@ -319,7 +328,7 @@ void WebClientModule::performJob(const WebJob& job) {
             secure_client.setCACert(cert_data.c_str());
         } else if (job.detailed_callback == nullptr) {
             // if no cert loaded, try resource.root_ca_fallback (if any)
-            // Note: performJob does not have direct access to ManagedResource here; rely on local behavior: if caller wants to set cert per resource, they can use updateResourceCertificateByHost()
+            // Note: performJob does not have access to ManagedResource here; rely on local behavior: if caller wants to set cert per resource, they can use updateResourceCertificateByHost()
             Serial.printf("[WebDataManager] Job: WARNUNG, kein Zertifikat für %s gefunden, benutze unsichere Verbindung.\n", job.url.c_str());
             secure_client.setInsecure();
         } else {
@@ -372,7 +381,9 @@ void WebClientModule::performJob(const WebJob& job) {
     _downloadStream.begin(_downloadBuffer, _bufferCapacity);
 
     if (httpCode == HTTP_CODE_OK) {
+        LOG_MEMORY_DETAILED("WebClient: Vor http.writeToStream");
         http.writeToStream(&_downloadStream);
+        LOG_MEMORY_DETAILED("WebClient: Nach http.writeToStream");
         if (_downloadStream.hasOverflowed()) {
             Serial.printf("[WebDataManager] LERNEN: Pufferüberlauf bei Job %s. Puffergröße=%u. Job liefert mehr Daten als erwartet.\n", job.url.c_str(), (unsigned)_downloadStream.getCapacity());
             // Try to notify callbacks about failure / overflow
@@ -385,7 +396,9 @@ void WebClientModule::performJob(const WebJob& job) {
             size_t downloaded_size = _downloadStream.getSize();
             if (downloaded_size > 0) {
                 // allocate temporary buffer to hand to callback (synchronous only)
+                LOG_MEMORY_DETAILED("WebClient: Vor tmp_buf ps_malloc");
                 char* tmp_buf = (char*)ps_malloc(downloaded_size + 1);
+                LOG_MEMORY_DETAILED("WebClient: Nach tmp_buf ps_malloc");
                 if (tmp_buf) {
                     memcpy(tmp_buf, _downloadStream.getBuffer(), downloaded_size);
                     tmp_buf[downloaded_size] = '\0';
@@ -396,7 +409,9 @@ void WebClientModule::performJob(const WebJob& job) {
                         job.callback(tmp_buf, downloaded_size);
                     }
 
+                    LOG_MEMORY_DETAILED("WebClient: Vor tmp_buf free");
                     free(tmp_buf);
+                    LOG_MEMORY_DETAILED("WebClient: Nach tmp_buf free");
                 } else {
                     Serial.printf("[WebDataManager] FEHLER: Konnte temporären Buffer (%u) für Job nicht allozieren.\n", (unsigned)downloaded_size);
                     if (job.detailed_callback) {
@@ -434,6 +449,7 @@ void WebClientModule::performJob(const WebJob& job) {
     http.end();
     // free cert_data (if any) as early as possible (will be freed on scope exit anyway)
     cert_data.clear();
+    LOG_MEMORY_STRATEGIC("WebClient: End performJob");
 }
 
 void WebClientModule::webWorkerTask(void* param) {
@@ -507,6 +523,7 @@ void WebClientModule::webWorkerTask(void* param) {
 
 // performUpdate unchanged except cert discovery replaces previous deviceConfig cert-field usage
 void WebClientModule::performUpdate(ManagedResource& resource) {
+    LOG_MEMORY_STRATEGIC("WebClient: Begin performUpdate");
     Serial.printf("[WebDataManager] Starte Update für %s...\n", resource.url.c_str());
     resource.last_check_attempt = time(nullptr);
     bool retry_with_larger_buffer;
@@ -600,7 +617,9 @@ void WebClientModule::performUpdate(ManagedResource& resource) {
         _downloadStream.begin(_downloadBuffer, _bufferCapacity);
 
         if (httpCode == HTTP_CODE_OK) {
+            LOG_MEMORY_DETAILED("WebClient: Vor http.writeToStream in performUpdate");
             http.writeToStream(&_downloadStream);
+            LOG_MEMORY_DETAILED("WebClient: Nach http.writeToStream in performUpdate");
             if (_downloadStream.hasOverflowed()) {
                 Serial.printf("[WebClientModule] LERNEN: Pufferüberlauf bei %s. Puffer wird vergrößert.\n", resource.url.c_str());
                 size_t new_capacity = ((_downloadStream.getCapacity() / (128 * 1024)) + 1) * (128 * 1024);
@@ -614,12 +633,18 @@ void WebClientModule::performUpdate(ManagedResource& resource) {
             } else {
                 size_t downloaded_size = _downloadStream.getSize();
                 if (downloaded_size > 0) {
+                    LOG_MEMORY_DETAILED("WebClient: Vor permanent ps_malloc in performUpdate");
                     char* new_permanent_buffer = (char*)ps_malloc(downloaded_size + 1);
+                    LOG_MEMORY_DETAILED("WebClient: Nach permanent ps_malloc in performUpdate");
                     if (new_permanent_buffer) {
                         memcpy(new_permanent_buffer, _downloadStream.getBuffer(), downloaded_size);
                         new_permanent_buffer[downloaded_size] = '\0';
                         if (xSemaphoreTake(resource.mutex, portMAX_DELAY) == pdTRUE) {
-                            if (resource.data_buffer) free(resource.data_buffer);
+                            if (resource.data_buffer) {
+                                LOG_MEMORY_DETAILED("WebClient: Vor free old data_buffer");
+                                free(resource.data_buffer);
+                                LOG_MEMORY_DETAILED("WebClient: Nach free old data_buffer");
+                            }
                             resource.data_buffer = new_permanent_buffer;
                             resource.data_size = downloaded_size;
                             time(&resource.last_successful_update);
@@ -627,7 +652,9 @@ void WebClientModule::performUpdate(ManagedResource& resource) {
                             xSemaphoreGive(resource.mutex);
                             Serial.printf("[WebDataManager] ERFOLG: %s aktualisiert (%u Bytes).\n", resource.url.c_str(), (unsigned int)downloaded_size);
                         } else {
+                            LOG_MEMORY_DETAILED("WebClient: Vor free new_permanent_buffer (failed mutex)");
                             free(new_permanent_buffer);
+                            LOG_MEMORY_DETAILED("WebClient: Nach free new_permanent_buffer (failed mutex)");
                         }
                     } else {
                         Serial.printf("[WebClientModule] FEHLER: Konnte keinen passgenauen Puffer für %s allozieren.\n", resource.url.c_str());
@@ -664,4 +691,5 @@ void WebClientModule::performUpdate(ManagedResource& resource) {
         http.end();
         max_growth_retries--;
     } while (retry_with_larger_buffer && max_growth_retries > 0);
+    LOG_MEMORY_STRATEGIC("WebClient: End performUpdate");
 }

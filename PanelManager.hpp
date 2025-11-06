@@ -219,6 +219,12 @@ private:
     // Timing für Logic-Tick
     unsigned long _lastLogicTick = 0;
     const unsigned long LOGIC_TICK_INTERVAL = 100; // ms
+    
+    // NEU: Für separaten Logic-Tick-Task
+    SemaphoreHandle_t _logicTickMutex = nullptr;
+    TaskHandle_t _logicTickTaskHandle = nullptr;
+    static void logicTickTaskWrapper(void* param);
+    void logicTickTask();
 };
 
 #endif // PANELMANAGER_HPP

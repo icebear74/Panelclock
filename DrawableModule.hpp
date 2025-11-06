@@ -6,6 +6,8 @@
 #include "PsramUtils.hpp"
 #include "MemoryLogger.hpp"
 
+#define runtime_safe_buffer 10000;
+
 /**
  * Priority-System für Module:
  * - Normal (0): Nur für interne Playlist-Verwaltung, NICHT für Requests verwenden!
@@ -81,7 +83,7 @@ public:
     // --- Display-Eigenschaften ---
     virtual void draw() = 0;
     virtual unsigned long getDisplayDuration() = 0;
-    virtual unsigned long getSafetyBuffer() { return 10000; } // 2s Standard-Puffer
+    virtual unsigned long getSafetyBuffer() { return 5000; } // 2s Standard-Puffer
     virtual void resetPaging() = 0;
     
     // --- Playlist-Zugehörigkeit ---
