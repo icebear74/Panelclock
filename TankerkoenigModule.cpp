@@ -67,12 +67,13 @@ void TankerkoenigModule::tick() {
 void TankerkoenigModule::logicTick() {
     // Wird alle 100ms aufgerufen
     _logicTicksSincePageSwitch++;
-    Serial.printf("[Tanker] TICK: %d\n", _logicTicksSincePageSwitch);            
+    
     if (_logicTicksSincePageSwitch >= _currentTicksPerPage) {
-        
+        if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
             int numPages = station_data_list.size() > 0 ? station_data_list.size() : 1;
             currentPage++;
-                Serial.printf("[Tanker] Zeige %d von %d - ,%d\n", currentPage, numPages,_logicTicksSincePageSwitch);            
+            
+            // Wenn alle Seiten durch -> Modul ist fertig
             if (currentPage >= numPages) {
                 currentPage = 0;
                 _isFinished = true;
@@ -81,7 +82,7 @@ void TankerkoenigModule::logicTick() {
                 if (updateCallback) updateCallback();
             }
             xSemaphoreGive(dataMutex);
-        
+        }
         _logicTicksSincePageSwitch = 0;
     }
 }
@@ -347,7 +348,7 @@ void TankerkoenigModule::parseAndProcessJson(const char* buffer, size_t size) {
 }
 
 void TankerkoenigModule::draw() {
-    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
+    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) != pdTRUE) return;
     
     totalPages = station_data_list.size() > 0 ? station_data_list.size() : 1;
     
