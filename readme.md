@@ -1,72 +1,113 @@
-# Panelclock - Multifunktionale ESP32 LED-Matrix-Uhr
+[View this document in German (Deutsch)](README.de.md)
 
-Panelclock ist ein flexibles und modular aufgebautes Projekt für eine ESP32-basierte Uhr, die auf einem HUB75 RGB-LED-Matrix-Panel läuft. Es ist weit mehr als nur eine Uhr; es ist ein vielseitiges Informationsdisplay, das durch eine Vielzahl von Modulen erweitert werden kann.
+---
 
-Das System ist für den 24/7-Betrieb ausgelegt, mit einem ausgeklügelten Webinterface zur Konfiguration, Over-the-Air (OTA) Update-Fähigkeit und einem robusten Speichermanagement, das auf PSRAM setzt.
+# Panelclock - Multifunctional ESP32 LED Matrix Clock
 
-## Kernarchitektur
+Panelclock is a flexible and modular project for an ESP32-based clock running on a HUB75 RGB LED matrix panel. It is much more than just a clock; it's a versatile information display that can be extended with a variety of modules.
 
-Das Herzstück des Projekts ist eine modulare Architektur, die von der zentralen `Application`-Klasse gesteuert wird. Jede Informationseinheit, die auf dem Panel angezeigt werden kann (wie die Uhrzeit, Kalender, Sportergebnisse), ist als eigenständiges `DrawableModule` gekapselt.
+The system is designed for 24/7 operation, featuring a sophisticated web interface for configuration, Over-the-Air (OTA) update capabilities, and robust memory management that relies on PSRAM.
 
-- **Application (`Application.cpp/.hpp`):** Der Dirigent des gesamten Projekts. Initialisiert alle Manager und Module und steuert die Hauptschleife.
-- **PanelManager (`PanelManager.cpp/.hpp`):** Der Display-Controller. Er verwaltet die Liste der aktiven Module, wechselt zwischen ihnen in einer vordefinierten Rotation und ist für das eigentliche Rendern des Bildes auf dem LED-Panel zuständig.
-- **DrawableModule (`DrawableModule.hpp`):** Eine virtuelle Basisklasse (Interface), die von allen Anzeigemodulen implementiert wird. Sie definiert die grundlegenden Funktionen, die ein Modul haben muss, wie `draw()`, `logicTick()` und `getDisplayDuration()`.
-- **WebClientModule (`WebClientModule.cpp/.hpp`):** Ein zentraler, asynchroner Manager für alle HTTP-Anfragen. Module registrieren hier die benötigten Web-Ressourcen, und der WebClient kümmert sich effizient um das Abrufen und Cachen der Daten im Hintergrund.
-- **WebServer & Konfiguration (`webconfig.cpp/.hpp`, `WebServerManager.cpp/.hpp`):** Das Projekt hostet ein umfangreiches Web-Interface, das eine vollständige Konfiguration aller Module ohne Neu-Kompilierung ermöglicht. Einstellungen werden auf dem Gerät im LittleFS gespeichert.
+## Core Architecture
 
-## Hauptfunktionen
+The heart of the project is a modular architecture, orchestrated by the central `Application` class. Each unit of information that can be displayed on the panel (like the time, calendar, sports results) is encapsulated as a standalone `DrawableModule`.
 
-- **Modulare Anzeige:** Einfache Erweiterbarkeit durch neue Module. Die angezeigten Informationen rotieren automatisch.
-- **Web-Konfiguration:** Ein integrierter Webserver ermöglicht die bequeme Konfiguration von WLAN, Zeitzone, Modul-Einstellungen und mehr über einen Browser.
-- **OTA-Updates:** Die Firmware kann "Over-the-Air" über das Web-Interface aktualisiert werden.
-- **Effizientes Ressourcen-Management:** Intensive Nutzung von PSRAM für Web-Daten, JSON-Parsing und Spielerlisten, um den knappen internen Speicher des ESP32 zu schonen.
-- **Asynchrone Datenabrufe:** Alle externen Daten werden im Hintergrund geladen, ohne die Anzeige oder andere Operationen zu blockieren.
-- **Präsenz-Erkennung:** Durch das `MwaveSensorModule` kann das Display bei Abwesenheit automatisch abgeschaltet und bei Anwesenheit reaktiviert werden, um Strom zu sparen.
-- **Robuste Zeitumrechnung:** Ein maßgeschneiderter `GeneralTimeConverter` sorgt für eine zuverlässige Umrechnung von UTC in die lokale Zeit, inklusive korrekter Sommer-/Winterzeit-Regeln (DST).
+- **Application (`Application.cpp/.hpp`):** The conductor of the entire project. It initializes all managers and modules and controls the main loop.
+- **PanelManager (`PanelManager.cpp/.hpp`):** The display controller. It manages the list of active modules, cycles through them in a predefined rotation, and is responsible for rendering the final image to the LED panel.
+- **DrawableModule (`DrawableModule.hpp`):** A virtual base class (interface) implemented by all display modules. It defines the fundamental functions a module must have, such as `draw()`, `logicTick()`, and `getDisplayDuration()`.
+- **WebClientModule (`WebClientModule.cpp/.hpp`):** A central, asynchronous manager for all HTTP requests. Modules register their required web resources here, and the WebClient efficiently handles fetching and caching the data in the background.
+- **WebServer & Configuration (`webconfig.cpp/.hpp`, `WebServerManager.cpp/.hpp`):** The project hosts a comprehensive web interface that allows for full configuration of all modules without recompiling. Settings are stored on the device's LittleFS.
 
-## Module
+## Key Features
 
-Das Panelclock-System besteht aus einer Reihe von spezialisierten Modulen:
+- **Modular Display:** Easily extendable with new modules. The displayed information rotates automatically.
+- **Web Configuration:** An integrated web server allows for convenient configuration of Wi-Fi, timezone, module settings, and more via a browser.
+- **OTA Updates:** The firmware can be updated "Over-the-Air" through the web interface.
+- **Efficient Resource Management:** Heavy use of PSRAM for web data, JSON parsing, and player lists to conserve the ESP32's scarce internal memory.
+- **Asynchronous Data Fetching:** All external data is loaded in the background without blocking the display or other operations.
+- **Presence Detection:** The `MwaveSensorModule` can automatically turn off the display when no one is present and reactivate it, saving power.
+- **Robust Time Conversion:** A custom `GeneralTimeConverter` ensures reliable conversion from UTC to local time, including correct Daylight Saving Time (DST) rules.
 
-### Standard-Module
-- **ClockModule:** Eine einfache, aber elegante Digitaluhr. Das Kernmodul.
-- **CalendarModule:** Zeigt Termine aus einer oder mehreren iCal-Quellen (.ics) an. Unterstützt dank des `RRuleParser` auch komplexe Wiederholungsregeln.
+## Modules
 
-### Informations-Module
-- **DartsRankingModule:** Zeigt die "Order of Merit" und "Pro Tour" Ranglisten der Darts-Welt an. Tracked Players können farblich hervorgehoben werden, und bei Live-Turnieren wird die aktuelle Runde des Spielers angezeigt.
-- **CuriousHolidaysModule:** Holt und zeigt kuriose Feiertage für den aktuellen und den nächsten Tag von `kuriose-feiertage.de`.
-- **TankerkoenigModule:** Ruft über die Tankerkönig-API die aktuellen Spritpreise für konfigurierte Tankstellen ab und zeigt diese an.
-- **FritzboxModule:** Stellt eine Verbindung zu einer AVM FRITZ!Box her, um eine Anrufliste der letzten verpassten, angenommenen oder getätigten Anrufe anzuzeigen.
+The Panelclock system consists of a series of specialized modules:
 
-### System-Module
-- **MwaveSensorModule:** Steuert einen RCWL-0516 Mikrowellen-Bewegungssensor, um die Anwesenheit von Personen im Raum zu erkennen und das Display zu schalten.
-- **ConnectionManager:** Verwaltet die WLAN-Verbindung und sorgt für einen automatischen Reconnect.
-- **OtaManager:** Stellt die Funktionalität für Over-the-Air-Updates bereit.
+### Standard Modules
+- **ClockModule:** A simple yet elegant digital clock. The core module.
+- **CalendarModule:** Displays events from one or more iCal sources (.ics). Supports complex recurrence rules thanks to the `RRuleParser`.
 
-## Konfiguration
+### Information Modules
+- **DartsRankingModule:** Displays the "Order of Merit" and "Pro Tour" rankings of the darts world. Tracked players can be highlighted, and for live tournaments, the player's current round is shown.
+- **CuriousHolidaysModule:** Fetches and displays curious holidays for the current and next day from `kuriose-feiertage.de`.
+- **TankerkoenigModule:** Retrieves current fuel prices for configured gas stations via the Tankerkönig API.
+- **FritzboxModule:** Connects to an AVM FRITZ!Box to display a call list of recent missed, received, or placed calls.
 
-Die gesamte Konfiguration erfolgt über das Web-Interface, das nach dem ersten Start im eigenen WLAN des Geräts (Access Point Modus) oder später über die IP-Adresse des Geräts im Heimnetzwerk erreichbar ist.
+### System Modules
+- **MwaveSensorModule:** Controls an RCWL-0516 microwave motion sensor to detect human presence in the room and toggle the display.
+- **ConnectionManager:** Manages the Wi-Fi connection and ensures automatic reconnection.
+- **OtaManager:** Provides the functionality for Over-the-Air updates.
 
-Die Konfigurationsdateien werden im LittleFS-Dateisystem auf dem ESP32 gespeichert.
+## How to Add a New Module
 
-Detaillierte Informationen zur Konfiguration findest du in der [README_webconfig.md](README_webconfig.md).
+The modular design makes it easy to extend the Panelclock's functionality. Follow these steps to create your own `DrawableModule`:
 
-## Hardware & Abhängigkeiten
+1.  **Create Header and Source Files:**
+    *   Create `YourNewModule.hpp` and `YourNewModule.cpp`.
+    *   In the `.hpp` file, include `DrawableModule.hpp` and have your new class inherit from it.
+        ```cpp
+        #include "DrawableModule.hpp"
+        
+        class YourNewModule : public DrawableModule {
+        public:
+            YourNewModule(/* Dependencies like u8g2, canvas, etc. */);
+            
+            // Implement the virtual functions from DrawableModule
+            void draw() override;
+            void logicTick() override;
+            unsigned long getDisplayDuration() override;
+            bool isEnabled() override;
+            const char* getModuleName() const override { return "YourNewModule"; }
+            // ... other optional functions like `tick()` or `resetPaging()` ...
+        };
+        ```
 
-- **Controller:** ESP32 mit PSRAM (z.B. WROVER-Modul).
-- **Display:** HUB75-kompatibles RGB-LED-Matrix-Panel.
-- **Bibliotheken:**
-  - `ESP32-HUB75-LED-MATRIX-PANEL-DMA-Display` für die Ansteuerung des Panels.
-  - `Adafruit_GFX_Library` und `U8g2_for_Adafruit_GFX` für die Text- und Grafikdarstellung.
-  - `ArduinoJson` für die Verarbeitung von API-Antworten.
-  - `NTPClient` für die Zeitsynchronisation.
-  - Sowie die Standard-ESP32-Bibliotheken (`WiFi`, `HTTPClient`, etc.).
+2.  **Instantiate the Module in the Application:**
+    *   Open `Application.hpp` and declare a pointer to your new module.
+    *   Open `Application.cpp`. In the `setup()` method, create a new instance of your module using `new`.
+
+3.  **Register the Module with the PanelManager:**
+    *   In `Application::setup()`, add your new module to the `panelManager`'s list:
+        ```cpp
+        panelManager.addModule(yourNewModule.get()); 
+        ```
+
+4.  **Add Configuration in the Web Interface:**
+    *   **Define Structure:** In `webconfig.hpp`, extend the `struct WebConfig` with the configuration parameters for your module (e.g., a `bool enabled` switch, API keys, etc.).
+    *   **Create HTML Page:** In `WebPages.hpp`, add a new `PROGMEM` string that contains the HTML form for your module's settings. Use placeholders (`%placeholder%`) that will be replaced later.
+    *   **Implement Web Handler:** In `WebHandlers.cpp`, create a new handler function (e.g., `handleYourModuleConfig()`) that serves the configuration page and saves the form input.
+    *   **Register Server Route:** In `WebServerManager::begin()`, register a new route for your handler (e.g., `/config/yourmodule`).
+
+5.  **Data Fetching (if necessary):**
+    *   If your module needs data from the internet, use the `WebClientModule`.
+    *   Register the required URL in your module's `setConfig` method using `webClient->registerResource(...)`.
+    *   Implement the `queueData()` method to trigger the data fetch and the `processData()` method to process the loaded data.
+
+## Hardware & Dependencies
+
+- **Controller:** ESP32 with PSRAM (e.g., a WROVER module).
+- **Display:** HUB75-compatible RGB LED matrix panel.
+- **Libraries:**
+  - `ESP32-HUB75-LED-MATRIX-PANEL-DMA-Display` for controlling the panel.
+  - `Adafruit_GFX_Library` and `U8g2_for_Adafruit_GFX` for text and graphics rendering.
+  - `ArduinoJson` for processing API responses.
+  - `NTPClient` for time synchronization.
+  - As well as standard ESP32 libraries (`WiFi`, `HTTPClient`, etc.).
 
 ## Build & Flash
 
-Das Projekt ist als Arduino-Sketch strukturiert.
-- **Partitionsschema:** Es wird eine spezielle `partitions.csv` verwendet, um genügend Platz für die große Applikation, OTA-Updates und das LittleFS-Dateisystem für die Web-Dateien bereitzustellen.
-- **PSRAM:** PSRAM muss in den Board-Einstellungen der Arduino IDE aktiviert sein.
+The project is structured as an Arduino sketch.
+- **Partition Scheme:** A custom `partitions.csv` is used to provide enough space for the large application, OTA updates, and the LittleFS filesystem for web files.
+- **PSRAM:** PSRAM must be enabled in the Arduino IDE's board settings.
 
 ---
-*Dieses README wurde automatisch basierend auf einer Analyse des Quellcodes generiert.*
+*This README was generated based on a source code analysis and has been manually extended.*
