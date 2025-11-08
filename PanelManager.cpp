@@ -89,7 +89,7 @@ bool PanelManager::begin() {
     _virtualDisp->setDisplay(*_dma_display);
     
     // NEU: Logic-Tick-Task starten
-    xTaskCreate(logicTickTaskWrapper, "LogicTickTask", 2048, this, 1, &_logicTickTaskHandle);
+    xTaskCreate(logicTickTaskWrapper, "LogicTickTask", 4096, this, 1, &_logicTickTaskHandle);
     
     Serial.println("[PanelManager] Display-Initialisierung erfolgreich abgeschlossen.");
     return true;

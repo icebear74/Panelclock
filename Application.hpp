@@ -8,6 +8,7 @@
 #include "CalendarModule.hpp"
 #include "DartsRankingModule.hpp"
 #include "FritzboxModule.hpp"
+#include "CuriousHolidaysModule.hpp"
 
 // Forward-Deklarationen, um zirkuläre Abhängigkeiten in Headern zu vermeiden
 class PanelManager;
@@ -16,6 +17,7 @@ class TankerkoenigModule; // GEÄNDERT: DataModule -> TankerkoenigModule
 class CalendarModule;
 class DartsRankingModule;
 class FritzboxModule;
+class CuriousHolidaysModule;
 
 /**
  * @brief Hauptanwendungsklasse, die den gesamten Lebenszyklus der Panelclock steuert.
@@ -90,6 +92,8 @@ private:
     DartsRankingModule* _dartsMod = nullptr;
     /// @brief Zeiger auf das Fritz!Box-Anrufmonitor-Modul.
     FritzboxModule* _fritzMod = nullptr;
+    /// @brief Zeiger auf das kuriose Feiertage-Modul.
+    CuriousHolidaysModule* _curiousMod = nullptr;
     
     /// @brief Flag, das eine sofortige Neuzeichnung des Displays anfordert.
     bool _redrawRequest = false;

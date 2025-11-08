@@ -24,6 +24,8 @@ WebClientModule* webClient = nullptr;
 MwaveSensorModule* mwaveSensorModule = nullptr;
 OtaManager* otaManager = nullptr;
 bool portalRunning = false;
+
+// NEU: Definition der globalen Variable (entferne extern)
 TankerkoenigModule* tankerkoenigModule = nullptr;
 
 // Forward-Deklaration, da in WebServerManager.cpp definiert
@@ -65,12 +67,13 @@ Application::~Application() {
     delete _calendarMod;
     delete _dartsMod;
     delete _fritzMod;
+    delete _curiousMod;
 }
 
 void Application::begin() {
     LOG_MEMORY_STRATEGIC("Application: Start");
 
-    if (!LittleFS.begin(true)) {
+    if (!LittleFS.begin()) {
         Serial.println("FATAL: LittleFS konnte nicht initialisiert werden!");
         while(true) delay(1000);
     }
@@ -104,6 +107,7 @@ void Application::begin() {
     _calendarMod = new CalendarModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, webClient);
     _dartsMod = new DartsRankingModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), webClient);
     _fritzMod = new FritzboxModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), webClient);
+    _curiousMod = new CuriousHolidaysModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, webClient);
     
     _panelManager->registerClockModule(_clockMod);
     _panelManager->registerSensorModule(mwaveSensorModule);
@@ -111,6 +115,7 @@ void Application::begin() {
     _panelManager->registerModule(_tankerkoenigMod);
     _panelManager->registerModule(_calendarMod);
     _panelManager->registerModule(_dartsMod);
+    _panelManager->registerModule(_curiousMod);
 
     if (connectionManager->begin()) {
         portalRunning = false;
@@ -122,6 +127,7 @@ void Application::begin() {
         _tankerkoenigMod->begin();
         webClient->begin();
         _fritzMod->begin(network_core);
+        _curiousMod->begin();
 
         WiFi.setHostname(deviceConfig->hostname.c_str());
         if (!deviceConfig->otaPassword.empty()) ArduinoOTA.setPassword(deviceConfig->otaPassword.c_str());
@@ -148,6 +154,8 @@ void Application::begin() {
     _dartsMod->onUpdate([this](DartsRankingType type){ 
         this->_redrawRequest = true; 
     });
+
+    _curiousMod->onUpdate(redrawCb);
 
     _panelManager->displayStatus("Startvorgang\nabgeschlossen.");
     delay(2000);
@@ -181,10 +189,12 @@ void Application::update() {
     if(_tankerkoenigMod) _tankerkoenigMod->queueData();
     if(_dartsMod) _dartsMod->queueData();
     if(_calendarMod) _calendarMod->queueData();
+    if(_curiousMod) _curiousMod->queueData();
     
     if(_tankerkoenigMod) _tankerkoenigMod->processData();
     if(_dartsMod) _dartsMod->processData();
     if(_calendarMod) _calendarMod->processData();
+    if(_curiousMod) _curiousMod->processData();
 
     if (_panelManager) _panelManager->tick();
 
@@ -205,7 +215,7 @@ void Application::update() {
 
 void Application::executeApplyLiveConfig() {
     LOG_MEMORY_DETAILED("Vor executeApplyLiveConfig");
-    if (!_tankerkoenigMod || !_calendarMod || !_dartsMod || !_fritzMod || !timeConverter || !deviceConfig) return;
+    if (!_tankerkoenigMod || !_calendarMod || !_dartsMod || !_fritzMod || !_curiousMod || !timeConverter || !deviceConfig) return;
     Serial.println("[Config] Wende Live-Konfiguration an...");
     
     if (!timeConverter->setTimezone(deviceConfig->timezone.c_str())) {
@@ -213,11 +223,12 @@ void Application::executeApplyLiveConfig() {
     }
     
     _tankerkoenigMod->setConfig(deviceConfig->tankerApiKey, deviceConfig->tankerkoenigStationIds, deviceConfig->stationFetchIntervalMin, deviceConfig->stationDisplaySec);
-    _calendarMod->setConfig(deviceConfig->icsUrl, deviceConfig->calendarFetchIntervalMin, deviceConfig->calendarDisplaySec, deviceConfig->calendarScrollMs, deviceConfig->calendarDateColor, deviceConfig->calendarTextColor);
+     _calendarMod->setConfig(deviceConfig->icsUrl, deviceConfig->calendarFetchIntervalMin, deviceConfig->calendarDisplaySec, deviceConfig->calendarScrollMs, deviceConfig->calendarDateColor, deviceConfig->calendarDateColor);
     // Neue Urgent-Parameter vom Webconfig anwenden (sofern vorhanden)
     _calendarMod->setUrgentParams(deviceConfig->calendarFastBlinkHours, deviceConfig->calendarUrgentThresholdHours, deviceConfig->calendarUrgentDurationSec, deviceConfig->calendarUrgentRepeatMin);
     _dartsMod->setConfig(deviceConfig->dartsOomEnabled, deviceConfig->dartsProTourEnabled, 5, deviceConfig->dartsDisplaySec, deviceConfig->trackedDartsPlayers);
     _fritzMod->setConfig(deviceConfig->fritzboxEnabled, deviceConfig->fritzboxIp);
+    _curiousMod->setConfig();
 
     Serial.println("[Config] Live-Konfiguration angewendet.");
     LOG_MEMORY_DETAILED("Nach executeApplyLiveConfig");
