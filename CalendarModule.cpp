@@ -110,7 +110,7 @@ void CalendarModule::tick() {
 void CalendarModule::logicTick() {
     // Wird alle 100ms aufgerufen
     _logicTicksSinceStart++;
-        Serial.printf("[Calendar] Ticks: %d\n", _logicTicksSinceStart);    
+
     // Wenn Urgent-View aktiv ist, KEINE normale Duration-Prüfung!
     if (_isUrgentViewActive) {
         return;
