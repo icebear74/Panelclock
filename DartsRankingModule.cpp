@@ -81,7 +81,6 @@ void DartsRankingModule::setConfig(bool oomEnabled, bool proTourEnabled, uint32_
     this->_proTourEnabled = proTourEnabled;
     this->_pageDisplayDuration = displaySec > 0 ? displaySec * 1000UL : 5000;
     
-    // Berechne Ticks pro Seite für logicTick (100ms pro Tick)
     _currentTicksPerPage = _pageDisplayDuration / 100;
     if (_currentTicksPerPage == 0) _currentTicksPerPage = 1;
 
@@ -90,8 +89,6 @@ void DartsRankingModule::setConfig(bool oomEnabled, bool proTourEnabled, uint32_
     
     setTrackedPlayers(trackedPlayers);
 }
-
-// --- Implementierung der Interface-Methoden ---
 
 bool DartsRankingModule::isEnabled() {
     return _oomEnabled || _proTourEnabled;
@@ -109,12 +106,11 @@ void DartsRankingModule::resetPaging() {
     _currentInternalMode = DartsRankingType::ORDER_OF_MERIT;
     _logicTicksSincePageSwitch = 0;
     _logicTicksSinceRankingSwitch = 0;
-    _isFinished = false;  // ← NEU!
+    _isFinished = false;
     resetScroll();
 }
 
 void DartsRankingModule::tick() {
-    // Nur für Scroll-Animation
     unsigned long now = millis();
     if (now - lastScrollStepTime > scrollStepInterval) {
         tickScroll();
@@ -126,20 +122,17 @@ void DartsRankingModule::tick() {
 }
 
 void DartsRankingModule::logicTick() {
-    // Wird alle 100ms aufgerufen
     _logicTicksSincePageSwitch++;
     _logicTicksSinceRankingSwitch++;
     
     bool needsRedraw = false;
 
-    // 1. Seiten-Wechsel innerhalb eines Rankings (OOM oder ProTour)
     if (_logicTicksSincePageSwitch >= _currentTicksPerPage) {
         if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
             if (totalPages > 1) {
                 currentPage++;
                 if (currentPage >= totalPages) {
                     currentPage = 0;
-                    // Alle Seiten durch -> prüfe ob Ranking-Wechsel nötig
                 } else {
                     resetScroll();
                     needsRedraw = true;
@@ -156,7 +149,6 @@ void DartsRankingModule::logicTick() {
         _logicTicksSincePageSwitch = 0;
     }
 
-    // 2. Wechsel zwischen den Rankings (OOM <-> ProTour)
     uint32_t currentModeTicks = getInternalTickDuration(_currentInternalMode);
     if (currentModeTicks > 0 && _logicTicksSinceRankingSwitch >= currentModeTicks) {
         DartsRankingType nextMode = _currentInternalMode;
@@ -165,9 +157,7 @@ void DartsRankingModule::logicTick() {
         } else if (_currentInternalMode == DartsRankingType::PRO_TOUR && _oomEnabled) {
             nextMode = DartsRankingType::ORDER_OF_MERIT;
         } else {
-            // Nur ein Ranking aktiviert -> wir sind fertig
             _isFinished = true;
-            Serial.printf("[Darts] Alle Seiten des einzigen Rankings gezeigt -> Modul beendet sich selbst\n");
             return;
         }
 
@@ -179,9 +169,7 @@ void DartsRankingModule::logicTick() {
             resetScroll();
             needsRedraw = true;
         } else {
-            // Beide Rankings durch -> fertig
             _isFinished = true;
-            Serial.printf("[Darts] Beide Rankings komplett gezeigt -> Modul beendet sich selbst\n");
         }
     }
 
@@ -230,6 +218,17 @@ void DartsRankingModule::draw() {
     int start_index = currentPage * PLAYERS_PER_PAGE;
     ensureScrollPos(PLAYERS_PER_PAGE);
 
+    // ** KORREKTE LOGIK: Maximale Rundenlänge über ALLE Spieler ermitteln **
+    int max_round_len = 2; // Default auf 2 setzen
+    for (const auto& player : players_list) { // Iteriere über die gesamte Liste
+        if (player.currentRound && strcmp(player.currentRound, "--") != 0) {
+            int len = strlen(player.currentRound);
+            if (len > max_round_len) {
+                max_round_len = len;
+            }
+        }
+    }
+
     for (int i = 0; i < PLAYERS_PER_PAGE; ++i) {
         int player_index = start_index + i;
         if (player_index >= players_list.size()) break;
@@ -257,26 +256,30 @@ void DartsRankingModule::draw() {
         uint16_t name_color;
         if (player.isTrackedPlayer) {
             name_color = player.isActive ? colors.trackedPlayerColor : dimColor(colors.trackedPlayerColor);
-        } else if (player.didParticipate && player.rank > 32) {
+        } else if (player.didParticipate && player.rank > 40) {
             name_color = player.isActive ? colors.participantColor : dimColor(colors.participantColor);
         } else {
             name_color = rank_color;
         }
         u8g2.setForegroundColor(name_color); 
         
-        String rightText = player.prizeMoney ? "£" + String(player.prizeMoney) : "";
-        
+        String roundPart = "";
         if (player.currentRound) {
-            String roundStr = String(player.currentRound);
-            if (roundStr.length() == 1) {
-                rightText += " ( " + roundStr + ")";
+            if (strcmp(player.currentRound, "--") == 0) {
+                String dashes = "";
+                for(int j=0; j<max_round_len; ++j) dashes += "-";
+                roundPart = "(" + dashes + ")";
             } else {
-                rightText += " (" + roundStr + ")";
+                String roundStr(player.currentRound);
+                while(roundStr.length() < max_round_len) {
+                    roundStr += " ";
+                }
+                roundPart = "(" + roundStr + ")";
             }
         }
-
+        String rightText = (player.prizeMoney ? "£" + String(player.prizeMoney) : "") + " " + roundPart;
+        
         int x_right = canvas.width() - u8g2.getUTF8Width(rightText.c_str()) - 2;
-
         int nameX = 45;
         int maxNameWidth = x_right - nameX - 4;
         drawScrollingText(player.name, nameX, y, maxNameWidth, i);
@@ -445,7 +448,8 @@ void DartsRankingModule::filterAndSortPlayers(DartsRankingType type) {
         }
         player.isTrackedPlayer = isTracked;
         
-        if ((player.rank > 0 && player.rank <= 32) || isTracked || player.didParticipate) {
+        // ** KORREKTUR: 32 -> 40 **
+        if ((player.rank > 0 && player.rank <= 40) || isTracked || player.didParticipate) {
             players_list.push_back(std::move(player));
         }
     }
@@ -547,7 +551,6 @@ void DartsRankingModule::parsePlayerRow(const char* tr_start, const char* tr_end
 
 void DartsRankingModule::parseHtml(const char* html, size_t len, DartsRankingType type) {
     const char* type_str = (type == DartsRankingType::ORDER_OF_MERIT) ? "OOM" : "ProTour";
-    Serial.printf("[DartsModule] Parsing %s gestartet...\n", type_str);
 
     auto& target_players = (type == DartsRankingType::ORDER_OF_MERIT) ? oom_players : protour_players;
     auto& target_main_title = (type == DartsRankingType::ORDER_OF_MERIT) ? oom_mainTitleText : protour_mainTitleText;
@@ -599,13 +602,11 @@ void DartsRankingModule::parseHtml(const char* html, size_t len, DartsRankingTyp
     target_players = std::move(temp_players);
 
     filterAndSortPlayers(type);
-    Serial.printf("[DartsModule] Parsing %s beendet. %d Spieler angezeigt.\n", type_str, target_players.size());
 }
 
 bool DartsRankingModule::parseTable(const char* html, std::vector<DartsPlayer, PsramAllocator<DartsPlayer>>& players_ref) {
     const char* table_start = strstr(html, "<table");
     if (!table_start) {
-        Serial.println("[DartsModule] Kein <table> Tag gefunden.");
         return false;
     }
 
@@ -635,11 +636,8 @@ bool DartsRankingModule::parseTable(const char* html, std::vector<DartsPlayer, P
     }
     
     if (headers.empty()) {
-        Serial.println("[DartsModule] Keine Header in der Tabelle gefunden.");
         return false;
     }
-    
-    Serial.printf("[DartsModule] Header-Analyse: %d Spalten. Live-Format: %s\n", headers.size(), isLiveFormat ? "Ja" : "Nein");
 
     const char* tbody_start = strstr(table_start, "<tbody");
     if (!tbody_start) {
