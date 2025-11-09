@@ -7,7 +7,7 @@ const char HTML_PAGE_HEADER[] PROGMEM = R"rawliteral(
 <!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><meta charset="UTF-8">
 <title>Panelclock Config</title><style>body{font-family:sans-serif;background:#222;color:#eee;}
 .container{max-width:800px;margin:0 auto;padding:20px;}h1,h2{color:#4CAF50;border-bottom:1px solid #444;padding-bottom:10px;}
-label{display:block;margin-top:15px;color:#bbb;}input[type="text"],input[type="password"],input[type="number"],select{width:100%;padding:8px;margin-top:5px;border-radius:4px;border:1px solid #555;box-sizing:border-box;}
+label{display:block;margin-top:15px;color:#bbb;}input[type="text"],input[type="password"],input[type="number"],select{width:100%;padding:8px;margin-top:5px;border-radius:4px;border:1px solid #555;box-sizing:border-box;background-color:#333;color:#eee;}
 input[type="checkbox"]{margin-right:10px;transform:scale(1.5);}
 input[type="color"]{width:100%;height:40px;padding:5px;margin-top:5px;border-radius:4px;border:1px solid #555;box-sizing:border-box;}
 input[type="submit"],.button{background-color:#4CAF50;color:white;padding:14px 20px;margin-top:20px;border:none;border-radius:4px;cursor:pointer;width:100%;font-size:16px;text-align:center;text-decoration:none;display:inline-block;}
@@ -146,6 +146,7 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
 
 <div class="tab">
   <button class="tablinks" onclick="openTab(event, 'Timezone')" id="defaultOpen">Zeitzone</button>
+  <button class="tablinks" onclick="openTab(event, 'Wetter')">Wetter</button>
   <button class="tablinks" onclick="openTab(event, 'Tankstellen')">Tankstellen</button>
   <button class="tablinks" onclick="openTab(event, 'Kalender')">Kalender</button>
   <button class="tablinks" onclick="openTab(event, 'Darts')">Darts</button>
@@ -158,6 +159,47 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
     <div class="group">
         <h3>Zeitzone</h3>
         <label for="timezone">Zeitzone</label><select id="timezone" name="timezone">{tz_options}</select>
+    </div>
+</div>
+
+<div id="Wetter" class="tabcontent">
+    <div class="group">
+        <h3>Allgemein</h3>
+        <p>Verwendet OpenWeatherMap. Ein kostenloser API-Key ist erforderlich. Der <a href="/config_location">Standort</a> muss konfiguriert sein.</p>
+        <input type="checkbox" id="weatherEnabled" name="weatherEnabled" {weatherEnabled_checked}><label for="weatherEnabled" style="display:inline;">Wetter-Anzeige aktivieren</label><br>
+        <label for="weatherApiKey">OpenWeatherMap API Key</label><input type="text" id="weatherApiKey" name="weatherApiKey" value="{weatherApiKey}">
+        <label for="weatherFetchIntervalMin">Abrufintervall (Minuten)</label><input type="number" id="weatherFetchIntervalMin" name="weatherFetchIntervalMin" value="{weatherFetchIntervalMin}" min="5">
+    </div>
+    <div class="group">
+        <h3>Seiten-Management</h3>
+        <label for="weatherDisplaySec">Anzeigedauer pro Seite (Sekunden)</label><input type="number" id="weatherDisplaySec" name="weatherDisplaySec" value="{weatherDisplaySec}" min="1">
+        <hr>
+        <input type="checkbox" id="weatherShowCurrent" name="weatherShowCurrent" {weatherShowCurrent_checked}><label for="weatherShowCurrent" style="display:inline;">Aktuelles Wetter anzeigen</label><br>
+        <input type="checkbox" id="weatherShowHourly" name="weatherShowHourly" {weatherShowHourly_checked}><label for="weatherShowHourly" style="display:inline;">Stunden-Vorschau anzeigen</label><br>
+        <input type="checkbox" id="weatherShowDaily" name="weatherShowDaily" {weatherShowDaily_checked}><label for="weatherShowDaily" style="display:inline;">Tages-Vorschau anzeigen</label><br>
+        <label for="weatherDailyForecastDays">Anzahl der Vorschau-Tage (0-8)</label><input type="number" id="weatherDailyForecastDays" name="weatherDailyForecastDays" value="{weatherDailyForecastDays}" min="0" max="8">
+    </div>
+    <div class="group">
+        <h3>Stunden-Vorschau Details</h3>
+        <label for="weatherHourlyMode">Typ der Stunden-Anzeige</label>
+        <select id="weatherHourlyMode" name="weatherHourlyMode" onchange="toggleHourlyMode()">
+            <option value="0" {weatherHourlyMode_0_selected}>Definierte Zeitfenster</option>
+            <option value="1" {weatherHourlyMode_1_selected}>Festes Intervall</option>
+        </select>
+        <div id="hourlyModeSlots">
+            <label for="weatherHourlySlotMorning">'Morgen' endet um (Stunde)</label><input type="number" id="weatherHourlySlotMorning" name="weatherHourlySlotMorning" value="{weatherHourlySlotMorning}" min="0" max="23">
+            <label for="weatherHourlySlotNoon">'Mittag' endet um (Stunde)</label><input type="number" id="weatherHourlySlotNoon" name="weatherHourlySlotNoon" value="{weatherHourlySlotNoon}" min="0" max="23">
+            <label for="weatherHourlySlotEvening">'Abend' endet um (Stunde)</label><input type="number" id="weatherHourlySlotEvening" name="weatherHourlySlotEvening" value="{weatherHourlySlotEvening}" min="0" max="23">
+        </div>
+        <div id="hourlyModeInterval" style="display:none;">
+            <label for="weatherHourlyInterval">Alle X Stunden anzeigen</label><input type="number" id="weatherHourlyInterval" name="weatherHourlyInterval" value="{weatherHourlyInterval}" min="1" max="12">
+        </div>
+    </div>
+    <div class="group">
+        <h3>Offizielle Wetter-Warnungen</h3>
+        <input type="checkbox" id="weatherAlertsEnabled" name="weatherAlertsEnabled" {weatherAlertsEnabled_checked}><label for="weatherAlertsEnabled" style="display:inline;">Warnungen anzeigen (unterbricht normale Anzeige)</label><br>
+        <label for="weatherAlertsDisplaySec">Anzeigedauer der Warnung (Sekunden)</label><input type="number" id="weatherAlertsDisplaySec" name="weatherAlertsDisplaySec" value="{weatherAlertsDisplaySec}" min="1">
+        <label for="weatherAlertsRepeatMin">Wiederholung der Warnung (Minuten)</label><input type="number" id="weatherAlertsRepeatMin" name="weatherAlertsRepeatMin" value="{weatherAlertsRepeatMin}" min="0">
     </div>
 </div>
 
@@ -242,9 +284,24 @@ function openTab(evt, tabName) {
     tablinks[i].className = tablinks[i].className.replace(" active", "");
   }
   document.getElementById(tabName).style.display = "block";
-  evt.currentTarget.className += " active";
+  if (evt) {
+    evt.currentTarget.className += " active";
+  } else {
+    document.querySelector('.tab button[onclick*="' + tabName + '"]').className += " active";
+  }
 }
-document.getElementById("defaultOpen").click();
+
+function toggleHourlyMode() {
+    var mode = document.getElementById('weatherHourlyMode').value;
+    document.getElementById('hourlyModeSlots').style.display = (mode == 0) ? 'block' : 'none';
+    document.getElementById('hourlyModeInterval').style.display = (mode == 1) ? 'block' : 'none';
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    openTab(null, 'Timezone');
+    toggleHourlyMode();
+});
+
 
 function searchStations() {
     var radius = document.getElementById('searchRadius').value;

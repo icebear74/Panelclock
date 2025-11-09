@@ -4,20 +4,22 @@
 #include <Arduino.h>
 #include "PanelManager.hpp"
 #include "ClockModule.hpp"
-#include "TankerkoenigModule.hpp" // GEÄNDERT: DataModule -> TankerkoenigModule
+#include "TankerkoenigModule.hpp"
 #include "CalendarModule.hpp"
 #include "DartsRankingModule.hpp"
 #include "FritzboxModule.hpp"
 #include "CuriousHolidaysModule.hpp"
+#include "WeatherModule.hpp" // HINZUGEFÜGT
 
 // Forward-Deklarationen, um zirkuläre Abhängigkeiten in Headern zu vermeiden
 class PanelManager;
 class ClockModule;
-class TankerkoenigModule; // GEÄNDERT: DataModule -> TankerkoenigModule
+class TankerkoenigModule;
 class CalendarModule;
 class DartsRankingModule;
 class FritzboxModule;
 class CuriousHolidaysModule;
+class WeatherModule; // HINZUGEFÜGT
 
 /**
  * @brief Hauptanwendungsklasse, die den gesamten Lebenszyklus der Panelclock steuert.
@@ -85,7 +87,7 @@ private:
     /// @brief Zeiger auf das Uhren-Modul.
     ClockModule* _clockMod = nullptr;
     /// @brief Zeiger auf das Tankstellen-Datenmodul.
-    TankerkoenigModule* _tankerkoenigMod = nullptr; // GEÄNDERT: DataModule* _dataMod -> TankerkoenigModule* _tankerkoenigMod
+    TankerkoenigModule* _tankerkoenigMod = nullptr;
     /// @brief Zeiger auf das Kalender-Modul.
     CalendarModule* _calendarMod = nullptr;
     /// @brief Zeiger auf das Darts-Ranking-Modul.
@@ -94,6 +96,8 @@ private:
     FritzboxModule* _fritzMod = nullptr;
     /// @brief Zeiger auf das kuriose Feiertage-Modul.
     CuriousHolidaysModule* _curiousMod = nullptr;
+    /// @brief Zeiger auf das Wetter-Modul.
+    WeatherModule* _weatherMod = nullptr; // HINZUGEFÜGT
     
     /// @brief Flag, das eine sofortige Neuzeichnung des Displays anfordert.
     bool _redrawRequest = false;

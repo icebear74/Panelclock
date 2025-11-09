@@ -78,6 +78,41 @@ struct DeviceConfig {
     /// @brief Das Passwort für die Fritz!Box (für zukünftige API-Nutzung).
     PsramString fritzboxPassword;
 
+    // --- Wetter-Modul ---
+    /// @brief Aktiviert das Wetter-Modul.
+    bool weatherEnabled = false;
+    /// @brief Der API-Key für OpenWeatherMap.
+    PsramString weatherApiKey;
+    /// @brief Das Abrufintervall für Wetterdaten in Minuten.
+    int weatherFetchIntervalMin = 15;
+    /// @brief Die Anzeigedauer pro Wetter-Seite in Sekunden.
+    int weatherDisplaySec = 10;
+    /// @brief Zeigt die Seite "Aktuelles Wetter" an.
+    bool weatherShowCurrent = true;
+    /// @brief Zeigt die Seite "Stunden-Vorschau" an.
+    bool weatherShowHourly = true;
+    /// @brief Zeigt die Seiten der "Tages-Vorschau" an.
+    bool weatherShowDaily = true;
+    /// @brief Die Anzahl der anzuzeigenden Vorschau-Tage (0-8).
+    int weatherDailyForecastDays = 3;
+    /// @brief Der Modus für die Stunden-Vorschau (0=Zeitfenster, 1=Intervall).
+    int weatherHourlyMode = 0;
+    /// @brief Die Stunde, an der das "Morgen"-Zeitfenster endet.
+    int weatherHourlySlotMorning = 11;
+    /// @brief Die Stunde, an der das "Mittag"-Zeitfenster endet.
+    int weatherHourlySlotNoon = 17;
+    /// @brief Die Stunde, an der das "Abend"-Zeitfenster endet.
+    int weatherHourlySlotEvening = 22;
+    /// @brief Das Intervall in Stunden für die Stunden-Vorschau.
+    int weatherHourlyInterval = 3;
+    /// @brief Aktiviert die Anzeige von offiziellen Wetter-Warnungen.
+    bool weatherAlertsEnabled = true;
+    /// @brief Die Anzeigedauer einer Wetter-Warnung in Sekunden.
+    int weatherAlertsDisplaySec = 20;
+    /// @brief Das Wiederholungsintervall für aktive Wetter-Warnungen in Minuten.
+    int weatherAlertsRepeatMin = 15;
+
+
     /// @brief Der Dateiname des PEM-Zertifikats für die Tankerkönig-API.
     PsramString tankerkoenigCertFile;
     /// @brief Der Dateiname des PEM-Zertifikats für die Darts-Ranking-API.

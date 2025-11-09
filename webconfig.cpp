@@ -63,6 +63,23 @@ void loadDeviceConfig() {
                 deviceConfig->fritzboxUser = doc["fritzboxUser"] | "";
                 deviceConfig->fritzboxPassword = doc["fritzboxPassword"] | "";
 
+                deviceConfig->weatherEnabled = doc["weatherEnabled"] | false;
+                deviceConfig->weatherApiKey = doc["weatherApiKey"] | "";
+                deviceConfig->weatherFetchIntervalMin = doc["weatherFetchIntervalMin"] | 15;
+                deviceConfig->weatherDisplaySec = doc["weatherDisplaySec"] | 10;
+                deviceConfig->weatherShowCurrent = doc["weatherShowCurrent"] | true;
+                deviceConfig->weatherShowHourly = doc["weatherShowHourly"] | true;
+                deviceConfig->weatherShowDaily = doc["weatherShowDaily"] | true;
+                deviceConfig->weatherDailyForecastDays = doc["weatherDailyForecastDays"] | 3;
+                deviceConfig->weatherHourlyMode = doc["weatherHourlyMode"] | 0;
+                deviceConfig->weatherHourlySlotMorning = doc["weatherHourlySlotMorning"] | 11;
+                deviceConfig->weatherHourlySlotNoon = doc["weatherHourlySlotNoon"] | 17;
+                deviceConfig->weatherHourlySlotEvening = doc["weatherHourlySlotEvening"] | 22;
+                deviceConfig->weatherHourlyInterval = doc["weatherHourlyInterval"] | 3;
+                deviceConfig->weatherAlertsEnabled = doc["weatherAlertsEnabled"] | true;
+                deviceConfig->weatherAlertsDisplaySec = doc["weatherAlertsDisplaySec"] | 20;
+                deviceConfig->weatherAlertsRepeatMin = doc["weatherAlertsRepeatMin"] | 15;
+
                 deviceConfig->tankerkoenigCertFile = doc["tankerkoenigCertFile"] | "";
                 deviceConfig->dartsCertFile = doc["dartsCertFile"] | "";
                 deviceConfig->googleCertFile = doc["googleCertFile"] | "";
@@ -127,6 +144,23 @@ void saveDeviceConfig() {
     doc["fritzboxIp"] = deviceConfig->fritzboxIp.c_str();
     doc["fritzboxUser"] = deviceConfig->fritzboxUser.c_str();
     doc["fritzboxPassword"] = deviceConfig->fritzboxPassword.c_str();
+
+    doc["weatherEnabled"] = deviceConfig->weatherEnabled;
+    doc["weatherApiKey"] = deviceConfig->weatherApiKey.c_str();
+    doc["weatherFetchIntervalMin"] = deviceConfig->weatherFetchIntervalMin;
+    doc["weatherDisplaySec"] = deviceConfig->weatherDisplaySec;
+    doc["weatherShowCurrent"] = deviceConfig->weatherShowCurrent;
+    doc["weatherShowHourly"] = deviceConfig->weatherShowHourly;
+    doc["weatherShowDaily"] = deviceConfig->weatherShowDaily;
+    doc["weatherDailyForecastDays"] = deviceConfig->weatherDailyForecastDays;
+    doc["weatherHourlyMode"] = deviceConfig->weatherHourlyMode;
+    doc["weatherHourlySlotMorning"] = deviceConfig->weatherHourlySlotMorning;
+    doc["weatherHourlySlotNoon"] = deviceConfig->weatherHourlySlotNoon;
+    doc["weatherHourlySlotEvening"] = deviceConfig->weatherHourlySlotEvening;
+    doc["weatherHourlyInterval"] = deviceConfig->weatherHourlyInterval;
+    doc["weatherAlertsEnabled"] = deviceConfig->weatherAlertsEnabled;
+    doc["weatherAlertsDisplaySec"] = deviceConfig->weatherAlertsDisplaySec;
+    doc["weatherAlertsRepeatMin"] = deviceConfig->weatherAlertsRepeatMin;
 
     doc["tankerkoenigCertFile"] = deviceConfig->tankerkoenigCertFile.c_str();
     doc["dartsCertFile"] = deviceConfig->dartsCertFile.c_str();

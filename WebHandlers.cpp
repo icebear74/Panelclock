@@ -122,10 +122,33 @@ void handleConfigModules() {
         tz_options_html += ">"; tz_options_html += tz.first; tz_options_html += "</option>";
     }
     replaceAll(content, "{tz_options}", tz_options_html.c_str());
+
+    // Wetter-Platzhalter ersetzen
+    replaceAll(content, "{weatherEnabled_checked}", deviceConfig->weatherEnabled ? "checked" : "");
+    replaceAll(content, "{weatherApiKey}", deviceConfig->weatherApiKey.c_str());
+    replaceAll(content, "{weatherShowCurrent_checked}", deviceConfig->weatherShowCurrent ? "checked" : "");
+    replaceAll(content, "{weatherShowHourly_checked}", deviceConfig->weatherShowHourly ? "checked" : "");
+    replaceAll(content, "{weatherShowDaily_checked}", deviceConfig->weatherShowDaily ? "checked" : "");
+    replaceAll(content, "{weatherAlertsEnabled_checked}", deviceConfig->weatherAlertsEnabled ? "checked" : "");
+    replaceAll(content, "{weatherHourlyMode_0_selected}", deviceConfig->weatherHourlyMode == 0 ? "selected" : "");
+    replaceAll(content, "{weatherHourlyMode_1_selected}", deviceConfig->weatherHourlyMode == 1 ? "selected" : "");
+
+
     replaceAll(content, "{tankerApiKey}", deviceConfig->tankerApiKey.c_str());
     replaceAll(content, "{tankerkoenigStationIds}", deviceConfig->tankerkoenigStationIds.c_str());
     
     char num_buf[20];
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->weatherFetchIntervalMin); replaceAll(content, "{weatherFetchIntervalMin}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->weatherDisplaySec); replaceAll(content, "{weatherDisplaySec}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->weatherDailyForecastDays); replaceAll(content, "{weatherDailyForecastDays}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->weatherHourlySlotMorning); replaceAll(content, "{weatherHourlySlotMorning}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->weatherHourlySlotNoon); replaceAll(content, "{weatherHourlySlotNoon}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->weatherHourlySlotEvening); replaceAll(content, "{weatherHourlySlotEvening}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->weatherHourlyInterval); replaceAll(content, "{weatherHourlyInterval}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->weatherAlertsDisplaySec); replaceAll(content, "{weatherAlertsDisplaySec}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->weatherAlertsRepeatMin); replaceAll(content, "{weatherAlertsRepeatMin}", num_buf);
+
+
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->stationFetchIntervalMin); replaceAll(content, "{stationFetchIntervalMin}", num_buf);
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->stationDisplaySec); replaceAll(content, "{stationDisplaySec}", num_buf);
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->movingAverageDays); replaceAll(content, "{movingAverageDays}", num_buf);
@@ -158,6 +181,25 @@ void handleConfigModules() {
 void handleSaveModules() {
     if (!server || !deviceConfig) return;
     deviceConfig->timezone = server->arg("timezone").c_str();
+
+    // Wetter-Werte speichern
+    deviceConfig->weatherEnabled = server->hasArg("weatherEnabled");
+    deviceConfig->weatherApiKey = server->arg("weatherApiKey").c_str();
+    deviceConfig->weatherFetchIntervalMin = server->arg("weatherFetchIntervalMin").toInt();
+    deviceConfig->weatherDisplaySec = server->arg("weatherDisplaySec").toInt();
+    deviceConfig->weatherShowCurrent = server->hasArg("weatherShowCurrent");
+    deviceConfig->weatherShowHourly = server->hasArg("weatherShowHourly");
+    deviceConfig->weatherShowDaily = server->hasArg("weatherShowDaily");
+    deviceConfig->weatherDailyForecastDays = server->arg("weatherDailyForecastDays").toInt();
+    deviceConfig->weatherHourlyMode = server->arg("weatherHourlyMode").toInt();
+    deviceConfig->weatherHourlySlotMorning = server->arg("weatherHourlySlotMorning").toInt();
+    deviceConfig->weatherHourlySlotNoon = server->arg("weatherHourlySlotNoon").toInt();
+    deviceConfig->weatherHourlySlotEvening = server->arg("weatherHourlySlotEvening").toInt();
+    deviceConfig->weatherHourlyInterval = server->arg("weatherHourlyInterval").toInt();
+    deviceConfig->weatherAlertsEnabled = server->hasArg("weatherAlertsEnabled");
+    deviceConfig->weatherAlertsDisplaySec = server->arg("weatherAlertsDisplaySec").toInt();
+    deviceConfig->weatherAlertsRepeatMin = server->arg("weatherAlertsRepeatMin").toInt();
+
     deviceConfig->tankerApiKey = server->arg("tankerApiKey").c_str();
     deviceConfig->stationFetchIntervalMin = server->arg("stationFetchIntervalMin").toInt();
     deviceConfig->stationDisplaySec = server->arg("stationDisplaySec").toInt();
@@ -473,7 +515,7 @@ void handleDebugData() {
 
 void handleTankerkoenigSearchLive() {
     if (!server || !deviceConfig || !webClient) { server->send(500, "application/json", "{\"ok\":false, \"message\":\"Server, Config oder WebClient nicht initialisiert\"}"); return; }
-    if (deviceConfig->userLatitude == 0.0 || deviceConfig->userLongitude == 0.0) { server->send(400, "application/json", "{\"ok\":false, \"message\":\"Kein Standort konfiguriert. Bitte zuerst 'Mein Standort' ausfüllen.\"}"); return; }
+    if (deviceConfig->userLatitude == 0.0 || deviceConfig->userLongitude == 0.0) { server->send(400, "application/json", "{\"ok\":false, \"message\":\"Kein Standort konfiguriert. Bitte zuerst 'Mein Standort' festlegen.\"}"); return; }
     if (deviceConfig->tankerApiKey.empty()) { server->send(400, "application/json", "{\"ok\":false, \"message\":\"Kein Tankerkönig API-Key konfiguriert.\"}"); return; }
 
     String radius = server->arg("radius");
