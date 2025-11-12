@@ -988,6 +988,18 @@ void WeatherModule::drawWeatherIcon(int x, int y, int size, const PsramString& n
     // For now, only support 48x48 direct drawing (no scaling)
     if (size == 48 && src->width == 48 && src->height == 48) {
         // Draw directly from PROGMEM without caching
+        // DEBUG: Print first few pixels to Serial for verification
+        Serial.println("Drawing icon from PROGMEM:");
+        Serial.printf("Icon size: %dx%d\n", src->width, src->height);
+        Serial.printf("First 5 pixels (RGB888):\n");
+        for(int p=0; p<5; p++) {
+            int idx = p*3;
+            uint8_t r = src->data[idx+0];
+            uint8_t g = src->data[idx+1];
+            uint8_t b = src->data[idx+2];
+            Serial.printf("  Pixel %d: R=%02X G=%02X B=%02X\n", p, r, g, b);
+        }
+        
         for(int j=0; j<48; ++j) {
             for(int i=0; i<48; ++i) {
                 int idx = (j*48+i)*3;
