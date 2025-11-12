@@ -977,6 +977,39 @@ void WeatherModule::drawWeatherIcon(int x, int y, int size, const PsramString& n
     // Retrieves the appropriate icon from the registry/cache, independent of Main/Special!
     // Converts PsramString to std::string for cache lookup
     std::string iconName(name.c_str());
+    
+    // TEMPORARY TEST: Bypass cache and read directly from PROGMEM
+    // This helps diagnose if the issue is with cache/PSRAM or PROGMEM reading
+    const WeatherIcon* src = globalWeatherIconSet.getIcon(iconName, isNight);
+    if (!src) src = globalWeatherIconSet.getIcon(iconName, false);
+    if (!src) src = globalWeatherIconSet.getUnknown();
+    if (!src || !src->data) return;
+    
+    // For now, only support 48x48 direct drawing (no scaling)
+    if (size == 48 && src->width == 48 && src->height == 48) {
+        // Draw directly from PROGMEM without caching
+        for(int j=0; j<48; ++j) {
+            for(int i=0; i<48; ++i) {
+                int idx = (j*48+i)*3;
+                // On ESP32, PROGMEM data can often be read directly
+                // Try without pgm_read_byte first
+                uint8_t r = src->data[idx+0];
+                uint8_t g = src->data[idx+1];
+                uint8_t b = src->data[idx+2];
+                
+                // Convert RGB888 to RGB565
+                uint16_t color = ((r&0xF8)<<8)|((g&0xFC)<<3)|(b>>3);
+                
+                // Skip fully transparent pixels (black = 0x00,0x00,0x00)
+                if(r != 0 || g != 0 || b != 0) {
+                    _canvas.drawPixel(x+i, y+j, color);
+                }
+            }
+        }
+        return;
+    }
+    
+    // Fall back to original cached version for other sizes
     const WeatherIcon* iconPtr = globalWeatherIconCache.getScaled(iconName, size, isNight);
     if(!iconPtr || !iconPtr->data) iconPtr = globalWeatherIconCache.getScaled("unknown", size, false);
     if(!iconPtr || !iconPtr->data) return;
