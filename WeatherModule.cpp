@@ -282,7 +282,11 @@ unsigned long WeatherModule::getDisplayDuration() {
 
 void WeatherModule::buildApiUrls() {
     if (!isEnabled() || !_config) return;
-    String lat(_config->userLatitude, 6), lon(_config->userLongitude, 6);
+    
+    // Convert floats to strings in PSRAM
+    char latBuf[16], lonBuf[16];
+    snprintf(latBuf, sizeof(latBuf), "%.6f", _config->userLatitude);
+    snprintf(lonBuf, sizeof(lonBuf), "%.6f", _config->userLongitude);
 
     char startDate[11], endDate[11];
     time_t now_utc = time(nullptr);
@@ -302,9 +306,9 @@ void WeatherModule::buildApiUrls() {
 
     // Build forecast URL with only the necessary parameters and correct date range
     _forecastApiUrl = "https://api.open-meteo.com/v1/forecast?latitude=";
-    _forecastApiUrl += lat.c_str(); 
+    _forecastApiUrl += latBuf; 
     _forecastApiUrl += "&longitude="; 
-    _forecastApiUrl += lon.c_str();
+    _forecastApiUrl += lonBuf;
     _forecastApiUrl += "&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,rain,showers,snowfall,weather_code,cloud_cover,wind_speed_10m,wind_gusts_10m,uv_index";
     _forecastApiUrl += "&hourly=temperature_2m,apparent_temperature,precipitation_probability,precipitation,rain,snowfall,weather_code";
     _forecastApiUrl += "&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_sum,rain_sum,snowfall_sum,precipitation_probability_max,uv_index_max";
@@ -321,9 +325,9 @@ void WeatherModule::buildApiUrls() {
     snprintf(climate_start_date, sizeof(climate_start_date), "%d-%02d-%02d", current_year - 5, timeinfo.tm_mon + 1, timeinfo.tm_mday);
     
     _climateApiUrl = "https://archive-api.open-meteo.com/v1/archive?latitude=";
-    _climateApiUrl += lat.c_str(); 
+    _climateApiUrl += latBuf; 
     _climateApiUrl += "&longitude="; 
-    _climateApiUrl += lon.c_str();
+    _climateApiUrl += lonBuf;
     _climateApiUrl += "&start_date="; 
     _climateApiUrl += climate_start_date; 
     _climateApiUrl += "&end_date="; 

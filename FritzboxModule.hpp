@@ -51,7 +51,7 @@ private:
 
     static void taskRunner(void *pvParameters);
     void taskLoop();
-    void parseCallMonitorLine(const String& line);
+    void parseCallMonitorLine(const PsramString& line);
     void queryCallerInfo(const PsramString& number);
     void parseCallerInfo(const char* buffer, size_t size);
 };
