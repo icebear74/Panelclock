@@ -991,13 +991,20 @@ void WeatherModule::drawWeatherIcon(int x, int y, int size, const PsramString& n
         // DEBUG: Print first few pixels to Serial for verification
         Serial.println("Drawing icon from PROGMEM:");
         Serial.printf("Icon size: %dx%d\n", src->width, src->height);
+        Serial.printf("Icon data pointer: %p\n", src->data);
+        Serial.printf("First 15 bytes (RGB888):\n");
+        for(int b=0; b<15; b++) {
+            uint8_t val = pgm_read_byte(src->data + b);
+            Serial.printf("%02X ", val);
+        }
+        Serial.println();
         Serial.printf("First 5 pixels (RGB888):\n");
         for(int p=0; p<5; p++) {
             int idx = p*3;
             uint8_t r = pgm_read_byte(src->data + idx + 0);
             uint8_t g = pgm_read_byte(src->data + idx + 1);
             uint8_t b = pgm_read_byte(src->data + idx + 2);
-            Serial.printf("  Pixel %d: R=%02X G=%02X B=%02X\n", p, r, g, b);
+            Serial.printf("  Pixel %d (bytes %d-%d): R=%02X G=%02X B=%02X\n", p, idx, idx+2, r, g, b);
         }
         
         for(int j=0; j<48; ++j) {
