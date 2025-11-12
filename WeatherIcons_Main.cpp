@@ -1,4 +1,5 @@
 #include "WeatherIcons_Main.hpp"
+#include "WeatherIconCache.hpp"
 
 // ================= WEATHER ICONS WMO ==================
 // Jede ICON-Variable ist ein RGB888-Array für den Zustand.
@@ -189,4 +190,3 @@ void registerWeatherIcons() {
     globalWeatherIconSet.registerIcon("thunderstorm_heavy_hail", &icon_thunderstorm_heavy_hail_48);
     globalWeatherIconSet.registerIcon("unknown", &icon_unknown_48);
 }
-const WeatherIcon icon_unknown_48 = { unknown_48, 48, 48 };

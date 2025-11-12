@@ -284,7 +284,7 @@ void WeatherModule::buildApiUrls() {
     // Build climate URL for historical data
     gmtime_r(&now, &timeinfo);
     int current_year = timeinfo.tm_year + 1900;
-    char climate_start_date[11];
+    char climate_start_date[20];  // Increased buffer size to avoid truncation warning
     snprintf(climate_start_date, sizeof(climate_start_date), "%d-%02d-%02d", current_year - 5, timeinfo.tm_mon + 1, timeinfo.tm_mday);
     
     _climateApiUrl = "https://archive-api.open-meteo.com/v1/archive?latitude=";
@@ -327,7 +327,7 @@ void WeatherModule::parseForecastData(char* jsonBuffer, size_t size) {
         JsonArray d_snow = daily["snowfall_sum"];
         JsonArray d_sunrise = daily["sunrise"];
         JsonArray d_sunset = daily["sunset"];
-        JsonArray d_uvi = daily["uv_index_max"];
+        // JsonArray d_uvi = daily["uv_index_max"];  // Currently unused
         
         for (int i = 0; i < daily_time.size(); ++i) {
             _dailyForecast.push_back({
