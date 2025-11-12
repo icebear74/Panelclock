@@ -106,7 +106,29 @@ bool WeatherModule::isEnabled() {
 
 void WeatherModule::queueData() {
     if (!isEnabled() || !_webClient) return;
-    buildApiUrls(); // Re-build URL before every queue to ensure dates are current
+    
+    time_t now_utc = time(nullptr);
+    
+    // Check if day has changed (using GeneralTimeConverter for local time comparison)
+    bool dayChanged = false;
+    if (_lastUrlBuildTime == 0) {
+        dayChanged = true; // First time
+    } else {
+        dayChanged = !_timeConverter.isSameDay(_lastUrlBuildTime, now_utc);
+    }
+    
+    // Rebuild URLs and update resources if day changed
+    if (dayChanged) {
+        buildApiUrls(); // Re-build URL to include new dates
+        
+        // Re-register resources to update URLs in WebClient
+        if (!_forecastApiUrl.empty()) {
+            _webClient->registerResource(String(_forecastApiUrl.c_str()), _config->weatherFetchIntervalMin, nullptr);
+        }
+        if (!_climateApiUrl.empty()) {
+            _webClient->registerResource(String(_climateApiUrl.c_str()), 60 * 24, nullptr);
+        }
+    }
     
     _webClient->accessResource(String(_forecastApiUrl.c_str()), [this](const char* buffer, size_t size, time_t last_update, bool is_stale) {
         if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
@@ -125,7 +147,7 @@ void WeatherModule::queueData() {
         }
     });
     
-    if (time(nullptr) - _lastClimateUpdate > (60 * 60 * 24)) {
+    if (now_utc - _lastClimateUpdate > (60 * 60 * 24)) {
         _webClient->accessResource(String(_climateApiUrl.c_str()), [this](const char* buffer, size_t size, time_t last_update, bool is_stale) {
             if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
                 if (buffer && size > 0 && last_update > this->_lastClimateUpdate) {
@@ -263,14 +285,19 @@ void WeatherModule::buildApiUrls() {
     String lat(_config->userLatitude, 6), lon(_config->userLongitude, 6);
 
     char startDate[11], endDate[11];
-    time_t now = time(nullptr);
+    time_t now_utc = time(nullptr);
+    
+    // Convert to local time using GeneralTimeConverter
+    time_t now_local = _timeConverter.toLocal(now_utc);
     struct tm timeinfo;
-
-    gmtime_r(&now, &timeinfo);
+    
+    // Use local time for date calculations
+    gmtime_r(&now_local, &timeinfo);
     strftime(startDate, sizeof(startDate), "%Y-%m-%d", &timeinfo);
     
-    time_t end_time = now + (_config->weatherDailyForecastDays * 24 * 60 * 60);
-    gmtime_r(&end_time, &timeinfo);
+    // Calculate end date (today + forecast days in local time)
+    time_t end_time_local = now_local + (_config->weatherDailyForecastDays * 24 * 60 * 60);
+    gmtime_r(&end_time_local, &timeinfo);
     strftime(endDate, sizeof(endDate), "%Y-%m-%d", &timeinfo);
 
     // Build forecast URL with only the necessary parameters and correct date range
@@ -288,7 +315,7 @@ void WeatherModule::buildApiUrls() {
     _forecastApiUrl += "&timezone=UTC";  // Use UTC for all times
 
     // Build climate URL for historical data
-    gmtime_r(&now, &timeinfo);
+    gmtime_r(&now_local, &timeinfo);
     int current_year = timeinfo.tm_year + 1900;
     char climate_start_date[20];  // Increased buffer size to avoid truncation warning
     snprintf(climate_start_date, sizeof(climate_start_date), "%d-%02d-%02d", current_year - 5, timeinfo.tm_mon + 1, timeinfo.tm_mday);
@@ -302,6 +329,9 @@ void WeatherModule::buildApiUrls() {
     _climateApiUrl += "&end_date="; 
     _climateApiUrl += startDate;
     _climateApiUrl += "&daily=temperature_2m_mean&timezone=UTC";  // Use UTC
+    
+    // Update timestamp when URLs were built
+    _lastUrlBuildTime = now_utc;
 }
 
 void WeatherModule::parseForecastData(char* jsonBuffer, size_t size) {
