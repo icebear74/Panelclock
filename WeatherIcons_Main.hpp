@@ -9,10 +9,16 @@ struct WeatherIcon {
     uint16_t width, height;
 };
 
+// Icon type enum to distinguish between Main and Special icons
+enum class IconType {
+    MAIN,
+    SPECIAL
+};
+
 // Hauptregistry für alle Icons (WMO und Specials!)
 class WeatherIconSet {
 public:
-    void registerIcon(const std::string& name, const WeatherIcon* day, const WeatherIcon* night = nullptr);
+    void registerIcon(const std::string& name, const WeatherIcon* day, const WeatherIcon* night = nullptr, IconType type = IconType::MAIN);
 
     // Robuste Prüfung: Dummy-Icons werden automatisch auf Unknown gemappt!
     const WeatherIcon* getIcon(const std::string& name, bool isNight) const {
@@ -66,9 +72,15 @@ public:
 
     void setUnknown(const WeatherIcon* icon) { unknown = icon; }
     const WeatherIcon* getUnknown() const { return unknown; }
+    
+    // Check if an icon is a Main icon (for night transformation)
+    bool isMainIcon(const std::string& name) const {
+        return iconTypes.find(name) != iconTypes.end() && iconTypes.at(name) == IconType::MAIN;
+    }
 
 private:
     std::map<std::string, const WeatherIcon*> dayIcons, nightIcons;
+    std::map<std::string, IconType> iconTypes;
     const WeatherIcon* unknown = nullptr;
 };
 
@@ -81,9 +93,10 @@ extern WeatherIconCache globalWeatherIconCache;
 void registerWeatherIcons();
 
 // Inline implementation of registerIcon
-inline void WeatherIconSet::registerIcon(const std::string& name, const WeatherIcon* day, const WeatherIcon* night) {
+inline void WeatherIconSet::registerIcon(const std::string& name, const WeatherIcon* day, const WeatherIcon* night, IconType type) {
     if (day) dayIcons[name] = day;
     if (night) nightIcons[name] = night;
+    iconTypes[name] = type;
 }
 
 // Mapping für WMO → Iconname

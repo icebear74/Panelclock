@@ -136,64 +136,64 @@ const WeatherIcon icon_arrow_down_right_48 = { arrow_down_right_48, 48, 48 };
 // Spezial-Registry (Call im Setup!)
 // -------------------------------------------------------------
 void registerSpecialIcons(WeatherIconSet& set) {
-    set.registerIcon("wind_calm", &icon_wind_calm_48);
-    set.registerIcon("wind_light", &icon_wind_light_48);
-    set.registerIcon("wind_moderate", &icon_wind_moderate_48);
-    set.registerIcon("wind_strong", &icon_wind_strong_48);
-    set.registerIcon("wind_storm", &icon_wind_storm_48);
-    set.registerIcon("wind_north", &icon_wind_north_48);
-    set.registerIcon("wind_northeast", &icon_wind_northeast_48);
-    set.registerIcon("wind_east", &icon_wind_east_48);
-    set.registerIcon("wind_southeast", &icon_wind_southeast_48);
-    set.registerIcon("wind_south", &icon_wind_south_48);
-    set.registerIcon("wind_southwest", &icon_wind_southwest_48);
-    set.registerIcon("wind_west", &icon_wind_west_48);
-    set.registerIcon("wind_northwest", &icon_wind_northwest_48);
+    set.registerIcon("wind_calm", &icon_wind_calm_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("wind_light", &icon_wind_light_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("wind_moderate", &icon_wind_moderate_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("wind_strong", &icon_wind_strong_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("wind_storm", &icon_wind_storm_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("wind_north", &icon_wind_north_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("wind_northeast", &icon_wind_northeast_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("wind_east", &icon_wind_east_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("wind_southeast", &icon_wind_southeast_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("wind_south", &icon_wind_south_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("wind_southwest", &icon_wind_southwest_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("wind_west", &icon_wind_west_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("wind_northwest", &icon_wind_northwest_48, nullptr, IconType::SPECIAL);
 
-    set.registerIcon("temp_hot", &icon_temp_hot_48);
-    set.registerIcon("temp_warm", &icon_temp_warm_48);
-    set.registerIcon("temp_moderate", &icon_temp_moderate_48);
-    set.registerIcon("temp_cool", &icon_temp_cool_48);
-    set.registerIcon("temp_cold", &icon_temp_cold_48);
-    set.registerIcon("temp_freezing", &icon_temp_freezing_48);
+    set.registerIcon("temp_hot", &icon_temp_hot_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("temp_warm", &icon_temp_warm_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("temp_moderate", &icon_temp_moderate_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("temp_cool", &icon_temp_cool_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("temp_cold", &icon_temp_cold_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("temp_freezing", &icon_temp_freezing_48, nullptr, IconType::SPECIAL);
 
-    set.registerIcon("uv_low", &icon_uv_low_48);
-    set.registerIcon("uv_moderate", &icon_uv_moderate_48);
-    set.registerIcon("uv_high", &icon_uv_high_48);
-    set.registerIcon("uv_very_high", &icon_uv_very_high_48);
-    set.registerIcon("uv_extreme", &icon_uv_extreme_48);
+    set.registerIcon("uv_low", &icon_uv_low_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("uv_moderate", &icon_uv_moderate_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("uv_high", &icon_uv_high_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("uv_very_high", &icon_uv_very_high_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("uv_extreme", &icon_uv_extreme_48, nullptr, IconType::SPECIAL);
 
-    set.registerIcon("humidity_low", &icon_humidity_low_48);
-    set.registerIcon("humidity_moderate", &icon_humidity_moderate_48);
-    set.registerIcon("humidity_high", &icon_humidity_high_48);
+    set.registerIcon("humidity_low", &icon_humidity_low_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("humidity_moderate", &icon_humidity_moderate_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("humidity_high", &icon_humidity_high_48, nullptr, IconType::SPECIAL);
 
-    set.registerIcon("pressure_rising", &icon_pressure_rising_48);
-    set.registerIcon("pressure_steady", &icon_pressure_steady_48);
-    set.registerIcon("pressure_falling", &icon_pressure_falling_48);
+    set.registerIcon("pressure_rising", &icon_pressure_rising_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("pressure_steady", &icon_pressure_steady_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("pressure_falling", &icon_pressure_falling_48, nullptr, IconType::SPECIAL);
 
-    set.registerIcon("visibility_clear", &icon_visibility_clear_48);
-    set.registerIcon("visibility_good", &icon_visibility_good_48);
-    set.registerIcon("visibility_moderate", &icon_visibility_moderate_48);
-    set.registerIcon("visibility_poor", &icon_visibility_poor_48);
+    set.registerIcon("visibility_clear", &icon_visibility_clear_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("visibility_good", &icon_visibility_good_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("visibility_moderate", &icon_visibility_moderate_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("visibility_poor", &icon_visibility_poor_48, nullptr, IconType::SPECIAL);
 
-    set.registerIcon("warning_generic", &icon_warning_generic_48);
-    set.registerIcon("warning_wind", &icon_warning_wind_48);
-    set.registerIcon("warning_rain", &icon_warning_rain_48);
-    set.registerIcon("warning_snow", &icon_warning_snow_48);
-    set.registerIcon("warning_ice", &icon_warning_ice_48);
-    set.registerIcon("warning_heat", &icon_warning_heat_48);
-    set.registerIcon("warning_cold", &icon_warning_cold_48);
-    set.registerIcon("warning_fog", &icon_warning_fog_48);
-    set.registerIcon("warning_thunderstorm", &icon_warning_thunderstorm_48);
+    set.registerIcon("warning_generic", &icon_warning_generic_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("warning_wind", &icon_warning_wind_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("warning_rain", &icon_warning_rain_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("warning_snow", &icon_warning_snow_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("warning_ice", &icon_warning_ice_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("warning_heat", &icon_warning_heat_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("warning_cold", &icon_warning_cold_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("warning_fog", &icon_warning_fog_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("warning_thunderstorm", &icon_warning_thunderstorm_48, nullptr, IconType::SPECIAL);
 
-    set.registerIcon("sunrise", &icon_sunrise_48);
-    set.registerIcon("sunset", &icon_sunset_48);
-    set.registerIcon("rainbow", &icon_rainbow_48);
+    set.registerIcon("sunrise", &icon_sunrise_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("sunset", &icon_sunset_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("rainbow", &icon_rainbow_48, nullptr, IconType::SPECIAL);
 
-    set.registerIcon("arrow_up", &icon_arrow_up_48);
-    set.registerIcon("arrow_down", &icon_arrow_down_48);
-    set.registerIcon("arrow_right", &icon_arrow_right_48);
-    set.registerIcon("arrow_left", &icon_arrow_left_48);
-    set.registerIcon("arrow_up_right", &icon_arrow_up_right_48);
-    set.registerIcon("arrow_down_right", &icon_arrow_down_right_48);
+    set.registerIcon("arrow_up", &icon_arrow_up_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("arrow_down", &icon_arrow_down_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("arrow_right", &icon_arrow_right_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("arrow_left", &icon_arrow_left_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("arrow_up_right", &icon_arrow_up_right_48, nullptr, IconType::SPECIAL);
+    set.registerIcon("arrow_down_right", &icon_arrow_down_right_48, nullptr, IconType::SPECIAL);
 }

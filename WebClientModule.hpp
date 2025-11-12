@@ -72,6 +72,7 @@ public:
 
     void begin();
     void registerResource(const String& url, uint32_t update_interval_minutes, const char* root_ca = nullptr);
+    void updateResourceUrl(const String& old_url, const String& new_url);
     void accessResource(const String& url, std::function<void(const char* data, size_t size, time_t last_update, bool is_stale)> callback);
     void updateResourceCertificateByHost(const String& host, const String& cert_filename);
     

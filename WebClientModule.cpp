@@ -139,6 +139,42 @@ void WebClientModule::begin() {
 void WebClientModule::registerResource(const String& url, uint32_t update_interval_minutes, const char* root_ca) {
     if (url.isEmpty() || update_interval_minutes == 0) return;
     
+    // Extract host from URL for comparison
+    String host;
+    int hostStart = url.indexOf("://");
+    if (hostStart != -1) hostStart += 3; else hostStart = 0;
+    int pathStart = url.indexOf("/", hostStart);
+    host = (pathStart != -1) ? url.substring(hostStart, pathStart) : url.substring(hostStart);
+    int colonPos = host.indexOf(":");
+    if (colonPos != -1) {
+        host = host.substring(0, colonPos);
+    }
+    
+    // Check if a resource with the same host already exists
+    for(auto& res : resources) {
+        // Extract host from existing resource URL
+        PsramString existingHost;
+        int existingHostStart = indexOf(res.url, "://");
+        if (existingHostStart != -1) existingHostStart += 3; else existingHostStart = 0;
+        int existingPathStart = indexOf(res.url, "/", existingHostStart);
+        existingHost = (existingPathStart != -1) ? res.url.substr(existingHostStart, existingPathStart - existingHostStart) : res.url.substr(existingHostStart);
+        int existingColonPos = indexOf(existingHost, ":");
+        if (existingColonPos != -1) {
+            existingHost = existingHost.substr(0, existingColonPos);
+        }
+        
+        // If same host, update the URL but keep other parameters
+        if (existingHost.compare(host.c_str()) == 0) {
+            if (xSemaphoreTake(res.mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+                res.url = url.c_str();
+                Serial.printf("[WebDataManager] URL aktualisiert für Host %s: %s\n", host.c_str(), url.c_str());
+                xSemaphoreGive(res.mutex);
+            }
+            return;
+        }
+    }
+    
+    // No existing resource with same host, check for exact URL match
     for(const auto& res : resources) {
         if (res.url.compare(url.c_str()) == 0) return;
     }
@@ -149,6 +185,19 @@ void WebClientModule::registerResource(const String& url, uint32_t update_interv
 
     // remove the old deviceConfig-based cert selection here (we'll discover certs dynamically)
     Serial.printf("[WebDataManager] Ressource registriert: %s (initial Cert-File: '%s')\n", new_res.url.c_str(), new_res.cert_filename.c_str());
+}
+
+void WebClientModule::updateResourceUrl(const String& old_url, const String& new_url) {
+    for (auto& resource : resources) {
+        if (resource.url.compare(old_url.c_str()) == 0) {
+            if (xSemaphoreTake(resource.mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+                resource.url = new_url.c_str();
+                Serial.printf("[WebDataManager] URL für Ressource aktualisiert: %s -> %s\n", old_url.c_str(), new_url.c_str());
+                xSemaphoreGive(resource.mutex);
+            }
+            return;
+        }
+    }
 }
 
 void WebClientModule::accessResource(const String& url, std::function<void(const char* data, size_t size, time_t last_update, bool is_stale)> callback) {
