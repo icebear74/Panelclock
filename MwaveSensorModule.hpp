@@ -53,7 +53,7 @@ private:
     unsigned int offCountInOffWindow = 0;
     time_t firstOffTimeInOffWindow = 0;
 
-    void sendHexData(String hexString);
+    void sendHexData(const char* hexString);
     void processSensorData(const char* data, time_t now);
     void handleSensorSerial(time_t now);
     void resetOffCheckWindowCounters();

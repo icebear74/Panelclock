@@ -95,11 +95,12 @@ time_t MwaveSensorModule::getLastOffTime() const { return lastStateChangeToOffTi
 float MwaveSensorModule::getOnPercentage() const { return currentOnPercentage; }
 const PsramVector<DisplayStateLogEntry>& MwaveSensorModule::getDisplayStateLog() const { return displayStateLog; }
 
-void MwaveSensorModule::sendHexData(String hexString) {
-    int len = hexString.length();
+void MwaveSensorModule::sendHexData(const char* hexString) {
+    int len = strlen(hexString);
     byte buf[len / 2];
     for (int i = 0; i < len; i += 2) {
-        buf[i / 2] = (byte)strtoul(hexString.substring(i, i + 2).c_str(), NULL, 16);
+        char byte_str[3] = {hexString[i], hexString[i+1], '\0'};
+        buf[i / 2] = (byte)strtoul(byte_str, NULL, 16);
     }
     sensorSerial.write(buf, sizeof(buf));
 }
