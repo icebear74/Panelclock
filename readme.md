@@ -23,7 +23,7 @@ The heart of the project is a modular architecture, orchestrated by the central 
 - **Modular Display:** Easily extendable with new modules. The displayed information rotates automatically.
 - **Web Configuration:** An integrated web server allows for convenient configuration of Wi-Fi, timezone, module settings, and more via a browser.
 - **OTA Updates:** The firmware can be updated "Over-the-Air" through the web interface.
-- **Efficient Resource Management:** Heavy use of PSRAM for web data, JSON parsing, and player lists to conserve the ESP32's scarce internal memory.
+- **Efficient Resource Management:** Heavy use of PSRAM for web data, JSON parsing, player lists, and string operations to conserve the ESP32's scarce internal memory. All modules use PsramString and PsramVector to minimize heap fragmentation.
 - **Asynchronous Data Fetching:** All external data is loaded in the background without blocking the display or other operations.
 - **Presence Detection:** The `MwaveSensorModule` can automatically turn off the display when no one is present and reactivate it, saving power.
 - **Robust Time Conversion:** A custom `GeneralTimeConverter` ensures reliable conversion from UTC to local time, including correct Daylight Saving Time (DST) rules.
