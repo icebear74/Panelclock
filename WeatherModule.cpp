@@ -989,16 +989,43 @@ void WeatherModule::drawWeatherIcon(int x, int y, int size, const PsramString& n
     }
     Serial.println("\n=== END TEST ===\n");
     
+    // TEST: Explicitly load "unknown" icon to verify registry
+    Serial.println("=== EXPLICIT UNKNOWN ICON TEST ===");
+    const WeatherIcon* unknownIcon = globalWeatherIconSet.getIcon("unknown", false);
+    if (unknownIcon && unknownIcon->data) {
+        Serial.printf("Unknown icon pointer: %p\n", unknownIcon->data);
+        Serial.printf("Unknown icon first 15 bytes: ");
+        for(int i=0; i<15; i++) {
+            uint8_t val = pgm_read_byte(unknownIcon->data + i);
+            Serial.printf("%02X ", val);
+        }
+        Serial.println();
+    } else {
+        Serial.println("ERROR: Unknown icon is NULL or has no data!");
+    }
+    Serial.println("=== END UNKNOWN TEST ===\n");
+    
     // Retrieves the appropriate icon from the registry/cache, independent of Main/Special!
     // Converts PsramString to std::string for cache lookup
     std::string iconName(name.c_str());
+    Serial.printf("Requested icon name: '%s', isNight: %d\n", iconName.c_str(), isNight);
     
     // TEMPORARY TEST: Bypass cache and read directly from PROGMEM
     // This helps diagnose if the issue is with cache/PSRAM or PROGMEM reading
     const WeatherIcon* src = globalWeatherIconSet.getIcon(iconName, isNight);
-    if (!src) src = globalWeatherIconSet.getIcon(iconName, false);
-    if (!src) src = globalWeatherIconSet.getUnknown();
-    if (!src || !src->data) return;
+    Serial.printf("  getIcon('%s', %d) returned: %p\n", iconName.c_str(), isNight, src);
+    if (!src) {
+        src = globalWeatherIconSet.getIcon(iconName, false);
+        Serial.printf("  getIcon('%s', false) returned: %p\n", iconName.c_str(), src);
+    }
+    if (!src) {
+        src = globalWeatherIconSet.getUnknown();
+        Serial.printf("  getUnknown() returned: %p\n", src);
+    }
+    if (!src || !src->data) {
+        Serial.println("ERROR: No valid icon found!");
+        return;
+    }
     
     // For now, only support 48x48 direct drawing (no scaling)
     if (size == 48 && src->width == 48 && src->height == 48) {
