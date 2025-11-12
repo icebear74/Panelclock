@@ -94,6 +94,7 @@ private:
     float _historicalMonthlyAvgTemp = 10.0;
     time_t _lastForecastUpdate = 0;
     time_t _lastClimateUpdate = 0;
+    time_t _lastUrlBuildTime = 0;
     bool _dataAvailable = false;
 
     WeatherCurrentData _currentWeather;

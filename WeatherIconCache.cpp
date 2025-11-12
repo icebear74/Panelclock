@@ -19,8 +19,8 @@ const WeatherIcon* WeatherIconCache::getScaled(const std::string& name, uint8_t 
     // Hole Quellicon aus dem Set (Main und Special!)
     const WeatherIcon* src = globalWeatherIconSet.getIcon(name, isNight);
     bool needs_night_transform = false;
-    // Fallback: Wenn kein Nachticon da, dimmen/umfärben
-    if (!src && isNight) {
+    // Fallback: Wenn kein Nachticon da, dimmen/umfärben NUR für Main-Icons
+    if (!src && isNight && globalWeatherIconSet.isMainIcon(name)) {
         src = globalWeatherIconSet.getIcon(name, false);
         needs_night_transform = true;
     }
