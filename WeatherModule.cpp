@@ -70,7 +70,10 @@ WeatherModule::~WeatherModule() {
     if (_pendingClimateBuffer) free(_pendingClimateBuffer);
 }
 
-void WeatherModule::begin() {}
+void WeatherModule::begin() {
+    registerWeatherIcons();            // Main-Icons ins Registry
+    registerSpecialIcons(globalWeatherIconSet); // Special-Icons ins Registry
+}
 
 void WeatherModule::setConfig(const DeviceConfig* config) {
     _config = config;
@@ -421,13 +424,38 @@ void WeatherModule::parseClimateData(char* jsonBuffer, size_t size) {
 }
 
 PsramString WeatherModule::mapWeatherCodeToIcon(int code, bool is_day) {
-    switch (code) {
-        case 0: return is_day ? "01d" : "01n"; case 1: return is_day ? "02d" : "02n"; case 2: return is_day ? "03d" : "03n";
-        case 3: return "04d"; case 45: case 48: return "50d"; case 51: case 53: case 55: return "09d"; case 56: case 57: return "09d";
-        case 61: return is_day ? "10d" : "10n"; case 63: case 65: return "10d"; case 66: case 67: return "13d"; case 71: return is_day ? "13d" : "13n";
-        case 73: case 75: return "13d"; case 77: return "13d"; case 80: case 81: case 82: return "09d"; case 85: case 86: return "13d";
-        case 95: case 96: case 99: return "11d"; default: return "na";
+    auto it = wmo_code_to_icon.find(code);
+    if (it == wmo_code_to_icon.end()) return PsramString("unknown");
+    // Konvertiere std::string zu PsramString
+    return PsramString(it->second.c_str());
+}
+
+bool WeatherModule::isNightTime(time_t timestamp) const {
+    // If we don't have sunrise/sunset data, assume day
+    if (_dailyForecast.empty()) return false;
+    
+    // Find the day this timestamp belongs to
+    struct tm tm_check;
+    gmtime_r(&timestamp, &tm_check);
+    
+    for (const auto& day : _dailyForecast) {
+        struct tm tm_day;
+        gmtime_r(&day.dt, &tm_day);
+        
+        // Check if same day
+        if (tm_check.tm_year == tm_day.tm_year && 
+            tm_check.tm_yday == tm_day.tm_yday) {
+            // Check if timestamp is before sunrise or after sunset
+            return (timestamp < day.sunrise || timestamp > day.sunset);
+        }
     }
+    
+    // Fallback: check current weather's sunrise/sunset
+    if (_currentWeather.sunrise > 0 && _currentWeather.sunset > 0) {
+        return (timestamp < _currentWeather.sunrise || timestamp > _currentWeather.sunset);
+    }
+    
+    return false;
 }
 
 void WeatherModule::buildPages() {
@@ -509,7 +537,7 @@ void WeatherModule::drawTodayOverviewPage() {
         }
     }
     if (!rain_expected) { dominant_icon = _currentWeather.icon_name; }
-    drawWeatherIcon(24, (_canvas.height() - 48) / 2, 48, dominant_icon);
+    drawWeatherIcon(24, (_canvas.height() - 48) / 2, 48, dominant_icon, isNightTime(now_utc));
     _u8g2.begin(_canvas);
     int right_block_x = 94, right_block_width = _canvas.width() - right_block_x;
     _u8g2.setFont(u8g2_font_helvB10_tr); _u8g2.setForegroundColor(0xFFFF);
@@ -530,7 +558,8 @@ void WeatherModule::drawTodayDetailsPage() {
     if (_dailyForecast.empty()) { drawNoDataPage(); return; }
     const auto& today = _dailyForecast[0];
     
-    drawWeatherIcon(10, (_canvas.height() - 48) / 2, 48, _currentWeather.icon_name);
+    time_t now_utc = time(nullptr);
+    drawWeatherIcon(10, (_canvas.height() - 48) / 2, 48, _currentWeather.icon_name, isNightTime(now_utc));
     _u8g2.begin(_canvas);
     
     int col1_x = 70, col2_x = 130;
@@ -650,8 +679,9 @@ void WeatherModule::drawWeekOverviewPage() {
         const auto& day = _dailyForecast[i];
         int x = i * col_width;
         
-        // Small weather icon
-        drawWeatherIcon(x + (col_width - 24) / 2, 2, 24, day.icon_name);
+        // Small weather icon - use noon for day determination
+        time_t noon = day.dt + (12 * 60 * 60);
+        drawWeatherIcon(x + (col_width - 24) / 2, 2, 24, day.icon_name, isNightTime(noon));
         
         // Day name - special handling for first 3 days
         _u8g2.setFont(u8g2_font_5x7_tf);
@@ -863,7 +893,7 @@ void WeatherModule::drawHourlyForecastPage() {
             const auto& hour = _hourlyForecast[hour_index]; 
             int x = i * col_width;
             
-            drawWeatherIcon(x + (col_width - 24) / 2, 8, 24, hour.icon_name);
+            drawWeatherIcon(x + (col_width - 24) / 2, 8, 24, hour.icon_name, isNightTime(hour.dt));
             _u8g2.setFont(u8g2_font_5x8_tf); 
             _u8g2.setForegroundColor(0xFFFF);
             
@@ -939,39 +969,25 @@ void WeatherModule::drawAlertPage(int index) {
     formatTime(time_buf_end, sizeof(time_buf_end), alert.end);
     _u8g2.setCursor(70, 55);
     _u8g2.printf("Von %s bis %s Uhr", time_buf_start, time_buf_end);
-    drawWeatherIcon(10, 9, 48, "771");
+    drawWeatherIcon(10, 9, 48, PsramString("warning_generic"), false);
 }
 
-const WeatherIconSet& WeatherModule::getIconSet(const PsramString& icon_name) {
-    if (icon_name == "01d") return WeatherIcons::day_clear_set; if (icon_name == "01n") return WeatherIcons::night_full_moon_clear_set;
-    if (icon_name == "02d") return WeatherIcons::day_partial_cloud_set; if (icon_name == "02n") return WeatherIcons::night_full_moon_partial_cloud_set;
-    if (icon_name == "03d" || icon_name == "03n") return WeatherIcons::cloudy_set; if (icon_name == "04d" || icon_name == "04n") return WeatherIcons::overcast_set;
-    if (icon_name == "09d" || icon_name == "09n") return WeatherIcons::rain_set; if (icon_name == "10d") return WeatherIcons::day_rain_set;
-    if (icon_name == "10n") return WeatherIcons::night_full_moon_rain_set; if (icon_name == "11d" || icon_name == "11n") return WeatherIcons::rain_thunder_set;
-    if (icon_name == "13d") return WeatherIcons::day_snow_set; if (icon_name == "13n") return WeatherIcons::night_full_moon_snow_set;
-    if (icon_name == "50d" || icon_name == "50n") return WeatherIcons::mist_set; if (icon_name == "771") return WeatherIcons::angry_clouds_set;
-    if (icon_name == "781") return WeatherIcons::tornado_set; if (icon_name == "na") return WeatherIcons::unknown_set;
-    if (icon_name.ends_with("d")) { if (icon_name.starts_with("13")) return WeatherIcons::day_snow_set; if (icon_name.starts_with("11")) return WeatherIcons::day_rain_thunder_set; }
-    if (icon_name.ends_with("n")) { if (icon_name.starts_with("13")) return WeatherIcons::night_full_moon_snow_set; if (icon_name.starts_with("11")) return WeatherIcons::night_full_moon_rain_thunder_set; }
-    return WeatherIcons::unknown_set;
-}
 
-void WeatherModule::drawWeatherIcon(int x, int y, int size, const PsramString& icon_name) {
-    const auto& iconSet = getIconSet(icon_name);
-    const uint16_t* iconData = nullptr;
-    switch(size) {
-        case 64: iconData = iconSet.icon64; break;
-        case 48: iconData = iconSet.icon48; break;
-        case 24: iconData = iconSet.icon24; break;
-        default: iconData = iconSet.icon48; size = 48; break;
-    }
-    if(iconData == nullptr) return;
-    for(int j=0; j<size; j++) {
-        for(int i=0; i<size; i++) {
-            uint16_t color = pgm_read_word(iconData + (j * size + i));
-            if(color != 0x0000) {
-                _canvas.drawPixel(x + i, y + j, color);
-            }
+void WeatherModule::drawWeatherIcon(int x, int y, int size, const PsramString& name, bool isNight) {
+    // Holt das passende Icon aus Registry/Cache, unabhängig von Main/Special!
+    // Konvertiere PsramString zu std::string für die Cache-Abfrage
+    std::string iconName(name.c_str());
+    const WeatherIcon* iconPtr = globalWeatherIconCache.getScaled(iconName, size, isNight);
+    if(!iconPtr || !iconPtr->data) iconPtr = globalWeatherIconCache.getScaled("unknown", size, false);
+    if(!iconPtr || !iconPtr->data) return;
+    for(int j=0; j<size; ++j) {
+        for(int i=0; i<size; ++i) {
+            int idx = (j*size+i)*3;
+            uint8_t r=iconPtr->data[idx+0];
+            uint8_t g=iconPtr->data[idx+1];
+            uint8_t b=iconPtr->data[idx+2];
+            uint16_t color = ((r&0xF8)<<8)|((g&0xFC)<<3)|(b>>3);
+            _canvas.drawPixel(x+i, y+j, color);
         }
     }
 }

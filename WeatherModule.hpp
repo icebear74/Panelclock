@@ -1,11 +1,12 @@
-#ifndef WEATHERMODULE_HPP
-#define WEATHERMODULE_HPP
+#pragma once
 
 #include "DrawableModule.hpp"
 #include <U8g2_for_Adafruit_GFX.h>
 #include "PsramUtils.hpp"
 #include "GeneralTimeConverter.hpp"
-#include "WeatherIcons.hpp" 
+#include "WeatherIcons_Main.hpp"
+#include "WeatherIcons_Special.hpp"
+#include "WeatherIconCache.hpp" // NEU: für globalWeatherIconCache
 
 class WebClientModule;
 struct DeviceConfig;
@@ -78,7 +79,7 @@ private:
     const DeviceConfig* _config = nullptr;
 
     SemaphoreHandle_t _dataMutex = nullptr;
-    
+
     PsramString _forecastApiUrl;
     PsramString _climateApiUrl;
 
@@ -114,17 +115,18 @@ private:
     void buildApiUrls();
     void parseForecastData(char* jsonBuffer, size_t size);
     void parseClimateData(char* jsonBuffer, size_t size);
-    
+
     uint16_t getClimateColorSmooth(float temp);
     PsramString mapWeatherCodeToIcon(int code, bool is_day);
+    bool isNightTime(time_t timestamp) const;
 
     void buildPages();
     void getDayName(char* buf, size_t buf_len, time_t epoch);
     void formatTime(char* buf, size_t buf_len, time_t epoch);
     uint16_t dimColor(uint16_t color, float brightness);
-    
-    const WeatherIconSet& getIconSet(const PsramString& icon_name);
-    void drawWeatherIcon(int x, int y, int size, const PsramString& icon_name);
+
+    // NEU: drawWeatherIcon mit Registry/Cache, und PSRAM everywhere:
+    void drawWeatherIcon(int x, int y, int size, const PsramString& name, bool isNight);
 
     void drawTodayOverviewPage();
     void drawTodayDetailsPage();
@@ -137,5 +139,3 @@ private:
     void drawAlertPage(int index);
     void drawNoDataPage();
 };
-
-#endif // WEATHERMODULE_HPP
