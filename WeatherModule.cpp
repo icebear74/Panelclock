@@ -6,6 +6,12 @@
 
 #define CLIMATE_COLOR_RANGE 5.0f
 
+// TEST: Small test array to verify PROGMEM reading works
+const uint8_t test_icon_data[] PROGMEM = {
+    0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF
+};
+const WeatherIcon test_icon = { test_icon_data, 5, 1 };
+
 // Allocator für PSRAM
 struct SpiRamAllocator : ArduinoJson::Allocator {
   void* allocate(size_t size) override { return ps_malloc(size); }
@@ -70,7 +76,10 @@ WeatherModule::~WeatherModule() {
     if (_pendingClimateBuffer) free(_pendingClimateBuffer);
 }
 
-void WeatherModule::begin() {}
+void WeatherModule::begin() {
+    registerWeatherIcons();            // Main-Icons ins Registry
+    registerSpecialIcons(globalWeatherIconSet); // Special-Icons ins Registry
+}
 
 void WeatherModule::setConfig(const DeviceConfig* config) {
     _config = config;
@@ -281,7 +290,7 @@ void WeatherModule::buildApiUrls() {
     // Build climate URL for historical data
     gmtime_r(&now, &timeinfo);
     int current_year = timeinfo.tm_year + 1900;
-    char climate_start_date[11];
+    char climate_start_date[20];  // Increased buffer size to avoid truncation warning
     snprintf(climate_start_date, sizeof(climate_start_date), "%d-%02d-%02d", current_year - 5, timeinfo.tm_mon + 1, timeinfo.tm_mday);
     
     _climateApiUrl = "https://archive-api.open-meteo.com/v1/archive?latitude=";
@@ -324,7 +333,7 @@ void WeatherModule::parseForecastData(char* jsonBuffer, size_t size) {
         JsonArray d_snow = daily["snowfall_sum"];
         JsonArray d_sunrise = daily["sunrise"];
         JsonArray d_sunset = daily["sunset"];
-        JsonArray d_uvi = daily["uv_index_max"];
+        // JsonArray d_uvi = daily["uv_index_max"];  // Currently unused
         
         for (int i = 0; i < daily_time.size(); ++i) {
             _dailyForecast.push_back({
@@ -421,13 +430,38 @@ void WeatherModule::parseClimateData(char* jsonBuffer, size_t size) {
 }
 
 PsramString WeatherModule::mapWeatherCodeToIcon(int code, bool is_day) {
-    switch (code) {
-        case 0: return is_day ? "01d" : "01n"; case 1: return is_day ? "02d" : "02n"; case 2: return is_day ? "03d" : "03n";
-        case 3: return "04d"; case 45: case 48: return "50d"; case 51: case 53: case 55: return "09d"; case 56: case 57: return "09d";
-        case 61: return is_day ? "10d" : "10n"; case 63: case 65: return "10d"; case 66: case 67: return "13d"; case 71: return is_day ? "13d" : "13n";
-        case 73: case 75: return "13d"; case 77: return "13d"; case 80: case 81: case 82: return "09d"; case 85: case 86: return "13d";
-        case 95: case 96: case 99: return "11d"; default: return "na";
+    auto it = wmo_code_to_icon.find(code);
+    if (it == wmo_code_to_icon.end()) return PsramString("unknown");
+    // Konvertiere std::string zu PsramString
+    return PsramString(it->second.c_str());
+}
+
+bool WeatherModule::isNightTime(time_t timestamp) const {
+    // If we don't have sunrise/sunset data, assume day
+    if (_dailyForecast.empty()) return false;
+    
+    // Find the day this timestamp belongs to
+    struct tm tm_check;
+    gmtime_r(&timestamp, &tm_check);
+    
+    for (const auto& day : _dailyForecast) {
+        struct tm tm_day;
+        gmtime_r(&day.dt, &tm_day);
+        
+        // Check if same day
+        if (tm_check.tm_year == tm_day.tm_year && 
+            tm_check.tm_yday == tm_day.tm_yday) {
+            // Check if timestamp is before sunrise or after sunset
+            return (timestamp < day.sunrise || timestamp > day.sunset);
+        }
     }
+    
+    // Fallback: check current weather's sunrise/sunset
+    if (_currentWeather.sunrise > 0 && _currentWeather.sunset > 0) {
+        return (timestamp < _currentWeather.sunrise || timestamp > _currentWeather.sunset);
+    }
+    
+    return false;
 }
 
 void WeatherModule::buildPages() {
@@ -509,7 +543,7 @@ void WeatherModule::drawTodayOverviewPage() {
         }
     }
     if (!rain_expected) { dominant_icon = _currentWeather.icon_name; }
-    drawWeatherIcon(24, (_canvas.height() - 48) / 2, 48, dominant_icon);
+    drawWeatherIcon(24, (_canvas.height() - 48) / 2, 48, dominant_icon, isNightTime(now_utc));
     _u8g2.begin(_canvas);
     int right_block_x = 94, right_block_width = _canvas.width() - right_block_x;
     _u8g2.setFont(u8g2_font_helvB10_tr); _u8g2.setForegroundColor(0xFFFF);
@@ -530,7 +564,8 @@ void WeatherModule::drawTodayDetailsPage() {
     if (_dailyForecast.empty()) { drawNoDataPage(); return; }
     const auto& today = _dailyForecast[0];
     
-    drawWeatherIcon(10, (_canvas.height() - 48) / 2, 48, _currentWeather.icon_name);
+    time_t now_utc = time(nullptr);
+    drawWeatherIcon(10, (_canvas.height() - 48) / 2, 48, _currentWeather.icon_name, isNightTime(now_utc));
     _u8g2.begin(_canvas);
     
     int col1_x = 70, col2_x = 130;
@@ -650,8 +685,9 @@ void WeatherModule::drawWeekOverviewPage() {
         const auto& day = _dailyForecast[i];
         int x = i * col_width;
         
-        // Small weather icon
-        drawWeatherIcon(x + (col_width - 24) / 2, 2, 24, day.icon_name);
+        // Small weather icon - use noon for day determination
+        time_t noon = day.dt + (12 * 60 * 60);
+        drawWeatherIcon(x + (col_width - 24) / 2, 2, 24, day.icon_name, isNightTime(noon));
         
         // Day name - special handling for first 3 days
         _u8g2.setFont(u8g2_font_5x7_tf);
@@ -863,7 +899,7 @@ void WeatherModule::drawHourlyForecastPage() {
             const auto& hour = _hourlyForecast[hour_index]; 
             int x = i * col_width;
             
-            drawWeatherIcon(x + (col_width - 24) / 2, 8, 24, hour.icon_name);
+            drawWeatherIcon(x + (col_width - 24) / 2, 8, 24, hour.icon_name, isNightTime(hour.dt));
             _u8g2.setFont(u8g2_font_5x8_tf); 
             _u8g2.setForegroundColor(0xFFFF);
             
@@ -939,38 +975,79 @@ void WeatherModule::drawAlertPage(int index) {
     formatTime(time_buf_end, sizeof(time_buf_end), alert.end);
     _u8g2.setCursor(70, 55);
     _u8g2.printf("Von %s bis %s Uhr", time_buf_start, time_buf_end);
-    drawWeatherIcon(10, 9, 48, "771");
+    drawWeatherIcon(10, 9, 48, PsramString("warning_generic"), false);
 }
 
-const WeatherIconSet& WeatherModule::getIconSet(const PsramString& icon_name) {
-    if (icon_name == "01d") return WeatherIcons::day_clear_set; if (icon_name == "01n") return WeatherIcons::night_full_moon_clear_set;
-    if (icon_name == "02d") return WeatherIcons::day_partial_cloud_set; if (icon_name == "02n") return WeatherIcons::night_full_moon_partial_cloud_set;
-    if (icon_name == "03d" || icon_name == "03n") return WeatherIcons::cloudy_set; if (icon_name == "04d" || icon_name == "04n") return WeatherIcons::overcast_set;
-    if (icon_name == "09d" || icon_name == "09n") return WeatherIcons::rain_set; if (icon_name == "10d") return WeatherIcons::day_rain_set;
-    if (icon_name == "10n") return WeatherIcons::night_full_moon_rain_set; if (icon_name == "11d" || icon_name == "11n") return WeatherIcons::rain_thunder_set;
-    if (icon_name == "13d") return WeatherIcons::day_snow_set; if (icon_name == "13n") return WeatherIcons::night_full_moon_snow_set;
-    if (icon_name == "50d" || icon_name == "50n") return WeatherIcons::mist_set; if (icon_name == "771") return WeatherIcons::angry_clouds_set;
-    if (icon_name == "781") return WeatherIcons::tornado_set; if (icon_name == "na") return WeatherIcons::unknown_set;
-    if (icon_name.ends_with("d")) { if (icon_name.starts_with("13")) return WeatherIcons::day_snow_set; if (icon_name.starts_with("11")) return WeatherIcons::day_rain_thunder_set; }
-    if (icon_name.ends_with("n")) { if (icon_name.starts_with("13")) return WeatherIcons::night_full_moon_snow_set; if (icon_name.starts_with("11")) return WeatherIcons::night_full_moon_rain_thunder_set; }
-    return WeatherIcons::unknown_set;
-}
 
-void WeatherModule::drawWeatherIcon(int x, int y, int size, const PsramString& icon_name) {
-    const auto& iconSet = getIconSet(icon_name);
-    const uint16_t* iconData = nullptr;
-    switch(size) {
-        case 64: iconData = iconSet.icon64; break;
-        case 48: iconData = iconSet.icon48; break;
-        case 24: iconData = iconSet.icon24; break;
-        default: iconData = iconSet.icon48; size = 48; break;
+void WeatherModule::drawWeatherIcon(int x, int y, int size, const PsramString& name, bool isNight) {
+    // TEST: First verify PROGMEM reading works with test array
+    Serial.println("\n=== PROGMEM TEST ===");
+    Serial.println("Test array (should be: 11 22 33 44 55 66 77 88 99 AA BB CC DD EE FF):");
+    for(int i=0; i<15; i++) {
+        uint8_t val = pgm_read_byte(test_icon.data + i);
+        Serial.printf("%02X ", val);
     }
-    if(iconData == nullptr) return;
-    for(int j=0; j<size; j++) {
-        for(int i=0; i<size; i++) {
-            uint16_t color = pgm_read_word(iconData + (j * size + i));
-            if(color != 0x0000) {
-                _canvas.drawPixel(x + i, y + j, color);
+    Serial.println("\n=== END TEST ===\n");
+    
+    // TEST: Explicitly load "unknown" icon to verify registry
+    Serial.println("=== EXPLICIT UNKNOWN ICON TEST ===");
+    const WeatherIcon* unknownIcon = globalWeatherIconSet.getIcon("unknown", false);
+    if (unknownIcon && unknownIcon->data) {
+        Serial.printf("Unknown icon pointer: %p\n", unknownIcon->data);
+        Serial.printf("Unknown icon first 15 bytes: ");
+        for(int i=0; i<15; i++) {
+            uint8_t val = pgm_read_byte(unknownIcon->data + i);
+            Serial.printf("%02X ", val);
+        }
+        Serial.println();
+    } else {
+        Serial.println("ERROR: Unknown icon is NULL or has no data!");
+    }
+    Serial.println("=== END UNKNOWN TEST ===\n");
+    
+    // Retrieves the appropriate icon from the registry/cache, independent of Main/Special!
+    // Converts PsramString to std::string for cache lookup
+    std::string iconName(name.c_str());
+    Serial.printf("Requested icon name: '%s', isNight: %d\n", iconName.c_str(), isNight);
+    
+    // TEMPORARY TEST: Bypass cache and read directly from PROGMEM
+    // This helps diagnose if the issue is with cache/PSRAM or PROGMEM reading
+    const WeatherIcon* src = globalWeatherIconSet.getIcon(iconName, isNight);
+    Serial.printf("  getIcon('%s', %d) returned: %p\n", iconName.c_str(), isNight, src);
+    if (!src) {
+        src = globalWeatherIconSet.getIcon(iconName, false);
+        Serial.printf("  getIcon('%s', false) returned: %p\n", iconName.c_str(), src);
+    }
+    if (!src) {
+        src = globalWeatherIconSet.getUnknown();
+        Serial.printf("  getUnknown() returned: %p\n", src);
+    }
+    if (!src || !src->data) {
+        Serial.println("ERROR: No valid icon found!");
+        return;
+    }
+    
+    // Use PSRAM cache for all icon sizes (with bilinear scaling)
+    const WeatherIcon* iconPtr = globalWeatherIconCache.getScaled(iconName, size, isNight);
+    if(!iconPtr || !iconPtr->data) {
+        iconPtr = globalWeatherIconCache.getScaled("unknown", size, false);
+        Serial.printf("  Fallback to unknown icon (size %d)\n", size);
+    }
+    if(!iconPtr || !iconPtr->data) return;
+    
+    // Draw icon pixel by pixel, reading from PSRAM cache
+    for(int j=0; j<size; ++j) {
+        for(int i=0; i<size; ++i) {
+            int idx = (j*size+i)*3;
+            // Icon data is already in PSRAM (copied by scaleBilinear), read directly
+            uint8_t r = iconPtr->data[idx+0];
+            uint8_t g = iconPtr->data[idx+1];
+            uint8_t b = iconPtr->data[idx+2];
+            // Convert RGB888 to RGB565
+            uint16_t color = ((r&0xF8)<<8)|((g&0xFC)<<3)|(b>>3);
+            // Skip fully transparent pixels (black = 0x00,0x00,0x00)
+            if(r != 0 || g != 0 || b != 0) {
+                _canvas.drawPixel(x+i, y+j, color);
             }
         }
     }
