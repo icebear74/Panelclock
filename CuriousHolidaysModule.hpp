@@ -63,7 +63,7 @@ private:
     int lastMonth = -1;
     int _lastCheckedDay; 
 
-    std::vector<std::vector<int>> pageIndices;
+    PsramVector<PsramVector<int>> pageIndices;
 
     void parseAndProcessHtml(const char* buffer, size_t size);
     void handleDayChange();

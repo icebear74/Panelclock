@@ -346,7 +346,7 @@ void CuriousHolidaysModule::calculatePages() {
 
     int holidayIndex = 0;
     while (holidayIndex < holidaysToday.size()) {
-        std::vector<int> page;
+        PsramVector<int> page;
         int currentHeight = 0;
         
         while (holidayIndex < holidaysToday.size()) {
