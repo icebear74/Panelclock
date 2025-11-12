@@ -45,18 +45,45 @@ void WeatherIconCache::clear() {
 // Bilinear-Skalierer: RGB888 → Zielgröße, Nachtmodus optional, alles im PSRAM
 WeatherIcon* WeatherIconCache::scaleBilinear(const WeatherIcon* src, uint8_t targetSize, bool doNightTransform) {
     if (!src || !src->data || !src->width || !src->height) return nullptr;
+    
+    // Always copy data to PSRAM, even if no scaling is needed
+    // This ensures consistent memory handling and proper PROGMEM reading
+    size_t src_bytes = (size_t)src->width * src->height * 3;
+    size_t target_bytes = (size_t)targetSize * targetSize * 3;
+    
+    uint8_t* newData = (uint8_t*)ps_malloc(target_bytes);
+    if (!newData) return nullptr;
+    
     if (src->width == targetSize && src->height == targetSize) {
-        // Direktes Pointer-Icon (kein Copy)
+        // No scaling needed, but copy from PROGMEM to PSRAM
+        for (size_t i = 0; i < src_bytes; i++) {
+            newData[i] = pgm_read_byte(src->data + i);
+        }
+        
+        // Apply night transform if needed
+        if (doNightTransform) {
+            for (size_t i = 0; i < target_bytes; i += 3) {
+                apply_night_color(newData[i], newData[i+1], newData[i+2], 0.5f);
+            }
+        }
+        
         WeatherIcon* icon = (WeatherIcon*)ps_malloc(sizeof(WeatherIcon));
-        if (!icon) return nullptr;
-        icon->width = src->width;
-        icon->height = src->height;
-        icon->data = src->data;
+        if (!icon) {
+            free(newData);
+            return nullptr;
+        }
+        icon->width = targetSize;
+        icon->height = targetSize;
+        icon->data = newData;
         return icon;
     }
-    // Pixels: Zielgröße * Zielgröße * 3 (RGB888) im PSRAM
-    uint8_t* newData = (uint8_t*)ps_malloc(targetSize * targetSize * 3);
-    if (!newData) return nullptr;
+    
+    // Scaling needed - free and reallocate if sizes don't match
+    if (src_bytes != target_bytes) {
+        free(newData);
+        newData = (uint8_t*)ps_malloc(target_bytes);
+        if (!newData) return nullptr;
+    }
 
     // Integer-Bilinear: src_x/src_y berechnen, Interpolation
     for (uint8_t y = 0; y < targetSize; ++y) {
@@ -73,10 +100,10 @@ WeatherIcon* WeatherIconCache::scaleBilinear(const WeatherIcon* src, uint8_t tar
             int idxD = ((iy+1) * src->width + (ix+1)) * 3;
 
             for (int c=0; c<3; ++c) {
-                uint8_t a = src->data[idxA + c];
-                uint8_t b = (ix+1<src->width) ? src->data[idxB + c] : a;
-                uint8_t c_ = (iy+1<src->height) ? src->data[idxC + c] : a;
-                uint8_t d = (ix+1<src->width && iy+1<src->height) ? src->data[idxD + c] : a;
+                uint8_t a = pgm_read_byte(src->data + idxA + c);
+                uint8_t b = (ix+1<src->width) ? pgm_read_byte(src->data + idxB + c) : a;
+                uint8_t c_ = (iy+1<src->height) ? pgm_read_byte(src->data + idxC + c) : a;
+                uint8_t d = (ix+1<src->width && iy+1<src->height) ? pgm_read_byte(src->data + idxD + c) : a;
                 float val = a*(1-fx)*(1-fy) + b*fx*(1-fy) + c_*(1-fx)*fy + d*fx*fy;
                 uint8_t out = (uint8_t)val;
                 newData[(y*targetSize + x)*3 + c] = out;

@@ -26,9 +26,11 @@ public:
 
             // Dummy-Prüfung: Icon beginnt mit 0x00 0x00 0x00 und enthält NUR diese, dann Dummy!
             size_t icon_bytes = icon->width * icon->height * 3;
-            if (icon->data[0] == 0x00 && icon->data[1] == 0x00 && icon->data[2] == 0x00) {
+            if (pgm_read_byte(icon->data + 0) == 0x00 && 
+                pgm_read_byte(icon->data + 1) == 0x00 && 
+                pgm_read_byte(icon->data + 2) == 0x00) {
                 for (size_t i = 3; i < icon_bytes; ++i) {
-                    if (icon->data[i] != 0x00) { return icon; }
+                    if (pgm_read_byte(icon->data + i) != 0x00) { return icon; }
                 }
                 return nullptr; // Dummy!
             }
