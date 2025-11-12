@@ -6,6 +6,12 @@
 
 #define CLIMATE_COLOR_RANGE 5.0f
 
+// TEST: Small test array to verify PROGMEM reading works
+const uint8_t test_icon_data[] PROGMEM = {
+    0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF
+};
+const WeatherIcon test_icon = { test_icon_data, 5, 1 };
+
 // Allocator für PSRAM
 struct SpiRamAllocator : ArduinoJson::Allocator {
   void* allocate(size_t size) override { return ps_malloc(size); }
@@ -974,6 +980,15 @@ void WeatherModule::drawAlertPage(int index) {
 
 
 void WeatherModule::drawWeatherIcon(int x, int y, int size, const PsramString& name, bool isNight) {
+    // TEST: First verify PROGMEM reading works with test array
+    Serial.println("\n=== PROGMEM TEST ===");
+    Serial.println("Test array (should be: 11 22 33 44 55 66 77 88 99 AA BB CC DD EE FF):");
+    for(int i=0; i<15; i++) {
+        uint8_t val = pgm_read_byte(test_icon.data + i);
+        Serial.printf("%02X ", val);
+    }
+    Serial.println("\n=== END TEST ===\n");
+    
     // Retrieves the appropriate icon from the registry/cache, independent of Main/Special!
     // Converts PsramString to std::string for cache lookup
     std::string iconName(name.c_str());
