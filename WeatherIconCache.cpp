@@ -35,9 +35,12 @@ const WeatherIcon* WeatherIconCache::getScaled(const std::string& name, uint8_t 
 
 void WeatherIconCache::clear() {
     for (auto& entry : cache) {
-        if (entry.second && entry.second->data)
-            free((void*)entry.second->data);
-        delete entry.second;
+        if (entry.second && entry.second->data) {
+            free((void*)entry.second->data);  // free() works for ps_malloc on ESP32
+        }
+        if (entry.second) {
+            free(entry.second);  // Also allocated with ps_malloc
+        }
     }
     cache.clear();
 }

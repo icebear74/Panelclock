@@ -974,20 +974,27 @@ void WeatherModule::drawAlertPage(int index) {
 
 
 void WeatherModule::drawWeatherIcon(int x, int y, int size, const PsramString& name, bool isNight) {
-    // Holt das passende Icon aus Registry/Cache, unabhängig von Main/Special!
-    // Konvertiere PsramString zu std::string für die Cache-Abfrage
+    // Retrieves the appropriate icon from the registry/cache, independent of Main/Special!
+    // Converts PsramString to std::string for cache lookup
     std::string iconName(name.c_str());
     const WeatherIcon* iconPtr = globalWeatherIconCache.getScaled(iconName, size, isNight);
     if(!iconPtr || !iconPtr->data) iconPtr = globalWeatherIconCache.getScaled("unknown", size, false);
     if(!iconPtr || !iconPtr->data) return;
+    
+    // Draw icon pixel by pixel, reading from PSRAM cache
     for(int j=0; j<size; ++j) {
         for(int i=0; i<size; ++i) {
             int idx = (j*size+i)*3;
-            uint8_t r=iconPtr->data[idx+0];
-            uint8_t g=iconPtr->data[idx+1];
-            uint8_t b=iconPtr->data[idx+2];
+            // Icon data is already in PSRAM (copied by scaleBilinear), read directly
+            uint8_t r = iconPtr->data[idx+0];
+            uint8_t g = iconPtr->data[idx+1];
+            uint8_t b = iconPtr->data[idx+2];
+            // Convert RGB888 to RGB565
             uint16_t color = ((r&0xF8)<<8)|((g&0xFC)<<3)|(b>>3);
-            _canvas.drawPixel(x+i, y+j, color);
+            // Skip fully transparent pixels (black = 0x00,0x00,0x00)
+            if(r != 0 || g != 0 || b != 0) {
+                _canvas.drawPixel(x+i, y+j, color);
+            }
         }
     }
 }
