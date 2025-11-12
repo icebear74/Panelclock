@@ -1027,51 +1027,12 @@ void WeatherModule::drawWeatherIcon(int x, int y, int size, const PsramString& n
         return;
     }
     
-    // For now, only support 48x48 direct drawing (no scaling)
-    if (size == 48 && src->width == 48 && src->height == 48) {
-        // Draw directly from PROGMEM without caching
-        // DEBUG: Print first few pixels to Serial for verification
-        Serial.println("Drawing icon from PROGMEM:");
-        Serial.printf("Icon size: %dx%d\n", src->width, src->height);
-        Serial.printf("Icon data pointer: %p\n", src->data);
-        Serial.printf("First 15 bytes (RGB888):\n");
-        for(int b=0; b<15; b++) {
-            uint8_t val = pgm_read_byte(src->data + b);
-            Serial.printf("%02X ", val);
-        }
-        Serial.println();
-        Serial.printf("First 5 pixels (RGB888):\n");
-        for(int p=0; p<5; p++) {
-            int idx = p*3;
-            uint8_t r = pgm_read_byte(src->data + idx + 0);
-            uint8_t g = pgm_read_byte(src->data + idx + 1);
-            uint8_t b = pgm_read_byte(src->data + idx + 2);
-            Serial.printf("  Pixel %d (bytes %d-%d): R=%02X G=%02X B=%02X\n", p, idx, idx+2, r, g, b);
-        }
-        
-        for(int j=0; j<48; ++j) {
-            for(int i=0; i<48; ++i) {
-                int idx = (j*48+i)*3;
-                // MUST use pgm_read_byte() for PROGMEM data on ESP32
-                uint8_t r = pgm_read_byte(src->data + idx + 0);
-                uint8_t g = pgm_read_byte(src->data + idx + 1);
-                uint8_t b = pgm_read_byte(src->data + idx + 2);
-                
-                // Convert RGB888 to RGB565
-                uint16_t color = ((r&0xF8)<<8)|((g&0xFC)<<3)|(b>>3);
-                
-                // Skip fully transparent pixels (black = 0x00,0x00,0x00)
-                if(r != 0 || g != 0 || b != 0) {
-                    _canvas.drawPixel(x+i, y+j, color);
-                }
-            }
-        }
-        return;
-    }
-    
-    // Fall back to original cached version for other sizes
+    // Use PSRAM cache for all icon sizes (with bilinear scaling)
     const WeatherIcon* iconPtr = globalWeatherIconCache.getScaled(iconName, size, isNight);
-    if(!iconPtr || !iconPtr->data) iconPtr = globalWeatherIconCache.getScaled("unknown", size, false);
+    if(!iconPtr || !iconPtr->data) {
+        iconPtr = globalWeatherIconCache.getScaled("unknown", size, false);
+        Serial.printf("  Fallback to unknown icon (size %d)\n", size);
+    }
     if(!iconPtr || !iconPtr->data) return;
     
     // Draw icon pixel by pixel, reading from PSRAM cache
