@@ -78,41 +78,49 @@ find "$BASE_DIR" -mindepth 1 -maxdepth 1 -type d -print0 | while IFS= read -r -d
         continue
       fi
 
-      # 2) Produce txt with RGBA raw bytes -> convert to 0xRRGGBB or 0x000000 if alpha==0
-      #    Output format: comma separated, WIDTH values per line (block look), no trailing comma after last value.
+      # 2) Produce txt with RGB888 format: separate R, G, B bytes
+      #    Output format: comma separated, 21 bytes per line (7 pixels × 3 bytes = 21, multiple of 3)
+      #    If alpha==0, output 0x00, 0x00, 0x00 (transparent black)
       total_pixels=$((size * size))
-#      values_per_line=$size        # ergibt ein "Block" pro Zeile (z.B. 48 Werte pro Zeile bei 48x48)
-      values_per_line=8
+      total_bytes=$((total_pixels * 3))  # Each pixel = 3 bytes (R, G, B)
+      bytes_per_line=21                  # Multiple of 3 for nice formatting
 
       ffmpeg -v error -i "$out_png" -f rawvideo -pix_fmt rgba - | \
         xxd -p -c 4 | \
-        awk -v total="$total_pixels" -v perline="$values_per_line" '
-        BEGIN { cnt = 0; }
+        awk -v total_bytes="$total_bytes" -v perline="$bytes_per_line" '
+        BEGIN { byte_cnt = 0; }
         {
           s = toupper($0);            # RRGGBBAA
           r = substr(s,1,2);
           g = substr(s,3,2);
           b = substr(s,5,2);
           a = substr(s,7,2);
+          
+          # If transparent, output black (0x00, 0x00, 0x00)
           if (a == "00") {
-            out = "0x000000";
-          } else {
-            out = "0x" r g b;
+            r = "00"; g = "00"; b = "00";
           }
-          cnt++;
-          # print value and decide comma/newline
-          if (cnt < total) {
-            # not last overall value -> print value + comma
-            printf "%s", out;
-            if (cnt % perline == 0) {
-              # end of visual row -> comma then newline
-              printf ",\n";
+          
+          # Output R, G, B as separate bytes
+          for (i = 1; i <= 3; i++) {
+            byte_cnt++;
+            if (i == 1) val = "0x" r;
+            else if (i == 2) val = "0x" g;
+            else val = "0x" b;
+            
+            # Print value and decide comma/newline
+            if (byte_cnt < total_bytes) {
+              printf "%s", val;
+              if (byte_cnt % perline == 0) {
+                # End of line -> comma then newline
+                printf ",\n";
+              } else {
+                printf ", ";
+              }
             } else {
-              printf ", ";
+              # Last byte -> print and newline, no trailing comma
+              printf "%s\n", val;
             }
-          } else {
-            # last value -> print and newline, no trailing comma
-            printf "%s\n", out;
           }
         }
         ' > "$out_txt"
