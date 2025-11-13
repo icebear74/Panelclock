@@ -447,7 +447,7 @@ const char HTML_DEBUG_STATION_HISTORY[] PROGMEM = R"rawliteral(
 
 const char HTML_STREAM_PAGE[] PROGMEM = R"rawliteral(
 <h1>Panel Live-Stream & Debug</h1>
-<div style="text-align: center; margin-bottom: 20px;">
+<div style="text-align: center; margin-bottom: 30px;">
     <h3>LED Panel Vorschau</h3>
     <canvas id="panelSimulator" style="background-color: #000; border: 2px solid #444; border-radius: 8px; display: inline-block;"></canvas>
     <div style="margin-top: 15px;">
@@ -456,8 +456,8 @@ const char HTML_STREAM_PAGE[] PROGMEM = R"rawliteral(
     </div>
 </div>
 
-<div class="group">
-    <h3>Log-Ausgabe</h3>
+<div style="max-width: 1000px; margin: 0 auto; padding: 0 20px;">
+    <h3 style="text-align: center;">Log-Ausgabe</h3>
     <div style="position: relative;">
         <pre id="logOutput" style="background: #1a1a1a; color: #0f0; padding: 15px; border-radius: 4px; height: 400px; overflow-y: auto; font-family: monospace; font-size: 12px; border: 1px solid #444;"></pre>
         <button onclick="clearLogs()" class="button" style="margin-top: 10px; width: auto;">Logs löschen</button>
