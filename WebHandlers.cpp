@@ -1,6 +1,7 @@
 #include "WebHandlers.hpp"
 #include "WebServerManager.hpp"
 #include "WebPages.hpp"
+#include "ThemeParkModule.hpp"
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 #include <WiFi.h>
@@ -15,6 +16,7 @@ extern WebClientModule* webClient;
 extern MwaveSensorModule* mwaveSensorModule;
 extern GeneralTimeConverter* timeConverter;
 extern TankerkoenigModule* tankerkoenigModule;
+extern ThemeParkModule* themeParkModule;
 extern bool portalRunning;
 
 // Forward declarations of global functions (declared in WebServerManager.hpp)
@@ -174,6 +176,12 @@ void handleConfigModules() {
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->calendarUrgentDurationSec); replaceAll(content, "{calendarUrgentDurationSec}", num_buf);
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->calendarUrgentRepeatMin); replaceAll(content, "{calendarUrgentRepeatMin}", num_buf);
 
+    // Theme Park configuration
+    replaceAll(content, "{themeParkEnabled_checked}", deviceConfig->themeParkEnabled ? "checked" : "");
+    replaceAll(content, "{themeParkIds}", deviceConfig->themeParkIds.c_str());
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->themeParkFetchIntervalMin); replaceAll(content, "{themeParkFetchIntervalMin}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->themeParkDisplaySec); replaceAll(content, "{themeParkDisplaySec}", num_buf);
+
     page += content;
     page += (const char*)FPSTR(HTML_PAGE_FOOTER);
     server->send(200, "text/html", page.c_str());
@@ -200,6 +208,12 @@ void handleSaveModules() {
     deviceConfig->weatherAlertsEnabled = server->hasArg("weatherAlertsEnabled");
     deviceConfig->weatherAlertsDisplaySec = server->arg("weatherAlertsDisplaySec").toInt();
     deviceConfig->weatherAlertsRepeatMin = server->arg("weatherAlertsRepeatMin").toInt();
+
+    // Theme Park configuration
+    deviceConfig->themeParkEnabled = server->hasArg("themeParkEnabled");
+    deviceConfig->themeParkIds = server->arg("themeParkIds").c_str();
+    deviceConfig->themeParkFetchIntervalMin = server->arg("themeParkFetchIntervalMin").toInt();
+    deviceConfig->themeParkDisplaySec = server->arg("themeParkDisplaySec").toInt();
 
     deviceConfig->tankerApiKey = server->arg("tankerApiKey").c_str();
     deviceConfig->stationFetchIntervalMin = server->arg("stationFetchIntervalMin").toInt();
@@ -618,3 +632,29 @@ void handleStreamPage() {
     page += FPSTR(HTML_PAGE_FOOTER);
     server->send(200, "text/html", page);
 }
+
+void handleThemeParksList() {
+    if (!server || !themeParkModule) {
+        server->send(500, "application/json", "{\"ok\":false, \"message\":\"Server or ThemePark module not initialized\"}");
+        return;
+    }
+    
+    // Get available parks from module
+    PsramVector<AvailablePark> parks = themeParkModule->getAvailableParks();
+    
+    // Build JSON response
+    DynamicJsonDocument doc(8192);
+    doc["ok"] = true;
+    JsonArray parksArray = doc.createNestedArray("parks");
+    
+    for (const auto& park : parks) {
+        JsonObject parkObj = parksArray.createNestedObject();
+        parkObj["id"] = park.id.c_str();
+        parkObj["name"] = park.name.c_str();
+    }
+    
+    String response;
+    serializeJson(doc, response);
+    server->send(200, "application/json", response);
+}
+

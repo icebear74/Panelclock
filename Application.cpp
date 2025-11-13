@@ -28,6 +28,7 @@ OtaManager* otaManager = nullptr;
 bool portalRunning = false;
 
 TankerkoenigModule* tankerkoenigModule = nullptr;
+ThemeParkModule* themeParkModule = nullptr;
 
 // Forward-Deklaration, da in WebServerManager.cpp definiert
 void setupWebServer(bool portalMode);
@@ -70,6 +71,7 @@ Application::~Application() {
     delete _fritzMod;
     delete _curiousMod;
     delete _weatherMod;
+    delete _themeParkMod;
     delete _panelStreamer;
 }
 
@@ -112,6 +114,8 @@ void Application::begin() {
     _fritzMod = new FritzboxModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), webClient);
     _curiousMod = new CuriousHolidaysModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, webClient);
     _weatherMod = new WeatherModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, webClient);
+    _themeParkMod = new ThemeParkModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), webClient);
+    themeParkModule = _themeParkMod;
     
     _panelManager->registerClockModule(_clockMod);
     _panelManager->registerSensorModule(mwaveSensorModule);
@@ -121,6 +125,7 @@ void Application::begin() {
     _panelManager->registerModule(_dartsMod);
     _panelManager->registerModule(_curiousMod);
     _panelManager->registerModule(_weatherMod);
+    _panelManager->registerModule(_themeParkMod);
 
     if (connectionManager->begin()) {
         portalRunning = false;
@@ -134,6 +139,7 @@ void Application::begin() {
         _fritzMod->begin(network_core);
         _curiousMod->begin();
         _weatherMod->begin();
+        _themeParkMod->begin();
 
         WiFi.setHostname(deviceConfig->hostname.c_str());
         if (!deviceConfig->otaPassword.empty()) ArduinoOTA.setPassword(deviceConfig->otaPassword.c_str());
@@ -168,6 +174,7 @@ void Application::begin() {
 
     _curiousMod->onUpdate(redrawCb);
     _weatherMod->onUpdate(redrawCb);
+    _themeParkMod->onUpdate(redrawCb);
 
     _panelManager->displayStatus("Startvorgang\nabgeschlossen.");
     delay(2000);
@@ -204,6 +211,7 @@ void Application::update() {
     if(_calendarMod) _calendarMod->queueData();
     if(_curiousMod) _curiousMod->queueData();
     if(_weatherMod) _weatherMod->queueData(); // HINZUGEFÜGT
+    if(_themeParkMod) _themeParkMod->queueData(); // HINZUGEFÜGT
     
     // KORREKTUR: Aufrufe für das Wetter-Modul hinzugefügt
     if(_tankerkoenigMod) _tankerkoenigMod->processData();
@@ -211,6 +219,7 @@ void Application::update() {
     if(_calendarMod) _calendarMod->processData();
     if(_curiousMod) _curiousMod->processData();
     if(_weatherMod) _weatherMod->processData(); // HINZUGEFÜGT
+    if(_themeParkMod) _themeParkMod->processData(); // HINZUGEFÜGT
 
     if (_panelManager) _panelManager->tick();
 
@@ -231,7 +240,7 @@ void Application::update() {
 
 void Application::executeApplyLiveConfig() {
     LOG_MEMORY_DETAILED("Vor executeApplyLiveConfig");
-    if (!_tankerkoenigMod || !_calendarMod || !_dartsMod || !_fritzMod || !_curiousMod || !_weatherMod || !timeConverter || !deviceConfig) return;
+    if (!_tankerkoenigMod || !_calendarMod || !_dartsMod || !_fritzMod || !_curiousMod || !_weatherMod || !_themeParkMod || !timeConverter || !deviceConfig) return;
     Log.println("[Config] Wende Live-Konfiguration an...");
     
     if (!timeConverter->setTimezone(deviceConfig->timezone.c_str())) {
@@ -245,6 +254,7 @@ void Application::executeApplyLiveConfig() {
     _fritzMod->setConfig(deviceConfig->fritzboxEnabled, deviceConfig->fritzboxIp);
     _curiousMod->setConfig();
     _weatherMod->setConfig(deviceConfig);
+    _themeParkMod->setConfig(deviceConfig);
 
     Log.println("[Config] Live-Konfiguration angewendet.");
     LOG_MEMORY_DETAILED("Nach executeApplyLiveConfig");
