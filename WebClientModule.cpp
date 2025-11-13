@@ -65,7 +65,7 @@ size_t PsramBufferStream::write(const uint8_t *buffer, size_t size) {
     if (_position + size > _capacity) {
         _overflowed = true;
         bytes_to_write = (_capacity > _position) ? _capacity - _position : 0;
-        Serial.printf("[PsramBufferStream] WARNUNG: Pufferüberlauf! Schreibe nur die letzten %u von %u Bytes.\n", bytes_to_write, size);
+        Log.printf("[PsramBufferStream] WARNUNG: Pufferüberlauf! Schreibe nur die letzten %u von %u Bytes.\n", bytes_to_write, size);
     }
     if (bytes_to_write > 0) {
         const size_t chunkSize = 4096;
@@ -167,7 +167,7 @@ void WebClientModule::registerResource(const String& url, uint32_t update_interv
         if (existingHost.compare(host.c_str()) == 0) {
             if (xSemaphoreTake(res.mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
                 res.url = url.c_str();
-                Serial.printf("[WebDataManager] URL aktualisiert für Host %s: %s\n", host.c_str(), url.c_str());
+                Log.printf("[WebDataManager] URL aktualisiert für Host %s: %s\n", host.c_str(), url.c_str());
                 xSemaphoreGive(res.mutex);
             }
             return;
@@ -184,7 +184,7 @@ void WebClientModule::registerResource(const String& url, uint32_t update_interv
     ManagedResource& new_res = resources.back();
 
     // remove the old deviceConfig-based cert selection here (we'll discover certs dynamically)
-    Serial.printf("[WebDataManager] Ressource registriert: %s (initial Cert-File: '%s')\n", new_res.url.c_str(), new_res.cert_filename.c_str());
+    Log.printf("[WebDataManager] Ressource registriert: %s (initial Cert-File: '%s')\n", new_res.url.c_str(), new_res.cert_filename.c_str());
 }
 
 void WebClientModule::updateResourceUrl(const String& old_url, const String& new_url) {
@@ -192,7 +192,7 @@ void WebClientModule::updateResourceUrl(const String& old_url, const String& new
         if (resource.url.compare(old_url.c_str()) == 0) {
             if (xSemaphoreTake(resource.mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
                 resource.url = new_url.c_str();
-                Serial.printf("[WebDataManager] URL für Ressource aktualisiert: %s -> %s\n", old_url.c_str(), new_url.c_str());
+                Log.printf("[WebDataManager] URL für Ressource aktualisiert: %s -> %s\n", old_url.c_str(), new_url.c_str());
                 xSemaphoreGive(resource.mutex);
             }
             return;
@@ -212,7 +212,7 @@ void WebClientModule::accessResource(const String& url, std::function<void(const
                 }
                 xSemaphoreGive(resource.mutex);
             } else {
-                Serial.printf("[WebDataManager] Timeout beim Warten auf Mutex für %s\n", url.c_str());
+                Log.printf("[WebDataManager] Timeout beim Warten auf Mutex für %s\n", url.c_str());
             }
             return;
         }
@@ -224,7 +224,7 @@ void WebClientModule::updateResourceCertificateByHost(const String& host, const 
         if (indexOf(resource.url, host.c_str()) != -1) {
             if (xSemaphoreTake(resource.mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
                 resource.cert_filename = cert_filename.c_str();
-                Serial.printf("[WebDataManager] Zertifikat für Ressource '%s' (Host: %s) live aktualisiert auf Datei: '%s'\n", resource.url.c_str(), host.c_str(), cert_filename.c_str());
+                Log.printf("[WebDataManager] Zertifikat für Ressource '%s' (Host: %s) live aktualisiert auf Datei: '%s'\n", resource.url.c_str(), host.c_str(), cert_filename.c_str());
                 xSemaphoreGive(resource.mutex);
             }
         }
@@ -233,18 +233,18 @@ void WebClientModule::updateResourceCertificateByHost(const String& host, const 
 
 void WebClientModule::getRequest(const PsramString& url, std::function<void(const char* buffer, size_t size)> callback) {
     if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("[WebClientModule] GET-Anfrage fehlgeschlagen: Keine WLAN-Verbindung.");
+        Log.println("[WebClientModule] GET-Anfrage fehlgeschlagen: Keine WLAN-Verbindung.");
         callback(nullptr, 0);
         return;
     }
     WebJob* job = new WebJob{WebJob::GET, url, "", "", callback, nullptr};
     if (!job) {
-        Serial.println("[WebClientModule] FEHLER: Konnte keinen WebJob für GET allozieren.");
+        Log.println("[WebClientModule] FEHLER: Konnte keinen WebJob für GET allozieren.");
         callback(nullptr, 0);
         return;
     }
     if (xQueueSend(jobQueue, &job, pdMS_TO_TICKS(100)) != pdTRUE) {
-        Serial.println("[WebClientModule] FEHLER: Konnte GET-Job nicht zur Queue hinzufügen.");
+        Log.println("[WebClientModule] FEHLER: Konnte GET-Job nicht zur Queue hinzufügen.");
         delete job;
         callback(nullptr, 0);
     }
@@ -252,18 +252,18 @@ void WebClientModule::getRequest(const PsramString& url, std::function<void(cons
 
 void WebClientModule::getRequest(const PsramString& url, std::function<void(int httpCode, const char* payload, size_t len)> detailed_callback) {
     if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("[WebClientModule] GET-Anfrage (detailed) fehlgeschlagen: Keine WLAN-Verbindung.");
+        Log.println("[WebClientModule] GET-Anfrage (detailed) fehlgeschlagen: Keine WLAN-Verbindung.");
         detailed_callback(-1, "No WiFi", 7);
         return;
     }
     WebJob* job = new WebJob{WebJob::GET, url, "", "", nullptr, detailed_callback};
     if (!job) {
-        Serial.println("[WebClientModule] FEHLER: Konnte keinen WebJob für GET (detailed) allozieren.");
+        Log.println("[WebClientModule] FEHLER: Konnte keinen WebJob für GET (detailed) allozieren.");
         detailed_callback(-1, "Malloc failed", 12);
         return;
     }
     if (xQueueSend(jobQueue, &job, pdMS_TO_TICKS(100)) != pdTRUE) {
-        Serial.println("[WebDataManager] FEHLER: Konnte GET-Job (detailed) nicht zur Queue hinzufügen.");
+        Log.println("[WebDataManager] FEHLER: Konnte GET-Job (detailed) nicht zur Queue hinzufügen.");
         delete job;
         detailed_callback(-1, "Queue full", 10);
     }
@@ -271,20 +271,20 @@ void WebClientModule::getRequest(const PsramString& url, std::function<void(int 
 
 void WebClientModule::postRequest(const PsramString& url, const PsramString& postBody, const PsramString& contentType, std::function<void(const char* buffer, size_t size)> callback) {
     if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("[WebClientModule] POST-Anfrage fehlgeschlagen: Keine WLAN-Verbindung.");
+        Log.println("[WebClientModule] POST-Anfrage fehlgeschlagen: Keine WLAN-Verbindung.");
         callback(nullptr, 0);
         return;
     }
 
     WebJob* job = new WebJob{WebJob::POST, url, postBody, contentType, callback, nullptr};
     if (!job) {
-        Serial.println("[WebClientModule] FEHLER: Konnte keinen WebJob für POST allozieren.");
+        Log.println("[WebClientModule] FEHLER: Konnte keinen WebJob für POST allozieren.");
         callback(nullptr, 0);
         return;
     }
 
     if (xQueueSend(jobQueue, &job, pdMS_TO_TICKS(100)) != pdTRUE) {
-        Serial.println("[WebClientModule] FEHLER: Konnte POST-Job nicht zur Queue hinzufügen.");
+        Log.println("[WebClientModule] FEHLER: Konnte POST-Job nicht zur Queue hinzufügen.");
         delete job;
         callback(nullptr, 0);
     }
@@ -297,11 +297,11 @@ bool WebClientModule::reallocateBuffer(size_t new_size) {
     if (new_buffer) {
         _downloadBuffer = new_buffer;
         _bufferCapacity = new_size;
-        Serial.printf("[WebClientModule] Download-Puffer alloziert/vergrößert auf: %u Bytes\n", new_size);
+        Log.printf("[WebClientModule] Download-Puffer alloziert/vergrößert auf: %u Bytes\n", new_size);
         LOG_MEMORY_DETAILED("WebClient: Nach Puffer-Allokation");
         return true;
     } else {
-        Serial.printf("[WebClientModule] FEHLER: Konnte Puffer nicht auf %u Bytes vergrößern!\n", new_size);
+        Log.printf("[WebClientModule] FEHLER: Konnte Puffer nicht auf %u Bytes vergrößern!\n", new_size);
         LOG_MEMORY_DETAILED("WebClient: Puffer-Allokation FEHLER");
         return false;
     }
@@ -311,7 +311,7 @@ bool WebClientModule::reallocateBuffer(size_t new_size) {
 //     and make connect + download two distinct steps to reduce certificate issues and heap fragmentation.
 void WebClientModule::performJob(const WebJob& job) {
     LOG_MEMORY_STRATEGIC("WebClient: Begin performJob");
-    Serial.printf("[WebDataManager] Führe %s-Job für %s aus...\n", (job.type == WebJob::GET ? "GET" : "POST"), job.url.c_str());
+    Log.printf("[WebDataManager] Führe %s-Job für %s aus...\n", (job.type == WebJob::GET ? "GET" : "POST"), job.url.c_str());
     HTTPClient http;
     int httpCode = 0;
     
@@ -373,12 +373,12 @@ void WebClientModule::performJob(const WebJob& job) {
         }
 
         if(cert_loaded) {
-            Serial.printf("[WebDataManager] Job: Verwende Zertifikat '%s'\n", cert_filename.c_str());
+            Log.printf("[WebDataManager] Job: Verwende Zertifikat '%s'\n", cert_filename.c_str());
             secure_client.setCACert(cert_data.c_str());
         } else if (job.detailed_callback == nullptr) {
             // if no cert loaded, try resource.root_ca_fallback (if any)
             // Note: performJob does not have access to ManagedResource here; rely on local behavior: if caller wants to set cert per resource, they can use updateResourceCertificateByHost()
-            Serial.printf("[WebDataManager] Job: WARNUNG, kein Zertifikat für %s gefunden, benutze unsichere Verbindung.\n", job.url.c_str());
+            Log.printf("[WebDataManager] Job: WARNUNG, kein Zertifikat für %s gefunden, benutze unsichere Verbindung.\n", job.url.c_str());
             secure_client.setInsecure();
         } else {
             secure_client.setInsecure();
@@ -434,7 +434,7 @@ void WebClientModule::performJob(const WebJob& job) {
         http.writeToStream(&_downloadStream);
         LOG_MEMORY_DETAILED("WebClient: Nach http.writeToStream");
         if (_downloadStream.hasOverflowed()) {
-            Serial.printf("[WebDataManager] LERNEN: Pufferüberlauf bei Job %s. Puffergröße=%u. Job liefert mehr Daten als erwartet.\n", job.url.c_str(), (unsigned)_downloadStream.getCapacity());
+            Log.printf("[WebDataManager] LERNEN: Pufferüberlauf bei Job %s. Puffergröße=%u. Job liefert mehr Daten als erwartet.\n", job.url.c_str(), (unsigned)_downloadStream.getCapacity());
             // Try to notify callbacks about failure / overflow
             if (job.detailed_callback) {
                 job.detailed_callback(-2, "Buffer overflow", strlen("Buffer overflow"));
@@ -462,7 +462,7 @@ void WebClientModule::performJob(const WebJob& job) {
                     free(tmp_buf);
                     LOG_MEMORY_DETAILED("WebClient: Nach tmp_buf free");
                 } else {
-                    Serial.printf("[WebDataManager] FEHLER: Konnte temporären Buffer (%u) für Job nicht allozieren.\n", (unsigned)downloaded_size);
+                    Log.printf("[WebDataManager] FEHLER: Konnte temporären Buffer (%u) für Job nicht allozieren.\n", (unsigned)downloaded_size);
                     if (job.detailed_callback) {
                         job.detailed_callback(-3, "Malloc failed", strlen("Malloc failed"));
                     } else if (job.callback) {
@@ -503,7 +503,7 @@ void WebClientModule::performJob(const WebJob& job) {
 
 void WebClientModule::webWorkerTask(void* param) {
     WebClientModule* self = static_cast<WebClientModule*>(param);
-    Serial.printf("[WebDataManager] Worker-Task gestartet auf Core %d.\n", xPortGetCoreID());
+    Log.printf("[WebDataManager] Worker-Task gestartet auf Core %d.\n", xPortGetCoreID());
     
     WebJob* receivedJob;
     const unsigned long MIN_PAUSE_BETWEEN_DOWNLOADS_MS = 10000UL; // 10 seconds
@@ -525,7 +525,7 @@ void WebClientModule::webWorkerTask(void* param) {
                     // push back to queue front (so it will be retried)
                     if (xQueueSendToFront(self->jobQueue, &receivedJob, pdMS_TO_TICKS(100)) != pdTRUE) {
                         // if failed to put back, drop it gracefully after short wait
-                        Serial.println("[WebDataManager] WARNUNG: Konnte Job nicht zurück in Queue einreihen, verwerfe.");
+                        Log.println("[WebDataManager] WARNUNG: Konnte Job nicht zurück in Queue einreihen, verwerfe.");
                         delete receivedJob;
                     }
                     vTaskDelay(pdMS_TO_TICKS(200));
@@ -573,7 +573,7 @@ void WebClientModule::webWorkerTask(void* param) {
 // performUpdate unchanged except cert discovery replaces previous deviceConfig cert-field usage
 void WebClientModule::performUpdate(ManagedResource& resource) {
     LOG_MEMORY_STRATEGIC("WebClient: Begin performUpdate");
-    Serial.printf("[WebDataManager] Starte Update für %s...\n", resource.url.c_str());
+    Log.printf("[WebDataManager] Starte Update für %s...\n", resource.url.c_str());
     resource.last_check_attempt = time(nullptr);
     bool retry_with_larger_buffer;
     int max_growth_retries = 3;
@@ -634,13 +634,13 @@ void WebClientModule::performUpdate(ManagedResource& resource) {
 
             // fallback to root_ca_fallback in resource
             if (!cert_loaded && resource.root_ca_fallback) {
-                Serial.printf("[WebDataManager] Verwende Fallback-Zertifikat für %s.\n", resource.url.c_str());
+                Log.printf("[WebDataManager] Verwende Fallback-Zertifikat für %s.\n", resource.url.c_str());
                 secure_client.setCACert(resource.root_ca_fallback);
             } else if (!cert_loaded) {
-                Serial.printf("[WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für %s.\n", resource.url.c_str());
+                Log.printf("[WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für %s.\n", resource.url.c_str());
                 secure_client.setInsecure();
             } else {
-                Serial.printf("[WebDataManager] Verwende Zertifikat aus Datei '%s' für %s.\n", filepath.c_str(), resource.url.c_str());
+                Log.printf("[WebDataManager] Verwende Zertifikat aus Datei '%s' für %s.\n", filepath.c_str(), resource.url.c_str());
                 secure_client.setCACert(cert_data.c_str());
             }
             
@@ -670,14 +670,14 @@ void WebClientModule::performUpdate(ManagedResource& resource) {
             http.writeToStream(&_downloadStream);
             LOG_MEMORY_DETAILED("WebClient: Nach http.writeToStream in performUpdate");
             if (_downloadStream.hasOverflowed()) {
-                Serial.printf("[WebClientModule] LERNEN: Pufferüberlauf bei %s. Puffer wird vergrößert.\n", resource.url.c_str());
+                Log.printf("[WebClientModule] LERNEN: Pufferüberlauf bei %s. Puffer wird vergrößert.\n", resource.url.c_str());
                 size_t new_capacity = ((_downloadStream.getCapacity() / (128 * 1024)) + 1) * (128 * 1024);
                 if (reallocateBuffer(new_capacity)) {
                     deviceConfig->webClientBufferSize = new_capacity;
                     saveDeviceConfig();
                     retry_with_larger_buffer = true;
                 } else {
-                    Serial.println("[WebClientModule] FEHLER: Puffer konnte nicht vergrößert werden. Update für diese Ressource abgebrochen.");
+                    Log.println("[WebClientModule] FEHLER: Puffer konnte nicht vergrößert werden. Update für diese Ressource abgebrochen.");
                 }
             } else {
                 size_t downloaded_size = _downloadStream.getSize();
@@ -699,14 +699,14 @@ void WebClientModule::performUpdate(ManagedResource& resource) {
                             time(&resource.last_successful_update);
                             resource.is_data_stale = false;
                             xSemaphoreGive(resource.mutex);
-                            Serial.printf("[WebDataManager] ERFOLG: %s aktualisiert (%u Bytes).\n", resource.url.c_str(), (unsigned int)downloaded_size);
+                            Log.printf("[WebDataManager] ERFOLG: %s aktualisiert (%u Bytes).\n", resource.url.c_str(), (unsigned int)downloaded_size);
                         } else {
                             LOG_MEMORY_DETAILED("WebClient: Vor free new_permanent_buffer (failed mutex)");
                             free(new_permanent_buffer);
                             LOG_MEMORY_DETAILED("WebClient: Nach free new_permanent_buffer (failed mutex)");
                         }
                     } else {
-                        Serial.printf("[WebClientModule] FEHLER: Konnte keinen passgenauen Puffer für %s allozieren.\n", resource.url.c_str());
+                        Log.printf("[WebClientModule] FEHLER: Konnte keinen passgenauen Puffer für %s allozieren.\n", resource.url.c_str());
                     }
                 }
                 resource.retry_count = 0;
@@ -729,11 +729,11 @@ void WebClientModule::performUpdate(ManagedResource& resource) {
             }
 
             if (resource.retry_count >= 3) {
-                Serial.printf("[WebDataManager] FEHLER bei %s: %s. Max. Retries (%d) erreicht.\n", resource.url.c_str(), errorMsg.c_str(), resource.retry_count);
+                Log.printf("[WebDataManager] FEHLER bei %s: %s. Max. Retries (%d) erreicht.\n", resource.url.c_str(), errorMsg.c_str(), resource.retry_count);
                 resource.retry_count = 0;
                 resource.is_in_retry_mode = false;
             } else {
-                Serial.printf("[WebDataManager] FEHLER bei %s: %s. Versuch %d/3 in 30s.\n", resource.url.c_str(), errorMsg.c_str(), resource.retry_count);
+                Log.printf("[WebDataManager] FEHLER bei %s: %s. Versuch %d/3 in 30s.\n", resource.url.c_str(), errorMsg.c_str(), resource.retry_count);
                 resource.is_in_retry_mode = true;
             }
         }

@@ -214,7 +214,7 @@ void handleSaveModules() {
 
     const size_t JSON_DOC_SIZE = 32768;
     void* docMem = ps_malloc(JSON_DOC_SIZE);
-    if (!docMem) { Serial.println("[WebServer] FATAL: PSRAM für JSON-Cleanup fehlgeschlagen!"); }
+    if (!docMem) { Log.println("[WebServer] FATAL: PSRAM für JSON-Cleanup fehlgeschlagen!"); }
     else {
         JsonDocument* oldCacheDoc = new (docMem) JsonDocument();
         if (LittleFS.exists("/station_cache.json")) {
@@ -224,7 +224,7 @@ void handleSaveModules() {
 
         if ((*oldCacheDoc)["ok"] == true) {
             void* newDocMem = ps_malloc(JSON_DOC_SIZE);
-            if(!newDocMem) { Serial.println("[WebServer] FATAL: PSRAM für neues Cache-Dokument fehlgeschlagen!"); }
+            if(!newDocMem) { Log.println("[WebServer] FATAL: PSRAM für neues Cache-Dokument fehlgeschlagen!"); }
             else {
                 JsonDocument* newCacheDoc = new (newDocMem) JsonDocument();
                 (*newCacheDoc)["ok"] = true;
@@ -548,7 +548,7 @@ void handleTankerkoenigSearchLive() {
         if (result.httpCode == 200) {
             const size_t JSON_DOC_SIZE = 32768; 
             void* docMem = ps_malloc(JSON_DOC_SIZE);
-            if (!docMem) { Serial.println("[WebServer] FATAL: PSRAM für JSON-Merge fehlgeschlagen!"); server->send(500, "application/json", "{\"ok\":false,\"message\":\"Interner Speicherfehler\"}"); vSemaphoreDelete(sem); return; }
+            if (!docMem) { Log.println("[WebServer] FATAL: PSRAM für JSON-Merge fehlgeschlagen!"); server->send(500, "application/json", "{\"ok\":false,\"message\":\"Interner Speicherfehler\"}"); vSemaphoreDelete(sem); return; }
             
             JsonDocument* currentCacheDoc = new (docMem) JsonDocument();
             
