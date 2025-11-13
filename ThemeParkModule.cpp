@@ -37,15 +37,13 @@ void ThemeParkModule::setConfig(const DeviceConfig* config) {
     _pageDisplayDuration = (_config && _config->themeParkDisplaySec > 0) 
         ? _config->themeParkDisplaySec * 1000UL : 15000;
     
-    if (isEnabled() && _webClient) {
-        // Register the parks list resource
-        _webClient->registerResource(
-            "https://api.wartezeiten.app/v1/parks",
-            60 * 24,  // Refresh parks list once per day
-            nullptr
-        );
-        
-        // Register resources for each selected park
+    // Note: We don't use registerResource for wait times anymore since the API
+    // requires custom headers (park: <parkId>) which only work with direct getRequest calls
+}
+
+void ThemeParkModule::queueData() {
+    if (_webClient && isEnabled() && _config) {
+        // Fetch wait times for each selected park using the correct API endpoint
         if (!_config->themeParkIds.empty()) {
             PsramString parkIds = _config->themeParkIds;
             size_t pos = 0;
@@ -63,68 +61,15 @@ void ThemeParkModule::setConfig(const DeviceConfig* config) {
                 }
                 
                 if (!parkId.empty()) {
-                    PsramString url = "https://api.wartezeiten.app/v1/parks/";
-                    url += parkId;
-                    url += "/queue";
+                    // Use the correct API endpoint with park header
+                    PsramString url = "https://api.wartezeiten.app/v1/waitingtimes";
+                    PsramString headers = "accept: application/json\npark: ";
+                    headers += parkId;
+                    headers += "\nlanguage: de";
                     
-                    _webClient->registerResource(
-                        String(url.c_str()),
-                        _config->themeParkFetchIntervalMin,
-                        nullptr
-                    );
-                }
-                
-                pos = commaPos + 1;
-            }
-        }
-    }
-}
-
-void ThemeParkModule::queueData() {
-    if (_webClient && isEnabled()) {
-        // Access parks list
-        _webClient->accessResource("https://api.wartezeiten.app/v1/parks", 
-            [this](const char* buffer, size_t size, time_t last_update, bool is_stale) {
-                if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-                    if (buffer && size > 0) {
-                        if (_pendingParksListBuffer) free(_pendingParksListBuffer);
-                        _pendingParksListBuffer = (char*)ps_malloc(size);
-                        if (_pendingParksListBuffer) {
-                            memcpy(_pendingParksListBuffer, buffer, size);
-                            _parksListBufferSize = size;
-                            _parksListDataPending = true;
-                        }
-                    }
-                    xSemaphoreGive(_dataMutex);
-                }
-            }
-        );
-        
-        // Access wait times for each selected park
-        if (_config && !_config->themeParkIds.empty()) {
-            PsramString parkIds = _config->themeParkIds;
-            size_t pos = 0;
-            while (pos < parkIds.length()) {
-                size_t commaPos = parkIds.find(',', pos);
-                if (commaPos == PsramString::npos) commaPos = parkIds.length();
-                
-                PsramString parkId = parkIds.substr(pos, commaPos - pos);
-                // Trim whitespace
-                while (!parkId.empty() && (parkId[0] == ' ' || parkId[0] == '\t')) {
-                    parkId = parkId.substr(1);
-                }
-                while (!parkId.empty() && (parkId[parkId.length()-1] == ' ' || parkId[parkId.length()-1] == '\t')) {
-                    parkId = parkId.substr(0, parkId.length()-1);
-                }
-                
-                if (!parkId.empty()) {
-                    PsramString url = "https://api.wartezeiten.app/v1/parks/";
-                    url += parkId;
-                    url += "/queue";
-                    
-                    _webClient->accessResource(String(url.c_str()),
-                        [this](const char* buffer, size_t size, time_t last_update, bool is_stale) {
-                            if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+                    _webClient->getRequest(url, headers,
+                        [this](int httpCode, const char* buffer, size_t size) {
+                            if (httpCode == 200 && xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
                                 if (buffer && size > 0) {
                                     if (_pendingWaitTimesBuffer) free(_pendingWaitTimesBuffer);
                                     _pendingWaitTimesBuffer = (char*)ps_malloc(size);
