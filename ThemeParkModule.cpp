@@ -18,7 +18,7 @@ ThemeParkModule::ThemeParkModule(U8G2_FOR_ADAFRUIT_GFX& u8g2, GFXcanvas16& canva
       _pageDisplayDuration(15000), _pendingParksListBuffer(nullptr),
       _parksListBufferSize(0), _parksListDataPending(false),
       _pendingWaitTimesBuffer(nullptr), _waitTimesBufferSize(0),
-      _waitTimesDataPending(false), _lastUpdate(0) {
+      _waitTimesDataPending(false), _lastUpdate(0), _lastQueueTime(0) {
     _dataMutex = xSemaphoreCreateMutex();
 }
 
@@ -43,6 +43,21 @@ void ThemeParkModule::setConfig(const DeviceConfig* config) {
 
 void ThemeParkModule::queueData() {
     if (_webClient && isEnabled() && _config) {
+        // Get current time
+        time_t now = time(nullptr);
+        
+        // Only queue new requests if enough time has passed (use fetch interval from config)
+        uint32_t fetchIntervalSec = (_config->themeParkFetchIntervalMin > 0) 
+            ? _config->themeParkFetchIntervalMin * 60 : 600; // default 10 minutes
+        
+        if (_lastQueueTime > 0 && (now - _lastQueueTime) < fetchIntervalSec) {
+            // Not enough time has passed, skip queuing
+            return;
+        }
+        
+        // Update last queue time
+        _lastQueueTime = now;
+        
         // Fetch wait times for each selected park using the correct API endpoint
         if (!_config->themeParkIds.empty()) {
             PsramString parkIds = _config->themeParkIds;
@@ -67,8 +82,12 @@ void ThemeParkModule::queueData() {
                     headers += parkId;
                     headers += "\nlanguage: de";
                     
+                    Log.printf("[ThemePark] Queuing request for park: %s\n", parkId.c_str());
+                    
                     _webClient->getRequest(url, headers,
-                        [this](int httpCode, const char* buffer, size_t size) {
+                        [this, parkId](int httpCode, const char* buffer, size_t size) {
+                            Log.printf("[ThemePark] Received response for park %s: HTTP %d, size %d\n", 
+                                parkId.c_str(), httpCode, size);
                             if (httpCode == 200 && xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
                                 if (buffer && size > 0) {
                                     if (_pendingWaitTimesBuffer) free(_pendingWaitTimesBuffer);

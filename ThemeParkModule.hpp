@@ -92,6 +92,7 @@ private:
     bool _waitTimesDataPending;
     
     time_t _lastUpdate;
+    time_t _lastQueueTime;  // Track when we last queued requests
     std::function<void()> _updateCallback;
     
     void parseAvailableParks(const char* jsonBuffer, size_t size);
