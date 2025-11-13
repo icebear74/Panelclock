@@ -247,14 +247,14 @@ void WeatherModule::draw() {
     } else if (_dataAvailable && !_pages.empty() && _currentPageIndex < _pages.size()) {
         const auto& page = _pages[_currentPageIndex];
         switch (page.type) {
-            case WeatherPageType::CURRENT_WEATHER:     drawCurrentWeatherPage();     break;
-            case WeatherPageType::TODAY_PART1:         drawTodayPart1Page();         break;
-            case WeatherPageType::TODAY_PART2:         drawTodayPart2Page();         break;
-            case WeatherPageType::PRECIPITATION_CHART: drawPrecipitationChartPage(); break;
-            case WeatherPageType::HOURLY_FORECAST:     drawHourlyForecastPage();     break;
-            case WeatherPageType::DAILY_FORECAST:      drawDailyForecastPage();      break;
-            case WeatherPageType::ALERT:               drawAlertPage(page.index);    break;
-            default:                                   drawNoDataPage();             break;
+            case WeatherPageType::CURRENT_WEATHER:     drawCurrentWeatherPage();           break;
+            case WeatherPageType::TODAY_PART1:         drawTodayPart1Page();               break;
+            case WeatherPageType::TODAY_PART2:         drawTodayPart2Page();               break;
+            case WeatherPageType::PRECIPITATION_CHART: drawPrecipitationChartPage();       break;
+            case WeatherPageType::HOURLY_FORECAST:     drawHourlyForecastPage();           break;
+            case WeatherPageType::DAILY_FORECAST:      drawDailyForecastPage(page.index);  break;
+            case WeatherPageType::ALERT:               drawAlertPage(page.index);          break;
+            default:                                   drawNoDataPage();                   break;
         }
     } else {
         drawNoDataPage();
@@ -547,9 +547,15 @@ void WeatherModule::buildPages() {
         _pages.push_back({WeatherPageType::HOURLY_FORECAST, 0}); 
     }
     
-    // Page 6+: Daily forecast
+    // Page 6+: Daily forecast (3 days per page, starting from tomorrow)
     if (_config->weatherShowDaily && _dailyForecast.size() > 1) {
-        _pages.push_back({WeatherPageType::DAILY_FORECAST, 0});
+        // Skip first day (today) and show 3 days per page
+        int days_available = (int)_dailyForecast.size() - 1;  // Minus today
+        int pages_needed = (days_available + 2) / 3;  // Ceil division by 3
+        
+        for (int page = 0; page < pages_needed; page++) {
+            _pages.push_back({WeatherPageType::DAILY_FORECAST, page});
+        }
     }
 }
 
@@ -574,44 +580,47 @@ void WeatherModule::drawCurrentWeatherPage() {
     time_t now_utc = time(nullptr);
     
     // Left side: Weather icon (48x48)
-    drawWeatherIcon(10, (_canvas.height() - 48) / 2, 48, _currentWeather.icon_name, isNightTime(now_utc));
+    drawWeatherIcon(10, 9, 48, _currentWeather.icon_name, isNightTime(now_utc));
     
     _u8g2.begin(_canvas);
-    const int data_x = 72;  // Start of text area, moved further right to avoid overlap
+    const int data_x = 68;
     
-    // Title
-    _u8g2.setFont(u8g2_font_helvB10_tr);
+    // Use consistent font throughout
+    _u8g2.setFont(u8g2_font_helvR08_tr);
+    
+    // Title with data timestamp
     _u8g2.setForegroundColor(0xFFFF);
-    _u8g2.setCursor(data_x, 12);
-    _u8g2.print("JETZT");
+    char titleBuf[20];
+    char timeBuf[6];
+    formatTime(timeBuf, sizeof(timeBuf), now_utc);
+    snprintf(titleBuf, sizeof(titleBuf), "JETZT %s", timeBuf);
+    _u8g2.setCursor(data_x, 10);
+    _u8g2.print(titleBuf);
     
-    // Current temperature (colored)
-    _u8g2.setFont(u8g2_font_logisoso16_tr);
-    char tempBuf[12];
-    snprintf(tempBuf, sizeof(tempBuf), "%.0f°C", _currentWeather.temp);
+    // Current temperature (colored) - use consistent °C
+    char tempBuf[16];
+    snprintf(tempBuf, sizeof(tempBuf), "%.1f°C", _currentWeather.temp);
     _u8g2.setForegroundColor(getClimateColorSmooth(_currentWeather.temp));
-    _u8g2.setCursor(data_x, 32);
+    _u8g2.setCursor(data_x, 22);
     _u8g2.print(tempBuf);
     
     // Feels like temperature (colored)
-    _u8g2.setFont(u8g2_font_helvR08_tr);
-    snprintf(tempBuf, sizeof(tempBuf), "Gefuehlt %.0f°C", _currentWeather.feels_like);
+    snprintf(tempBuf, sizeof(tempBuf), "Gefuehlt %.1f°C", _currentWeather.feels_like);
     _u8g2.setForegroundColor(getClimateColorSmooth(_currentWeather.feels_like));
-    _u8g2.setCursor(data_x, 44);
+    _u8g2.setCursor(data_x, 34);
     _u8g2.print(tempBuf);
     
     // Humidity and clouds
-    _u8g2.setFont(u8g2_font_5x8_tf);
     _u8g2.setForegroundColor(0xAAAA);
     char buf[30];
     snprintf(buf, sizeof(buf), "Luftf:%d%% Wolken:%d%%", _currentWeather.humidity, _currentWeather.clouds);
-    _u8g2.setCursor(data_x, 54);
+    _u8g2.setCursor(data_x, 46);
     _u8g2.print(buf);
     
-    // Wind speed
+    // Wind speed with consistent units
     if (_currentWeather.wind_speed > 0) {
         snprintf(buf, sizeof(buf), "Wind: %.0fkm/h", _currentWeather.wind_speed);
-        _u8g2.setCursor(data_x, 62);
+        _u8g2.setCursor(data_x, 58);
         _u8g2.print(buf);
     }
 }
@@ -622,59 +631,59 @@ void WeatherModule::drawTodayPart1Page() {
     const auto& today = _dailyForecast[0];
     
     _u8g2.begin(_canvas);
+    _u8g2.setFont(u8g2_font_helvR08_tr);  // Use consistent font
     
     // Title
-    _u8g2.setFont(u8g2_font_helvB10_tr);
     _u8g2.setForegroundColor(0xFFFF);
-    _u8g2.setCursor(10, 12);
+    _u8g2.setCursor(10, 10);
     _u8g2.print("HEUTE");
     
+    // Left column
     // Max temperature with icon (colored)
-    drawWeatherIcon(10, 18, 16, PsramString("temp_hot"), false);
-    _u8g2.setFont(u8g2_font_helvB10_tr);
+    drawWeatherIcon(10, 14, 16, PsramString("temp_hot"), false);
     char tempBuf[20];
     snprintf(tempBuf, sizeof(tempBuf), "Max: %.1f°C", today.temp_max);
     _u8g2.setForegroundColor(getClimateColorSmooth(today.temp_max));
-    _u8g2.setCursor(30, 28);
+    _u8g2.setCursor(30, 24);
     _u8g2.print(tempBuf);
     
     // Min temperature with icon (colored)
-    drawWeatherIcon(10, 36, 16, PsramString("temp_cold"), false);
+    drawWeatherIcon(10, 30, 16, PsramString("temp_cold"), false);
     snprintf(tempBuf, sizeof(tempBuf), "Min: %.1f°C", today.temp_min);
     _u8g2.setForegroundColor(getClimateColorSmooth(today.temp_min));
-    _u8g2.setCursor(30, 46);
-    _u8g2.print(tempBuf);
-    
-    // Mean temperature with icon (colored)
-    drawWeatherIcon(100, 18, 16, PsramString("temp_moderate"), false);
-    snprintf(tempBuf, sizeof(tempBuf), "%.1f°C", today.temp_mean);
-    _u8g2.setForegroundColor(getClimateColorSmooth(today.temp_mean));
-    _u8g2.setCursor(120, 28);
+    _u8g2.setCursor(30, 40);
     _u8g2.print(tempBuf);
     
     // Sunrise with icon
-    drawWeatherIcon(100, 36, 16, PsramString("sunrise"), false);
-    _u8g2.setFont(u8g2_font_helvR08_tr);
+    drawWeatherIcon(10, 46, 16, PsramString("sunrise"), false);
     _u8g2.setForegroundColor(0xFE60);  // Orange
     char timeBuf[6];
     formatTime(timeBuf, sizeof(timeBuf), today.sunrise);
-    _u8g2.setCursor(120, 46);
+    _u8g2.setCursor(30, 56);
     _u8g2.print(timeBuf);
     
+    // Right column
+    // Mean temperature with icon (colored)
+    drawWeatherIcon(100, 14, 16, PsramString("temp_moderate"), false);
+    snprintf(tempBuf, sizeof(tempBuf), "Mittel: %.1f°C", today.temp_mean);
+    _u8g2.setForegroundColor(getClimateColorSmooth(today.temp_mean));
+    _u8g2.setCursor(120, 24);
+    _u8g2.print(tempBuf);
+    
     // Sunset with icon
-    drawWeatherIcon(10, 54, 16, PsramString("sunset"), false);
+    drawWeatherIcon(100, 30, 16, PsramString("sunset"), false);
     _u8g2.setForegroundColor(0xF800);  // Red
     formatTime(timeBuf, sizeof(timeBuf), today.sunset);
-    _u8g2.setCursor(30, 64);
+    _u8g2.setCursor(120, 40);
     _u8g2.print(timeBuf);
     
     // UV Index if available
     if (_currentWeather.uvi > 0) {
-        drawWeatherIcon(100, 54, 16, PsramString("uv_moderate"), false);
+        drawWeatherIcon(100, 46, 16, PsramString("uv_moderate"), false);
         _u8g2.setForegroundColor(0xFFE0);  // Yellow
-        char uvBuf[10];
+        char uvBuf[12];
         snprintf(uvBuf, sizeof(uvBuf), "UV:%.1f", _currentWeather.uvi);
-        _u8g2.setCursor(120, 64);
+        _u8g2.setCursor(120, 56);
         _u8g2.print(uvBuf);
     }
 }
@@ -685,29 +694,29 @@ void WeatherModule::drawTodayPart2Page() {
     const auto& today = _dailyForecast[0];
     
     _u8g2.begin(_canvas);
+    _u8g2.setFont(u8g2_font_helvR08_tr);  // Use consistent font
     
     // Title
-    _u8g2.setFont(u8g2_font_helvB10_tr);
     _u8g2.setForegroundColor(0xFFFF);
-    _u8g2.setCursor(10, 12);
+    _u8g2.setCursor(10, 10);
     _u8g2.print("HEUTE - Details");
     
+    // Left column
     // Cloud coverage with icon
-    drawWeatherIcon(10, 18, 16, PsramString("unknown"), false);  // Use cloud icon from weather set
-    _u8g2.setFont(u8g2_font_helvR08_tr);
+    drawWeatherIcon(10, 14, 16, PsramString("unknown"), false);
     _u8g2.setForegroundColor(0xAAAA);
     char buf[30];
     snprintf(buf, sizeof(buf), "Wolken: %d%%", today.cloud_cover);
-    _u8g2.setCursor(30, 28);
+    _u8g2.setCursor(30, 24);
     _u8g2.print(buf);
     
     // Precipitation with icon
     float total_precip = today.rain + today.snow;
     if (total_precip > 0) {
-        drawWeatherIcon(10, 36, 16, PsramString("rain"), false);
+        drawWeatherIcon(10, 30, 16, PsramString("rain"), false);
     }
     snprintf(buf, sizeof(buf), "Regen: %.1fmm", total_precip);
-    _u8g2.setCursor(30, 46);
+    _u8g2.setCursor(30, 40);
     _u8g2.print(buf);
     
     // Wind speed with icon
@@ -717,28 +726,29 @@ void WeatherModule::drawTodayPart2Page() {
     else if (today.wind_speed > 15) wind_icon = "wind_moderate";
     else if (today.wind_speed > 5) wind_icon = "wind_light";
     
-    drawWeatherIcon(10, 54, 16, wind_icon, false);
+    drawWeatherIcon(10, 46, 16, wind_icon, false);
     snprintf(buf, sizeof(buf), "Wind: %.0fkm/h", today.wind_speed);
-    _u8g2.setCursor(30, 64);
+    _u8g2.setCursor(30, 56);
     _u8g2.print(buf);
     
+    // Right column
     // Humidity with icon
     PsramString humidity_icon = "humidity_moderate";
     if (_currentWeather.humidity > 70) humidity_icon = "humidity_high";
     else if (_currentWeather.humidity < 40) humidity_icon = "humidity_low";
     
-    drawWeatherIcon(100, 18, 16, humidity_icon, false);
+    drawWeatherIcon(100, 14, 16, humidity_icon, false);
     snprintf(buf, sizeof(buf), "Luftf: %d%%", _currentWeather.humidity);
-    _u8g2.setCursor(120, 28);
+    _u8g2.setCursor(120, 24);
     _u8g2.print(buf);
     
     // Sunshine duration with icon
     if (today.sunshine_duration > 0) {
-        drawWeatherIcon(100, 36, 16, PsramString("sunrise"), false);
+        drawWeatherIcon(100, 30, 16, PsramString("sunrise"), false);
         float hours = today.sunshine_duration / 3600.0f;
         snprintf(buf, sizeof(buf), "Sonne: %.1fh", hours);
         _u8g2.setForegroundColor(0xFE60);  // Orange
-        _u8g2.setCursor(120, 46);
+        _u8g2.setCursor(120, 40);
         _u8g2.print(buf);
     }
 }
@@ -835,7 +845,9 @@ void WeatherModule::drawPrecipitationChartPage() {
 void WeatherModule::drawHourlyForecastPage() {
     if (!_config || _hourlyForecast.empty()) { drawNoDataPage(); return; }
     _u8g2.begin(_canvas);
-    const int num_cols = 2;  // Reduced from 4 to 2 for more details
+    _u8g2.setFont(u8g2_font_helvR08_tr);  // Use consistent font
+    
+    const int num_cols = 2;
     const int col_width = _canvas.width() / num_cols;
     
     // Get current hour index
@@ -855,104 +867,88 @@ void WeatherModule::drawHourlyForecastPage() {
         const auto& hour = _hourlyForecast[hour_index]; 
         int x = i * col_width;
         
-        // Weather icon (32x32 for more prominence)
-        drawWeatherIcon(x + (col_width - 32) / 2, 2, 32, hour.icon_name, isNightTime(hour.dt));
+        // Weather icon (24x24)
+        drawWeatherIcon(x + (col_width - 24) / 2, 2, 24, hour.icon_name, isNightTime(hour.dt));
         
-        _u8g2.setFont(u8g2_font_helvR08_tr); 
         _u8g2.setForegroundColor(0xFFFF);
         
         // Time
         char time_buf[6]; 
         formatTime(time_buf, sizeof(time_buf), hour.dt); 
-        drawCenteredString(_u8g2, x, 38, col_width, time_buf);
+        drawCenteredString(_u8g2, x, 30, col_width, time_buf);
         
-        // Temperature (colored) with unit
-        char temp_buf[12]; 
+        // Temperature (colored) with consistent unit
+        char temp_buf[14]; 
         snprintf(temp_buf, sizeof(temp_buf), "%.1f°C", hour.temp);
         _u8g2.setForegroundColor(getClimateColorSmooth(hour.temp)); 
-        drawCenteredString(_u8g2, x, 48, col_width, temp_buf);
+        drawCenteredString(_u8g2, x, 40, col_width, temp_buf);
         
         // Feels like (colored)
-        _u8g2.setFont(u8g2_font_5x8_tf);
-        snprintf(temp_buf, sizeof(temp_buf), "%.1f°C", hour.feels_like);
+        snprintf(temp_buf, sizeof(temp_buf), "Gefuehlt %.1f°C", hour.feels_like);
         _u8g2.setForegroundColor(getClimateColorSmooth(hour.feels_like)); 
-        drawCenteredString(_u8g2, x, 56, col_width, temp_buf);
+        drawCenteredString(_u8g2, x, 50, col_width, temp_buf);
         
         // Rain probability and amount with unit
-        _u8g2.setFont(u8g2_font_5x8_tf);
         if (hour.rain_1h > 0) {
-            char rain_buf[14];
+            char rain_buf[16];
             snprintf(rain_buf, sizeof(rain_buf), "%.0f%% %.1fmm", hour.pop * 100, hour.rain_1h);
             _u8g2.setForegroundColor(0x001F);
-            drawCenteredString(_u8g2, x, 64, col_width, rain_buf);
+            drawCenteredString(_u8g2, x, 60, col_width, rain_buf);
         } else {
             char pop_buf[10]; 
             snprintf(pop_buf, sizeof(pop_buf), "%.0f%%", hour.pop * 100); 
             _u8g2.setForegroundColor(0x7BEF);
-            drawCenteredString(_u8g2, x, 64, col_width, pop_buf);
+            drawCenteredString(_u8g2, x, 60, col_width, pop_buf);
         }
     }
 }
 
-// Page 6+: Daily Forecast (3 days with more details)
-void WeatherModule::drawDailyForecastPage() {
+// Page 6+: Daily Forecast (3 days per page, starting from tomorrow)
+void WeatherModule::drawDailyForecastPage(int pageIndex) {
     if (_dailyForecast.size() < 2) { drawNoDataPage(); return; }
     
     _u8g2.begin(_canvas);
+    _u8g2.setFont(u8g2_font_helvR08_tr);  // Use consistent font
     
-    // Show 3 days with 32x32 icons for more details
-    int days_to_show = min(3, (int)_dailyForecast.size());
+    // Skip first day (today) since we have dedicated pages
+    // Show 3 days per page starting from tomorrow
+    int start_day = 1 + (pageIndex * 3);  // Start from tomorrow, offset by page
+    int available_days = (int)_dailyForecast.size() - start_day;
+    if (available_days <= 0) { drawNoDataPage(); return; }
+    
+    int days_to_show = min(3, available_days);
     const int col_width = _canvas.width() / days_to_show;
     
     for (int i = 0; i < days_to_show; ++i) {
-        const auto& day = _dailyForecast[i];
+        const auto& day = _dailyForecast[start_day + i];
         int x = i * col_width;
         
-        // Weather icon (32x32 for prominence)
+        // Weather icon (24x24)
         time_t noon = day.dt + (12 * 60 * 60);
-        drawWeatherIcon(x + (col_width - 32) / 2, 2, 32, day.icon_name, isNightTime(noon));
+        drawWeatherIcon(x + (col_width - 24) / 2, 2, 24, day.icon_name, isNightTime(noon));
         
         // Day name
-        _u8g2.setFont(u8g2_font_helvR08_tr);
         _u8g2.setForegroundColor(0xFFFF);
         char day_buf[10];
-        if (i == 0) strcpy(day_buf, "Heute");
-        else if (i == 1) strcpy(day_buf, "Morgen");
+        if (start_day + i == 1) strcpy(day_buf, "Morgen");
         else getDayName(day_buf, sizeof(day_buf), day.dt);
-        drawCenteredString(_u8g2, x, 38, col_width, day_buf);
+        drawCenteredString(_u8g2, x, 30, col_width, day_buf);
         
-        // Temperature range (colored) with units
-        _u8g2.setFont(u8g2_font_5x8_tf);
+        // Max temperature (colored) with consistent unit
         char temp_buf[14];
-        snprintf(temp_buf, sizeof(temp_buf), "%.0f°C", day.temp_max);
+        snprintf(temp_buf, sizeof(temp_buf), "%.1f°C", day.temp_max);
         _u8g2.setForegroundColor(getClimateColorSmooth(day.temp_max));
-        drawCenteredString(_u8g2, x, 46, col_width, temp_buf);
+        drawCenteredString(_u8g2, x, 40, col_width, temp_buf);
         
-        snprintf(temp_buf, sizeof(temp_buf), "%.0f°C", day.temp_min);
+        // Min temperature (colored) with consistent unit
+        snprintf(temp_buf, sizeof(temp_buf), "%.1f°C", day.temp_min);
         _u8g2.setForegroundColor(getClimateColorSmooth(day.temp_min));
-        drawCenteredString(_u8g2, x, 54, col_width, temp_buf);
+        drawCenteredString(_u8g2, x, 50, col_width, temp_buf);
         
         // Rain probability
         _u8g2.setForegroundColor(0x7BEF);
         snprintf(temp_buf, sizeof(temp_buf), "%.0f%%", day.pop * 100);
-        drawCenteredString(_u8g2, x, 62, col_width, temp_buf);
-        
-        // Rain amount if significant with unit
-        if (day.pop > 0 && (day.rain + day.snow) > 0.1f) {
-            snprintf(temp_buf, sizeof(temp_buf), "%.1fmm", day.rain + day.snow);
-            _u8g2.setForegroundColor(0x001F);
-        } else if (day.sunshine_duration > 0) {
-            // Show sunshine duration if no significant rain
-            float hours = day.sunshine_duration / 3600.0f;
-            snprintf(temp_buf, sizeof(temp_buf), "%.0fh", hours);
-            _u8g2.setForegroundColor(0xFE60);  // Orange for sun
-        } else {
-            temp_buf[0] = '\0';  // Empty if neither
-        }
-        
-        if (temp_buf[0] != '\0') {
-            drawCenteredString(_u8g2, x, 70, col_width, temp_buf);
-        }
+        drawCenteredString(_u8g2, x, 60, col_width, temp_buf);
     }
 }
 
