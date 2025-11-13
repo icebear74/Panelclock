@@ -639,29 +639,43 @@ void handleThemeParksList() {
         return;
     }
     
+    Log.println("[ThemePark] handleThemeParksList called - fetching parks from API");
+    
     // Fetch parks list on-demand using webClient
     PsramString url = "https://api.wartezeiten.app/v1/parks";
     
     struct Result { int httpCode; PsramString payload; } result;
+    result.httpCode = 0;
     SemaphoreHandle_t sem = xSemaphoreCreateBinary();
     
     webClient->getRequest(url, [&](int httpCode, const char* payload, size_t len) {
+        Log.printf("[ThemePark] Callback received - HTTP %d, payload size: %d\n", httpCode, len);
         result.httpCode = httpCode;
-        if (payload) { result.payload.assign(payload, len); }
+        if (payload && len > 0) { 
+            result.payload.assign(payload, len); 
+            Log.printf("[ThemePark] Payload first 100 chars: %.100s\n", payload);
+        }
         xSemaphoreGive(sem);
     });
     
+    Log.println("[ThemePark] Waiting for response (20s timeout)...");
+    
     if (xSemaphoreTake(sem, pdMS_TO_TICKS(20000)) == pdTRUE) {
+        Log.printf("[ThemePark] Response received, HTTP code: %d\n", result.httpCode);
+        
         if (result.httpCode == 200) {
             // Parse the response and format it for the web interface
             DynamicJsonDocument inputDoc(32768);
             DeserializationError error = deserializeJson(inputDoc, result.payload.c_str());
             
             if (error) {
+                Log.printf("[ThemePark] JSON parse error: %s\n", error.c_str());
                 server->send(500, "application/json", "{\"ok\":false, \"message\":\"Failed to parse API response\"}");
                 vSemaphoreDelete(sem);
                 return;
             }
+            
+            Log.println("[ThemePark] JSON parsed successfully");
             
             // Build response
             DynamicJsonDocument responseDoc(32768);
@@ -671,6 +685,8 @@ void handleThemeParksList() {
             // The API returns an array of parks
             if (inputDoc.is<JsonArray>()) {
                 JsonArray apiParks = inputDoc.as<JsonArray>();
+                Log.printf("[ThemePark] Found %d parks in API response\n", apiParks.size());
+                
                 for (JsonObject park : apiParks) {
                     const char* id = park["id"] | "";
                     const char* name = park["name"] | "";
@@ -679,14 +695,19 @@ void handleThemeParksList() {
                         JsonObject parkObj = parksArray.createNestedObject();
                         parkObj["id"] = id;
                         parkObj["name"] = name;
+                        Log.printf("[ThemePark] Added park: %s (%s)\n", name, id);
                     }
                 }
+            } else {
+                Log.println("[ThemePark] ERROR: API response is not a JSON array");
             }
             
             String response;
             serializeJson(responseDoc, response);
+            Log.printf("[ThemePark] Sending response with %d parks\n", parksArray.size());
             server->send(200, "application/json", response);
         } else {
+            Log.printf("[ThemePark] HTTP error: %d\n", result.httpCode);
             PsramString error_msg = "{\"ok\":false, \"message\":\"API Error: HTTP ";
             char code_buf[5];
             snprintf(code_buf, sizeof(code_buf), "%d", result.httpCode);
@@ -696,6 +717,7 @@ void handleThemeParksList() {
         }
         vSemaphoreDelete(sem);
     } else {
+        Log.println("[ThemePark] TIMEOUT waiting for API response");
         server->send(504, "application/json", "{\"ok\":false, \"message\":\"Timeout waiting for API response\"}");
         vSemaphoreDelete(sem);
     }
