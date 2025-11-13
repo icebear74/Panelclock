@@ -10,7 +10,7 @@ MwaveSensorModule::MwaveSensorModule(DeviceConfig& deviceConf, HardwareConfig& h
 
 void MwaveSensorModule::begin() {
     if (config.mwaveSensorEnabled) {
-        sensorLog.begin(115200, SERIAL_8N1, hwConfig.mwaveRxPin, hwConfig.mwaveTxPin);
+        sensorSerial.begin(115200, SERIAL_8N1, hwConfig.mwaveRxPin, hwConfig.mwaveTxPin);
         Log.println("[MWave] Sensor-Schnittstelle initialisiert.");
         sendHexData("FDFCFBFA0800120000006400000004030201");
 
@@ -103,7 +103,7 @@ void MwaveSensorModule::sendHexData(const char* hexString) {
         char byte_str[3] = {hexString[i], hexString[i+1], '\0'};
         buf[i / 2] = (byte)strtoul(byte_str, NULL, 16);
     }
-    sensorLog.write(buf, sizeof(buf));
+    sensorSerial.write(buf, sizeof(buf));
 }
 
 void MwaveSensorModule::processSensorData(const char* data, time_t now) {
@@ -124,8 +124,8 @@ void MwaveSensorModule::processSensorData(const char* data, time_t now) {
 }
 
 void MwaveSensorModule::handleSensorSerial(time_t now) {
-    while (sensorLog.available() > 0) {
-        char c = (char)sensorLog.read();
+    while (sensorSerial.available() > 0) {
+        char c = (char)sensorSerial.read();
         if (c == '\n') {
             sensorDataBuffer[sensorDataIndex] = '\0';
             if (sensorDataIndex > 0) processSensorData(sensorDataBuffer, now);
