@@ -14,6 +14,13 @@
  * 1. Streams compressed panel snapshots at ~2 FPS
  * 2. Streams log messages as they arrive
  * 3. Handles WebSocket client connections (max 2 clients)
+ * 
+ * RGB888 Compatibility Note:
+ * Currently uses RGB565 (16-bit) format matching GFXcanvas16.
+ * For RGB888 canvas support, modify:
+ * - _panelBuffer type from uint16_t* to uint32_t* or use template
+ * - compressRLE to handle 24/32-bit pixels
+ * - Client-side decoder to handle RGB888 format
  */
 class PanelStreamer {
 public:

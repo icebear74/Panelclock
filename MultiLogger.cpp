@@ -31,10 +31,15 @@ MultiLogger::~MultiLogger() {
 size_t MultiLogger::write(uint8_t c) {
     // Lock for thread safety
     if (xSemaphoreTake(_mutex, portMAX_DELAY) == pdTRUE) {
-        // Forward to Serial (with its own mutex)
-        if (serialMutex && xSemaphoreTake(serialMutex, portMAX_DELAY) == pdTRUE) {
+        // Forward to Serial (with its own mutex if available)
+        if (serialMutex) {
+            if (xSemaphoreTake(serialMutex, portMAX_DELAY) == pdTRUE) {
+                Serial.write(c);
+                xSemaphoreGive(serialMutex);
+            }
+        } else {
+            // Fallback: write directly if mutex not available (early startup)
             Serial.write(c);
-            xSemaphoreGive(serialMutex);
         }
         
         // Add to current line buffer
@@ -55,10 +60,15 @@ size_t MultiLogger::write(const uint8_t* buffer, size_t size) {
     
     // Lock for thread safety
     if (xSemaphoreTake(_mutex, portMAX_DELAY) == pdTRUE) {
-        // Forward to Serial (with its own mutex)
-        if (serialMutex && xSemaphoreTake(serialMutex, portMAX_DELAY) == pdTRUE) {
+        // Forward to Serial (with its own mutex if available)
+        if (serialMutex) {
+            if (xSemaphoreTake(serialMutex, portMAX_DELAY) == pdTRUE) {
+                Serial.write(buffer, size);
+                xSemaphoreGive(serialMutex);
+            }
+        } else {
+            // Fallback: write directly if mutex not available (early startup)
             Serial.write(buffer, size);
-            xSemaphoreGive(serialMutex);
         }
         
         // Process buffer character by character

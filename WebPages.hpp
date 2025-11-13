@@ -580,8 +580,19 @@ function decodeAndRenderPanel(data) {
     let pixelIndex = 0;
     
     while (pos < data.length - 2 && pixelIndex < PANEL_WIDTH * PANEL_HEIGHT) {
-        // Read RLE: [count][high_byte][low_byte]
         let count = data[pos++];
+        
+        // Check for skip marker (count == 0x00 means skip black pixels)
+        if (count === 0x00) {
+            if (pos < data.length - 1) {
+                let skipHigh = data[pos++];
+                let skipLow = data[pos++];
+                let skipCount = (skipHigh << 8) | skipLow;
+                pixelIndex += skipCount;  // Skip these positions (leave them black)
+            }
+            continue;
+        }
+        
         let highByte = data[pos++];
         let lowByte = data[pos++];
         
@@ -598,6 +609,20 @@ function decodeAndRenderPanel(data) {
         
         for (let i = 0; i < count && pixelIndex < PANEL_WIDTH * PANEL_HEIGHT; i++) {
             let x = pixelIndex % PANEL_WIDTH;
+            let y = Math.floor(pixelIndex / PANEL_WIDTH);
+            
+            let cx = x * LED_SPACING + LED_SPACING / 2;
+            let cy = y * LED_SPACING + LED_SPACING / 2;
+            
+            ctx.beginPath();
+            ctx.arc(cx, cy, LED_SIZE / 2, 0, 2 * Math.PI);
+            ctx.fill();
+            
+            pixelIndex++;
+        }
+    }
+}
+
             let y = Math.floor(pixelIndex / PANEL_WIDTH);
             
             let cx = x * LED_SPACING + LED_SPACING / 2;

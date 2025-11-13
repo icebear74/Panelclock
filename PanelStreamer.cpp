@@ -212,12 +212,25 @@ size_t PanelStreamer::compressRLE(const uint16_t* input, size_t inputSize,
     size_t outPos = 0;
     size_t inPos = 0;
     
-    while (inPos < inputSize && outPos < outputMaxSize - 3) {
+    while (inPos < inputSize && outPos < outputMaxSize - 5) {
         uint16_t pixel = input[inPos];
         
         // Skip black pixels (0x0000) - they stay dark in the visualization
+        // We need to track position, so we'll encode skips too
         if (pixel == 0x0000) {
-            inPos++;
+            // Count consecutive black pixels
+            uint16_t skipCount = 0;
+            while (inPos < inputSize && input[inPos] == 0x0000 && skipCount < 65535) {
+                skipCount++;
+                inPos++;
+            }
+            
+            // If we have skips, encode them: [0x00][skip_count_high][skip_count_low]
+            if (skipCount > 0) {
+                output[outPos++] = 0x00;  // Marker for skip
+                output[outPos++] = (skipCount >> 8) & 0xFF;
+                output[outPos++] = skipCount & 0xFF;
+            }
             continue;
         }
         
@@ -225,6 +238,7 @@ size_t PanelStreamer::compressRLE(const uint16_t* input, size_t inputSize,
         uint8_t count = 1;
         while (inPos + count < inputSize && 
                input[inPos + count] == pixel && 
+               input[inPos + count] != 0x0000 &&  // Don't include blacks
                count < 255) {
             count++;
         }
