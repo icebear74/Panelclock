@@ -70,14 +70,21 @@ static int drawAndCountLines(U8G2_FOR_ADAFRUIT_GFX& u8g2, PsramString text, int 
         int spacePos = text.find(' ', pos);
         int hyphenPos = text.find('-', pos);
         
+        bool brokeAtHyphen = false;
         if(spacePos == PsramString::npos && hyphenPos == PsramString::npos){
             breakPos = text.length();
         } else if(spacePos == PsramString::npos){
             breakPos = hyphenPos + 1; // Include hyphen in the word
+            brokeAtHyphen = true;
         } else if(hyphenPos == PsramString::npos){
             breakPos = spacePos;
         } else {
-            breakPos = (spacePos < hyphenPos) ? spacePos : (hyphenPos + 1);
+            if(spacePos < hyphenPos) {
+                breakPos = spacePos;
+            } else {
+                breakPos = hyphenPos + 1;
+                brokeAtHyphen = true;
+            }
         }
 
         PsramString word = text.substr(pos, breakPos - pos);
@@ -115,7 +122,9 @@ static int drawAndCountLines(U8G2_FOR_ADAFRUIT_GFX& u8g2, PsramString text, int 
                 currentLine = "";
             }
         }
-        pos = breakPos + 1;
+        // If we broke at hyphen, hyphen is already included, so don't skip next char
+        // If we broke at space, skip the space
+        pos = brokeAtHyphen ? breakPos : breakPos + 1;
     }
 
     if(!currentLine.empty()){
