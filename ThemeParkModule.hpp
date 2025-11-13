@@ -55,6 +55,7 @@ public:
     const char* getModuleDisplayName() const override { return "Freizeitparks"; }
     void draw() override;
     void logicTick() override;
+    void periodicTick() override;  // Background fetching
     void resetPaging() override;
     bool isEnabled() override;
     unsigned long getDisplayDuration() override;
@@ -92,7 +93,10 @@ private:
     bool _waitTimesDataPending;
     
     time_t _lastUpdate;
-    time_t _lastQueueTime;  // Track when we last queued requests
+    time_t _lastFetchCycleStart;  // When we started the current fetch cycle
+    int _currentFetchParkIndex;   // Which park we're currently fetching (sequential)
+    bool _isFetchingPark;         // True while waiting for response
+    PsramVector<PsramString> _parkIdsToFetch;  // List of park IDs to fetch
     std::function<void()> _updateCallback;
     
     void parseAvailableParks(const char* jsonBuffer, size_t size);
