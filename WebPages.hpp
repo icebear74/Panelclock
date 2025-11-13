@@ -447,12 +447,10 @@ const char HTML_DEBUG_STATION_HISTORY[] PROGMEM = R"rawliteral(
 
 const char HTML_STREAM_PAGE[] PROGMEM = R"rawliteral(
 <h1>Panel Live-Stream & Debug</h1>
-<div class="group">
+<div style="text-align: center; margin-bottom: 20px;">
     <h3>LED Panel Vorschau</h3>
-    <div style="text-align: center;">
-        <canvas id="panelSimulator" style="background-color: #000; border: 2px solid #444; border-radius: 8px;"></canvas>
-    </div>
-    <div style="margin-top: 15px; text-align: center;">
+    <canvas id="panelSimulator" style="background-color: #000; border: 2px solid #444; border-radius: 8px; display: inline-block;"></canvas>
+    <div style="margin-top: 15px;">
         <button id="connectBtn" class="button" onclick="toggleConnection()">Verbinden</button>
         <span id="statusText" style="margin-left: 15px; color: #bbb;">Getrennt</span>
     </div>
@@ -479,7 +477,7 @@ let connectBtn = document.getElementById('connectBtn');
 const PANEL_WIDTH = 192;  // 64 * 3
 const PANEL_HEIGHT = 96;   // 32 * 3
 const LED_SIZE = 4;        // Optimized for ~800px width
-const LED_SPACING = 4.5;   // Spacing for 2x original (gives ~864px width)
+const LED_SPACING = 6.75;  // Spacing increased by 1.5x (4.5 * 1.5 = 6.75) for more authentic look
 
 function initCanvas() {
     // Set canvas size to accommodate LEDs with spacing
