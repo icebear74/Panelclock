@@ -449,18 +449,22 @@ const char HTML_STREAM_PAGE[] PROGMEM = R"rawliteral(
 <h1>Panel Live-Stream & Debug</h1>
 <div style="text-align: center; margin-bottom: 30px;">
     <h3>LED Panel Vorschau</h3>
-    <canvas id="panelSimulator" style="background-color: #000; border: 2px solid #444; border-radius: 8px; display: inline-block;"></canvas>
+    <div style="display: flex; justify-content: center;">
+        <canvas id="panelSimulator" style="background-color: #000; border: 2px solid #444; border-radius: 8px;"></canvas>
+    </div>
     <div style="margin-top: 15px;">
         <button id="connectBtn" class="button" onclick="toggleConnection()">Verbinden</button>
         <span id="statusText" style="margin-left: 15px; color: #bbb;">Getrennt</span>
     </div>
 </div>
 
-<div style="max-width: 1000px; margin: 0 auto; padding: 0 20px;">
-    <h3 style="text-align: center;">Log-Ausgabe</h3>
-    <div style="position: relative;">
-        <pre id="logOutput" style="background: #1a1a1a; color: #0f0; padding: 15px; border-radius: 4px; height: 400px; overflow-y: auto; font-family: monospace; font-size: 12px; border: 1px solid #444;"></pre>
-        <button onclick="clearLogs()" class="button" style="margin-top: 10px; width: auto;">Logs löschen</button>
+<div style="text-align: center; margin-top: 30px; padding: 0 20px;">
+    <h3>Log-Ausgabe</h3>
+    <div style="display: flex; justify-content: center;">
+        <div style="max-width: 1000px; width: 100%;">
+            <pre id="logOutput" style="background: #1a1a1a; color: #0f0; padding: 15px; border-radius: 4px; height: 400px; overflow-y: auto; font-family: monospace; font-size: 12px; border: 1px solid #444;"></pre>
+            <button onclick="clearLogs()" class="button" style="margin-top: 10px; width: auto;">Logs löschen</button>
+        </div>
     </div>
 </div>
 
