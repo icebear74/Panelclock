@@ -42,18 +42,7 @@ void ThemeParkModule::setConfig(const DeviceConfig* config) {
         _webClient->registerResource(
             "https://api.wartezeiten.app/v1/parks",
             60 * 24,  // Refresh parks list once per day
-            [this](const char* data, size_t len) {
-                if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                    if (_pendingParksListBuffer) free(_pendingParksListBuffer);
-                    _pendingParksListBuffer = (char*)ps_malloc(len);
-                    if (_pendingParksListBuffer) {
-                        memcpy(_pendingParksListBuffer, data, len);
-                        _parksListBufferSize = len;
-                        _parksListDataPending = true;
-                    }
-                    xSemaphoreGive(_dataMutex);
-                }
-            }
+            nullptr
         );
         
         // Register resources for each selected park
@@ -81,18 +70,7 @@ void ThemeParkModule::setConfig(const DeviceConfig* config) {
                     _webClient->registerResource(
                         String(url.c_str()),
                         _config->themeParkFetchIntervalMin,
-                        [this](const char* data, size_t len) {
-                            if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                                if (_pendingWaitTimesBuffer) free(_pendingWaitTimesBuffer);
-                                _pendingWaitTimesBuffer = (char*)ps_malloc(len);
-                                if (_pendingWaitTimesBuffer) {
-                                    memcpy(_pendingWaitTimesBuffer, data, len);
-                                    _waitTimesBufferSize = len;
-                                    _waitTimesDataPending = true;
-                                }
-                                xSemaphoreGive(_dataMutex);
-                            }
-                        }
+                        nullptr
                     );
                 }
                 
@@ -104,9 +82,26 @@ void ThemeParkModule::setConfig(const DeviceConfig* config) {
 
 void ThemeParkModule::queueData() {
     if (_webClient && isEnabled()) {
-        _webClient->queueFetch("https://api.wartezeiten.app/v1/parks");
+        // Access parks list
+        _webClient->accessResource("https://api.wartezeiten.app/v1/parks", 
+            [this](const char* buffer, size_t size, time_t last_update, bool is_stale) {
+                if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+                    if (buffer && size > 0) {
+                        if (_pendingParksListBuffer) free(_pendingParksListBuffer);
+                        _pendingParksListBuffer = (char*)ps_malloc(size);
+                        if (_pendingParksListBuffer) {
+                            memcpy(_pendingParksListBuffer, buffer, size);
+                            _parksListBufferSize = size;
+                            _parksListDataPending = true;
+                        }
+                    }
+                    xSemaphoreGive(_dataMutex);
+                }
+            }
+        );
         
-        if (!_config->themeParkIds.empty()) {
+        // Access wait times for each selected park
+        if (_config && !_config->themeParkIds.empty()) {
             PsramString parkIds = _config->themeParkIds;
             size_t pos = 0;
             while (pos < parkIds.length()) {
@@ -126,7 +121,23 @@ void ThemeParkModule::queueData() {
                     PsramString url = "https://api.wartezeiten.app/v1/parks/";
                     url += parkId;
                     url += "/queue";
-                    _webClient->queueFetch(String(url.c_str()));
+                    
+                    _webClient->accessResource(String(url.c_str()),
+                        [this](const char* buffer, size_t size, time_t last_update, bool is_stale) {
+                            if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+                                if (buffer && size > 0) {
+                                    if (_pendingWaitTimesBuffer) free(_pendingWaitTimesBuffer);
+                                    _pendingWaitTimesBuffer = (char*)ps_malloc(size);
+                                    if (_pendingWaitTimesBuffer) {
+                                        memcpy(_pendingWaitTimesBuffer, buffer, size);
+                                        _waitTimesBufferSize = size;
+                                        _waitTimesDataPending = true;
+                                    }
+                                }
+                                xSemaphoreGive(_dataMutex);
+                            }
+                        }
+                    );
                 }
                 
                 pos = commaPos + 1;
