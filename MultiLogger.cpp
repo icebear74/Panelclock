@@ -87,15 +87,6 @@ size_t MultiLogger::write(const uint8_t* buffer, size_t size) {
     return size;
 }
 
-            }
-        }
-        
-        xSemaphoreGive(_mutex);
-    }
-    
-    return size;
-}
-
 void MultiLogger::_finalizeLine() {
     // Add timestamp
     unsigned long timestamp = millis();
