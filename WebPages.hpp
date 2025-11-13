@@ -478,8 +478,8 @@ let connectBtn = document.getElementById('connectBtn');
 
 const PANEL_WIDTH = 192;  // 64 * 3
 const PANEL_HEIGHT = 96;   // 32 * 3
-const LED_SIZE = 5;        // Doubled from 2.5
-const LED_SPACING = 6;     // Doubled from 3
+const LED_SIZE = 10;       // Doubled again from 5
+const LED_SPACING = 12;    // Doubled again from 6
 
 function initCanvas() {
     // Set canvas size to accommodate LEDs with spacing

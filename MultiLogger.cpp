@@ -1,4 +1,8 @@
 #include "MultiLogger.hpp"
+#include "GeneralTimeConverter.hpp"
+
+// External time converter
+extern GeneralTimeConverter* timeConverter;
 
 // Global instance declaration
 MultiLogger Log;
@@ -88,10 +92,19 @@ size_t MultiLogger::write(const uint8_t* buffer, size_t size) {
 }
 
 void MultiLogger::_finalizeLine() {
-    // Add timestamp
-    unsigned long timestamp = millis();
+    // Add timestamp (real time if available, otherwise millis)
     char timeStr[32];
-    snprintf(timeStr, sizeof(timeStr), "[%lu] ", timestamp);
+    if (timeConverter && timeConverter->isSuccessfullyParsed()) {
+        time_t now = time(nullptr);
+        time_t localTime = timeConverter->toLocal(now);
+        struct tm timeinfo;
+        gmtime_r(&localTime, &timeinfo);
+        snprintf(timeStr, sizeof(timeStr), "[%02d:%02d:%02d] ", 
+                 timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+    } else {
+        unsigned long timestamp = millis();
+        snprintf(timeStr, sizeof(timeStr), "[%lu] ", timestamp);
+    }
     
     PsramString finalLine = PsramString(timeStr) + _currentLine;
     
