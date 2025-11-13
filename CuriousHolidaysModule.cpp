@@ -62,17 +62,43 @@ static int drawAndCountLines(U8G2_FOR_ADAFRUIT_GFX& u8g2, PsramString text, int 
     if (text.length() == 0) return 0;
     
     PsramString currentLine;
-    int lastSpace = -1;
+    int breakPos = -1;
     int pos = 0;
 
     while(pos < text.length()){
-        lastSpace = text.find(' ', pos);
-        if(lastSpace == PsramString::npos){
-            lastSpace = text.length();
+        // Find next space or hyphen, whichever comes first
+        int spacePos = text.find(' ', pos);
+        int hyphenPos = text.find('-', pos);
+        
+        bool brokeAtHyphen = false;
+        if(spacePos == PsramString::npos && hyphenPos == PsramString::npos){
+            breakPos = text.length();
+        } else if(spacePos == PsramString::npos){
+            breakPos = hyphenPos + 1; // Include hyphen in the word
+            brokeAtHyphen = true;
+        } else if(hyphenPos == PsramString::npos){
+            breakPos = spacePos;
+        } else {
+            if(spacePos < hyphenPos) {
+                breakPos = spacePos;
+            } else {
+                breakPos = hyphenPos + 1;
+                brokeAtHyphen = true;
+            }
         }
 
-        PsramString word = text.substr(pos, lastSpace - pos);
-        PsramString potentialLine = currentLine.empty() ? word : currentLine + " " + word;
+        PsramString word = text.substr(pos, breakPos - pos);
+        PsramString potentialLine;
+        if (currentLine.empty()) {
+            potentialLine = word;
+        } else {
+            // Don't add space if current line ends with hyphen
+            if (currentLine.back() == '-') {
+                potentialLine = currentLine + word;
+            } else {
+                potentialLine = currentLine + " " + word;
+            }
+        }
 
         if (u8g2.getUTF8Width(potentialLine.c_str()) <= maxWidth) {
             currentLine = potentialLine;
@@ -96,7 +122,9 @@ static int drawAndCountLines(U8G2_FOR_ADAFRUIT_GFX& u8g2, PsramString text, int 
                 currentLine = "";
             }
         }
-        pos = lastSpace + 1;
+        // If we broke at hyphen, hyphen is already included, so don't skip next char
+        // If we broke at space, skip the space
+        pos = brokeAtHyphen ? breakPos : breakPos + 1;
     }
 
     if(!currentLine.empty()){
@@ -336,13 +364,13 @@ void CuriousHolidaysModule::calculatePages() {
     }
 
     const int maxWidth = canvas.width() - 10;
-    const int lineHeight = 10;
+    const int lineHeight = 12;
     const int entrySpacing = 8;
     const int topMargin = 25;
     const int availableHeight = canvas.height() - topMargin - 5;
     int dummy_y = 0;
 
-    u8g2.setFont(u8g2_font_5x8_tf);
+    u8g2.setFont(u8g2_font_6x10_tf);
 
     int holidayIndex = 0;
     while (holidayIndex < holidaysToday.size()) {
@@ -408,10 +436,10 @@ void CuriousHolidaysModule::draw() {
     const auto& currentPageIndices = pageIndices[currentPage];
     int y = 25;
     int maxWidth = canvas.width() - 10;
-    const int lineHeight = 10;
+    const int lineHeight = 12;
     const int entrySpacing = 8;
 
-    u8g2.setFont(u8g2_font_5x8_tf);
+    u8g2.setFont(u8g2_font_6x10_tf);
 
     for (size_t i = 0; i < currentPageIndices.size(); ++i) {
         int idx = currentPageIndices[i];

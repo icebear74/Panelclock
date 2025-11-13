@@ -27,7 +27,8 @@ struct WeatherHourlyData {
 
 struct WeatherDailyData {
     time_t dt;
-    float temp_min, temp_max, pop, rain, snow;
+    float temp_min, temp_max, temp_mean, pop, rain, snow, wind_speed, sunshine_duration;
+    int cloud_cover;
     time_t sunrise, sunset; 
     PsramString icon_name;
 };
@@ -38,14 +39,13 @@ struct WeatherAlertData {
 };
 
 enum class WeatherPageType {
-    TODAY_OVERVIEW,
-    TODAY_DETAILS,
-    WEEK_OVERVIEW,
-    PRECIPITATION,
-    COMFORT_INDEX,
-    HOURLY_FORECAST,
-    DAILY_FORECAST,
-    ALERT
+    CURRENT_WEATHER,      // Page 1: NOW weather with icon, temp, feels, humidity, clouds, rain forecast
+    TODAY_PART1,          // Page 2: Today min/max temp, sunrise, sunset
+    TODAY_PART2,          // Page 3: Today cloud coverage, precipitation, wind, mean temp
+    PRECIPITATION_CHART,  // Page 4: Area chart for rain/snow
+    HOURLY_FORECAST,      // Page 5+: Hourly forecasts
+    DAILY_FORECAST,       // Page 6+: Daily forecasts
+    ALERT                 // Alert page
 };
 
 struct WeatherPage {
@@ -133,14 +133,12 @@ private:
     // NEU: drawWeatherIcon mit Registry/Cache, und PSRAM everywhere:
     void drawWeatherIcon(int x, int y, int size, const PsramString& name, bool isNight);
 
-    void drawTodayOverviewPage();
-    void drawTodayDetailsPage();
-    void drawWeekOverviewPage();
-    void drawPrecipitationPage();
-    void drawComfortIndexPage();
-    void drawComfortBar(const char* label, int score, int y);
-    void drawHourlyForecastPage();
-    void drawMultiDayForecastPage();
-    void drawAlertPage(int index);
+    void drawCurrentWeatherPage();        // Page 1: NOW weather
+    void drawTodayPart1Page();           // Page 2: Today summary part 1
+    void drawTodayPart2Page();           // Page 3: Today summary part 2
+    void drawPrecipitationChartPage();   // Page 4: Area chart
+    void drawHourlyForecastPage(int pageIndex);  // Page 5+: Hourly forecasts (multiple pages)
+    void drawDailyForecastPage(int pageIndex);   // Page 6+: Daily forecasts (multiple pages)
+    void drawAlertPage(int index);       // Alert page
     void drawNoDataPage();
 };
