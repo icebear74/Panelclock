@@ -792,7 +792,7 @@ void handleBackupList() {
         obj["size"] = backup.size;
     }
     
-    PsramString response;
+    String response;
     serializeJson(doc, response);
     server->send(200, "application/json", response.c_str());
 }

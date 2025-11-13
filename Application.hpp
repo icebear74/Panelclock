@@ -70,6 +70,13 @@ public:
      * @return PanelManager* Ein Zeiger auf die PanelManager-Instanz.
      */
     PanelManager* getPanelManager() { return _panelManager; }
+    
+    /**
+     * @brief Gibt einen Zeiger auf den BackupManager zurück.
+     * 
+     * @return BackupManager* Ein Zeiger auf die BackupManager-Instanz.
+     */
+    BackupManager* getBackupManager() { return _backupManager; }
 
     /// @brief Statischer Zeiger auf die einzige Instanz der Application-Klasse (Singleton).
     static Application* _instance;
