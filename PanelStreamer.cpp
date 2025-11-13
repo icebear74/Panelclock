@@ -54,8 +54,12 @@ PanelStreamer::PanelStreamer(PanelManager* panelManager)
     _wsServer->onEvent(webSocketEvent);
     _wsServer->begin();
     
+    // Enable keepalive/ping to detect stale connections
+    // Ping interval: 15 seconds, timeout: 3 pings (45 seconds total)
+    _wsServer->enableHeartbeat(15000, 3000, 3);
+    
     Log.println("[PanelStreamer] WebSocket server started successfully");
-    Log.println("[PanelStreamer] WebSocket server started on port 81");
+    Log.println("[PanelStreamer] WebSocket server started on port 81 with keepalive enabled");
 }
 
 PanelStreamer::~PanelStreamer() {
@@ -180,6 +184,16 @@ void PanelStreamer::streamerTask() {
         unsigned long now = millis();
         if (now - lastDebugMs >= 10000) {
             Log.printf("[PanelStreamer::streamerTask] Running, loops=%lu, clients=%d\n", loopCount, clientCount);
+            
+            // Also log individual client status for debugging
+            if (clientCount > 0) {
+                for (uint8_t i = 0; i < 8; i++) {  // Check first 8 slots
+                    if (_wsServer->clientIsConnected(i)) {
+                        Log.printf("[PanelStreamer::streamerTask] - Client #%d connected\n", i);
+                    }
+                }
+            }
+            
             lastDebugMs = now;
         }
         
@@ -189,7 +203,10 @@ void PanelStreamer::streamerTask() {
             continue;
         }
         
-        Log.printf("[PanelStreamer::streamerTask] Clients connected: %d\n", clientCount);
+        // Only log when actually streaming (every 10 seconds when clients are connected)
+        if (now - lastDebugMs >= 10000) {
+            Log.printf("[PanelStreamer::streamerTask] Clients connected: %d\n", clientCount);
+        }
         
         // Stream log messages
         sendLogMessages();
@@ -317,7 +334,6 @@ void PanelStreamer::webSocketEvent(uint8_t num, WStype_t type, uint8_t* payload,
     switch (type) {
         case WStype_DISCONNECTED:
             Log.printf("[WebSocket] Client #%u disconnected\n", num);
-            Log.printf("[WebSocket] Client #%u disconnected\n", num);
             break;
             
         case WStype_CONNECTED:
@@ -325,12 +341,9 @@ void PanelStreamer::webSocketEvent(uint8_t num, WStype_t type, uint8_t* payload,
                 IPAddress ip = _instance->_wsServer->remoteIP(num);
                 Log.printf("[WebSocket] Client #%u connected from %d.%d.%d.%d\n", 
                           num, ip[0], ip[1], ip[2], ip[3]);
-                Log.printf("[WebSocket] Client #%u connected from %d.%d.%d.%d\n", 
-                          num, ip[0], ip[1], ip[2], ip[3]);
                 
                 // Check max clients
                 if (_instance->getClientCount() > MAX_CLIENTS) {
-                    Log.printf("[WebSocket] Max clients reached, disconnecting #%u\n", num);
                     Log.printf("[WebSocket] Max clients reached, disconnecting #%u\n", num);
                     _instance->_wsServer->disconnect(num);
                 }
@@ -340,11 +353,18 @@ void PanelStreamer::webSocketEvent(uint8_t num, WStype_t type, uint8_t* payload,
         case WStype_TEXT:
             // Client sent text message (could be control commands in future)
             Log.printf("[WebSocket] Client #%u sent: %s\n", num, payload);
-            Log.printf("[WebSocket] Client #%u sent: %s\n", num, payload);
             break;
             
         case WStype_BIN:
             // Binary messages not expected from client
+            break;
+        
+        case WStype_PING:
+            Log.printf("[WebSocket] Client #%u ping\n", num);
+            break;
+            
+        case WStype_PONG:
+            Log.printf("[WebSocket] Client #%u pong\n", num);
             break;
             
         default:
