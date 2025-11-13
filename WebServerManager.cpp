@@ -41,6 +41,16 @@ void setupWebServer(bool portalMode) {
     server->on("/config_hardware", HTTP_GET, handleConfigHardware);
     server->on("/save_hardware", HTTP_POST, handleSaveHardware);
     
+    // Backup routes
+    server->on("/backup", HTTP_GET, handleBackupPage);
+    server->on("/api/backup/create", HTTP_POST, handleBackupCreate);
+    server->on("/api/backup/download", HTTP_GET, handleBackupDownload);
+    server->on("/api/backup/upload", HTTP_POST, []() {
+        server->send(200); // Send response after upload completes
+    }, handleBackupUpload);
+    server->on("/api/backup/restore", HTTP_POST, handleBackupRestore);
+    server->on("/api/backup/list", HTTP_GET, handleBackupList);
+    
     // Debug routes
     server->on("/debug", HTTP_GET, handleDebugData);
     server->on("/debug/station", HTTP_GET, handleDebugStationHistory);
