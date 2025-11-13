@@ -159,11 +159,18 @@ void PanelStreamer::streamerTask() {
     
     unsigned long lastPanelStreamMs = 0;
     unsigned long lastDebugMs = 0;
+    unsigned long loopCount = 0;
+    
+    Serial.println("[PanelStreamer::streamerTask] Entering main loop");
     
     while (_running) {
+        loopCount++;
+        
         // Process WebSocket events
         if (_wsServer) {
             _wsServer->loop();
+        } else {
+            Serial.println("[PanelStreamer::streamerTask] ERROR: _wsServer is NULL!");
         }
         
         // Check if any clients are connected
@@ -172,7 +179,7 @@ void PanelStreamer::streamerTask() {
         // Debug output every 10 seconds
         unsigned long now = millis();
         if (now - lastDebugMs >= 10000) {
-            Serial.printf("[PanelStreamer::streamerTask] Running, clients=%d\n", clientCount);
+            Serial.printf("[PanelStreamer::streamerTask] Running, loops=%lu, clients=%d\n", loopCount, clientCount);
             lastDebugMs = now;
         }
         
@@ -305,6 +312,8 @@ size_t PanelStreamer::compressRLE(const uint16_t* input, size_t inputSize,
 }
 
 void PanelStreamer::webSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t length) {
+    Serial.printf("[WebSocket] Event received: type=%d, num=%u\n", type, num);
+    
     switch (type) {
         case WStype_DISCONNECTED:
             Serial.printf("[WebSocket] Client #%u disconnected\n", num);

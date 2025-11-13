@@ -519,10 +519,14 @@ function connect() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = protocol + '//' + window.location.hostname + ':81/';
     
+    console.log('[WebSocket] Attempting to connect to:', wsUrl);
+    addLog('[System] Verbinde zu ' + wsUrl);
+    
     ws = new WebSocket(wsUrl);
     ws.binaryType = 'arraybuffer';
     
     ws.onopen = function() {
+        console.log('[WebSocket] Connection opened');
         statusText.textContent = 'Verbunden';
         statusText.style.color = '#4CAF50';
         connectBtn.textContent = 'Trennen';
@@ -530,34 +534,39 @@ function connect() {
         addLog('[System] WebSocket verbunden');
     };
     
-    ws.onclose = function() {
+    ws.onclose = function(event) {
+        console.log('[WebSocket] Connection closed:', event.code, event.reason);
         statusText.textContent = 'Getrennt';
         statusText.style.color = '#bbb';
         connectBtn.textContent = 'Verbinden';
         connectBtn.disabled = false;
-        addLog('[System] WebSocket getrennt');
+        addLog('[System] WebSocket getrennt (Code: ' + event.code + ')');
     };
     
     ws.onerror = function(err) {
+        console.error('[WebSocket] Error:', err);
         statusText.textContent = 'Fehler';
         statusText.style.color = '#f44336';
         connectBtn.disabled = false;
-        addLog('[System] WebSocket Fehler: ' + err);
+        addLog('[System] WebSocket Fehler - siehe Browser Console');
     };
     
     ws.onmessage = function(event) {
         if (typeof event.data === 'string') {
             // Text message - log data
+            console.log('[WebSocket] Text message received:', event.data.substring(0, 100));
             try {
                 const msg = JSON.parse(event.data);
                 if (msg.type === 'log') {
                     addLog(msg.data);
                 }
             } catch (e) {
+                console.error('[WebSocket] JSON parse error:', e);
                 addLog('[Error] Failed to parse log message');
             }
         } else {
             // Binary message - panel data (RLE compressed)
+            console.log('[WebSocket] Binary message received, size:', event.data.byteLength);
             decodeAndRenderPanel(new Uint8Array(event.data));
         }
     };
