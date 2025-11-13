@@ -248,7 +248,8 @@ void PanelStreamer::sendPanelSnapshot() {
 
 void PanelStreamer::sendLogMessages() {
     if (!_wsServer) {
-        Log.println("[PanelStreamer::sendLogMessages] No WebSocket server!");
+        // Use Serial directly to avoid recursive logging
+        Serial.println("[PanelStreamer::sendLogMessages] No WebSocket server!");
         return;
     }
     
@@ -258,7 +259,8 @@ void PanelStreamer::sendLogMessages() {
     
     if (count == 0) return;
     
-    Log.printf("[PanelStreamer::sendLogMessages] Sending %d log lines\n", count);
+    // Use Serial directly to avoid recursive logging (these debug messages would create infinite loop)
+    // Serial.printf("[PanelStreamer::sendLogMessages] Sending %d log lines\n", count);
     
     // Send each line as JSON text message
     for (const auto& line : newLines) {
@@ -270,7 +272,8 @@ void PanelStreamer::sendLogMessages() {
         String jsonStr;
         serializeJson(doc, jsonStr);
         
-        Log.printf("[PanelStreamer::sendLogMessages] Sending: %s\n", jsonStr.c_str());
+        // Don't log the sending action - it creates recursive loop
+        // Serial.printf("[PanelStreamer::sendLogMessages] Sending: %s\n", jsonStr.c_str());
         
         // Send as text message to all connected clients
         _wsServer->broadcastTXT(jsonStr);
