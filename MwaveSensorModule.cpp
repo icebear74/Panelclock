@@ -1,4 +1,5 @@
 #include "MwaveSensorModule.hpp"
+#include "MultiLogger.hpp"
 
 // Statische Member hier definieren und initialisieren
 char MwaveSensorModule::sensorDataBuffer[256];
@@ -9,17 +10,17 @@ MwaveSensorModule::MwaveSensorModule(DeviceConfig& deviceConf, HardwareConfig& h
 
 void MwaveSensorModule::begin() {
     if (config.mwaveSensorEnabled) {
-        sensorSerial.begin(115200, SERIAL_8N1, hwConfig.mwaveRxPin, hwConfig.mwaveTxPin);
-        Serial.println("[MWave] Sensor-Schnittstelle initialisiert.");
+        sensorLog.begin(115200, SERIAL_8N1, hwConfig.mwaveRxPin, hwConfig.mwaveTxPin);
+        Log.println("[MWave] Sensor-Schnittstelle initialisiert.");
         sendHexData("FDFCFBFA0800120000006400000004030201");
 
         if (hwConfig.displayRelayPin != 255) {
             pinMode(hwConfig.displayRelayPin, OUTPUT);
             digitalWrite(hwConfig.displayRelayPin, HIGH); // Standard AN
-            Serial.printf("[MWave] Relais-Pin %d initialisiert.\n", hwConfig.displayRelayPin);
+            Log.printf("[MWave] Relais-Pin %d initialisiert.\n", hwConfig.displayRelayPin);
         }
     } else {
-        Serial.println("[MWave] Sensor ist deaktiviert.");
+        Log.println("[MWave] Sensor ist deaktiviert.");
     }
 }
 
@@ -28,7 +29,7 @@ void MwaveSensorModule::update(time_t now_utc) {
         if (!isDisplayOnState) {
             isDisplayOnState = true; // Falls Sensor deaktiviert wird, Display sicherheitshalber einschalten
             if (hwConfig.displayRelayPin != 255) digitalWrite(hwConfig.displayRelayPin, HIGH);
-            Serial.println("[MWave] Sensor deaktiviert, schalte Display dauerhaft AN.");
+            Log.println("[MWave] Sensor deaktiviert, schalte Display dauerhaft AN.");
             logStateChange(true, now_utc);
         }
         return;
@@ -38,7 +39,7 @@ void MwaveSensorModule::update(time_t now_utc) {
         lastStateChangeToOnTime = now_utc;
         logStateChange(true, now_utc);
         initialStateSet = true;
-        Serial.println("[MWave] Initialzustand: AN gesetzt.");
+        Log.println("[MWave] Initialzustand: AN gesetzt.");
     }
 
     handleSensorSerial(now_utc);
@@ -73,7 +74,7 @@ void MwaveSensorModule::update(time_t now_utc) {
                 lastStateChangeToOffTime = firstOffTimeInOffWindow;
                 logStateChange(false, lastStateChangeToOffTime);
                 if (hwConfig.displayRelayPin != 255) digitalWrite(hwConfig.displayRelayPin, LOW);
-                Serial.printf("[MWave] >> Zustand: AUS (um %llu)\n", (long long unsigned)lastStateChangeToOffTime);
+                Log.printf("[MWave] >> Zustand: AUS (um %llu)\n", (long long unsigned)lastStateChangeToOffTime);
             }
             resetOffCheckWindowCounters();
         }
@@ -83,7 +84,7 @@ void MwaveSensorModule::update(time_t now_utc) {
             lastStateChangeToOnTime = now_utc;
             logStateChange(true, lastStateChangeToOnTime);
             if (hwConfig.displayRelayPin != 255) digitalWrite(hwConfig.displayRelayPin, HIGH);
-            Serial.printf("[MWave] >> Zustand: AN (Anteil: %.1f%%)\n", currentOnPercentage);
+            Log.printf("[MWave] >> Zustand: AN (Anteil: %.1f%%)\n", currentOnPercentage);
             resetOffCheckWindowCounters();
         }
     }
@@ -102,7 +103,7 @@ void MwaveSensorModule::sendHexData(const char* hexString) {
         char byte_str[3] = {hexString[i], hexString[i+1], '\0'};
         buf[i / 2] = (byte)strtoul(byte_str, NULL, 16);
     }
-    sensorSerial.write(buf, sizeof(buf));
+    sensorLog.write(buf, sizeof(buf));
 }
 
 void MwaveSensorModule::processSensorData(const char* data, time_t now) {
@@ -123,8 +124,8 @@ void MwaveSensorModule::processSensorData(const char* data, time_t now) {
 }
 
 void MwaveSensorModule::handleSensorSerial(time_t now) {
-    while (sensorSerial.available() > 0) {
-        char c = (char)sensorSerial.read();
+    while (sensorLog.available() > 0) {
+        char c = (char)sensorLog.read();
         if (c == '\n') {
             sensorDataBuffer[sensorDataIndex] = '\0';
             if (sensorDataIndex > 0) processSensorData(sensorDataBuffer, now);

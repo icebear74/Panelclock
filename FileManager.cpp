@@ -11,6 +11,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <string.h>
+#include "MultiLogger.hpp"
 
 // Helper: sanitize and normalize an incoming path parameter.
 // Ensures:
@@ -177,13 +178,13 @@ static bool moveDirectoryRecursive(const String& srcDir, const String& dstDir) {
     if (!ssrc.endsWith("/")) ssrc += "/";
     if (!sdst.endsWith("/")) sdst += "/";
 
-    Serial.printf("[WebFS] moveDirectoryRecursive START: '%s' -> '%s'\n", ssrc.c_str(), sdst.c_str());
+    Log.printf("[WebFS] moveDirectoryRecursive START: '%s' -> '%s'\n", ssrc.c_str(), sdst.c_str());
 
     // Ensure destination directory exists (create parents)
     ensureParentDirs(sdst + "dummy");
     if (!LittleFS.exists(sdst)) {
         if (!LittleFS.mkdir(sdst)) {
-            Serial.printf("[WebFS] moveDirectoryRecursive: failed to create dest dir %s\n", sdst.c_str());
+            Log.printf("[WebFS] moveDirectoryRecursive: failed to create dest dir %s\n", sdst.c_str());
             return false;
         }
     }
@@ -199,11 +200,11 @@ static bool moveDirectoryRecursive(const String& srcDir, const String& dstDir) {
         String curSrc = p.src;
         String curDst = p.dst;
 
-        Serial.printf("[WebFS] moving dir: '%s' -> '%s'\n", curSrc.c_str(), curDst.c_str());
+        Log.printf("[WebFS] moving dir: '%s' -> '%s'\n", curSrc.c_str(), curDst.c_str());
 
         File dir = LittleFS.open(curSrc);
         if (!dir) {
-            Serial.printf("[WebFS] moveDirectoryRecursive: cannot open src dir %s\n", curSrc.c_str());
+            Log.printf("[WebFS] moveDirectoryRecursive: cannot open src dir %s\n", curSrc.c_str());
             return false;
         }
 
@@ -228,12 +229,12 @@ static bool moveDirectoryRecursive(const String& srcDir, const String& dstDir) {
                 if (!dstSub.endsWith("/")) dstSub += "/";
                 dstSub += rel;
 
-                Serial.printf("[WebFS]  found dir: '%s' -> create '%s'\n", absChild.c_str(), dstSub.c_str());
+                Log.printf("[WebFS]  found dir: '%s' -> create '%s'\n", absChild.c_str(), dstSub.c_str());
 
                 ensureParentDirs(dstSub + "dummy");
                 if (!LittleFS.exists(dstSub)) {
                     if (!LittleFS.mkdir(dstSub)) {
-                        Serial.printf("[WebFS]  failed to create dst subdir %s\n", dstSub.c_str());
+                        Log.printf("[WebFS]  failed to create dst subdir %s\n", dstSub.c_str());
                         file.close();
                         dir.close();
                         return false;
@@ -249,21 +250,21 @@ static bool moveDirectoryRecursive(const String& srcDir, const String& dstDir) {
                 if (!dstPath.endsWith("/")) dstPath += "/";
                 dstPath += rel;
 
-                Serial.printf("[WebFS]  copy file: '%s' -> '%s'\n", absChild.c_str(), dstPath.c_str());
+                Log.printf("[WebFS]  copy file: '%s' -> '%s'\n", absChild.c_str(), dstPath.c_str());
 
                 file.close();
 
                 ensureParentDirs(dstPath);
                 bool ok = copyFile(absChild, dstPath);
                 if (!ok) {
-                    Serial.printf("[WebFS]  failed to copy %s -> %s\n", absChild.c_str(), dstPath.c_str());
+                    Log.printf("[WebFS]  failed to copy %s -> %s\n", absChild.c_str(), dstPath.c_str());
                     dir.close();
                     return false;
                 }
                 if (!LittleFS.remove(absChild)) {
-                    Serial.printf("[WebFS]  WARNING: failed to remove source file %s (continuing)\n", absChild.c_str());
+                    Log.printf("[WebFS]  WARNING: failed to remove source file %s (continuing)\n", absChild.c_str());
                 } else {
-                    Serial.printf("[WebFS]  removed source file %s\n", absChild.c_str());
+                    Log.printf("[WebFS]  removed source file %s\n", absChild.c_str());
                 }
             }
 
@@ -273,22 +274,22 @@ static bool moveDirectoryRecursive(const String& srcDir, const String& dstDir) {
         dir.close();
 
         if (!LittleFS.remove(curSrc)) {
-            Serial.printf("[WebFS]  could not remove source dir %s (may not be empty)\n", curSrc.c_str());
+            Log.printf("[WebFS]  could not remove source dir %s (may not be empty)\n", curSrc.c_str());
         } else {
-            Serial.printf("[WebFS]  removed source dir %s\n", curSrc.c_str());
+            Log.printf("[WebFS]  removed source dir %s\n", curSrc.c_str());
         }
     }
 
-    Serial.printf("[WebFS] moveDirectoryRecursive DONE: '%s' -> '%s'\n", ssrc.c_str(), sdst.c_str());
+    Log.printf("[WebFS] moveDirectoryRecursive DONE: '%s' -> '%s'\n", ssrc.c_str(), sdst.c_str());
     return true;
 }
 
 // Recursively list all entries under LittleFS root (diagnostic)
 static void diagnosticListAll() {
-    Serial.println("[WebFS DIAG] Listing all filesystem entries (recursive):");
+    Log.println("[WebFS DIAG] Listing all filesystem entries (recursive):");
     File root = LittleFS.open("/");
     if (!root) {
-        Serial.println("[WebFS DIAG] Failed to open root");
+        Log.println("[WebFS DIAG] Failed to open root");
         return;
     }
     std::vector<String> stack;
@@ -298,7 +299,7 @@ static void diagnosticListAll() {
         stack.pop_back();
         File dir = LittleFS.open(cur);
         if (!dir) {
-            Serial.printf("[WebFS DIAG] Cannot open dir '%s'\n", cur.c_str());
+            Log.printf("[WebFS DIAG] Cannot open dir '%s'\n", cur.c_str());
             continue;
         }
         File f = dir.openNextFile();
@@ -315,7 +316,7 @@ static void diagnosticListAll() {
                     full += name;
                 }
             }
-            Serial.printf("[WebFS DIAG]  %s %s\n", isDir ? "DIR " : "FILE", full.c_str());
+            Log.printf("[WebFS DIAG]  %s %s\n", isDir ? "DIR " : "FILE", full.c_str());
             if (isDir) stack.push_back(full);
             f.close();
             f = dir.openNextFile();
@@ -678,7 +679,7 @@ static void handleFsDelete() {
 
     String raw = server->arg("path");
     String path = sanitizePathParam(raw);
-    Serial.printf("[WebFS] handleFsDelete requested path='%s'\n", path.c_str());
+    Log.printf("[WebFS] handleFsDelete requested path='%s'\n", path.c_str());
 
     // Build candidate path variants to try (prefer normalized absolute path first)
     std::vector<String> variants;
@@ -709,11 +710,11 @@ static void handleFsDelete() {
         }
     }
     if (found.length() == 0) {
-        Serial.printf("[WebFS] handleFsDelete: path not found (checked variants)\n");
+        Log.printf("[WebFS] handleFsDelete: path not found (checked variants)\n");
         server->send(404, "application/json", "{\"error\":\"not_found\"}");
         return;
     }
-    Serial.printf("[WebFS] handleFsDelete: using variant '%s'\n", found.c_str());
+    Log.printf("[WebFS] handleFsDelete: using variant '%s'\n", found.c_str());
 
     // Open and check if directory or file
     File f = LittleFS.open(found);
@@ -732,7 +733,7 @@ static void handleFsDelete() {
             f.close();
 
             if (childCount > 0) {
-                Serial.printf("[WebFS] delete directory failed (not empty): %s  entries=%d\n", found.c_str(), childCount);
+                Log.printf("[WebFS] delete directory failed (not empty): %s  entries=%d\n", found.c_str(), childCount);
                 // include the first few child names in the response for debugging
                 String payload = "{\"error\":\"directory_not_empty\",\"entries\":[";
                 for (size_t i = 0; i < childNames.size(); ++i) {
@@ -750,22 +751,22 @@ static void handleFsDelete() {
             for (const auto &v : variants) {
                 triedList += "\"" + v + "\" ";
                 if (!LittleFS.exists(v)) continue;
-                Serial.printf("[WebFS] attempt LittleFS.remove('%s')\n", v.c_str());
+                Log.printf("[WebFS] attempt LittleFS.remove('%s')\n", v.c_str());
                 if (LittleFS.remove(v)) {
-                    Serial.printf("[WebFS] directory removed: %s\n", v.c_str());
+                    Log.printf("[WebFS] directory removed: %s\n", v.c_str());
                     removed = true;
                     break;
                 } else {
-                    Serial.printf("[WebFS] LittleFS.remove failed for '%s'\n", v.c_str());
+                    Log.printf("[WebFS] LittleFS.remove failed for '%s'\n", v.c_str());
                     // Try rmdir() on VFS as fallback (may succeed where LittleFS.remove fails)
                     errno = 0;
                     int rr = rmdir(v.c_str());
                     if (rr == 0) {
-                        Serial.printf("[WebFS] rmdir('%s') succeeded\n", v.c_str());
+                        Log.printf("[WebFS] rmdir('%s') succeeded\n", v.c_str());
                         removed = true;
                         break;
                     } else {
-                        Serial.printf("[WebFS] rmdir('%s') failed: errno=%d (%s)\n", v.c_str(), errno, strerror(errno));
+                        Log.printf("[WebFS] rmdir('%s') failed: errno=%d (%s)\n", v.c_str(), errno, strerror(errno));
                     }
                 }
             }
@@ -777,24 +778,24 @@ static void handleFsDelete() {
                 int slash = base.lastIndexOf('/');
                 String baseName = (slash >= 0) ? base.substring(slash + 1) : base;
                 String parent = parentPath(found);
-                Serial.printf("[WebFS] fallback: trying removal using parent listing - parent='%s' basename='%s'\n", parent.c_str(), baseName.c_str());
+                Log.printf("[WebFS] fallback: trying removal using parent listing - parent='%s' basename='%s'\n", parent.c_str(), baseName.c_str());
 
                 File pd = LittleFS.open(parent);
                 if (pd) {
                     File ef = pd.openNextFile();
                     while (ef) {
                         String entryName = ef.name(); // may be returned with or without leading slash
-                        Serial.printf("[WebFS]  parent entry raw name: '%s'\n", entryName.c_str());
+                        Log.printf("[WebFS]  parent entry raw name: '%s'\n", entryName.c_str());
                         // Try removing the raw name as-is
                         if (LittleFS.exists(entryName)) {
-                            Serial.printf("[WebFS]  attempt LittleFS.remove(raw='%s')\n", entryName.c_str());
+                            Log.printf("[WebFS]  attempt LittleFS.remove(raw='%s')\n", entryName.c_str());
                             if (LittleFS.remove(entryName)) {
-                                Serial.printf("[WebFS]  removed via raw entry name '%s'\n", entryName.c_str());
+                                Log.printf("[WebFS]  removed via raw entry name '%s'\n", entryName.c_str());
                                 removed = true;
                                 ef.close();
                                 break;
                             } else {
-                                Serial.printf("[WebFS]  LittleFS.remove failed for raw name '%s'\n", entryName.c_str());
+                                Log.printf("[WebFS]  LittleFS.remove failed for raw name '%s'\n", entryName.c_str());
                             }
                         }
                         // Try removing with parent/entryName variants
@@ -804,9 +805,9 @@ static void handleFsDelete() {
                             String absCand = parent;
                             if (!absCand.endsWith("/")) absCand += "/";
                             absCand += cand;
-                            Serial.printf("[WebFS]  attempt LittleFS.remove(abs='%s')\n", absCand.c_str());
+                            Log.printf("[WebFS]  attempt LittleFS.remove(abs='%s')\n", absCand.c_str());
                             if (LittleFS.exists(absCand) && LittleFS.remove(absCand)) {
-                                Serial.printf("[WebFS]  removed via abs entry name '%s'\n", absCand.c_str());
+                                Log.printf("[WebFS]  removed via abs entry name '%s'\n", absCand.c_str());
                                 removed = true;
                                 ef.close();
                                 break;
@@ -814,9 +815,9 @@ static void handleFsDelete() {
                         } else {
                             // entryName already absolute - try stripping leading slash
                             String stripped = cand.substring(1);
-                            Serial.printf("[WebFS]  attempt LittleFS.remove(stripped='%s')\n", stripped.c_str());
+                            Log.printf("[WebFS]  attempt LittleFS.remove(stripped='%s')\n", stripped.c_str());
                             if (LittleFS.exists(stripped) && LittleFS.remove(stripped)) {
-                                Serial.printf("[WebFS]  removed via stripped entry name '%s'\n", stripped.c_str());
+                                Log.printf("[WebFS]  removed via stripped entry name '%s'\n", stripped.c_str());
                                 removed = true;
                                 ef.close();
                                 break;
@@ -829,7 +830,7 @@ static void handleFsDelete() {
                         if (idx != -1) candidateBasename = candidateBasename.substring(idx + 1);
                         if (candidateBasename == baseName) {
                             // try removing candidate forms
-                            Serial.printf("[WebFS]  basename match - trying various removes for '%s'\n", candidateBasename.c_str());
+                            Log.printf("[WebFS]  basename match - trying various removes for '%s'\n", candidateBasename.c_str());
                             if (LittleFS.exists(candidateBasename) && LittleFS.remove(candidateBasename)) { removed = true; ef.close(); break; }
                             String abs2 = parent;
                             if (!abs2.endsWith("/")) abs2 += "/";
@@ -844,12 +845,12 @@ static void handleFsDelete() {
                     }
                     pd.close();
                 } else {
-                    Serial.printf("[WebFS] fallback: could not open parent '%s' for listing\n", parent.c_str());
+                    Log.printf("[WebFS] fallback: could not open parent '%s' for listing\n", parent.c_str());
                 }
 
                 // final attempt: try LittleFS.remove on basename variants directly
                 if (!removed) {
-                    Serial.printf("[WebFS] fallback final attempts on basename variants\n");
+                    Log.printf("[WebFS] fallback final attempts on basename variants\n");
                     if (LittleFS.exists(baseName) && LittleFS.remove(baseName)) removed = true;
                     else {
                         String abs1 = parent;
@@ -865,9 +866,9 @@ static void handleFsDelete() {
 
                 // If any of these removals succeeded, try rmdir as well (cleanup)
                 if (removed) {
-                    Serial.printf("[WebFS] fallback removal succeeded for '%s' (or equivalent)\n", found.c_str());
+                    Log.printf("[WebFS] fallback removal succeeded for '%s' (or equivalent)\n", found.c_str());
                 } else {
-                    Serial.printf("[WebFS] fallback removal attempts did not succeed for '%s'\n", found.c_str());
+                    Log.printf("[WebFS] fallback removal attempts did not succeed for '%s'\n", found.c_str());
                 }
             }
 
@@ -875,27 +876,27 @@ static void handleFsDelete() {
             // If we still didn't remove the directory, it is very likely another open FD holds some resource.
             // Unmounting and remounting LittleFS will close internal file descriptors and can allow removal.
             if (!removed) {
-                Serial.println("[WebFS] remove failed - attempting LittleFS end()/begin() remount fallback");
+                Log.println("[WebFS] remove failed - attempting LittleFS end()/begin() remount fallback");
                 // try to unmount and remount filesystem (may close stray FDs)
                 LittleFS.end();
                 delay(60);
                 bool began = LittleFS.begin();
-                Serial.printf("[WebFS] LittleFS.begin() after end() -> %d\n", (int)began);
+                Log.printf("[WebFS] LittleFS.begin() after end() -> %d\n", (int)began);
                 if (began) {
                     // try the variants again after remount
                     for (const auto &v : variants) {
                         if (!LittleFS.exists(v)) continue;
-                        Serial.printf("[WebFS] remount: attempt LittleFS.remove('%s')\n", v.c_str());
+                        Log.printf("[WebFS] remount: attempt LittleFS.remove('%s')\n", v.c_str());
                         if (LittleFS.remove(v)) {
-                            Serial.printf("[WebFS] remount: directory removed: %s\n", v.c_str());
+                            Log.printf("[WebFS] remount: directory removed: %s\n", v.c_str());
                             removed = true;
                             break;
                         } else {
-                            Serial.printf("[WebFS] remount: LittleFS.remove failed for '%s'\n", v.c_str());
+                            Log.printf("[WebFS] remount: LittleFS.remove failed for '%s'\n", v.c_str());
                         }
                     }
                 } else {
-                    Serial.println("[WebFS] remount failed - cannot retry remove");
+                    Log.println("[WebFS] remount failed - cannot retry remove");
                 }
             }
 
@@ -903,7 +904,7 @@ static void handleFsDelete() {
                 server->send(200, "application/json", "{\"success\":true}");
                 return;
             } else {
-                Serial.printf("[WebFS] delete directory failed remove(): %s (tried: %s)\n", found.c_str(), triedList.c_str());
+                Log.printf("[WebFS] delete directory failed remove(): %s (tried: %s)\n", found.c_str(), triedList.c_str());
                 // Additional diagnostic: list full filesystem so we can see hidden/other entries
                 diagnosticListAll();
 
@@ -921,42 +922,42 @@ static void handleFsDelete() {
             // it's a file
             f.close();
             if (LittleFS.remove(found)) {
-                Serial.printf("[WebFS] file removed: %s\n", found.c_str());
+                Log.printf("[WebFS] file removed: %s\n", found.c_str());
                 server->send(200, "application/json", "{\"success\":true}");
                 return;
             } else {
-                Serial.printf("[WebFS] file remove failed: %s\n", found.c_str());
+                Log.printf("[WebFS] file remove failed: %s\n", found.c_str());
                 server->send(500, "application/json", "{\"error\":\"remove_failed\"}");
                 return;
             }
         }
     } else {
         // Could not open (strange) — try remove anyway on variants
-        Serial.printf("[WebFS] open() returned false for '%s' — trying remove on candidates\n", found.c_str());
+        Log.printf("[WebFS] open() returned false for '%s' — trying remove on candidates\n", found.c_str());
         bool removed = false;
         for (const auto &v : variants) {
             if (!LittleFS.exists(v)) continue;
-            Serial.printf("[WebFS] attempt LittleFS.remove('%s')\n", v.c_str());
+            Log.printf("[WebFS] attempt LittleFS.remove('%s')\n", v.c_str());
             if (LittleFS.remove(v)) { removed = true; break; }
             errno = 0;
             int rr = rmdir(v.c_str());
-            if (rr == 0) { Serial.printf("[WebFS] rmdir('%s') succeeded\n", v.c_str()); removed = true; break; }
-            else Serial.printf("[WebFS] rmdir('%s') failed: errno=%d (%s)\n", v.c_str(), errno, strerror(errno));
+            if (rr == 0) { Log.printf("[WebFS] rmdir('%s') succeeded\n", v.c_str()); removed = true; break; }
+            else Log.printf("[WebFS] rmdir('%s') failed: errno=%d (%s)\n", v.c_str(), errno, strerror(errno));
         }
         if (!removed) {
-            Serial.println("[WebFS] remove attempts failed — doing full diagnostic listing");
+            Log.println("[WebFS] remove attempts failed — doing full diagnostic listing");
             diagnosticListAll();
 
             // Try remount fallback as last resort
-            Serial.println("[WebFS] attempting LittleFS end()/begin() remount fallback from 'open() returned false' path");
+            Log.println("[WebFS] attempting LittleFS end()/begin() remount fallback from 'open() returned false' path");
             LittleFS.end();
             delay(60);
             bool began = LittleFS.begin();
-            Serial.printf("[WebFS] LittleFS.begin() after end() -> %d\n", (int)began);
+            Log.printf("[WebFS] LittleFS.begin() after end() -> %d\n", (int)began);
             if (began) {
                 for (const auto &v : variants) {
                     if (!LittleFS.exists(v)) continue;
-                    Serial.printf("[WebFS] remount2: attempt LittleFS.remove('%s')\n", v.c_str());
+                    Log.printf("[WebFS] remount2: attempt LittleFS.remove('%s')\n", v.c_str());
                     if (LittleFS.remove(v)) { removed = true; break; }
                 }
             }
@@ -1004,12 +1005,12 @@ static void handleFsUploadBegin() {
 static void uploadHandlerFs() {
     // defensive guard: make sure server pointer exists and this call really belongs to /fs/upload
     if (!server) {
-        Serial.println("[WebFS] uploadHandlerFs: server == nullptr");
+        Log.println("[WebFS] uploadHandlerFs: server == nullptr");
         return;
     }
     String currentUri = server->uri();
     if (currentUri != "/fs/upload") {
-        Serial.printf("[WebFS] uploadHandlerFs called for URI '%s' - ignoring\n", currentUri.c_str());
+        Log.printf("[WebFS] uploadHandlerFs called for URI '%s' - ignoring\n", currentUri.c_str());
         return;
     }
 
@@ -1063,15 +1064,15 @@ static void uploadHandlerFs() {
         tmpPath = targetPath + ".uploadtmp";
         if (LittleFS.exists(targetPath) && !overwrite) {
             uploadFileLocal = File();
-            Serial.printf("[WebFS] Upload refused, exists and not overwrite: %s\n", targetPath.c_str());
+            Log.printf("[WebFS] Upload refused, exists and not overwrite: %s\n", targetPath.c_str());
             return;
         }
         if (LittleFS.exists(tmpPath)) LittleFS.remove(tmpPath);
         uploadFileLocal = LittleFS.open(tmpPath, "w");
         if (!uploadFileLocal) {
-            Serial.printf("[WebFS] Failed to open tmp upload file %s\n", tmpPath.c_str());
+            Log.printf("[WebFS] Failed to open tmp upload file %s\n", tmpPath.c_str());
         } else {
-            Serial.printf("[WebFS] Upload start -> %s (tmp %s)\n", targetPath.c_str(), tmpPath.c_str());
+            Log.printf("[WebFS] Upload start -> %s (tmp %s)\n", targetPath.c_str(), tmpPath.c_str());
         }
     } else if (upload.status == UPLOAD_FILE_WRITE) {
         if (uploadFileLocal) {
@@ -1082,7 +1083,7 @@ static void uploadHandlerFs() {
             uploadFileLocal.close();
             if (LittleFS.exists(targetPath)) {
                 if (!LittleFS.remove(targetPath)) {
-                    Serial.printf("[WebFS] Failed to remove existing target %s\n", targetPath.c_str());
+                    Log.printf("[WebFS] Failed to remove existing target %s\n", targetPath.c_str());
                 }
             }
             bool renamed = LittleFS.rename(tmpPath, targetPath);
@@ -1102,40 +1103,40 @@ static void uploadHandlerFs() {
                 }
                 LittleFS.remove(tmpPath);
             }
-            Serial.printf("[WebFS] Upload finished -> %s\n", targetPath.c_str());
+            Log.printf("[WebFS] Upload finished -> %s\n", targetPath.c_str());
         } else {
-            Serial.println("[WebFS] Upload finished but no file was opened (probably refused)");
+            Log.println("[WebFS] Upload finished but no file was opened (probably refused)");
         }
     } else if (upload.status == UPLOAD_FILE_ABORTED) {
         if (uploadFileLocal) {
             uploadFileLocal.close();
             LittleFS.remove(tmpPath);
         }
-        Serial.println("[WebFS] Upload aborted by client");
+        Log.println("[WebFS] Upload aborted by client");
     }
 }
 
 // POST/GET /fs/rename (form params: src, dest, optional overwrite=1)
 static void handleFsRename() {
     if (!server) return;
-    Serial.println("[WebFS] handleFsRename called");
+    Log.println("[WebFS] handleFsRename called");
 
     // Debug dump of args / body for diagnostics
     if (!server) {
-        Serial.println("[WebFS DEBUG] server == nullptr");
+        Log.println("[WebFS DEBUG] server == nullptr");
     } else {
-        Serial.printf("[WebFS DEBUG] URI: %s  Method: %s\n", server->uri().c_str(), server->method() == HTTP_POST ? "POST" : "OTHER");
+        Log.printf("[WebFS DEBUG] URI: %s  Method: %s\n", server->uri().c_str(), server->method() == HTTP_POST ? "POST" : "OTHER");
         int n = server->args();
-        Serial.printf("[WebFS DEBUG] server->args() = %d\n", n);
+        Log.printf("[WebFS DEBUG] server->args() = %d\n", n);
         for (int i = 0; i < n; ++i) {
             String name = server->argName(i);
             String val = server->arg(i);
-            Serial.printf("[WebFS DEBUG] arg[%d] name='%s' len=%d val='%s'\n", i, name.c_str(), val.length(), val.c_str());
+            Log.printf("[WebFS DEBUG] arg[%d] name='%s' len=%d val='%s'\n", i, name.c_str(), val.length(), val.c_str());
         }
         if (n == 0) {
             String body = server->arg(0); // raw body possibly
-            Serial.printf("[WebFS DEBUG] server->arg(0) raw body len=%d\n", body.length());
-            if (body.length() > 0) Serial.printf("[WebFS DEBUG] raw body: %s\n", body.c_str());
+            Log.printf("[WebFS DEBUG] server->arg(0) raw body len=%d\n", body.length());
+            if (body.length() > 0) Log.printf("[WebFS DEBUG] raw body: %s\n", body.c_str());
         }
     }
 
@@ -1156,7 +1157,7 @@ static void handleFsRename() {
             String maybe = server->arg(0);
             if (maybe.length() > 0) plain = maybe;
         }
-        Serial.printf("[WebFS] handleFsRename: args missing, raw body len=%d\n", plain.length());
+        Log.printf("[WebFS] handleFsRename: args missing, raw body len=%d\n", plain.length());
         if (plain.length() > 0) {
             String fsrc = srcRaw;
             String fdest = destRaw;
@@ -1165,20 +1166,20 @@ static void handleFsRename() {
             if (fsrc.length() > 0) srcRaw = fsrc;
             if (fdest.length() > 0) destRaw = fdest;
             if (fcwd.length()  > 0) cwd    = fcwd;
-            Serial.printf("[WebFS] parsed from body: src='%s' dest='%s' cwd='%s'\n", srcRaw.c_str(), destRaw.c_str(), cwd.c_str());
+            Log.printf("[WebFS] parsed from body: src='%s' dest='%s' cwd='%s'\n", srcRaw.c_str(), destRaw.c_str(), cwd.c_str());
         }
     }
 
     if (srcRaw.length() == 0 || destRaw.length() == 0) {
-        Serial.println("[WebFS] handleFsRename: missing src or dest");
+        Log.println("[WebFS] handleFsRename: missing src or dest");
         server->send(400, "text/plain", "missing src or dest");
         return;
     }
 
-    Serial.printf("[WebFS] rename request: srcRaw='%s' destRaw='%s' cwd='%s' overwrite=%d\n", srcRaw.c_str(), destRaw.c_str(), cwd.c_str(), overwrite ? 1 : 0);
+    Log.printf("[WebFS] rename request: srcRaw='%s' destRaw='%s' cwd='%s' overwrite=%d\n", srcRaw.c_str(), destRaw.c_str(), cwd.c_str(), overwrite ? 1 : 0);
 
     String src = sanitizePathParam(srcRaw);
-    Serial.printf("[WebFS] sanitized src -> '%s'\n", src.c_str());
+    Log.printf("[WebFS] sanitized src -> '%s'\n", src.c_str());
 
     // ensure src exists (try variants)
     String src_exists_variant = "";
@@ -1196,12 +1197,12 @@ static void handleFsRename() {
     }
 
     if (src_exists_variant.length() == 0) {
-        Serial.printf("[WebFS] handleFsRename: src not found: '%s'\n", src.c_str());
+        Log.printf("[WebFS] handleFsRename: src not found: '%s'\n", src.c_str());
         server->send(404, "text/plain", "src not found");
         return;
     }
     src = src_exists_variant;
-    Serial.printf("[WebFS] using src='%s'\n", src.c_str());
+    Log.printf("[WebFS] using src='%s'\n", src.c_str());
 
     // determine target path
     String targetPath;
@@ -1210,14 +1211,14 @@ static void handleFsRename() {
         String base = (cwd.length() && cwd != "/") ? sanitizePathParam(cwd) : parentPath(src);
         if (!base.endsWith("/")) base += "/";
         targetPath = base + destRaw;
-        Serial.printf("[WebFS] dest appears filename -> targetPath='%s'\n", targetPath.c_str());
+        Log.printf("[WebFS] dest appears filename -> targetPath='%s'\n", targetPath.c_str());
     } else {
         String sdest = sanitizePathParam(destRaw);
-        Serial.printf("[WebFS] dest normalized -> '%s'\n", sdest.c_str());
+        Log.printf("[WebFS] dest normalized -> '%s'\n", sdest.c_str());
         if (sdest.endsWith("/")) {
             String baseName = src.substring(src.lastIndexOf('/')+1);
             targetPath = sdest + baseName;
-            Serial.printf("[WebFS] dest ends with / -> targetPath='%s'\n", targetPath.c_str());
+            Log.printf("[WebFS] dest ends with / -> targetPath='%s'\n", targetPath.c_str());
         } else {
             if (LittleFS.exists(sdest)) {
                 File f = LittleFS.open(sdest);
@@ -1228,30 +1229,30 @@ static void handleFsRename() {
                     targetPath = sdest;
                     if (!targetPath.endsWith("/")) targetPath += "/";
                     targetPath += baseName;
-                    Serial.printf("[WebFS] dest exists and isDir -> targetPath='%s'\n", targetPath.c_str());
+                    Log.printf("[WebFS] dest exists and isDir -> targetPath='%s'\n", targetPath.c_str());
                 } else {
                     targetPath = sdest;
-                    Serial.printf("[WebFS] dest exists and isFile -> targetPath='%s'\n", targetPath.c_str());
+                    Log.printf("[WebFS] dest exists and isFile -> targetPath='%s'\n", targetPath.c_str());
                 }
             } else {
                 int slashPos = sdest.lastIndexOf('/');
                 String lastPart = (slashPos >= 0) ? sdest.substring(slashPos+1) : sdest;
                 if (lastPart.indexOf('.') != -1) {
                     targetPath = sdest;
-                    Serial.printf("[WebFS] dest heuristic=file -> targetPath='%s'\n", targetPath.c_str());
+                    Log.printf("[WebFS] dest heuristic=file -> targetPath='%s'\n", targetPath.c_str());
                 } else {
                     targetPath = sdest + "/" + src.substring(src.lastIndexOf('/')+1);
-                    Serial.printf("[WebFS] dest heuristic=dir -> targetPath='%s'\n", targetPath.c_str());
+                    Log.printf("[WebFS] dest heuristic=dir -> targetPath='%s'\n", targetPath.c_str());
                 }
             }
         }
     }
 
     if (!targetPath.startsWith("/")) targetPath = "/" + targetPath;
-    Serial.printf("[WebFS] final targetPath='%s'\n", targetPath.c_str());
+    Log.printf("[WebFS] final targetPath='%s'\n", targetPath.c_str());
 
     if (targetPath == src) {
-        Serial.println("[WebFS] target equals src -> noop");
+        Log.println("[WebFS] target equals src -> noop");
         server->send(200, "application/json", "{\"success\":true}");
         return;
     }
@@ -1260,26 +1261,26 @@ static void handleFsRename() {
 
     if (LittleFS.exists(targetPath)) {
         if (!overwrite) {
-            Serial.printf("[WebFS] target exists and not overwrite: '%s'\n", targetPath.c_str());
+            Log.printf("[WebFS] target exists and not overwrite: '%s'\n", targetPath.c_str());
             server->send(409, "text/plain", "target exists");
             return;
         } else {
-            Serial.printf("[WebFS] target exists, remove because overwrite=true: '%s'\n", targetPath.c_str());
+            Log.printf("[WebFS] target exists, remove because overwrite=true: '%s'\n", targetPath.c_str());
             if (!LittleFS.remove(targetPath)) {
-                Serial.printf("[WebFS] failed to remove existing target '%s'\n", targetPath.c_str());
+                Log.printf("[WebFS] failed to remove existing target '%s'\n", targetPath.c_str());
                 server->send(500, "text/plain", "failed to remove existing target");
                 return;
             }
         }
     }
 
-    Serial.printf("[WebFS] attempting LittleFS.rename('%s','%s')\n", src.c_str(), targetPath.c_str());
+    Log.printf("[WebFS] attempting LittleFS.rename('%s','%s')\n", src.c_str(), targetPath.c_str());
     if (LittleFS.rename(src, targetPath)) {
-        Serial.printf("[WebFS] LittleFS.rename succeeded: '%s' -> '%s'\n", src.c_str(), targetPath.c_str());
+        Log.printf("[WebFS] LittleFS.rename succeeded: '%s' -> '%s'\n", src.c_str(), targetPath.c_str());
         server->send(200, "application/json", "{\"success\":true}");
         return;
     }
-    Serial.println("[WebFS] LittleFS.rename failed, falling back to safe copy/move");
+    Log.println("[WebFS] LittleFS.rename failed, falling back to safe copy/move");
 
     // Check whether src is a directory or file
     bool srcIsDir = false;
@@ -1289,37 +1290,37 @@ static void handleFsRename() {
             srcIsDir = f.isDirectory();
             f.close();
         } else {
-            Serial.printf("[WebFS] open(src) failed for '%s' when checking dir/file\n", src.c_str());
+            Log.printf("[WebFS] open(src) failed for '%s' when checking dir/file\n", src.c_str());
             server->send(500, "text/plain", "open src failed");
             return;
         }
     }
 
     if (srcIsDir) {
-        Serial.printf("[WebFS] src is directory -> perform recursive move '%s' -> '%s'\n", src.c_str(), targetPath.c_str());
+        Log.printf("[WebFS] src is directory -> perform recursive move '%s' -> '%s'\n", src.c_str(), targetPath.c_str());
         bool moved = moveDirectoryRecursive(src, targetPath);
         if (moved) {
-            Serial.printf("[WebFS] recursive move OK: '%s' -> '%s'\n", src.c_str(), targetPath.c_str());
+            Log.printf("[WebFS] recursive move OK: '%s' -> '%s'\n", src.c_str(), targetPath.c_str());
             server->send(200, "application/json", "{\"success\":true}");
             return;
         } else {
-            Serial.printf("[WebFS] recursive move FAILED: '%s' -> '%s'\n", src.c_str(), targetPath.c_str());
+            Log.printf("[WebFS] recursive move FAILED: '%s' -> '%s'\n", src.c_str(), targetPath.c_str());
             server->send(500, "text/plain", "failed to move directory");
             return;
         }
     }
 
     // Fallback for files: copy + remove
-    Serial.printf("[WebFS] attempting file copy src='%s' -> dest='%s'\n", src.c_str(), targetPath.c_str());
+    Log.printf("[WebFS] attempting file copy src='%s' -> dest='%s'\n", src.c_str(), targetPath.c_str());
     File fsrc = LittleFS.open(src, "r");
     if (!fsrc) {
-        Serial.printf("[WebFS] open src for read failed: '%s'\n", src.c_str());
+        Log.printf("[WebFS] open src for read failed: '%s'\n", src.c_str());
         server->send(500, "text/plain", "open src failed");
         return;
     }
     File fdst = LittleFS.open(targetPath, "w");
     if (!fdst) {
-        Serial.printf("[WebFS] open dest for write failed: '%s'\n", targetPath.c_str());
+        Log.printf("[WebFS] open dest for write failed: '%s'\n", targetPath.c_str());
         fsrc.close();
         server->send(500, "text/plain", "open dest failed");
         return;
@@ -1335,12 +1336,12 @@ static void handleFsRename() {
     fdst.close();
 
     if (!LittleFS.remove(src)) {
-        Serial.printf("[WebFS] copied but failed to remove src '%s'\n", src.c_str());
+        Log.printf("[WebFS] copied but failed to remove src '%s'\n", src.c_str());
         server->send(500, "text/plain", "copied but failed to remove src");
         return;
     }
 
-    Serial.printf("[WebFS] file move success: '%s' -> '%s'\n", src.c_str(), targetPath.c_str());
+    Log.printf("[WebFS] file move success: '%s' -> '%s'\n", src.c_str(), targetPath.c_str());
     server->send(200, "application/json", "{\"success\":true}");
 }
 

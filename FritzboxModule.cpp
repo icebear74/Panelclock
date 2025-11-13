@@ -1,4 +1,5 @@
 #include "FritzboxModule.hpp"
+#include "MultiLogger.hpp"
 #include "WebClientModule.hpp"
 #include <ArduinoJson.h>
 #include <WiFi.h>
@@ -25,7 +26,7 @@ void FritzboxModule::setConfig(bool isEnabled, const PsramString& ip) {
         this->fritzIp = ip;
         if (!isEnabled && client.connected()) {
             client.stop();
-            Serial.println("[Fritzbox] Modul deaktiviert, Verbindung getrennt.");
+            Log.println("[Fritzbox] Modul deaktiviert, Verbindung getrennt.");
         }
         xSemaphoreGive(dataMutex);
     }
@@ -105,12 +106,12 @@ void FritzboxModule::taskLoop() {
 
         if (!client.connected()) {
             if (millis() - lastConnectionAttempt > 10000) { 
-                //Serial.printf("[Fritzbox] Verbinde mit Call Monitor auf %s...\n", currentFritzIp.c_str());
+                //Log.printf("[Fritzbox] Verbinde mit Call Monitor auf %s...\n", currentFritzIp.c_str());
                 lastConnectionAttempt = millis();
                 if (client.connect(currentFritzIp.c_str(), FRITZ_PORT)) {
-                   // Serial.println("[Fritzbox] Verbunden!");
+                   // Log.println("[Fritzbox] Verbunden!");
                 } else {
-                    Serial.println("[Fritzbox] Verbindung fehlgeschlagen.");
+                    Log.println("[Fritzbox] Verbindung fehlgeschlagen.");
                 }
             }
             vTaskDelay(pdMS_TO_TICKS(1000));
@@ -152,9 +153,9 @@ void FritzboxModule::parseCallMonitorLine(const PsramString& line) {
             // NEU: Nutze das neue Priority-System mit fester UID und Duration
             bool success = requestPriorityEx(Priority::High, FRITZBOX_CALL_UID, FRITZBOX_MAX_DURATION_MS);
             if (success) {
-                Serial.println("[Fritzbox] Anruf-Interrupt erfolgreich angefordert (max 15 Min)");
+                Log.println("[Fritzbox] Anruf-Interrupt erfolgreich angefordert (max 15 Min)");
             } else {
-                Serial.println("[Fritzbox] WARNUNG: Anruf-Interrupt wurde abgelehnt!");
+                Log.println("[Fritzbox] WARNUNG: Anruf-Interrupt wurde abgelehnt!");
             }
             
         } else if (type == "DISCONNECT") {
@@ -163,7 +164,7 @@ void FritzboxModule::parseCallMonitorLine(const PsramString& line) {
                 
                 // NEU: Release mit UID
                 releasePriorityEx(FRITZBOX_CALL_UID);
-                Serial.println("[Fritzbox] Anruf beendet, Interrupt freigegeben");
+                Log.println("[Fritzbox] Anruf beendet, Interrupt freigegeben");
             }
         }
         xSemaphoreGive(dataMutex);
@@ -185,7 +186,7 @@ void FritzboxModule::queryCallerInfo(const PsramString& number) {
             if (buffer && size > 0) {
                 this->parseCallerInfo(buffer, size);
             } else {
-                Serial.println("[Fritzbox] Keine oder leere Antwort bei der Namensabfrage.");
+                Log.println("[Fritzbox] Keine oder leere Antwort bei der Namensabfrage.");
             }
         }
     );
@@ -196,7 +197,7 @@ void FritzboxModule::parseCallerInfo(const char* buffer, size_t size) {
     DeserializationError error = deserializeJson(doc, buffer, size);
 
     if (error) {
-        Serial.printf("[Fritzbox] Fehler beim Parsen der JSON-Antwort: %s\n", error.c_str());
+        Log.printf("[Fritzbox] Fehler beim Parsen der JSON-Antwort: %s\n", error.c_str());
         return;
     }
     
@@ -205,10 +206,10 @@ void FritzboxModule::parseCallerInfo(const char* buffer, size_t size) {
         if (result["name"].is<const char*>()) {
             if (xSemaphoreTake(dataMutex, portMAX_DELAY) == pdTRUE) {
                 callerName = result["name"].as<const char*>();
-                Serial.printf("[Fritzbox] Name gefunden: %s\n", callerName.c_str());
+                Log.printf("[Fritzbox] Name gefunden: %s\n", callerName.c_str());
                 if (result["location"].is<const char*>()) {
                     callerLocation = result["location"].as<const char*>();
-                    Serial.printf("[Fritzbox] Ort gefunden: %s\n", callerLocation.c_str());
+                    Log.printf("[Fritzbox] Ort gefunden: %s\n", callerLocation.c_str());
                 }
                 
                 // Kein erneuter Request nötig - der Request wurde bereits bei RING gestellt

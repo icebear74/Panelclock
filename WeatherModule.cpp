@@ -1,4 +1,5 @@
 #include "WeatherModule.hpp"
+#include "MultiLogger.hpp"
 #include "webconfig.hpp" 
 #include "WebClientModule.hpp"
 #include <ArduinoJson.h>
@@ -1014,50 +1015,32 @@ void WeatherModule::drawAlertPage(int index) {
 
 
 void WeatherModule::drawWeatherIcon(int x, int y, int size, const PsramString& name, bool isNight) {
-    // TEST: First verify PROGMEM reading works with test array
-    Serial.println("\n=== PROGMEM TEST ===");
-    Serial.println("Test array (should be: 11 22 33 44 55 66 77 88 99 AA BB CC DD EE FF):");
-    for(int i=0; i<15; i++) {
-        uint8_t val = pgm_read_byte(test_icon.data + i);
-        Serial.printf("%02X ", val);
-    }
-    Serial.println("\n=== END TEST ===\n");
-    
-    // TEST: Explicitly load "unknown" icon to verify registry
-    Serial.println("=== EXPLICIT UNKNOWN ICON TEST ===");
-    const WeatherIcon* unknownIcon = globalWeatherIconSet.getIcon("unknown", false);
-    if (unknownIcon && unknownIcon->data) {
-        Serial.printf("Unknown icon pointer: %p\n", unknownIcon->data);
-        Serial.printf("Unknown icon first 15 bytes: ");
-        for(int i=0; i<15; i++) {
-            uint8_t val = pgm_read_byte(unknownIcon->data + i);
-            Serial.printf("%02X ", val);
-        }
-        Serial.println();
-    } else {
-        Serial.println("ERROR: Unknown icon is NULL or has no data!");
-    }
-    Serial.println("=== END UNKNOWN TEST ===\n");
-    
     // Retrieves the appropriate icon from the registry/cache, independent of Main/Special!
     // Converts PsramString to std::string for cache lookup
     std::string iconName(name.c_str());
-    Serial.printf("Requested icon name: '%s', isNight: %d\n", iconName.c_str(), isNight);
     
     // TEMPORARY TEST: Bypass cache and read directly from PROGMEM
     // This helps diagnose if the issue is with cache/PSRAM or PROGMEM reading
     const WeatherIcon* src = globalWeatherIconSet.getIcon(iconName, isNight);
-    Serial.printf("  getIcon('%s', %d) returned: %p\n", iconName.c_str(), isNight, src);
+    
+    // Log missing icons only once per unique icon name
     if (!src) {
         src = globalWeatherIconSet.getIcon(iconName, false);
-        Serial.printf("  getIcon('%s', false) returned: %p\n", iconName.c_str(), src);
+        if (!src) {
+            // Create unique key for this missing icon
+            std::string missingKey = iconName + (isNight ? "_night" : "_day");
+            if (_loggedMissingIcons.find(missingKey) == _loggedMissingIcons.end()) {
+                // First time seeing this missing icon - log it
+                Log.printf("[Weather] Missing icon: '%s' (isNight: %d)\n", iconName.c_str(), isNight);
+                _loggedMissingIcons.insert(missingKey);
+            }
+            src = globalWeatherIconSet.getUnknown();
+        }
     }
-    if (!src) {
-        src = globalWeatherIconSet.getUnknown();
-        Serial.printf("  getUnknown() returned: %p\n", src);
-    }
+    
     if (!src || !src->data) {
-        Serial.println("ERROR: No valid icon found!");
+        // This is a critical error - log every time
+        Log.printf("[Weather] ERROR: No valid icon found for '%s'!\n", iconName.c_str());
         return;
     }
     
@@ -1065,7 +1048,12 @@ void WeatherModule::drawWeatherIcon(int x, int y, int size, const PsramString& n
     const WeatherIcon* iconPtr = globalWeatherIconCache.getScaled(iconName, size, isNight);
     if(!iconPtr || !iconPtr->data) {
         iconPtr = globalWeatherIconCache.getScaled("unknown", size, false);
-        Serial.printf("  Fallback to unknown icon (size %d)\n", size);
+        // Log fallback only once per icon
+        std::string fallbackKey = iconName + "_fallback_" + std::to_string(size);
+        if (_loggedMissingIcons.find(fallbackKey) == _loggedMissingIcons.end()) {
+            Log.printf("[Weather] Fallback to unknown icon (icon: %s, size: %d)\n", iconName.c_str(), size);
+            _loggedMissingIcons.insert(fallbackKey);
+        }
     }
     if(!iconPtr || !iconPtr->data) return;
     

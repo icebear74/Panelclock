@@ -7,6 +7,7 @@
 #include "WeatherIcons_Main.hpp"
 #include "WeatherIcons_Special.hpp"
 #include "WeatherIconCache.hpp" // NEU: für globalWeatherIconCache
+#include <set>
 
 class WebClientModule;
 struct DeviceConfig;
@@ -112,6 +113,9 @@ private:
     unsigned long _lastPeriodicCheck = 0;
 
     std::function<void()> _onUpdateCallback = nullptr;
+    
+    // Track missing icons to log only once
+    std::set<std::string> _loggedMissingIcons;
 
     void buildApiUrls();
     void parseForecastData(char* jsonBuffer, size_t size);
