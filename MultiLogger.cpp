@@ -29,19 +29,19 @@ MultiLogger::~MultiLogger() {
 }
 
 size_t MultiLogger::write(uint8_t c) {
-    // Lock for thread safety
-    if (xSemaphoreTake(_mutex, portMAX_DELAY) == pdTRUE) {
-        // Forward to Serial (with its own mutex if available)
-        if (serialMutex) {
-            if (xSemaphoreTake(serialMutex, portMAX_DELAY) == pdTRUE) {
-                Serial.write(c);
-                xSemaphoreGive(serialMutex);
-            }
-        } else {
-            // Fallback: write directly if mutex not available (early startup)
+    // Forward to Serial immediately (for debugging)
+    if (serialMutex) {
+        if (xSemaphoreTake(serialMutex, portMAX_DELAY) == pdTRUE) {
             Serial.write(c);
+            xSemaphoreGive(serialMutex);
         }
-        
+    } else {
+        // Fallback: write directly if mutex not available (early startup)
+        Serial.write(c);
+    }
+    
+    // Lock for thread safety to update ring buffer
+    if (_mutex && xSemaphoreTake(_mutex, portMAX_DELAY) == pdTRUE) {
         // Add to current line buffer
         if (c == '\n') {
             _finalizeLine();
@@ -58,19 +58,19 @@ size_t MultiLogger::write(uint8_t c) {
 size_t MultiLogger::write(const uint8_t* buffer, size_t size) {
     if (!buffer || size == 0) return 0;
     
-    // Lock for thread safety
-    if (xSemaphoreTake(_mutex, portMAX_DELAY) == pdTRUE) {
-        // Forward to Serial (with its own mutex if available)
-        if (serialMutex) {
-            if (xSemaphoreTake(serialMutex, portMAX_DELAY) == pdTRUE) {
-                Serial.write(buffer, size);
-                xSemaphoreGive(serialMutex);
-            }
-        } else {
-            // Fallback: write directly if mutex not available (early startup)
+    // Forward to Serial immediately (for debugging)
+    if (serialMutex) {
+        if (xSemaphoreTake(serialMutex, portMAX_DELAY) == pdTRUE) {
             Serial.write(buffer, size);
+            xSemaphoreGive(serialMutex);
         }
-        
+    } else {
+        // Fallback: write directly if mutex not available (early startup)
+        Serial.write(buffer, size);
+    }
+    
+    // Lock for thread safety to update ring buffer
+    if (_mutex && xSemaphoreTake(_mutex, portMAX_DELAY) == pdTRUE) {
         // Process buffer character by character
         for (size_t i = 0; i < size; i++) {
             uint8_t c = buffer[i];
@@ -78,6 +78,15 @@ size_t MultiLogger::write(const uint8_t* buffer, size_t size) {
                 _finalizeLine();
             } else if (c != '\r') { // Skip carriage returns
                 _currentLine += (char)c;
+            }
+        }
+        
+        xSemaphoreGive(_mutex);
+    }
+    
+    return size;
+}
+
             }
         }
         
