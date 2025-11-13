@@ -3,6 +3,7 @@
 #include "WebClientModule.hpp"
 #include "webconfig.hpp"
 #include <ArduinoJson.h>
+#include <algorithm>
 
 // Allocator for PSRAM
 struct SpiRamAllocator : ArduinoJson::Allocator {
@@ -33,6 +34,9 @@ void ThemeParkModule::begin() {
 
 void ThemeParkModule::setConfig(const DeviceConfig* config) {
     _config = config;
+    _pageDisplayDuration = (_config && _config->themeParkDisplaySec > 0) 
+        ? _config->themeParkDisplaySec * 1000UL : 15000;
+    
     if (isEnabled() && _webClient) {
         // Register the parks list resource
         _webClient->registerResource(
