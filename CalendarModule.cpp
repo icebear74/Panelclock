@@ -1,4 +1,5 @@
 #include "CalendarModule.hpp"
+#include "MultiLogger.hpp"
 
 uint16_t hexColorTo565(const PsramString& hex) {
   if (hex.length() != 7 || hex[0] != '#') return 0xFFFF;
@@ -122,7 +123,7 @@ void CalendarModule::logicTick() {
     
     if (_logicTicksSinceStart >= ticksNeeded) {
         _isFinished = true;
-        Serial.printf("[Calendar] Display-Duration erreicht (%lu ms) -> Modul beendet sich selbst\n", _displayDuration);
+        Log.printf("[Calendar] Display-Duration erreicht (%lu ms) -> Modul beendet sich selbst\n", _displayDuration);
     }
 }
 
@@ -167,10 +168,10 @@ void CalendarModule::periodicTick() {
             unsigned long safeDuration = _urgentDurationMs + 10000UL;
             bool success = requestPriorityEx(Priority::Medium, _currentUrgentUID, safeDuration);
             if (success) {
-                Serial.printf("[Calendar] Dringender Termin Interrupt angefordert (UID=%lu, %lums Dauer, %lums Notnagel)\n", 
+                Log.printf("[Calendar] Dringender Termin Interrupt angefordert (UID=%lu, %lums Dauer, %lums Notnagel)\n", 
                              _currentUrgentUID, _urgentDurationMs, safeDuration);
             } else {
-                Serial.println("[Calendar] WARNUNG: Interrupt wurde abgelehnt!");
+                Log.println("[Calendar] WARNUNG: Interrupt wurde abgelehnt!");
                 _isUrgentViewActive = false;
             }
         }
@@ -179,14 +180,14 @@ void CalendarModule::periodicTick() {
             releasePriorityEx(_currentUrgentUID);
             _isUrgentViewActive = false;
             _lastUrgentDisplayTime = now;
-            Serial.println("[Calendar] Interrupt-Zyklus selbst beendet, nächster in konfigurierter Pause");
+            Log.println("[Calendar] Interrupt-Zyklus selbst beendet, nächster in konfigurierter Pause");
         }
     } 
     else if (_isUrgentViewActive) {
         // Event ist nicht mehr dringend (über Schwelle) → vorzeitig beenden
         releasePriorityEx(_currentUrgentUID);
         _isUrgentViewActive = false;
-        Serial.println("[Calendar] Kein dringender Termin mehr, Interrupt freigegeben");
+        Log.println("[Calendar] Kein dringender Termin mehr, Interrupt freigegeben");
     }
 
     xSemaphoreGive(dataMutex);
@@ -194,7 +195,7 @@ void CalendarModule::periodicTick() {
 
 void CalendarModule::draw() {
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
-        Serial.println("[Calendar::draw] FEHLER: Konnte Mutex nicht erhalten!");
+        Log.println("[Calendar::draw] FEHLER: Konnte Mutex nicht erhalten!");
         return;
     }
 

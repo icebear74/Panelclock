@@ -17,5 +17,6 @@ void handleNotFound();
 void handleDebugData();
 void handleDebugStationHistory();
 void handleTankerkoenigSearchLive();
+void handleStreamPage();
 
 #endif // WEB_HANDLERS_HPP

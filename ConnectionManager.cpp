@@ -1,5 +1,6 @@
 #include "ConnectionManager.hpp"
 #include <WiFi.h>
+#include "MultiLogger.hpp"
 
 ConnectionManager::ConnectionManager(DeviceConfig& config) 
     : deviceConfig(config), 
@@ -41,47 +42,47 @@ bool ConnectionManager::begin() {
         memcpy(lastBssid, WiFi.BSSID(), 6);
         lastChannel = WiFi.channel();
 
-        Serial.println("\n--- WLAN-Verbindungsinformationen ---");
-        Serial.printf("  IP-Adresse:  %s\n", WiFi.localIP().toString().c_str());
-        Serial.printf("  Gateway:     %s\n", WiFi.gatewayIP().toString().c_str());
-        Serial.printf("  Subnetzmaske:%s\n", WiFi.subnetMask().toString().c_str());
-        Serial.printf("  DNS-Server 1:%s\n", WiFi.dnsIP(0).toString().c_str());
-        if (WiFi.dnsIP(1).toString() != "0.0.0.0") { Serial.printf("  DNS-Server 2:%s\n", WiFi.dnsIP(1).toString().c_str()); }
-        Serial.println("-------------------------------------\n");
+        Log.println("\n--- WLAN-Verbindungsinformationen ---");
+        Log.printf("  IP-Adresse:  %s\n", WiFi.localIP().toString().c_str());
+        Log.printf("  Gateway:     %s\n", WiFi.gatewayIP().toString().c_str());
+        Log.printf("  Subnetzmaske:%s\n", WiFi.subnetMask().toString().c_str());
+        Log.printf("  DNS-Server 1:%s\n", WiFi.dnsIP(0).toString().c_str());
+        if (WiFi.dnsIP(1).toString() != "0.0.0.0") { Log.printf("  DNS-Server 2:%s\n", WiFi.dnsIP(1).toString().c_str()); }
+        Log.println("-------------------------------------\n");
 
         displayStatus("Synchronisiere Zeit...");
         ntpClient.begin();
         
-        Serial.println("--- NTP-Vorbereitung ---");
+        Log.println("--- NTP-Vorbereitung ---");
         IPAddress ntpServerIP;
-        Serial.printf("  Prüfe DNS-Auflösung für '%s'...\n", DEFAULT_NTP_SERVER_PRIMARY);
-        if (WiFi.hostByName(DEFAULT_NTP_SERVER_PRIMARY, ntpServerIP)) { Serial.printf("  > DNS-Auflösung ERFOLGREICH. IP: %s\n", ntpServerIP.toString().c_str()); } 
-        else { Serial.println("  > DNS-Auflösung FEHLGESCHLAGEN!"); }
-        Serial.println("------------------------\n");
+        Log.printf("  Prüfe DNS-Auflösung für '%s'...\n", DEFAULT_NTP_SERVER_PRIMARY);
+        if (WiFi.hostByName(DEFAULT_NTP_SERVER_PRIMARY, ntpServerIP)) { Log.printf("  > DNS-Auflösung ERFOLGREICH. IP: %s\n", ntpServerIP.toString().c_str()); } 
+        else { Log.println("  > DNS-Auflösung FEHLGESCHLAGEN!"); }
+        Log.println("------------------------\n");
 
-        Serial.printf("NTP Versuch 1: %s\n", DEFAULT_NTP_SERVER_PRIMARY);
+        Log.printf("NTP Versuch 1: %s\n", DEFAULT_NTP_SERVER_PRIMARY);
         ntpClient.setPoolServerName(DEFAULT_NTP_SERVER_PRIMARY);
         if (!ntpClient.forceUpdate()) {
-            Serial.println("  > Fehler bei Versuch 1.");
+            Log.println("  > Fehler bei Versuch 1.");
             
-            Serial.printf("NTP Versuch 2: %s\n", DEFAULT_NTP_SERVER_SECONDARY);
+            Log.printf("NTP Versuch 2: %s\n", DEFAULT_NTP_SERVER_SECONDARY);
             ntpClient.setPoolServerName(DEFAULT_NTP_SERVER_SECONDARY);
             if (!ntpClient.forceUpdate()) {
-                Serial.println("  > Fehler bei Versuch 2.");
+                Log.println("  > Fehler bei Versuch 2.");
                 
                 PsramString gatewayIpStr = WiFi.gatewayIP().toString().c_str();
-                Serial.printf("NTP Versuch 3 (Dynamisches Gateway): %s\n", gatewayIpStr.c_str());
+                Log.printf("NTP Versuch 3 (Dynamisches Gateway): %s\n", gatewayIpStr.c_str());
                 displayStatus("Externe NTPs fehlgeschl.\nVersuche lokales Gateway...");
                 ntpClient.setPoolServerName(gatewayIpStr.c_str());
                 if (!ntpClient.forceUpdate()) {
-                    Serial.println("  > Fehler bei Versuch 3.");
+                    Log.println("  > Fehler bei Versuch 3.");
 
-                    Serial.printf("NTP Versuch 4 (Fallback IP): %s\n", DEFAULT_NTP_SERVER_TERTIARY_IP);
+                    Log.printf("NTP Versuch 4 (Fallback IP): %s\n", DEFAULT_NTP_SERVER_TERTIARY_IP);
                     displayStatus("Lokales Gateway fehlgeschl.\nVersuche Fallback IP...");
                     ntpClient.setPoolServerName(DEFAULT_NTP_SERVER_TERTIARY_IP);
                     
                     while (!ntpClient.forceUpdate()) {
-                        Serial.println("  > Fehler bei Versuch 4. Beginne von vorn in 2s...");
+                        Log.println("  > Fehler bei Versuch 4. Beginne von vorn in 2s...");
                         displayStatus("Zeit-Sync fehlgeschl.\nVersuche erneut...");
                         delay(2000);
                     }
@@ -93,7 +94,7 @@ bool ConnectionManager::begin() {
         timeval tv = { utc_time, 0 };
         settimeofday(&tv, nullptr);
         
-        Serial.println("\nZeit erfolgreich synchronisiert! Systemzeit ist UTC.");
+        Log.println("\nZeit erfolgreich synchronisiert! Systemzeit ist UTC.");
         displayStatus("Zeit OK");
         delay(1000);
 
@@ -113,16 +114,16 @@ bool ConnectionManager::begin() {
 void ConnectionManager::update() {
     if (status == ConnectionStatus::CONNECTED) {
         if (millis() - lastNtpSyncTime > ntpUpdateIntervalMs) {
-            Serial.println("[ConnectionManager] Führe periodisches NTP-Update aus...");
+            Log.println("[ConnectionManager] Führe periodisches NTP-Update aus...");
             ntpClient.setPoolServerName(DEFAULT_NTP_SERVER_PRIMARY);
             if (ntpClient.forceUpdate()) {
                 time_t utc_time = ntpClient.getEpochTime();
                 timeval tv = { utc_time, 0 };
                 settimeofday(&tv, nullptr);
-                Serial.println("[ConnectionManager] Periodisches NTP-Update erfolgreich.");
+                Log.println("[ConnectionManager] Periodisches NTP-Update erfolgreich.");
                 lastNtpSyncTime = millis();
             } else {
-                Serial.println("[ConnectionManager] Periodisches NTP-Update fehlgeschlagen.");
+                Log.println("[ConnectionManager] Periodisches NTP-Update fehlgeschlagen.");
             }
         }
     }

@@ -10,6 +10,7 @@
 #include "FritzboxModule.hpp"
 #include "CuriousHolidaysModule.hpp"
 #include "WeatherModule.hpp" // HINZUGEFÜGT
+#include "PanelStreamer.hpp" // HINZUGEFÜGT
 
 // Forward-Deklarationen, um zirkuläre Abhängigkeiten in Headern zu vermeiden
 class PanelManager;
@@ -20,6 +21,7 @@ class DartsRankingModule;
 class FritzboxModule;
 class CuriousHolidaysModule;
 class WeatherModule; // HINZUGEFÜGT
+class PanelStreamer; // HINZUGEFÜGT
 
 /**
  * @brief Hauptanwendungsklasse, die den gesamten Lebenszyklus der Panelclock steuert.
@@ -98,6 +100,8 @@ private:
     CuriousHolidaysModule* _curiousMod = nullptr;
     /// @brief Zeiger auf das Wetter-Modul.
     WeatherModule* _weatherMod = nullptr; // HINZUGEFÜGT
+    /// @brief Zeiger auf den Panel-Streamer für Remote-Debugging.
+    PanelStreamer* _panelStreamer = nullptr; // HINZUGEFÜGT
     
     /// @brief Flag, das eine sofortige Neuzeichnung des Displays anfordert.
     bool _redrawRequest = false;

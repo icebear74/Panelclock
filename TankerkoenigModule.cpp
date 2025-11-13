@@ -1,4 +1,5 @@
 #include "TankerkoenigModule.hpp"
+#include "MultiLogger.hpp"
 #include "WebClientModule.hpp"
 #include "GeneralTimeConverter.hpp"
 #include <ArduinoJson.h>
@@ -77,7 +78,7 @@ void TankerkoenigModule::logicTick() {
             if (currentPage >= numPages) {
                 currentPage = 0;
                 _isFinished = true;
-                Serial.printf("[Tanker] Alle %d Seiten gezeigt -> Modul beendet sich selbst\n", numPages);
+                Log.printf("[Tanker] Alle %d Seiten gezeigt -> Modul beendet sich selbst\n", numPages);
             } else if (totalPages > 1) {
                 if (updateCallback) updateCallback();
             }
@@ -140,7 +141,7 @@ void TankerkoenigModule::restore(JsonObject& obj) {
     }
 
     if (restored_something) {
-        Serial.println("[TankerkoenigModule] Restore abgeschlossen. Reboot erforderlich.");
+        Log.println("[TankerkoenigModule] Restore abgeschlossen. Reboot erforderlich.");
     }
 }
 
@@ -165,7 +166,7 @@ void TankerkoenigModule::updateFailsafeTimeout() {
         unsigned long expectedRuntime = (num_pages > 0 ? num_pages : 1) * _pageDisplayDuration;
         this->maxRuntimeMs = expectedRuntime + FAILSAFE_BUFFER_MS;
         xSemaphoreGive(dataMutex);
-        Serial.printf("[TankerkoenigModule] Failsafe-Timeout auf %lu ms gesetzt (%d Seiten).\n", this->maxRuntimeMs, num_pages);
+        Log.printf("[TankerkoenigModule] Failsafe-Timeout auf %lu ms gesetzt (%d Seiten).\n", this->maxRuntimeMs, num_pages);
     }
 }
 
@@ -222,11 +223,11 @@ void TankerkoenigModule::setConfig(const PsramString& apiKey, const PsramString&
 
 void TankerkoenigModule::begin() {
     if (LittleFS.exists("/price_history.json")) {
-        Serial.println("[TankerkoenigModule] Altes Preis-Format 'price_history.json' gefunden. Wird gelöscht.");
+        Log.println("[TankerkoenigModule] Altes Preis-Format 'price_history.json' gefunden. Wird gelöscht.");
         LittleFS.remove("/price_history.json");
     }
     if (LittleFS.exists("/avg_price_trends.json")) {
-        Serial.println("[TankerkoenigModule] Veraltete Cache-Datei 'avg_price_trends.json' gefunden. Wird gelöscht.");
+        Log.println("[TankerkoenigModule] Veraltete Cache-Datei 'avg_price_trends.json' gefunden. Wird gelöscht.");
         LittleFS.remove("/avg_price_trends.json");
     }
     
@@ -234,7 +235,7 @@ void TankerkoenigModule::begin() {
     loadPriceStatistics();
     
     #if !TANKERKOENIG_SAVE_HISTORY
-    Serial.println("[TankerkoenigModule] Historie-Speicherung DEAKTIVIERT (TANKERKOENIG_SAVE_HISTORY = false) - Daten werden NICHT persistiert");
+    Log.println("[TankerkoenigModule] Historie-Speicherung DEAKTIVIERT (TANKERKOENIG_SAVE_HISTORY = false) - Daten werden NICHT persistiert");
     #endif
     
     loadStationCache();
@@ -344,7 +345,7 @@ void TankerkoenigModule::parseAndProcessJson(const char* buffer, size_t size) {
             }
         }
         station_data_list = new_station_data_list;
-    } else { Serial.printf("[TankerkoenigModule] JSON-Parsing-Fehler: %s\n", error.c_str()); }
+    } else { Log.printf("[TankerkoenigModule] JSON-Parsing-Fehler: %s\n", error.c_str()); }
 }
 
 void TankerkoenigModule::draw() {
@@ -885,7 +886,7 @@ void TankerkoenigModule::savePriceStatistics() {
 
 void TankerkoenigModule::loadPriceStatistics() {
     if (!LittleFS.exists("/station_price_stats.json")) { 
-        Serial.println("[TankerkoenigModule] Keine gespeicherten Preisstatistiken gefunden");
+        Log.println("[TankerkoenigModule] Keine gespeicherten Preisstatistiken gefunden");
         return; 
     }
     File file = LittleFS.open("/station_price_stats.json", "r");
@@ -906,13 +907,13 @@ void TankerkoenigModule::loadPriceStatistics() {
                     }
                     price_statistics.push_back(history);
                 }
-                Serial.printf("[TankerkoenigModule] %d Stationen mit Preisstatistiken geladen\n", price_statistics.size());
+                Log.printf("[TankerkoenigModule] %d Stationen mit Preisstatistiken geladen\n", price_statistics.size());
             } else { 
-                Serial.println("[TankerkoenigModule] Inkompatible Statistik-Version, Datei wird gelöscht");
+                Log.println("[TankerkoenigModule] Inkompatible Statistik-Version, Datei wird gelöscht");
                 LittleFS.remove("/station_price_stats.json"); 
             }
         } else { 
-            Serial.println("[TankerkoenigModule] Fehler beim Parsen der Statistiken, Datei wird gelöscht");
+            Log.println("[TankerkoenigModule] Fehler beim Parsen der Statistiken, Datei wird gelöscht");
             LittleFS.remove("/station_price_stats.json"); 
         }
         file.close();

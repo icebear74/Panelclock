@@ -36,6 +36,7 @@ const char HTML_INDEX[] PROGMEM = R"rawliteral(
 <!-- File manager button added to main menu -->
 <a href="/fs" class="button">Dateimanager</a>
 <hr>
+<a href="/stream" class="button" style="background-color:#2196F3;">Live-Stream & Debug</a>
 <a href="/debug" class="button" style="background-color:#555;">Debug Daten</a>
 )rawliteral";
 
@@ -442,6 +443,224 @@ const char HTML_DEBUG_STATION_HISTORY[] PROGMEM = R"rawliteral(
     </table>
 </div>
 <div class="footer-link"><a href="/debug">&laquo; Zur&uuml;ck zur &Uuml;bersicht</a></div>
+)rawliteral";
+
+const char HTML_STREAM_PAGE[] PROGMEM = R"rawliteral(
+<h1>Panel Live-Stream & Debug</h1>
+<div style="text-align: center; margin-bottom: 30px;">
+    <h3>LED Panel Vorschau</h3>
+    <div style="display: flex; justify-content: center;">
+        <canvas id="panelSimulator" style="background-color: #000; border: 2px solid #444; border-radius: 8px;"></canvas>
+    </div>
+    <div style="margin-top: 15px;">
+        <button id="connectBtn" class="button" onclick="toggleConnection()">Verbinden</button>
+        <span id="statusText" style="margin-left: 15px; color: #bbb;">Getrennt</span>
+    </div>
+</div>
+
+<div style="text-align: center; margin-top: 30px; padding: 0 20px;">
+    <h3>Log-Ausgabe</h3>
+    <div style="display: flex; justify-content: center;">
+        <div style="max-width: 1000px; width: 100%;">
+            <pre id="logOutput" style="background: #1a1a1a; color: #0f0; padding: 15px; border-radius: 4px; height: 400px; overflow-y: auto; font-family: monospace; font-size: 12px; border: 1px solid #444;"></pre>
+            <button onclick="clearLogs()" class="button" style="margin-top: 10px; width: auto;">Logs löschen</button>
+        </div>
+    </div>
+</div>
+
+<div class="footer-link"><a href="/">&laquo; Zurück zum Hauptmenü</a></div>
+
+<script>
+let ws = null;
+let canvas = document.getElementById('panelSimulator');
+let ctx = canvas.getContext('2d');
+let logOutput = document.getElementById('logOutput');
+let statusText = document.getElementById('statusText');
+let connectBtn = document.getElementById('connectBtn');
+
+const PANEL_WIDTH = 192;  // 64 * 3
+const PANEL_HEIGHT = 96;   // 32 * 3
+const LED_SIZE = 4;        // Optimized for ~800px width
+const LED_SPACING = 6.75;  // Spacing increased by 1.5x (4.5 * 1.5 = 6.75) for more authentic look
+
+function initCanvas() {
+    // Set canvas size to accommodate LEDs with spacing
+    canvas.width = PANEL_WIDTH * LED_SPACING;
+    canvas.height = PANEL_HEIGHT * LED_SPACING;
+    
+    // Draw background and LED grid
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw dark gray circles for "off" LEDs
+    ctx.fillStyle = '#222';
+    for (let y = 0; y < PANEL_HEIGHT; y++) {
+        for (let x = 0; x < PANEL_WIDTH; x++) {
+            let cx = x * LED_SPACING + LED_SPACING / 2;
+            let cy = y * LED_SPACING + LED_SPACING / 2;
+            ctx.beginPath();
+            ctx.arc(cx, cy, LED_SIZE / 2, 0, 2 * Math.PI);
+            ctx.fill();
+        }
+    }
+}
+
+function toggleConnection() {
+    try {
+        console.log('[toggleConnection] Button clicked');
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            console.log('[toggleConnection] Closing existing connection');
+            ws.close();
+        } else {
+            console.log('[toggleConnection] Starting new connection');
+            connect();
+        }
+    } catch (e) {
+        console.error('[toggleConnection] Error:', e);
+        addLog('[Error] ' + e.message);
+    }
+}
+
+function connect() {
+    statusText.textContent = 'Verbinde...';
+    statusText.style.color = '#ffaa00';
+    connectBtn.disabled = true;
+    
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = protocol + '//' + window.location.hostname + ':81/';
+    
+    console.log('[WebSocket] Attempting to connect to:', wsUrl);
+    addLog('[System] Verbinde zu ' + wsUrl);
+    
+    ws = new WebSocket(wsUrl);
+    ws.binaryType = 'arraybuffer';
+    
+    ws.onopen = function() {
+        console.log('[WebSocket] Connection opened');
+        statusText.textContent = 'Verbunden';
+        statusText.style.color = '#4CAF50';
+        connectBtn.textContent = 'Trennen';
+        connectBtn.disabled = false;
+        addLog('[System] WebSocket verbunden');
+    };
+    
+    ws.onclose = function(event) {
+        console.log('[WebSocket] Connection closed:', event.code, event.reason);
+        statusText.textContent = 'Getrennt';
+        statusText.style.color = '#bbb';
+        connectBtn.textContent = 'Verbinden';
+        connectBtn.disabled = false;
+        addLog('[System] WebSocket getrennt (Code: ' + event.code + ')');
+    };
+    
+    ws.onerror = function(err) {
+        console.error('[WebSocket] Error:', err);
+        statusText.textContent = 'Fehler';
+        statusText.style.color = '#f44336';
+        connectBtn.disabled = false;
+        addLog('[System] WebSocket Fehler - siehe Browser Console');
+    };
+    
+    ws.onmessage = function(event) {
+        if (typeof event.data === 'string') {
+            // Text message - log data
+            console.log('[WebSocket] Text message received:', event.data.substring(0, 100));
+            try {
+                const msg = JSON.parse(event.data);
+                if (msg.type === 'log') {
+                    addLog(msg.data);
+                }
+            } catch (e) {
+                console.error('[WebSocket] JSON parse error:', e);
+                addLog('[Error] Failed to parse log message');
+            }
+        } else {
+            // Binary message - panel data (RLE compressed)
+            console.log('[WebSocket] Binary message received, size:', event.data.byteLength);
+            decodeAndRenderPanel(new Uint8Array(event.data));
+        }
+    };
+}
+
+function addLog(text) {
+    logOutput.textContent += text + '\n';
+    logOutput.scrollTop = logOutput.scrollHeight;
+}
+
+function clearLogs() {
+    logOutput.textContent = '';
+}
+
+function decodeAndRenderPanel(data) {
+    // Reset to dark background
+    initCanvas();
+    
+    let pos = 0;
+    let pixelIndex = 0;
+    
+    while (pos < data.length - 2 && pixelIndex < PANEL_WIDTH * PANEL_HEIGHT) {
+        let count = data[pos++];
+        
+        // Check for skip marker (count == 0x00 means skip black pixels)
+        if (count === 0x00) {
+            if (pos < data.length - 1) {
+                let skipHigh = data[pos++];
+                let skipLow = data[pos++];
+                let skipCount = (skipHigh << 8) | skipLow;
+                pixelIndex += skipCount;  // Skip these positions (leave them black)
+            }
+            continue;
+        }
+        
+        let highByte = data[pos++];
+        let lowByte = data[pos++];
+        
+        // Reconstruct RGB565 pixel
+        let rgb565 = (highByte << 8) | lowByte;
+        
+        // Convert RGB565 to RGB888
+        let r = ((rgb565 >> 11) & 0x1F) * 255 / 31;
+        let g = ((rgb565 >> 5) & 0x3F) * 255 / 63;
+        let b = (rgb565 & 0x1F) * 255 / 31;
+        
+        // Draw the LEDs
+        ctx.fillStyle = 'rgb(' + Math.round(r) + ',' + Math.round(g) + ',' + Math.round(b) + ')';
+        
+        for (let i = 0; i < count && pixelIndex < PANEL_WIDTH * PANEL_HEIGHT; i++) {
+            let x = pixelIndex % PANEL_WIDTH;
+            let y = Math.floor(pixelIndex / PANEL_WIDTH);
+            
+            let cx = x * LED_SPACING + LED_SPACING / 2;
+            let cy = y * LED_SPACING + LED_SPACING / 2;
+            
+            ctx.beginPath();
+            ctx.arc(cx, cy, LED_SIZE / 2, 0, 2 * Math.PI);
+            ctx.fill();
+            
+            pixelIndex++;
+        }
+    }
+}
+
+// Initialize canvas on load
+try {
+    console.log('[Init] Initializing canvas and elements');
+    if (!canvas) console.error('[Init] Canvas element not found!');
+    if (!logOutput) console.error('[Init] logOutput element not found!');
+    if (!statusText) console.error('[Init] statusText element not found!');
+    if (!connectBtn) console.error('[Init] connectBtn element not found!');
+    
+    if (canvas && ctx) {
+        initCanvas();
+        console.log('[Init] Canvas initialized successfully');
+    }
+    
+    console.log('[Init] Page ready. Click "Verbinden" to start streaming.');
+} catch (e) {
+    console.error('[Init] Initialization error:', e);
+}
+
+</script>
 )rawliteral";
 
 #endif // WEB_PAGES_HPP

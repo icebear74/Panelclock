@@ -11,6 +11,8 @@
 #include "MwaveSensorModule.hpp"
 #include "OtaManager.hpp"
 #include "MemoryLogger.hpp"
+#include "MultiLogger.hpp"
+#include "PanelStreamer.hpp"
 
 // --- Globale Variablen ---
 Application* Application::_instance = nullptr;
@@ -35,14 +37,14 @@ void displayStatus(const char* msg) {
     if (Application::_instance && Application::_instance->getPanelManager()) {
         Application::_instance->getPanelManager()->displayStatus(msg);
     } else {
-        Serial.printf("[displayStatus FALLBACK]: %s\n", msg);
+        Log.printf("[displayStatus FALLBACK]: %s\n", msg);
     }
 }
 
 void applyLiveConfig() {
     if (Application::_instance) {
         Application::_instance->_configNeedsApplying = true;
-        Serial.println("[Config] Live-Konfiguration angefordert. Wird im nächsten Loop-Durchlauf angewendet.");
+        Log.println("[Config] Live-Konfiguration angefordert. Wird im nächsten Loop-Durchlauf angewendet.");
     }
 }
 
@@ -68,13 +70,14 @@ Application::~Application() {
     delete _fritzMod;
     delete _curiousMod;
     delete _weatherMod;
+    delete _panelStreamer;
 }
 
 void Application::begin() {
     LOG_MEMORY_STRATEGIC("Application: Start");
 
     if (!LittleFS.begin()) {
-        Serial.println("FATAL: LittleFS konnte nicht initialisiert werden!");
+        Log.println("FATAL: LittleFS konnte nicht initialisiert werden!");
         while(true) delay(1000);
     }
 
@@ -139,6 +142,11 @@ void Application::begin() {
         otaManager->begin();
         ArduinoOTA.begin();
         setupWebServer(portalRunning);
+        
+        // Initialize Panel Streamer after WiFi is connected
+        _panelStreamer = new PanelStreamer(_panelManager);
+        _panelStreamer->begin();
+        Log.println("[Application] PanelStreamer initialized and started");
         
     } else {
         portalRunning = true;
@@ -224,7 +232,7 @@ void Application::update() {
 void Application::executeApplyLiveConfig() {
     LOG_MEMORY_DETAILED("Vor executeApplyLiveConfig");
     if (!_tankerkoenigMod || !_calendarMod || !_dartsMod || !_fritzMod || !_curiousMod || !_weatherMod || !timeConverter || !deviceConfig) return;
-    Serial.println("[Config] Wende Live-Konfiguration an...");
+    Log.println("[Config] Wende Live-Konfiguration an...");
     
     if (!timeConverter->setTimezone(deviceConfig->timezone.c_str())) {
         timeConverter->setTimezone("UTC");
@@ -238,6 +246,6 @@ void Application::executeApplyLiveConfig() {
     _curiousMod->setConfig();
     _weatherMod->setConfig(deviceConfig);
 
-    Serial.println("[Config] Live-Konfiguration angewendet.");
+    Log.println("[Config] Live-Konfiguration angewendet.");
     LOG_MEMORY_DETAILED("Nach executeApplyLiveConfig");
 }

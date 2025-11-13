@@ -44,6 +44,9 @@ void setupWebServer(bool portalMode) {
     // Debug routes
     server->on("/debug", HTTP_GET, handleDebugData);
     server->on("/debug/station", HTTP_GET, handleDebugStationHistory);
+    
+    // Stream page for remote debugging
+    server->on("/stream", HTTP_GET, handleStreamPage);
 
     // File manager (UI + API) registers its own routes
     setupFileManagerRoutes();
