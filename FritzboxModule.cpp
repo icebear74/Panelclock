@@ -116,25 +116,33 @@ void FritzboxModule::taskLoop() {
             vTaskDelay(pdMS_TO_TICKS(1000));
         } else {
             while (client.available()) {
-                String line = client.readStringUntil('\n');
-                parseCallMonitorLine(line);
+                // Read line into a PSRAM buffer to reduce heap usage
+                PsramString line;
+                while (client.available()) {
+                    char c = client.read();
+                    if (c == '\n') break;
+                    line += c;
+                }
+                if (!line.empty()) {
+                    parseCallMonitorLine(line);
+                }
             }
             vTaskDelay(pdMS_TO_TICKS(50));
         }
     }
 }
 
-void FritzboxModule::parseCallMonitorLine(const String& line) {
-    int firstSemi = line.indexOf(';');
-    int secondSemi = line.indexOf(';', firstSemi + 1);
-    int thirdSemi = line.indexOf(';', secondSemi + 1);
-    int fourthSemi = line.indexOf(';', thirdSemi + 1);
+void FritzboxModule::parseCallMonitorLine(const PsramString& line) {
+    int firstSemi = indexOf(line, ";");
+    int secondSemi = indexOf(line, ";", firstSemi + 1);
+    int thirdSemi = indexOf(line, ";", secondSemi + 1);
+    int fourthSemi = indexOf(line, ";", thirdSemi + 1);
     if (firstSemi < 0 || secondSemi < 0 || thirdSemi < 0 || fourthSemi < 0) return;
-    String type = line.substring(firstSemi + 1, secondSemi);
+    PsramString type = line.substr(firstSemi + 1, secondSemi - firstSemi - 1);
 
     if (xSemaphoreTake(dataMutex, portMAX_DELAY) == pdTRUE) {
         if (type == "RING") {
-            callerNumber = line.substring(thirdSemi + 1, fourthSemi).c_str();
+            callerNumber = line.substr(thirdSemi + 1, fourthSemi - thirdSemi - 1);
             if (callerNumber.length() == 0) callerNumber = "Unbekannt";
             callerName.clear();
             callerLocation.clear();

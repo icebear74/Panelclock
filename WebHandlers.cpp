@@ -281,8 +281,12 @@ void handleSaveModules() {
         deviceConfig->fritzboxIp = server->arg("fritzboxIp").c_str();
     } else {
         if(deviceConfig->fritzboxEnabled) {
-            String gwIP = WiFi.gatewayIP().toString();
-            deviceConfig->fritzboxIp = gwIP.c_str(); 
+            // Use stack buffer to avoid heap allocation
+            char gwIP[16];
+            snprintf(gwIP, sizeof(gwIP), "%d.%d.%d.%d", 
+                WiFi.gatewayIP()[0], WiFi.gatewayIP()[1], 
+                WiFi.gatewayIP()[2], WiFi.gatewayIP()[3]);
+            deviceConfig->fritzboxIp = gwIP; 
         }
         else { deviceConfig->fritzboxIp = ""; }
     }
@@ -518,8 +522,9 @@ void handleTankerkoenigSearchLive() {
     if (deviceConfig->userLatitude == 0.0 || deviceConfig->userLongitude == 0.0) { server->send(400, "application/json", "{\"ok\":false, \"message\":\"Kein Standort konfiguriert. Bitte zuerst 'Mein Standort' festlegen.\"}"); return; }
     if (deviceConfig->tankerApiKey.empty()) { server->send(400, "application/json", "{\"ok\":false, \"message\":\"Kein Tankerkönig API-Key konfiguriert.\"}"); return; }
 
-    String radius = server->arg("radius");
-    String sort = server->arg("sort");
+    // Store String values to avoid dangling pointers
+    String radiusStr = server->arg("radius");
+    String sortStr = server->arg("sort");
     PsramString url;
     url += "https://creativecommons.tankerkoenig.de/json/list.php?lat=";
     char coord_buf[20];
@@ -528,7 +533,7 @@ void handleTankerkoenigSearchLive() {
     url += "&lng=";
     snprintf(coord_buf, sizeof(coord_buf), "%.6f", deviceConfig->userLongitude);
     url += coord_buf;
-    url += "&rad="; url += radius.c_str(); url += "&sort="; url += sort.c_str(); url += "&type=all&apikey="; url += deviceConfig->tankerApiKey.c_str();
+    url += "&rad="; url += radiusStr.c_str(); url += "&sort="; url += sortStr.c_str(); url += "&type=all&apikey="; url += deviceConfig->tankerApiKey.c_str();
 
     struct Result { int httpCode; PsramString payload; } result;
     SemaphoreHandle_t sem = xSemaphoreCreateBinary();

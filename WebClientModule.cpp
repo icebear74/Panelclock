@@ -12,26 +12,26 @@
 static bool disableModuleDataAccess = false; // Setze auf true, um Module "keine Daten" denken zu lassen
 
 // --- Helper: find cert filename for a host (try full host first, then strip subdomains) ---
-// Returns an Arduino String with the filename (e.g. "calendar.google.com.pem" or "google.com.pem") or empty if none found
-static String findCertFilenameForHost(const String& hostWithOptionalPort) {
-    String host = hostWithOptionalPort;
+// Returns a PsramString with the filename (e.g. "calendar.google.com.pem" or "google.com.pem") or empty if none found
+static PsramString findCertFilenameForHost(const PsramString& hostWithOptionalPort) {
+    PsramString host = hostWithOptionalPort;
     // strip port if present
-    int colon = host.indexOf(':');
-    if (colon != -1) host = host.substring(0, colon);
+    int colon = indexOf(host, ":");
+    if (colon != -1) host = host.substr(0, colon);
 
-    String candidate = host;
+    PsramString candidate = host;
     while (true) {
         if (candidate.length() == 0) break;
-        String fname = candidate + ".pem";
-        String path = "/certs/" + fname;
-        if (LittleFS.exists(path)) {
+        PsramString fname = candidate + ".pem";
+        PsramString path = PsramString("/certs/") + fname;
+        if (LittleFS.exists(path.c_str())) {
             return fname;
         }
-        int dot = candidate.indexOf('.');
+        int dot = indexOf(candidate, ".");
         if (dot == -1) break;
-        candidate = candidate.substring(dot + 1);
+        candidate = candidate.substr(dot + 1);
     }
-    return String(); // not found
+    return PsramString(); // not found
 }
 
 // --- PsramBufferStream Implementierung ---
@@ -340,12 +340,12 @@ void WebClientModule::performJob(const WebJob& job) {
 
     // determine cert filename by searching cert files in /certs (full host first, then progressively remove subdomains)
     if (using_https) {
-        String found = findCertFilenameForHost(String(host.c_str()));
-        if (!found.isEmpty()) {
-            cert_filename = PsramString(found.c_str());
-            String filepath = "/certs/" + found;
-            if (LittleFS.exists(filepath)) {
-                File certFile = LittleFS.open(filepath, "r");
+        PsramString found = findCertFilenameForHost(host);
+        if (!found.empty()) {
+            cert_filename = found;
+            PsramString filepath = PsramString("/certs/") + found;
+            if (LittleFS.exists(filepath.c_str())) {
+                File certFile = LittleFS.open(filepath.c_str(), "r");
                 if (certFile) {
                     cert_data = readFromStream(certFile);
                     certFile.close();
@@ -356,9 +356,9 @@ void WebClientModule::performJob(const WebJob& job) {
 
         // fallback: if resource already has cert_filename configured, try it
         if (!cert_loaded && !cert_filename.empty()) {
-            String filepath = "/certs/" + String(cert_filename.c_str());
-            if (LittleFS.exists(filepath)) {
-                File certFile = LittleFS.open(filepath, "r");
+            PsramString filepath = PsramString("/certs/") + cert_filename;
+            if (LittleFS.exists(filepath.c_str())) {
+                File certFile = LittleFS.open(filepath.c_str(), "r");
                 if (certFile) {
                     cert_data = readFromStream(certFile);
                     certFile.close();
@@ -589,7 +589,7 @@ void WebClientModule::performUpdate(ManagedResource& resource) {
         if (resource.url.rfind("https://", 0) == 0) {
             PsramString cert_data;
             bool cert_loaded = false;
-            String filepath;
+            PsramString filepath;
 
             // determine host
             PsramString host;
@@ -605,25 +605,25 @@ void WebClientModule::performUpdate(ManagedResource& resource) {
             }
 
             // first try to find cert by host names in /certs
-            String found = findCertFilenameForHost(String(host.c_str()));
-            if (!found.isEmpty()) {
-                filepath = "/certs/" + found;
-                if (LittleFS.exists(filepath)) {
-                    File certFile = LittleFS.open(filepath, "r");
+            PsramString found = findCertFilenameForHost(host);
+            if (!found.empty()) {
+                filepath = PsramString("/certs/") + found;
+                if (LittleFS.exists(filepath.c_str())) {
+                    File certFile = LittleFS.open(filepath.c_str(), "r");
                     if (certFile) {
                         cert_data = readFromStream(certFile);
                         certFile.close();
                         cert_loaded = true;
-                        resource.cert_filename = found.c_str(); // record which file was used
+                        resource.cert_filename = found; // record which file was used
                     }
                 }
             }
 
             // fallback: if resource already has cert_filename configured, try it
             if (!cert_loaded && !resource.cert_filename.empty()) {
-                filepath = "/certs/" + String(resource.cert_filename.c_str());
-                if (LittleFS.exists(filepath)) {
-                    File certFile = LittleFS.open(filepath, "r");
+                filepath = PsramString("/certs/") + resource.cert_filename;
+                if (LittleFS.exists(filepath.c_str())) {
+                    File certFile = LittleFS.open(filepath.c_str(), "r");
                     if (certFile) {
                         cert_data = readFromStream(certFile);
                         certFile.close();
