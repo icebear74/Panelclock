@@ -4,9 +4,9 @@
 #include "MultiLogger.hpp"
 #include "webconfig.hpp"
 #include "HardwareConfig.hpp"
-#include <base64.h>
 #include <time.h>
 #include <sys/stat.h>
+#include <algorithm>
 
 // External references
 extern DeviceConfig* deviceConfig;
