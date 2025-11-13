@@ -17,12 +17,14 @@ The heart of the project is a modular architecture, orchestrated by the central 
 - **DrawableModule (`DrawableModule.hpp`):** A virtual base class (interface) implemented by all display modules. It defines the fundamental functions a module must have, such as `draw()`, `logicTick()`, and `getDisplayDuration()`.
 - **WebClientModule (`WebClientModule.cpp/.hpp`):** A central, asynchronous manager for all HTTP requests. Modules register their required web resources here, and the WebClient efficiently handles fetching and caching the data in the background.
 - **WebServer & Configuration (`webconfig.cpp/.hpp`, `WebServerManager.cpp/.hpp`):** The project hosts a comprehensive web interface that allows for full configuration of all modules without recompiling. Settings are stored on the device's LittleFS.
+- **BackupManager (`BackupManager.cpp/.hpp`):** Manages complete system backups including all configurations, module data, and certificates. Supports automatic daily backups, manual backup creation, download/upload via web interface, and emergency recovery in Access Point mode. See [BACKUP_SYSTEM.md](BACKUP_SYSTEM.md) for details.
 
 ## Key Features
 
 - **Modular Display:** Easily extendable with new modules. The displayed information rotates automatically.
 - **Web Configuration:** An integrated web server allows for convenient configuration of Wi-Fi, timezone, module settings, and more via a browser.
 - **OTA Updates:** The firmware can be updated "Over-the-Air" through the web interface.
+- **Backup & Restore:** Complete system backups including all configurations, module data, and certificates. Automatic daily backups with web-based download/upload and emergency recovery in Access Point mode. See [BACKUP_SYSTEM.md](BACKUP_SYSTEM.md) for details.
 - **Efficient Resource Management:** Heavy use of PSRAM for web data, JSON parsing, player lists, and string operations to conserve the ESP32's scarce internal memory. All modules use PsramString and PsramVector to minimize heap fragmentation.
 - **Asynchronous Data Fetching:** All external data is loaded in the background without blocking the display or other operations.
 - **Presence Detection:** The `MwaveSensorModule` can automatically turn off the display when no one is present and reactivate it, saving power.
