@@ -641,14 +641,15 @@ void handleThemeParksList() {
     
     Log.println("[ThemePark] handleThemeParksList called - fetching parks from API");
     
-    // Fetch parks list on-demand using webClient
+    // Fetch parks list on-demand using webClient with custom headers
     PsramString url = "https://api.wartezeiten.app/v1/parks";
+    PsramString headers = "accept: application/json\nlanguage: de";
     
     struct Result { int httpCode; PsramString payload; } result;
     result.httpCode = 0;
     SemaphoreHandle_t sem = xSemaphoreCreateBinary();
     
-    webClient->getRequest(url, [&](int httpCode, const char* payload, size_t len) {
+    webClient->getRequest(url, headers, [&](int httpCode, const char* payload, size_t len) {
         Log.printf("[ThemePark] Callback received - HTTP %d, payload size: %d\n", httpCode, len);
         result.httpCode = httpCode;
         if (payload && len > 0) { 

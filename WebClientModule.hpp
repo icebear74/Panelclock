@@ -61,6 +61,7 @@ struct WebJob {
     PsramString url;
     PsramString body;
     PsramString contentType;
+    PsramString customHeaders;  // Format: "Header1: Value1\nHeader2: Value2"
     std::function<void(const char* buffer, size_t size)> callback;
     std::function<void(int httpCode, const char* payload, size_t len)> detailed_callback;
 };
@@ -78,6 +79,7 @@ public:
     
     void getRequest(const PsramString& url, std::function<void(const char* buffer, size_t size)> callback);
     void getRequest(const PsramString& url, std::function<void(int httpCode, const char* payload, size_t len)> detailed_callback);
+    void getRequest(const PsramString& url, const PsramString& customHeaders, std::function<void(int httpCode, const char* payload, size_t len)> detailed_callback);
     void postRequest(const PsramString& url, const PsramString& postBody, const PsramString& contentType, std::function<void(const char* buffer, size_t size)> callback);
 
 private:

@@ -238,7 +238,7 @@ void WebClientModule::getRequest(const PsramString& url, std::function<void(cons
         callback(nullptr, 0);
         return;
     }
-    WebJob* job = new WebJob{WebJob::GET, url, "", "", callback, nullptr};
+    WebJob* job = new WebJob{WebJob::GET, url, "", "", "", callback, nullptr};
     if (!job) {
         Log.println("[WebClientModule] FEHLER: Konnte keinen WebJob für GET allozieren.");
         callback(nullptr, 0);
@@ -257,7 +257,7 @@ void WebClientModule::getRequest(const PsramString& url, std::function<void(int 
         detailed_callback(-1, "No WiFi", 7);
         return;
     }
-    WebJob* job = new WebJob{WebJob::GET, url, "", "", nullptr, detailed_callback};
+    WebJob* job = new WebJob{WebJob::GET, url, "", "", "", nullptr, detailed_callback};
     if (!job) {
         Log.println("[WebClientModule] FEHLER: Konnte keinen WebJob für GET (detailed) allozieren.");
         detailed_callback(-1, "Malloc failed", 12);
@@ -270,6 +270,25 @@ void WebClientModule::getRequest(const PsramString& url, std::function<void(int 
     }
 }
 
+void WebClientModule::getRequest(const PsramString& url, const PsramString& customHeaders, std::function<void(int httpCode, const char* payload, size_t len)> detailed_callback) {
+    if (WiFi.status() != WL_CONNECTED) {
+        Log.println("[WebClientModule] GET-Anfrage (detailed+headers) fehlgeschlagen: Keine WLAN-Verbindung.");
+        detailed_callback(-1, "No WiFi", 7);
+        return;
+    }
+    WebJob* job = new WebJob{WebJob::GET, url, "", "", customHeaders, nullptr, detailed_callback};
+    if (!job) {
+        Log.println("[WebClientModule] FEHLER: Konnte keinen WebJob für GET (detailed+headers) allozieren.");
+        detailed_callback(-1, "Malloc failed", 12);
+        return;
+    }
+    if (xQueueSend(jobQueue, &job, pdMS_TO_TICKS(100)) != pdTRUE) {
+        Log.println("[WebDataManager] FEHLER: Konnte GET-Job (detailed+headers) nicht zur Queue hinzufügen.");
+        delete job;
+        detailed_callback(-1, "Queue full", 10);
+    }
+}
+
 void WebClientModule::postRequest(const PsramString& url, const PsramString& postBody, const PsramString& contentType, std::function<void(const char* buffer, size_t size)> callback) {
     if (WiFi.status() != WL_CONNECTED) {
         Log.println("[WebClientModule] POST-Anfrage fehlgeschlagen: Keine WLAN-Verbindung.");
@@ -277,7 +296,7 @@ void WebClientModule::postRequest(const PsramString& url, const PsramString& pos
         return;
     }
 
-    WebJob* job = new WebJob{WebJob::POST, url, postBody, contentType, callback, nullptr};
+    WebJob* job = new WebJob{WebJob::POST, url, postBody, contentType, "", callback, nullptr};
     if (!job) {
         Log.println("[WebClientModule] FEHLER: Konnte keinen WebJob für POST allozieren.");
         callback(nullptr, 0);
@@ -404,6 +423,30 @@ void WebClientModule::performJob(const WebJob& job) {
     if (connected) {
         if (using_https) {
             if (http.begin(secure_client, job.url.c_str())) {
+                // Add custom headers if provided
+                if (!job.customHeaders.empty()) {
+                    // Parse and add headers (format: "Header1: Value1\nHeader2: Value2")
+                    PsramString headers = job.customHeaders;
+                    size_t pos = 0;
+                    while (pos < headers.length()) {
+                        size_t newlinePos = headers.find('\n', pos);
+                        if (newlinePos == PsramString::npos) newlinePos = headers.length();
+                        
+                        PsramString headerLine = headers.substr(pos, newlinePos - pos);
+                        size_t colonPos = headerLine.find(':');
+                        if (colonPos != PsramString::npos) {
+                            PsramString headerName = headerLine.substr(0, colonPos);
+                            PsramString headerValue = headerLine.substr(colonPos + 1);
+                            // Trim leading/trailing spaces
+                            while (!headerValue.empty() && headerValue[0] == ' ') headerValue = headerValue.substr(1);
+                            while (!headerValue.empty() && headerValue[headerValue.length()-1] == ' ') headerValue = headerValue.substr(0, headerValue.length()-1);
+                            http.addHeader(headerName.c_str(), headerValue.c_str());
+                            Log.printf("[WebDataManager] Added header: %s: %s\n", headerName.c_str(), headerValue.c_str());
+                        }
+                        pos = newlinePos + 1;
+                    }
+                }
+                
                 if (job.type == WebJob::GET) {
                     httpCode = http.GET();
                 } else {
@@ -415,6 +458,30 @@ void WebClientModule::performJob(const WebJob& job) {
             }
         } else {
             if (http.begin(plain_client, job.url.c_str())) {
+                // Add custom headers if provided
+                if (!job.customHeaders.empty()) {
+                    // Parse and add headers (format: "Header1: Value1\nHeader2: Value2")
+                    PsramString headers = job.customHeaders;
+                    size_t pos = 0;
+                    while (pos < headers.length()) {
+                        size_t newlinePos = headers.find('\n', pos);
+                        if (newlinePos == PsramString::npos) newlinePos = headers.length();
+                        
+                        PsramString headerLine = headers.substr(pos, newlinePos - pos);
+                        size_t colonPos = headerLine.find(':');
+                        if (colonPos != PsramString::npos) {
+                            PsramString headerName = headerLine.substr(0, colonPos);
+                            PsramString headerValue = headerLine.substr(colonPos + 1);
+                            // Trim leading/trailing spaces
+                            while (!headerValue.empty() && headerValue[0] == ' ') headerValue = headerValue.substr(1);
+                            while (!headerValue.empty() && headerValue[headerValue.length()-1] == ' ') headerValue = headerValue.substr(0, headerValue.length()-1);
+                            http.addHeader(headerName.c_str(), headerValue.c_str());
+                            Log.printf("[WebDataManager] Added header: %s: %s\n", headerName.c_str(), headerValue.c_str());
+                        }
+                        pos = newlinePos + 1;
+                    }
+                }
+                
                 if (job.type == WebJob::GET) {
                     httpCode = http.GET();
                 } else {
