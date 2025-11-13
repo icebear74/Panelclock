@@ -23,8 +23,11 @@ struct ThemeParkData {
     int crowdLevel;  // 0-10 scale
     PsramVector<Attraction> attractions;
     time_t lastUpdate;
+    bool isOpen;
+    PsramString openingTime;   // e.g. "09:00"
+    PsramString closingTime;   // e.g. "18:00"
     
-    ThemeParkData() : crowdLevel(0), lastUpdate(0) {}
+    ThemeParkData() : crowdLevel(0), lastUpdate(0), isOpen(false) {}
 };
 
 struct AvailablePark {

@@ -203,6 +203,9 @@ void ThemeParkModule::parseWaitTimes(const char* jsonBuffer, size_t size) {
     const char* parkId = root["id"] | "";
     const char* parkName = root["name"] | "";
     int crowdLevel = root["crowdLevel"] | 0;
+    bool isOpen = root["isOpen"] | false;
+    const char* openingTime = root["openingTime"] | "";
+    const char* closingTime = root["closingTime"] | "";
     
     if (!parkId || strlen(parkId) == 0) {
         Log.println("[ThemePark] No park ID in wait times data");
@@ -226,6 +229,9 @@ void ThemeParkModule::parseWaitTimes(const char* jsonBuffer, size_t size) {
     parkData->id = parkId;
     parkData->name = parkName;
     parkData->crowdLevel = crowdLevel;
+    parkData->isOpen = isOpen;
+    parkData->openingTime = (openingTime && strlen(openingTime) > 0) ? openingTime : "";
+    parkData->closingTime = (closingTime && strlen(closingTime) > 0) ? closingTime : "";
     parkData->attractions.clear();
     parkData->lastUpdate = time(nullptr);
     
@@ -371,11 +377,31 @@ void ThemeParkModule::drawParkPage(int pageIndex) {
     _u8g2.setCursor(x + (30 - textW) / 2, y + 8);
     _u8g2.print(crowdText);
     
+    // Draw opening hours if available
+    int yPos = 14;
+    _u8g2.setFont(u8g2_font_5x8_tf);
+    _u8g2.setForegroundColor(0xFFFF);
+    
+    if (!park.openingTime.empty() && !park.closingTime.empty()) {
+        char hoursText[50];
+        if (park.isOpen) {
+            // Park is open - show closing time
+            snprintf(hoursText, sizeof(hoursText), "Geoeffnet bis %s", park.closingTime.c_str());
+        } else {
+            // Park is closed - show opening and closing times
+            snprintf(hoursText, sizeof(hoursText), "Geoeffnet %s - %s", 
+                     park.openingTime.c_str(), park.closingTime.c_str());
+        }
+        _u8g2.setCursor(2, yPos);
+        _u8g2.print(hoursText);
+        yPos += 8;
+    }
+    
     // Draw top wait times
     _u8g2.setFont(u8g2_font_6x10_tf);
     _u8g2.setForegroundColor(0xFFFF);
     
-    int yPos = 22;
+    yPos += 2;  // Add small gap before wait times
     int lineHeight = 9;
     int maxLines = (_canvas.height() - yPos) / lineHeight;
     int linesToShow = min(maxLines, min(8, (int)park.attractions.size()));
