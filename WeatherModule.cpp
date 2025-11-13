@@ -251,7 +251,7 @@ void WeatherModule::draw() {
             case WeatherPageType::TODAY_PART1:         drawTodayPart1Page();               break;
             case WeatherPageType::TODAY_PART2:         drawTodayPart2Page();               break;
             case WeatherPageType::PRECIPITATION_CHART: drawPrecipitationChartPage();       break;
-            case WeatherPageType::HOURLY_FORECAST:     drawHourlyForecastPage();           break;
+            case WeatherPageType::HOURLY_FORECAST:     drawHourlyForecastPage(page.index); break;
             case WeatherPageType::DAILY_FORECAST:      drawDailyForecastPage(page.index);  break;
             case WeatherPageType::ALERT:               drawAlertPage(page.index);          break;
             default:                                   drawNoDataPage();                   break;
@@ -542,9 +542,17 @@ void WeatherModule::buildPages() {
         }
     }
     
-    // Page 5+: Hourly forecast
-    if (_config->weatherShowHourly && _hourlyForecast.size() > 1) { 
-        _pages.push_back({WeatherPageType::HOURLY_FORECAST, 0}); 
+    // Page 5+: Hourly forecast (2 columns per page, multiple pages for 4+ forecasts)
+    if (_config->weatherShowHourly && _hourlyForecast.size() > 1) {
+        // Show 2 forecasts per page, create multiple pages if needed
+        // If interval is 3h and we want to show 4 forecasts: 2 pages (0-2, 3-5 hours from now)
+        int forecasts_to_show = 4;  // Show 4 hourly forecasts
+        int forecasts_per_page = 2;
+        int pages_needed = (forecasts_to_show + forecasts_per_page - 1) / forecasts_per_page;
+        
+        for (int page = 0; page < pages_needed; page++) {
+            _pages.push_back({WeatherPageType::HOURLY_FORECAST, page});
+        }
     }
     
     // Page 6+: Daily forecast (3 days per page, starting from tomorrow)
@@ -841,8 +849,8 @@ void WeatherModule::drawPrecipitationChartPage() {
     }
 }
 
-// Page 5+: Hourly Forecast (2 columns with more details)
-void WeatherModule::drawHourlyForecastPage() {
+// Page 5+: Hourly Forecast (2 columns per page, multiple pages)
+void WeatherModule::drawHourlyForecastPage(int pageIndex) {
     if (!_config || _hourlyForecast.empty()) { drawNoDataPage(); return; }
     _u8g2.begin(_canvas);
     _u8g2.setFont(u8g2_font_helvR08_tr);  // Use consistent font
@@ -861,8 +869,13 @@ void WeatherModule::drawHourlyForecastPage() {
     }
     
     int interval = _config->weatherHourlyInterval > 0 ? _config->weatherHourlyInterval : 1;
+    
+    // Calculate starting position for this page
+    // Page 0: shows forecasts 0-1, Page 1: shows forecasts 2-3
+    int start_forecast = pageIndex * num_cols;
+    
     for (int i = 0; i < num_cols; ++i) {
-        size_t hour_index = current_hour_index + (interval * i); 
+        size_t hour_index = current_hour_index + (interval * (start_forecast + i)); 
         if (hour_index >= _hourlyForecast.size()) break;
         const auto& hour = _hourlyForecast[hour_index]; 
         int x = i * col_width;
