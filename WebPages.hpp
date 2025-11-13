@@ -643,6 +643,3 @@ initCanvas();
 )rawliteral";
 
 #endif // WEB_PAGES_HPP
-
-
-#endif // WEB_PAGES_HPP

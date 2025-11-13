@@ -81,14 +81,14 @@ private:
     // Mutex for thread safety
     SemaphoreHandle_t _mutex;
     
-    // Serial mutex (from main application)
-    extern SemaphoreHandle_t serialMutex;
-    
     /**
      * @brief Finalize the current line and add it to the ring buffer
      */
     void _finalizeLine();
 };
+
+// Serial mutex (from main application) - external declaration
+extern SemaphoreHandle_t serialMutex;
 
 // Global instance - to be used instead of Serial
 extern MultiLogger Log;
