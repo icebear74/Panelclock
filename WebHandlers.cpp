@@ -634,27 +634,70 @@ void handleStreamPage() {
 }
 
 void handleThemeParksList() {
-    if (!server || !themeParkModule) {
-        server->send(500, "application/json", "{\"ok\":false, \"message\":\"Server or ThemePark module not initialized\"}");
+    if (!server || !webClient) {
+        server->send(500, "application/json", "{\"ok\":false, \"message\":\"Server or WebClient not initialized\"}");
         return;
     }
     
-    // Get available parks from module
-    PsramVector<AvailablePark> parks = themeParkModule->getAvailableParks();
+    // Fetch parks list on-demand using webClient
+    PsramString url = "https://api.wartezeiten.app/v1/parks";
     
-    // Build JSON response
-    DynamicJsonDocument doc(8192);
-    doc["ok"] = true;
-    JsonArray parksArray = doc.createNestedArray("parks");
+    struct Result { int httpCode; PsramString payload; } result;
+    SemaphoreHandle_t sem = xSemaphoreCreateBinary();
     
-    for (const auto& park : parks) {
-        JsonObject parkObj = parksArray.createNestedObject();
-        parkObj["id"] = park.id.c_str();
-        parkObj["name"] = park.name.c_str();
+    webClient->getRequest(url, [&](int httpCode, const char* payload, size_t len) {
+        result.httpCode = httpCode;
+        if (payload) { result.payload.assign(payload, len); }
+        xSemaphoreGive(sem);
+    });
+    
+    if (xSemaphoreTake(sem, pdMS_TO_TICKS(20000)) == pdTRUE) {
+        if (result.httpCode == 200) {
+            // Parse the response and format it for the web interface
+            DynamicJsonDocument inputDoc(32768);
+            DeserializationError error = deserializeJson(inputDoc, result.payload.c_str());
+            
+            if (error) {
+                server->send(500, "application/json", "{\"ok\":false, \"message\":\"Failed to parse API response\"}");
+                vSemaphoreDelete(sem);
+                return;
+            }
+            
+            // Build response
+            DynamicJsonDocument responseDoc(32768);
+            responseDoc["ok"] = true;
+            JsonArray parksArray = responseDoc.createNestedArray("parks");
+            
+            // The API returns an array of parks
+            if (inputDoc.is<JsonArray>()) {
+                JsonArray apiParks = inputDoc.as<JsonArray>();
+                for (JsonObject park : apiParks) {
+                    const char* id = park["id"] | "";
+                    const char* name = park["name"] | "";
+                    
+                    if (id && name && strlen(id) > 0 && strlen(name) > 0) {
+                        JsonObject parkObj = parksArray.createNestedObject();
+                        parkObj["id"] = id;
+                        parkObj["name"] = name;
+                    }
+                }
+            }
+            
+            String response;
+            serializeJson(responseDoc, response);
+            server->send(200, "application/json", response);
+        } else {
+            PsramString error_msg = "{\"ok\":false, \"message\":\"API Error: HTTP ";
+            char code_buf[5];
+            snprintf(code_buf, sizeof(code_buf), "%d", result.httpCode);
+            error_msg += code_buf;
+            error_msg += "\"}";
+            server->send(result.httpCode > 0 ? result.httpCode : 500, "application/json", error_msg.c_str());
+        }
+        vSemaphoreDelete(sem);
+    } else {
+        server->send(504, "application/json", "{\"ok\":false, \"message\":\"Timeout waiting for API response\"}");
+        vSemaphoreDelete(sem);
     }
-    
-    String response;
-    serializeJson(doc, response);
-    server->send(200, "application/json", response);
 }
 
