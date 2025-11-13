@@ -709,15 +709,13 @@ void WeatherModule::drawTodayPart2Page() {
     _u8g2.setCursor(data_x, 12);
     _u8g2.print("HEUTE");
     
-    // Mean temperature (colored) - only if available
-    if (today.temp_mean > 0) {
-        _u8g2.setFont(u8g2_font_helvB08_tr);
-        char tempBuf[20];
-        snprintf(tempBuf, sizeof(tempBuf), "Mittel: %.0f°", today.temp_mean);
-        _u8g2.setForegroundColor(getClimateColorSmooth(today.temp_mean));
-        _u8g2.setCursor(data_x, 26);
-        _u8g2.print(tempBuf);
-    }
+    // Mean temperature (colored)
+    _u8g2.setFont(u8g2_font_helvB08_tr);
+    char tempBuf[20];
+    snprintf(tempBuf, sizeof(tempBuf), "Mittel: %.0f°", today.temp_mean);
+    _u8g2.setForegroundColor(getClimateColorSmooth(today.temp_mean));
+    _u8g2.setCursor(data_x, 26);
+    _u8g2.print(tempBuf);
     
     // Cloud coverage
     _u8g2.setFont(u8g2_font_helvR08_tr);
