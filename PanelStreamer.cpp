@@ -14,20 +14,20 @@ PanelStreamer::PanelStreamer(PanelManager* panelManager)
     : _panelManager(panelManager), _wsServer(nullptr), _taskHandle(nullptr), 
       _running(false), _panelBuffer(nullptr), _compressedBuffer(nullptr) {
     
-    Serial.println("[PanelStreamer] Constructor starting...");
+    Log.println("[PanelStreamer] Constructor starting...");
     
     _instance = this;
     _controlMutex = xSemaphoreCreateMutex();
     
     if (!_controlMutex) {
-        Serial.println("[PanelStreamer] FATAL: Failed to create control mutex!");
+        Log.println("[PanelStreamer] FATAL: Failed to create control mutex!");
     }
     
     // Calculate buffer sizes
     _panelBufferSize = FULL_WIDTH * FULL_HEIGHT;
     _compressedBufferSize = _panelBufferSize * 3; // Worst case: control byte + 2 bytes per pixel
     
-    Serial.printf("[PanelStreamer] Allocating buffers: Panel=%d bytes, Compressed=%d bytes\n", 
+    Log.printf("[PanelStreamer] Allocating buffers: Panel=%d bytes, Compressed=%d bytes\n", 
                    _panelBufferSize * sizeof(uint16_t), _compressedBufferSize);
     
     // Allocate buffers in PSRAM
@@ -35,26 +35,26 @@ PanelStreamer::PanelStreamer(PanelManager* panelManager)
     _compressedBuffer = (uint8_t*)ps_malloc(_compressedBufferSize);
     
     if (!_panelBuffer || !_compressedBuffer) {
-        Serial.println("[PanelStreamer] FATAL: Failed to allocate buffers in PSRAM!");
+        Log.println("[PanelStreamer] FATAL: Failed to allocate buffers in PSRAM!");
         Log.println("[PanelStreamer] FATAL: Failed to allocate buffers in PSRAM!");
     } else {
-        Serial.printf("[PanelStreamer] Buffers allocated successfully\n");
+        Log.printf("[PanelStreamer] Buffers allocated successfully\n");
         Log.printf("[PanelStreamer] Buffers allocated: Panel=%d bytes, Compressed=%d bytes\n", 
                    _panelBufferSize * sizeof(uint16_t), _compressedBufferSize);
     }
     
     // Create WebSocket server on port 81
-    Serial.println("[PanelStreamer] Creating WebSocket server on port 81...");
+    Log.println("[PanelStreamer] Creating WebSocket server on port 81...");
     _wsServer = new WebSocketsServer(81);
     if (!_wsServer) {
-        Serial.println("[PanelStreamer] FATAL: Failed to create WebSocket server!");
+        Log.println("[PanelStreamer] FATAL: Failed to create WebSocket server!");
         return;
     }
     
     _wsServer->onEvent(webSocketEvent);
     _wsServer->begin();
     
-    Serial.println("[PanelStreamer] WebSocket server started successfully");
+    Log.println("[PanelStreamer] WebSocket server started successfully");
     Log.println("[PanelStreamer] WebSocket server started on port 81");
 }
 
@@ -81,10 +81,10 @@ PanelStreamer::~PanelStreamer() {
 }
 
 void PanelStreamer::begin() {
-    Serial.println("[PanelStreamer::begin] Starting...");
+    Log.println("[PanelStreamer::begin] Starting...");
     
     if (_running) {
-        Serial.println("[PanelStreamer::begin] Already running, skipping");
+        Log.println("[PanelStreamer::begin] Already running, skipping");
         return;
     }
     
@@ -97,7 +97,7 @@ void PanelStreamer::begin() {
     BaseType_t app_core = xPortGetCoreID();
     BaseType_t stream_core = (app_core == 0) ? 1 : 0;
     
-    Serial.printf("[PanelStreamer::begin] Creating task on core %d (Arduino core: %d)\n", stream_core, app_core);
+    Log.printf("[PanelStreamer::begin] Creating task on core %d (Arduino core: %d)\n", stream_core, app_core);
     
     // Create task pinned to non-Arduino core
     BaseType_t result = xTaskCreatePinnedToCore(
@@ -111,12 +111,12 @@ void PanelStreamer::begin() {
     );
     
     if (result != pdPASS) {
-        Serial.printf("[PanelStreamer::begin] FATAL: Failed to create task, result=%d\n", result);
+        Log.printf("[PanelStreamer::begin] FATAL: Failed to create task, result=%d\n", result);
         _running = false;
         return;
     }
     
-    Serial.printf("[PanelStreamer::begin] Task created successfully, handle=%p\n", _taskHandle);
+    Log.printf("[PanelStreamer::begin] Task created successfully, handle=%p\n", _taskHandle);
     Log.printf("[PanelStreamer] Task started on core %d (Arduino core: %d)\n", stream_core, app_core);
 }
 
@@ -154,14 +154,14 @@ void PanelStreamer::streamerTaskWrapper(void* param) {
 }
 
 void PanelStreamer::streamerTask() {
-    Serial.printf("[PanelStreamer::streamerTask] Task running on core %d\n", xPortGetCoreID());
+    Log.printf("[PanelStreamer::streamerTask] Task running on core %d\n", xPortGetCoreID());
     Log.printf("[PanelStreamer] Task running on core %d\n", xPortGetCoreID());
     
     unsigned long lastPanelStreamMs = 0;
     unsigned long lastDebugMs = 0;
     unsigned long loopCount = 0;
     
-    Serial.println("[PanelStreamer::streamerTask] Entering main loop");
+    Log.println("[PanelStreamer::streamerTask] Entering main loop");
     
     while (_running) {
         loopCount++;
@@ -170,7 +170,7 @@ void PanelStreamer::streamerTask() {
         if (_wsServer) {
             _wsServer->loop();
         } else {
-            Serial.println("[PanelStreamer::streamerTask] ERROR: _wsServer is NULL!");
+            Log.println("[PanelStreamer::streamerTask] ERROR: _wsServer is NULL!");
         }
         
         // Check if any clients are connected
@@ -179,7 +179,7 @@ void PanelStreamer::streamerTask() {
         // Debug output every 10 seconds
         unsigned long now = millis();
         if (now - lastDebugMs >= 10000) {
-            Serial.printf("[PanelStreamer::streamerTask] Running, loops=%lu, clients=%d\n", loopCount, clientCount);
+            Log.printf("[PanelStreamer::streamerTask] Running, loops=%lu, clients=%d\n", loopCount, clientCount);
             lastDebugMs = now;
         }
         
@@ -189,7 +189,7 @@ void PanelStreamer::streamerTask() {
             continue;
         }
         
-        Serial.printf("[PanelStreamer::streamerTask] Clients connected: %d\n", clientCount);
+        Log.printf("[PanelStreamer::streamerTask] Clients connected: %d\n", clientCount);
         
         // Stream log messages
         sendLogMessages();
@@ -204,7 +204,7 @@ void PanelStreamer::streamerTask() {
         vTaskDelay(pdMS_TO_TICKS(50));
     }
     
-    Serial.println("[PanelStreamer::streamerTask] Task exiting");
+    Log.println("[PanelStreamer::streamerTask] Task exiting");
     Log.println("[PanelStreamer] Task exiting");
     vTaskDelete(nullptr);
 }
@@ -231,7 +231,7 @@ void PanelStreamer::sendPanelSnapshot() {
 
 void PanelStreamer::sendLogMessages() {
     if (!_wsServer) {
-        Serial.println("[PanelStreamer::sendLogMessages] No WebSocket server!");
+        Log.println("[PanelStreamer::sendLogMessages] No WebSocket server!");
         return;
     }
     
@@ -241,7 +241,7 @@ void PanelStreamer::sendLogMessages() {
     
     if (count == 0) return;
     
-    Serial.printf("[PanelStreamer::sendLogMessages] Sending %d log lines\n", count);
+    Log.printf("[PanelStreamer::sendLogMessages] Sending %d log lines\n", count);
     
     // Send each line as JSON text message
     for (const auto& line : newLines) {
@@ -253,7 +253,7 @@ void PanelStreamer::sendLogMessages() {
         String jsonStr;
         serializeJson(doc, jsonStr);
         
-        Serial.printf("[PanelStreamer::sendLogMessages] Sending: %s\n", jsonStr.c_str());
+        Log.printf("[PanelStreamer::sendLogMessages] Sending: %s\n", jsonStr.c_str());
         
         // Send as text message to all connected clients
         _wsServer->broadcastTXT(jsonStr);
@@ -312,25 +312,25 @@ size_t PanelStreamer::compressRLE(const uint16_t* input, size_t inputSize,
 }
 
 void PanelStreamer::webSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t length) {
-    Serial.printf("[WebSocket] Event received: type=%d, num=%u\n", type, num);
+    Log.printf("[WebSocket] Event received: type=%d, num=%u\n", type, num);
     
     switch (type) {
         case WStype_DISCONNECTED:
-            Serial.printf("[WebSocket] Client #%u disconnected\n", num);
+            Log.printf("[WebSocket] Client #%u disconnected\n", num);
             Log.printf("[WebSocket] Client #%u disconnected\n", num);
             break;
             
         case WStype_CONNECTED:
             {
                 IPAddress ip = _instance->_wsServer->remoteIP(num);
-                Serial.printf("[WebSocket] Client #%u connected from %d.%d.%d.%d\n", 
+                Log.printf("[WebSocket] Client #%u connected from %d.%d.%d.%d\n", 
                           num, ip[0], ip[1], ip[2], ip[3]);
                 Log.printf("[WebSocket] Client #%u connected from %d.%d.%d.%d\n", 
                           num, ip[0], ip[1], ip[2], ip[3]);
                 
                 // Check max clients
                 if (_instance->getClientCount() > MAX_CLIENTS) {
-                    Serial.printf("[WebSocket] Max clients reached, disconnecting #%u\n", num);
+                    Log.printf("[WebSocket] Max clients reached, disconnecting #%u\n", num);
                     Log.printf("[WebSocket] Max clients reached, disconnecting #%u\n", num);
                     _instance->_wsServer->disconnect(num);
                 }
@@ -339,7 +339,7 @@ void PanelStreamer::webSocketEvent(uint8_t num, WStype_t type, uint8_t* payload,
             
         case WStype_TEXT:
             // Client sent text message (could be control commands in future)
-            Serial.printf("[WebSocket] Client #%u sent: %s\n", num, payload);
+            Log.printf("[WebSocket] Client #%u sent: %s\n", num, payload);
             Log.printf("[WebSocket] Client #%u sent: %s\n", num, payload);
             break;
             
