@@ -449,8 +449,8 @@ const char HTML_STREAM_PAGE[] PROGMEM = R"rawliteral(
 <h1>Panel Live-Stream & Debug</h1>
 <div class="group">
     <h3>LED Panel Vorschau</h3>
-    <div style="text-align: center;">
-        <canvas id="panelSimulator" width="576" height="288" style="background-color: #000; border: 2px solid #444; border-radius: 8px; max-width: 100%;"></canvas>
+    <div style="text-align: center; overflow-x: auto;">
+        <canvas id="panelSimulator" style="background-color: #000; border: 2px solid #444; border-radius: 8px;"></canvas>
     </div>
     <div style="margin-top: 15px; text-align: center;">
         <button id="connectBtn" class="button" onclick="toggleConnection()">Verbinden</button>
