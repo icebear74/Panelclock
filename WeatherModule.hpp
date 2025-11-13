@@ -133,13 +133,12 @@ private:
     // NEU: drawWeatherIcon mit Registry/Cache, und PSRAM everywhere:
     void drawWeatherIcon(int x, int y, int size, const PsramString& name, bool isNight);
 
-    // New page drawing functions based on requirements
     void drawCurrentWeatherPage();        // Page 1: NOW weather
     void drawTodayPart1Page();           // Page 2: Today summary part 1
     void drawTodayPart2Page();           // Page 3: Today summary part 2
     void drawPrecipitationChartPage();   // Page 4: Area chart
     void drawHourlyForecastPage();       // Page 5+: Hourly forecasts
-    void drawDailyForecastPage();        // Page 6+: Daily forecasts
+    void drawDailyForecastPage(int pageIndex);  // Page 6+: Daily forecasts (multiple pages)
     void drawAlertPage(int index);       // Alert page
     void drawNoDataPage();
 };
