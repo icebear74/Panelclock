@@ -449,7 +449,7 @@ const char HTML_STREAM_PAGE[] PROGMEM = R"rawliteral(
 <h1>Panel Live-Stream & Debug</h1>
 <div class="group">
     <h3>LED Panel Vorschau</h3>
-    <div style="text-align: center; overflow-x: auto;">
+    <div style="text-align: center;">
         <canvas id="panelSimulator" style="background-color: #000; border: 2px solid #444; border-radius: 8px;"></canvas>
     </div>
     <div style="margin-top: 15px; text-align: center;">
@@ -478,8 +478,8 @@ let connectBtn = document.getElementById('connectBtn');
 
 const PANEL_WIDTH = 192;  // 64 * 3
 const PANEL_HEIGHT = 96;   // 32 * 3
-const LED_SIZE = 10;       // Doubled again from 5
-const LED_SPACING = 12;    // Doubled again from 6
+const LED_SIZE = 4;        // Optimized for ~800px width
+const LED_SPACING = 4.5;   // Spacing for 2x original (gives ~864px width)
 
 function initCanvas() {
     // Set canvas size to accommodate LEDs with spacing
