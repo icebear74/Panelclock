@@ -589,7 +589,7 @@ void WebClientModule::performUpdate(ManagedResource& resource) {
         if (resource.url.rfind("https://", 0) == 0) {
             PsramString cert_data;
             bool cert_loaded = false;
-            String filepath;
+            PsramString filepath;
 
             // determine host
             PsramString host;
