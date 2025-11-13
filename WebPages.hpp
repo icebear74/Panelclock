@@ -36,6 +36,7 @@ const char HTML_INDEX[] PROGMEM = R"rawliteral(
 <!-- File manager button added to main menu -->
 <a href="/fs" class="button">Dateimanager</a>
 <hr>
+<a href="/stream" class="button" style="background-color:#2196F3;">Live-Stream & Debug</a>
 <a href="/debug" class="button" style="background-color:#555;">Debug Daten</a>
 )rawliteral";
 
@@ -443,5 +444,180 @@ const char HTML_DEBUG_STATION_HISTORY[] PROGMEM = R"rawliteral(
 </div>
 <div class="footer-link"><a href="/debug">&laquo; Zur&uuml;ck zur &Uuml;bersicht</a></div>
 )rawliteral";
+
+const char HTML_STREAM_PAGE[] PROGMEM = R"rawliteral(
+<h1>Panel Live-Stream & Debug</h1>
+<div class="group">
+    <h3>LED Panel Vorschau</h3>
+    <div style="text-align: center;">
+        <canvas id="panelSimulator" width="576" height="288" style="background-color: #000; border: 2px solid #444; border-radius: 8px; max-width: 100%;"></canvas>
+    </div>
+    <div style="margin-top: 15px; text-align: center;">
+        <button id="connectBtn" class="button" onclick="toggleConnection()">Verbinden</button>
+        <span id="statusText" style="margin-left: 15px; color: #bbb;">Getrennt</span>
+    </div>
+</div>
+
+<div class="group">
+    <h3>Log-Ausgabe</h3>
+    <div style="position: relative;">
+        <pre id="logOutput" style="background: #1a1a1a; color: #0f0; padding: 15px; border-radius: 4px; height: 400px; overflow-y: auto; font-family: monospace; font-size: 12px; border: 1px solid #444;"></pre>
+        <button onclick="clearLogs()" class="button" style="margin-top: 10px; width: auto;">Logs löschen</button>
+    </div>
+</div>
+
+<div class="footer-link"><a href="/">&laquo; Zurück zum Hauptmenü</a></div>
+
+<script>
+let ws = null;
+let canvas = document.getElementById('panelSimulator');
+let ctx = canvas.getContext('2d');
+let logOutput = document.getElementById('logOutput');
+let statusText = document.getElementById('statusText');
+let connectBtn = document.getElementById('connectBtn');
+
+const PANEL_WIDTH = 192;  // 64 * 3
+const PANEL_HEIGHT = 96;   // 32 * 3
+const LED_SIZE = 2.5;
+const LED_SPACING = 3;
+
+function initCanvas() {
+    // Set canvas size to accommodate LEDs with spacing
+    canvas.width = PANEL_WIDTH * LED_SPACING;
+    canvas.height = PANEL_HEIGHT * LED_SPACING;
+    
+    // Draw background and LED grid
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw dark gray circles for "off" LEDs
+    ctx.fillStyle = '#222';
+    for (let y = 0; y < PANEL_HEIGHT; y++) {
+        for (let x = 0; x < PANEL_WIDTH; x++) {
+            let cx = x * LED_SPACING + LED_SPACING / 2;
+            let cy = y * LED_SPACING + LED_SPACING / 2;
+            ctx.beginPath();
+            ctx.arc(cx, cy, LED_SIZE / 2, 0, 2 * Math.PI);
+            ctx.fill();
+        }
+    }
+}
+
+function toggleConnection() {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.close();
+    } else {
+        connect();
+    }
+}
+
+function connect() {
+    statusText.textContent = 'Verbinde...';
+    statusText.style.color = '#ffaa00';
+    connectBtn.disabled = true;
+    
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = protocol + '//' + window.location.hostname + ':81/';
+    
+    ws = new WebSocket(wsUrl);
+    ws.binaryType = 'arraybuffer';
+    
+    ws.onopen = function() {
+        statusText.textContent = 'Verbunden';
+        statusText.style.color = '#4CAF50';
+        connectBtn.textContent = 'Trennen';
+        connectBtn.disabled = false;
+        addLog('[System] WebSocket verbunden');
+    };
+    
+    ws.onclose = function() {
+        statusText.textContent = 'Getrennt';
+        statusText.style.color = '#bbb';
+        connectBtn.textContent = 'Verbinden';
+        connectBtn.disabled = false;
+        addLog('[System] WebSocket getrennt');
+    };
+    
+    ws.onerror = function(err) {
+        statusText.textContent = 'Fehler';
+        statusText.style.color = '#f44336';
+        connectBtn.disabled = false;
+        addLog('[System] WebSocket Fehler: ' + err);
+    };
+    
+    ws.onmessage = function(event) {
+        if (typeof event.data === 'string') {
+            // Text message - log data
+            try {
+                const msg = JSON.parse(event.data);
+                if (msg.type === 'log') {
+                    addLog(msg.data);
+                }
+            } catch (e) {
+                addLog('[Error] Failed to parse log message');
+            }
+        } else {
+            // Binary message - panel data (RLE compressed)
+            decodeAndRenderPanel(new Uint8Array(event.data));
+        }
+    };
+}
+
+function addLog(text) {
+    logOutput.textContent += text + '\n';
+    logOutput.scrollTop = logOutput.scrollHeight;
+}
+
+function clearLogs() {
+    logOutput.textContent = '';
+}
+
+function decodeAndRenderPanel(data) {
+    // Reset to dark background
+    initCanvas();
+    
+    let pos = 0;
+    let pixelIndex = 0;
+    
+    while (pos < data.length - 2 && pixelIndex < PANEL_WIDTH * PANEL_HEIGHT) {
+        // Read RLE: [count][high_byte][low_byte]
+        let count = data[pos++];
+        let highByte = data[pos++];
+        let lowByte = data[pos++];
+        
+        // Reconstruct RGB565 pixel
+        let rgb565 = (highByte << 8) | lowByte;
+        
+        // Convert RGB565 to RGB888
+        let r = ((rgb565 >> 11) & 0x1F) * 255 / 31;
+        let g = ((rgb565 >> 5) & 0x3F) * 255 / 63;
+        let b = (rgb565 & 0x1F) * 255 / 31;
+        
+        // Draw the LEDs
+        ctx.fillStyle = 'rgb(' + Math.round(r) + ',' + Math.round(g) + ',' + Math.round(b) + ')';
+        
+        for (let i = 0; i < count && pixelIndex < PANEL_WIDTH * PANEL_HEIGHT; i++) {
+            let x = pixelIndex % PANEL_WIDTH;
+            let y = Math.floor(pixelIndex / PANEL_WIDTH);
+            
+            let cx = x * LED_SPACING + LED_SPACING / 2;
+            let cy = y * LED_SPACING + LED_SPACING / 2;
+            
+            ctx.beginPath();
+            ctx.arc(cx, cy, LED_SIZE / 2, 0, 2 * Math.PI);
+            ctx.fill();
+            
+            pixelIndex++;
+        }
+    }
+}
+
+// Initialize canvas on load
+initCanvas();
+</script>
+)rawliteral";
+
+#endif // WEB_PAGES_HPP
+
 
 #endif // WEB_PAGES_HPP

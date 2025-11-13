@@ -610,3 +610,10 @@ void handleNotFound() {
     }
     server->send(404, "text/plain", "404: Not Found");
 }
+void handleStreamPage() {
+    if (!server) return;
+    String page = FPSTR(HTML_PAGE_HEADER);
+    page += FPSTR(HTML_STREAM_PAGE);
+    page += FPSTR(HTML_PAGE_FOOTER);
+    server->send(200, "text/html", page);
+}

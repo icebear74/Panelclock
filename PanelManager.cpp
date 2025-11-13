@@ -13,6 +13,7 @@ PanelManager::PanelManager(HardwareConfig& hwConfig, GeneralTimeConverter& timeC
     : _hwConfig(hwConfig), _timeConverter(timeConverter) {
     Serial.println("[PanelManager] Konstruktor - PlaylistEntry-basierte Version mit UID-System");
     _logicTickMutex = xSemaphoreCreateMutex();
+    _canvasMutex = xSemaphoreCreateMutex();
 }
 
 PanelManager::~PanelManager() {
@@ -35,6 +36,7 @@ PanelManager::~PanelManager() {
     // NEU: Cleanup für Logic-Tick-Task
     if (_logicTickTaskHandle) vTaskDelete(_logicTickTaskHandle);
     if (_logicTickMutex) vSemaphoreDelete(_logicTickMutex);
+    if (_canvasMutex) vSemaphoreDelete(_canvasMutex);
 }
 
 // ============================================================================
@@ -723,13 +725,18 @@ void PanelManager::render() {
     
     if (!_virtualDisp || !_dma_display || !_canvasTime || !_canvasData) return;
     
-    drawClockArea();
-    drawDataArea();
-    
-    _virtualDisp->drawRGBBitmap(0, 0, _canvasTime->getBuffer(), 
-                                _canvasTime->width(), _canvasTime->height());
-    _virtualDisp->drawRGBBitmap(0, TIME_AREA_H, _canvasData->getBuffer(), 
-                                _canvasData->width(), _canvasData->height());
+    // Lock canvas access for thread-safe rendering
+    if (_canvasMutex && xSemaphoreTake(_canvasMutex, portMAX_DELAY) == pdTRUE) {
+        drawClockArea();
+        drawDataArea();
+        
+        _virtualDisp->drawRGBBitmap(0, 0, _canvasTime->getBuffer(), 
+                                    _canvasTime->width(), _canvasTime->height());
+        _virtualDisp->drawRGBBitmap(0, TIME_AREA_H, _canvasData->getBuffer(), 
+                                    _canvasData->width(), _canvasData->height());
+        
+        xSemaphoreGive(_canvasMutex);
+    }
     
     _dma_display->flipDMABuffer();
 }
@@ -787,4 +794,43 @@ void PanelManager::displayStatus(const char* msg) {
     
     free(str);
     _dma_display->flipDMABuffer();
+}
+
+// ============================================================================
+// Thread-safe Panel Buffer Copy for Streaming
+// ============================================================================
+
+bool PanelManager::copyFullPanelBuffer(uint16_t* destinationBuffer, size_t bufferSize) {
+    if (!destinationBuffer || !_canvasTime || !_canvasData) {
+        return false;
+    }
+    
+    // Calculate required buffer size
+    size_t timeBufferSize = FULL_WIDTH * TIME_AREA_H;
+    size_t dataBufferSize = FULL_WIDTH * DATA_AREA_H;
+    size_t totalRequired = timeBufferSize + dataBufferSize;
+    
+    if (bufferSize < totalRequired) {
+        return false;
+    }
+    
+    // Lock canvas access
+    if (_canvasMutex && xSemaphoreTake(_canvasMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        // Copy time area
+        uint16_t* timeBuffer = _canvasTime->getBuffer();
+        if (timeBuffer) {
+            memcpy(destinationBuffer, timeBuffer, timeBufferSize * sizeof(uint16_t));
+        }
+        
+        // Copy data area
+        uint16_t* dataBuffer = _canvasData->getBuffer();
+        if (dataBuffer) {
+            memcpy(destinationBuffer + timeBufferSize, dataBuffer, dataBufferSize * sizeof(uint16_t));
+        }
+        
+        xSemaphoreGive(_canvasMutex);
+        return true;
+    }
+    
+    return false;
 }

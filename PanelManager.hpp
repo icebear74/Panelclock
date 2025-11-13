@@ -180,6 +180,9 @@ public:
     
     // Für Kompatibilität
     const PsramVector<DrawableModule*>& getAllModules() const { return _moduleCatalog; }
+    
+    // NEW: Thread-safe panel buffer copy for streaming
+    bool copyFullPanelBuffer(uint16_t* destinationBuffer, size_t bufferSize);
 
 private:
     // Kernfunktionen
@@ -225,6 +228,9 @@ private:
     TaskHandle_t _logicTickTaskHandle = nullptr;
     static void logicTickTaskWrapper(void* param);
     void logicTickTask();
+    
+    // NEW: Canvas mutex for thread-safe access during streaming
+    SemaphoreHandle_t _canvasMutex = nullptr;
 };
 
 #endif // PANELMANAGER_HPP

@@ -11,6 +11,8 @@
 #include "MwaveSensorModule.hpp"
 #include "OtaManager.hpp"
 #include "MemoryLogger.hpp"
+#include "MultiLogger.hpp"
+#include "PanelStreamer.hpp"
 
 // --- Globale Variablen ---
 Application* Application::_instance = nullptr;
@@ -68,6 +70,7 @@ Application::~Application() {
     delete _fritzMod;
     delete _curiousMod;
     delete _weatherMod;
+    delete _panelStreamer;
 }
 
 void Application::begin() {
@@ -139,6 +142,11 @@ void Application::begin() {
         otaManager->begin();
         ArduinoOTA.begin();
         setupWebServer(portalRunning);
+        
+        // Initialize Panel Streamer after WiFi is connected
+        _panelStreamer = new PanelStreamer(_panelManager);
+        _panelStreamer->begin();
+        Log.println("[Application] PanelStreamer initialized and started");
         
     } else {
         portalRunning = true;
