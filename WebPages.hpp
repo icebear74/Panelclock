@@ -504,10 +504,18 @@ function initCanvas() {
 }
 
 function toggleConnection() {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.close();
-    } else {
-        connect();
+    try {
+        console.log('[toggleConnection] Button clicked');
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            console.log('[toggleConnection] Closing existing connection');
+            ws.close();
+        } else {
+            console.log('[toggleConnection] Starting new connection');
+            connect();
+        }
+    } catch (e) {
+        console.error('[toggleConnection] Error:', e);
+        addLog('[Error] ' + e.message);
     }
 }
 
@@ -632,22 +640,24 @@ function decodeAndRenderPanel(data) {
     }
 }
 
-            let y = Math.floor(pixelIndex / PANEL_WIDTH);
-            
-            let cx = x * LED_SPACING + LED_SPACING / 2;
-            let cy = y * LED_SPACING + LED_SPACING / 2;
-            
-            ctx.beginPath();
-            ctx.arc(cx, cy, LED_SIZE / 2, 0, 2 * Math.PI);
-            ctx.fill();
-            
-            pixelIndex++;
-        }
+// Initialize canvas on load
+try {
+    console.log('[Init] Initializing canvas and elements');
+    if (!canvas) console.error('[Init] Canvas element not found!');
+    if (!logOutput) console.error('[Init] logOutput element not found!');
+    if (!statusText) console.error('[Init] statusText element not found!');
+    if (!connectBtn) console.error('[Init] connectBtn element not found!');
+    
+    if (canvas && ctx) {
+        initCanvas();
+        console.log('[Init] Canvas initialized successfully');
     }
+    
+    console.log('[Init] Page ready. Click "Verbinden" to start streaming.');
+} catch (e) {
+    console.error('[Init] Initialization error:', e);
 }
 
-// Initialize canvas on load
-initCanvas();
 </script>
 )rawliteral";
 
