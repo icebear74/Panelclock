@@ -5,6 +5,7 @@
 #include <ArduinoJson.h>
 #include <WiFi.h>
 #include "MemoryLogger.hpp"
+#include "MultiLogger.hpp"
 
 // Externals from main application / WebServerManager.hpp
 extern WebServer* server;

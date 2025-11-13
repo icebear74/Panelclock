@@ -2,6 +2,7 @@
 #include "webconfig.hpp"
 // removed include of certs.hpp on purpose — cert files are discovered dynamically in /certs
 #include "MemoryLogger.hpp"
+#include "MultiLogger.hpp"
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <WiFi.h>

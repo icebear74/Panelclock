@@ -1,5 +1,6 @@
 #include "ConnectionManager.hpp"
 #include <WiFi.h>
+#include "MultiLogger.hpp"
 
 ConnectionManager::ConnectionManager(DeviceConfig& config) 
     : deviceConfig(config), 
