@@ -67,8 +67,26 @@ void ThemeParkModule::setConfig(const DeviceConfig* config) {
         xSemaphoreGive(_dataMutex);
     }
     
-    // Note: Resources will be registered on-demand in queueData()
-    // to avoid lambda capture issues with PsramString in ESP32 compiler
+    // Register resources for each configured park
+    // Each park needs wait times data from the queue endpoint
+    unsigned long updateIntervalMinutes = (_config && _config->themeParkFetchIntervalMin > 0) 
+        ? _config->themeParkFetchIntervalMin : 10;
+    
+    if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        for (const auto& parkId : _parkIds) {
+            PsramString queueUrl = "https://api.wartezeiten.app/v1/parks/" + parkId + "/queue";
+            PsramString headers = "accept: application/json\nlanguage: de";
+            
+            // Register the wait times resource with custom headers
+            _webClient->registerResourceWithHeaders(String(queueUrl.c_str()), 
+                                                    String(headers.c_str()), 
+                                                    updateIntervalMinutes, 
+                                                    nullptr);
+            
+            Log.printf("[ThemePark] Registered resource for park %s\n", parkId.c_str());
+        }
+        xSemaphoreGive(_dataMutex);
+    }
 }
 
 void ThemeParkModule::queueData() {
@@ -77,14 +95,36 @@ void ThemeParkModule::queueData() {
     // Check if parks list needs daily update
     checkAndUpdateParksList();
     
-    // Check if park details (names, opening hours) need update (every 2 hours = 7200 seconds)
-    time_t now = time(nullptr);
-    if (_lastParkDetailsUpdate == 0 || (now - _lastParkDetailsUpdate) >= 7200) {
-        _lastParkDetailsUpdate = now;
+    // Fetch wait times for each configured park
+    // Create a copy of park IDs to avoid holding the mutex during network operations
+    PsramVector<PsramString> parkIdsCopy;
+    if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        parkIdsCopy = _parkIds;
+        xSemaphoreGive(_dataMutex);
     }
     
-    // Note: Resources for wait times and crowd level are already registered in configure()
-    // WebClientModule will automatically fetch them at the configured interval
+    for (const auto& parkId : parkIdsCopy) {
+        PsramString queueUrl = "https://api.wartezeiten.app/v1/parks/" + parkId + "/queue";
+        PsramString headers = "accept: application/json\nlanguage: de";
+        
+        // Access the resource - this will use cached data if still fresh,
+        // or trigger a new fetch if the update interval has passed
+        _webClient->accessResource(String(queueUrl.c_str()), String(headers.c_str()),
+            [this, parkId](const char* buffer, size_t size, time_t last_update, bool is_stale) {
+                if (buffer && size > 0) {
+                    // Take mutex before parsing to ensure thread safety
+                    if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+                        parseWaitTimes(buffer, size, parkId);
+                        xSemaphoreGive(_dataMutex);
+                        
+                        // Trigger a redraw if callback is set
+                        if (_updateCallback) {
+                            _updateCallback();
+                        }
+                    }
+                }
+            });
+    }
 }
 
 void ThemeParkModule::processData() {
