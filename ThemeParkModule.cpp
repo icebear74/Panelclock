@@ -76,12 +76,29 @@ void ThemeParkModule::setConfig(const DeviceConfig* config) {
     for (const auto& parkId : _parkIds) {
         PsramString headers = "accept: application/json\npark: " + parkId + "\nlanguage: de";
         
-        // Register wait times
-        _webClient->registerResourceWithHeaders(waitTimesUrl.c_str(), headers.c_str(), fetchIntervalMin, nullptr);
+        // Register wait times with callback
+        _webClient->registerResourceWithHeaders(waitTimesUrl.c_str(), headers.c_str(), fetchIntervalMin, 
+            [this, parkId](const char* data, size_t size, time_t last_update, bool is_stale) {
+                if (data && size > 0 && !is_stale && last_update > _lastUpdate) {
+                    Log.printf("[ThemePark] New wait times for park: %s (size: %d)\n", parkId.c_str(), size);
+                    parseWaitTimes(data, size, parkId);
+                    _lastUpdate = last_update;
+                    
+                    if (_updateCallback) {
+                        _updateCallback();
+                    }
+                }
+            });
         Log.printf("[ThemePark] Registered wait times resource for park: %s\n", parkId.c_str());
         
-        // Register crowd level (same interval as wait times)
-        _webClient->registerResourceWithHeaders(crowdLevelUrl.c_str(), headers.c_str(), fetchIntervalMin, nullptr);
+        // Register crowd level with callback (same interval as wait times)
+        _webClient->registerResourceWithHeaders(crowdLevelUrl.c_str(), headers.c_str(), fetchIntervalMin,
+            [this, parkId](const char* data, size_t size, time_t last_update, bool is_stale) {
+                if (data && size > 0 && !is_stale && last_update > _lastUpdate) {
+                    Log.printf("[ThemePark] New crowd level for park: %s\n", parkId.c_str());
+                    parseCrowdLevel(data, size, parkId);
+                }
+            });
         Log.printf("[ThemePark] Registered crowd level resource for park: %s\n", parkId.c_str());
     }
 }
@@ -100,36 +117,8 @@ void ThemeParkModule::queueData() {
         _lastParkDetailsUpdate = now;
     }
     
-    // Access wait times and crowd level data for each configured park
-    PsramString waitTimesUrl = "https://api.wartezeiten.app/v1/waitingtimes";
-    PsramString crowdLevelUrl = "https://api.wartezeiten.app/v1/crowdlevel";
-    
-    for (const auto& parkId : _parkIds) {
-        PsramString headers = "accept: application/json\npark: " + parkId + "\nlanguage: de";
-        
-        // Fetch wait times
-        _webClient->accessResource(waitTimesUrl.c_str(), headers.c_str(), 
-            [this, parkId](const char* data, size_t size, time_t last_update, bool is_stale) {
-                if (data && size > 0 && !is_stale && last_update > _lastUpdate) {
-                    Log.printf("[ThemePark] New wait times for park: %s (size: %d)\n", parkId.c_str(), size);
-                    parseWaitTimes(data, size, parkId);
-                    _lastUpdate = last_update;
-                    
-                    if (_updateCallback) {
-                        _updateCallback();
-                    }
-                }
-            });
-        
-        // Fetch crowd level
-        _webClient->accessResource(crowdLevelUrl.c_str(), headers.c_str(),
-            [this, parkId](const char* data, size_t size, time_t last_update, bool is_stale) {
-                if (data && size > 0 && !is_stale && last_update > _lastUpdate) {
-                    Log.printf("[ThemePark] New crowd level for park: %s\n", parkId.c_str());
-                    parseCrowdLevel(data, size, parkId);
-                }
-            });
-    }
+    // Note: Wait times and crowd level are fetched automatically by registered resources
+    // No need to call accessResource here - that would create duplicate callbacks
 }
 
 void ThemeParkModule::processData() {
