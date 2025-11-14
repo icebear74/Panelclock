@@ -94,9 +94,17 @@ void ThemeParkModule::processData() {
         _webClient->accessResource(url.c_str(), headers.c_str(), 
             [this, parkId](const char* data, size_t size, time_t last_update, bool is_stale) {
                 if (data && size > 0 && !is_stale) {
+                    // Check if we've already processed this data for this park
+                    auto it = _lastParkUpdate.find(parkId);
+                    if (it != _lastParkUpdate.end() && it->second >= last_update) {
+                        // We've already processed this update, skip it
+                        return;
+                    }
+                    
                     Log.printf("[ThemePark] Processing data for park: %s (size: %d)\n", parkId.c_str(), size);
                     parseWaitTimes(data, size, parkId);
                     _lastUpdate = last_update;
+                    _lastParkUpdate[parkId] = last_update;  // Track that we've processed this update
                     
                     if (_updateCallback) {
                         _updateCallback();
