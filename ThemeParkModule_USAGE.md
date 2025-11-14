@@ -8,6 +8,7 @@ Das ThemeParkModule zeigt Wartezeiten von Attraktionen aus ausgewählten Freizei
 
 ### Anzeige
 - **Park-Name:** Als Überschrift auf jeder Seite
+- **Land:** Das Land, in dem sich der Park befindet (sofern verfügbar)
 - **Crowd Level:** Auslastungsanzeige von 0-10 (farbkodiert)
   - Grün (0-3): Niedrige Auslastung
   - Hellgrün (4-5): Mittlere Auslastung
@@ -21,6 +22,11 @@ Das ThemeParkModule zeigt Wartezeiten von Attraktionen aus ausgewählten Freizei
     - Orange: 30-59 Minuten
     - Rot: ≥ 60 Minuten
 - **Seitenindikator:** Zeigt aktuelle Seite und Gesamtzahl bei mehreren Parks
+
+### Park-Schließung
+- **Geschlossene Parks:** Parks werden automatisch ausgeblendet, wenn alle Attraktionen geschlossen sind
+- **Ausnahme:** Parks mit Öffnungszeiten-Informationen werden auch bei Schließung angezeigt
+
 
 ## Konfiguration
 
