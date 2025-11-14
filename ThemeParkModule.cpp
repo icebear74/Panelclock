@@ -67,49 +67,8 @@ void ThemeParkModule::setConfig(const DeviceConfig* config) {
         xSemaphoreGive(_dataMutex);
     }
     
-    // Register each park as a separate resource with WebClientModule
-    PsramString waitTimesUrl = "https://api.wartezeiten.app/v1/waitingtimes";
-    PsramString crowdLevelUrl = "https://api.wartezeiten.app/v1/crowdlevel";
-    uint32_t fetchIntervalMin = (_config->themeParkFetchIntervalMin > 0) 
-        ? _config->themeParkFetchIntervalMin : 10;
-    
-    for (const auto& parkId : _parkIds) {
-        PsramString headers = "accept: application/json\npark: " + parkId + "\nlanguage: de";
-        
-        // Create a copy of parkId as a plain C string for safe capture
-        const char* parkIdCStr = parkId.c_str();
-        char* parkIdCopy = new char[strlen(parkIdCStr) + 1];
-        strcpy(parkIdCopy, parkIdCStr);
-        
-        // Register wait times with callback
-        _webClient->registerResourceWithHeaders(waitTimesUrl.c_str(), headers.c_str(), fetchIntervalMin, 
-            [this, parkIdCopy](const char* data, size_t size, time_t last_update, bool is_stale) {
-                if (data && size > 0 && !is_stale && last_update > _lastUpdate) {
-                    Log.printf("[ThemePark] New wait times for park: %s (size: %d)\n", parkIdCopy, size);
-                    parseWaitTimes(data, size, PsramString(parkIdCopy));
-                    _lastUpdate = last_update;
-                    
-                    if (_updateCallback) {
-                        _updateCallback();
-                    }
-                }
-            });
-        Log.printf("[ThemePark] Registered wait times resource for park: %s\n", parkId.c_str());
-        
-        // Create another copy for crowd level callback
-        char* parkIdCopy2 = new char[strlen(parkIdCStr) + 1];
-        strcpy(parkIdCopy2, parkIdCStr);
-        
-        // Register crowd level with callback (same interval as wait times)
-        _webClient->registerResourceWithHeaders(crowdLevelUrl.c_str(), headers.c_str(), fetchIntervalMin,
-            [this, parkIdCopy2](const char* data, size_t size, time_t last_update, bool is_stale) {
-                if (data && size > 0 && !is_stale && last_update > _lastUpdate) {
-                    Log.printf("[ThemePark] New crowd level for park: %s\n", parkIdCopy2);
-                    parseCrowdLevel(data, size, PsramString(parkIdCopy2));
-                }
-            });
-        Log.printf("[ThemePark] Registered crowd level resource for park: %s\n", parkId.c_str());
-    }
+    // Note: Resources will be registered on-demand in queueData()
+    // to avoid lambda capture issues with PsramString in ESP32 compiler
 }
 
 void ThemeParkModule::queueData() {
@@ -121,13 +80,11 @@ void ThemeParkModule::queueData() {
     // Check if park details (names, opening hours) need update (every 2 hours = 7200 seconds)
     time_t now = time(nullptr);
     if (_lastParkDetailsUpdate == 0 || (now - _lastParkDetailsUpdate) >= 7200) {
-        // Park details update happens automatically when parks list is loaded
-        // or we could add a separate mechanism here if needed
         _lastParkDetailsUpdate = now;
     }
     
-    // Note: Wait times and crowd level are fetched automatically by registered resources
-    // No need to call accessResource here - that would create duplicate callbacks
+    // Note: Resources for wait times and crowd level are already registered in configure()
+    // WebClientModule will automatically fetch them at the configured interval
 }
 
 void ThemeParkModule::processData() {
@@ -259,10 +216,8 @@ void ThemeParkModule::parseWaitTimes(const char* jsonBuffer, size_t size, const 
               });
     
     // Calculate how many pages needed to show all attractions
-    // Match the calculation used in drawParkPage
-    int yPos = 16 + 4;  // Starting position + gap
-    int lineHeight = 8;
-    int attractionsPerPage = (_canvas.height() - yPos) / lineHeight;  // No space reserved for page indicator
+    // With 8px line height and starting at yPos ~20, we can fit about 27 attractions per page
+    int attractionsPerPage = 27;  // Conservative estimate
     parkData->attractionPages = (parkData->attractions.size() + attractionsPerPage - 1) / attractionsPerPage;
     if (parkData->attractionPages < 1) parkData->attractionPages = 1;
     
@@ -476,7 +431,7 @@ void ThemeParkModule::drawParkPage(int parkIndex, int attractionPage) {
     
     yPos += 4;  // Gap before attractions
     int lineHeight = 8;
-    int maxLines = (_canvas.height() - yPos) / lineHeight;  // No space for page indicator
+    int maxLines = (_canvas.height() - yPos - 10) / lineHeight;  // Leave space for page indicator
     
     // Calculate which attractions to show on this page
     int startIdx = attractionPage * maxLines;
@@ -525,6 +480,17 @@ void ThemeParkModule::drawParkPage(int parkIndex, int attractionPage) {
         
         _u8g2.setForegroundColor(0xFFFF);
         yPos += lineHeight;
+    }
+    
+    // Draw page indicator if multiple attraction pages
+    if (park.attractionPages > 1) {
+        _u8g2.setFont(u8g2_font_5x8_tf);
+        _u8g2.setForegroundColor(0xFFFF);
+        char pageStr[16];
+        snprintf(pageStr, sizeof(pageStr), "%d/%d", attractionPage + 1, park.attractionPages);
+        int pageW = _u8g2.getUTF8Width(pageStr);
+        _u8g2.setCursor(_canvas.width() - pageW - 2, _canvas.height() - 2);
+        _u8g2.print(pageStr);
     }
 }
 
