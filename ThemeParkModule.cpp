@@ -16,7 +16,7 @@ struct SpiRamAllocator : ArduinoJson::Allocator {
 ThemeParkModule::ThemeParkModule(U8G2_FOR_ADAFRUIT_GFX& u8g2, GFXcanvas16& canvas, WebClientModule* webClient)
     : _u8g2(u8g2), _canvas(canvas), _webClient(webClient), _config(nullptr),
       _currentPage(0), _totalPages(1), _logicTicksSincePageSwitch(0),
-      _pageDisplayDuration(15000), _lastUpdate(0) {
+      _pageDisplayDuration(15000), _lastUpdate(0), _lastParksListUpdate(0) {
     _dataMutex = xSemaphoreCreateMutex();
 }
 
@@ -80,6 +80,9 @@ void ThemeParkModule::setConfig(const DeviceConfig* config) {
 void ThemeParkModule::queueData() {
     if (!_webClient || !_config) return;
     
+    // Check if parks list needs daily update
+    checkAndUpdateParksList();
+    
     // Access wait times data for each configured park from WebClientModule's cache
     PsramString url = "https://api.wartezeiten.app/v1/waitingtimes";
     
@@ -131,6 +134,9 @@ void ThemeParkModule::parseAvailableParks(const char* jsonBuffer, size_t size) {
     
     // Save park cache to LittleFS for later use
     saveParkCache();
+    
+    // Update timestamp when parks list is refreshed
+    _lastParksListUpdate = time(nullptr);
     
     Log.printf("[ThemePark] Loaded %d available parks\n", _availableParks.size());
 }
@@ -581,4 +587,32 @@ PsramString ThemeParkModule::getParkCountryFromCache(const PsramString& parkId) 
     }
     
     return country;
+}
+
+void ThemeParkModule::checkAndUpdateParksList() {
+    if (!_webClient) return;
+    
+    time_t now = time(nullptr);
+    
+    // Check if we need to update (once per day = 86400 seconds)
+    // If _lastParksListUpdate is 0, it means we've never updated automatically
+    if (_lastParksListUpdate > 0 && (now - _lastParksListUpdate) < 86400) {
+        return;  // Not yet time to update
+    }
+    
+    Log.println("[ThemePark] Performing daily parks list update");
+    
+    PsramString url = "https://api.wartezeiten.app/v1/parks";
+    PsramString headers = "accept: application/json\nlanguage: de";
+    
+    // Fetch parks list asynchronously
+    _webClient->getRequest(url, headers, [this](int httpCode, const char* payload, size_t len) {
+        if (httpCode == 200 && payload && len > 0) {
+            Log.printf("[ThemePark] Daily update: received parks list (size: %d)\n", len);
+            parseAvailableParks(payload, len);
+            _lastParksListUpdate = time(nullptr);
+        } else {
+            Log.printf("[ThemePark] Daily update failed: HTTP %d\n", httpCode);
+        }
+    });
 }

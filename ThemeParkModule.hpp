@@ -71,6 +71,7 @@ public:
     // Public methods for web configuration
     PsramVector<AvailablePark> getAvailableParks();
     void parseAvailableParks(const char* jsonBuffer, size_t size);
+    void checkAndUpdateParksList();  // Check if parks list needs daily update
 
 private:
     U8G2_FOR_ADAFRUIT_GFX& _u8g2;
@@ -90,6 +91,7 @@ private:
     unsigned long _pageDisplayDuration;
     
     time_t _lastUpdate;
+    time_t _lastParksListUpdate;  // Track when parks list was last updated
     std::function<void()> _updateCallback;
     
     void parseWaitTimes(const char* jsonBuffer, size_t size, const PsramString& parkId);
