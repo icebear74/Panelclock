@@ -318,39 +318,44 @@ void ThemeParkModule::drawParkPage(int pageIndex) {
     
     const ThemeParkData& park = _parkData[pageIndex];
     
-    // Draw park name as headline
+    // Draw park name with country as headline - format: "Parkname (Land)"
     _u8g2.setFont(u8g2_font_9x15_tf);
     _u8g2.setForegroundColor(0xFFFF);
     
-    PsramString displayName = truncateString(park.name, _canvas.width() - 40);
+    PsramString displayName = park.name;
+    if (!park.country.empty()) {
+        displayName = displayName + " (" + park.country + ")";
+    }
+    displayName = truncateString(displayName, _canvas.width() - 50);
     _u8g2.setCursor(2, 10);
     _u8g2.print(displayName.c_str());
     
-    // Draw crowd level indicator
-    int x = _canvas.width() - 35;
-    int y = 2;
-    uint16_t crowdColor = getCrowdLevelColor(park.crowdLevel);
-    _canvas.fillRect(x, y, 30, 10, crowdColor);
-    _u8g2.setForegroundColor(0x0000);
-    _u8g2.setFont(u8g2_font_5x8_tf);
+    // Draw crowd level as percentage text (no box)
+    // Crowd level is 0-10 scale, convert to percentage: level * 10
+    // Color: green <= 40%, yellow 41-60%, red > 60%
+    int crowdPercent = park.crowdLevel * 10;
+    uint16_t crowdColor;
+    if (crowdPercent <= 40) {
+        crowdColor = 0x07E0;  // Green
+    } else if (crowdPercent <= 60) {
+        crowdColor = 0xFFE0;  // Yellow
+    } else {
+        crowdColor = 0xF800;  // Red
+    }
+    
+    _u8g2.setFont(u8g2_font_6x10_tf);
+    _u8g2.setForegroundColor(crowdColor);
     char crowdText[8];
-    snprintf(crowdText, sizeof(crowdText), "%d/10", park.crowdLevel);
-    int textW = _u8g2.getUTF8Width(crowdText);
-    _u8g2.setCursor(x + (30 - textW) / 2, y + 8);
+    snprintf(crowdText, sizeof(crowdText), "%d%%", crowdPercent);
+    int crowdW = _u8g2.getUTF8Width(crowdText);
+    _u8g2.setCursor(_canvas.width() - crowdW - 2, 10);
     _u8g2.print(crowdText);
     
-    // Draw country if available
+    // Draw opening hours if available
     int yPos = 14;
     _u8g2.setFont(u8g2_font_5x8_tf);
     _u8g2.setForegroundColor(0xFFFF);
     
-    if (!park.country.empty()) {
-        _u8g2.setCursor(2, yPos);
-        _u8g2.print(park.country.c_str());
-        yPos += 8;
-    }
-    
-    // Draw opening hours if available
     if (!park.openingTime.empty() && !park.closingTime.empty()) {
         char hoursText[50];
         if (park.isOpen) {
