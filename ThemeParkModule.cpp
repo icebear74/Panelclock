@@ -16,7 +16,8 @@ struct SpiRamAllocator : ArduinoJson::Allocator {
 ThemeParkModule::ThemeParkModule(U8G2_FOR_ADAFRUIT_GFX& u8g2, GFXcanvas16& canvas, WebClientModule* webClient)
     : _u8g2(u8g2), _canvas(canvas), _webClient(webClient), _config(nullptr),
       _currentPage(0), _totalPages(1), _logicTicksSincePageSwitch(0),
-      _pageDisplayDuration(15000), _lastUpdate(0), _lastParksListUpdate(0) {
+      _pageDisplayDuration(15000), _lastUpdate(0), _lastParksListUpdate(0), _lastParkDetailsUpdate(0),
+      _parkNameScrollOffset(0), _parkNameMaxScroll(0) {
     _dataMutex = xSemaphoreCreateMutex();
 }
 
@@ -66,14 +67,21 @@ void ThemeParkModule::setConfig(const DeviceConfig* config) {
     }
     
     // Register each park as a separate resource with WebClientModule
-    PsramString url = "https://api.wartezeiten.app/v1/waitingtimes";
+    PsramString waitTimesUrl = "https://api.wartezeiten.app/v1/waitingtimes";
+    PsramString crowdLevelUrl = "https://api.wartezeiten.app/v1/crowdlevel";
     uint32_t fetchIntervalMin = (_config->themeParkFetchIntervalMin > 0) 
         ? _config->themeParkFetchIntervalMin : 10;
     
     for (const auto& parkId : _parkIds) {
         PsramString headers = "accept: application/json\npark: " + parkId + "\nlanguage: de";
-        _webClient->registerResourceWithHeaders(url.c_str(), headers.c_str(), fetchIntervalMin, nullptr);
-        Log.printf("[ThemePark] Registered resource for park: %s\n", parkId.c_str());
+        
+        // Register wait times
+        _webClient->registerResourceWithHeaders(waitTimesUrl.c_str(), headers.c_str(), fetchIntervalMin, nullptr);
+        Log.printf("[ThemePark] Registered wait times resource for park: %s\n", parkId.c_str());
+        
+        // Register crowd level (same interval as wait times)
+        _webClient->registerResourceWithHeaders(crowdLevelUrl.c_str(), headers.c_str(), fetchIntervalMin, nullptr);
+        Log.printf("[ThemePark] Registered crowd level resource for park: %s\n", parkId.c_str());
     }
 }
 
@@ -83,22 +91,41 @@ void ThemeParkModule::queueData() {
     // Check if parks list needs daily update
     checkAndUpdateParksList();
     
-    // Access wait times data for each configured park from WebClientModule's cache
-    PsramString url = "https://api.wartezeiten.app/v1/waitingtimes";
+    // Check if park details (names, opening hours) need update (every 2 hours = 7200 seconds)
+    time_t now = time(nullptr);
+    if (_lastParkDetailsUpdate == 0 || (now - _lastParkDetailsUpdate) >= 7200) {
+        // Park details update happens automatically when parks list is loaded
+        // or we could add a separate mechanism here if needed
+        _lastParkDetailsUpdate = now;
+    }
+    
+    // Access wait times and crowd level data for each configured park
+    PsramString waitTimesUrl = "https://api.wartezeiten.app/v1/waitingtimes";
+    PsramString crowdLevelUrl = "https://api.wartezeiten.app/v1/crowdlevel";
     
     for (const auto& parkId : _parkIds) {
         PsramString headers = "accept: application/json\npark: " + parkId + "\nlanguage: de";
         
-        _webClient->accessResource(url.c_str(), headers.c_str(), 
+        // Fetch wait times
+        _webClient->accessResource(waitTimesUrl.c_str(), headers.c_str(), 
             [this, parkId](const char* data, size_t size, time_t last_update, bool is_stale) {
                 if (data && size > 0 && !is_stale && last_update > _lastUpdate) {
-                    Log.printf("[ThemePark] New data available for park: %s (size: %d)\n", parkId.c_str(), size);
+                    Log.printf("[ThemePark] New wait times for park: %s (size: %d)\n", parkId.c_str(), size);
                     parseWaitTimes(data, size, parkId);
                     _lastUpdate = last_update;
                     
                     if (_updateCallback) {
                         _updateCallback();
                     }
+                }
+            });
+        
+        // Fetch crowd level
+        _webClient->accessResource(crowdLevelUrl.c_str(), headers.c_str(),
+            [this, parkId](const char* data, size_t size, time_t last_update, bool is_stale) {
+                if (data && size > 0 && !is_stale) {
+                    Log.printf("[ThemePark] New crowd level for park: %s\n", parkId.c_str());
+                    parseCrowdLevel(data, size, parkId);
                 }
             });
     }
@@ -237,6 +264,33 @@ void ThemeParkModule::parseWaitTimes(const char* jsonBuffer, size_t size, const 
                parkName.c_str(), parkData->attractions.size(), openAttractionsCount);
 }
 
+void ThemeParkModule::parseCrowdLevel(const char* jsonBuffer, size_t size, const PsramString& parkId) {
+    SpiRamAllocator allocator;
+    JsonDocument doc(&allocator);
+    
+    DeserializationError error = deserializeJson(doc, jsonBuffer, size);
+    if (error) {
+        Log.printf("[ThemePark] Failed to parse crowd level: %s\n", error.c_str());
+        return;
+    }
+    
+    // Extract crowd level from JSON
+    float crowdLevel = doc["crowd_level"] | 0.0f;
+    
+    // Find the park data and update crowd level
+    for (auto& park : _parkData) {
+        if (park.id == parkId) {
+            park.crowdLevel = crowdLevel;
+            Log.printf("[ThemePark] Updated crowd level for %s: %.2f%%\n", parkId.c_str(), crowdLevel);
+            
+            if (_updateCallback) {
+                _updateCallback();
+            }
+            break;
+        }
+    }
+}
+
 void ThemeParkModule::onUpdate(std::function<void()> callback) {
     _updateCallback = callback;
 }
@@ -280,12 +334,22 @@ void ThemeParkModule::onActivate() {
 void ThemeParkModule::logicTick() {
     _logicTicksSincePageSwitch++;
     
+    // Advance scrolling every few ticks (every 3 ticks = ~300ms at 100ms tick rate)
+    if (_parkNameMaxScroll > 0 && _logicTicksSincePageSwitch % 3 == 0) {
+        _parkNameScrollOffset++;
+        if (_parkNameScrollOffset >= _parkNameMaxScroll) {
+            _parkNameScrollOffset = 0;
+        }
+        if (_updateCallback) _updateCallback();
+    }
+    
     uint32_t ticksPerPage = (_pageDisplayDuration / 100);
     
     if (_logicTicksSincePageSwitch >= ticksPerPage) {
         if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
             int numPages = _parkData.size() > 0 ? _parkData.size() : 1;
             _currentPage++;
+            _parkNameScrollOffset = 0;  // Reset scroll when changing page
             
             if (_currentPage >= numPages) {
                 _currentPage = 0;
@@ -325,40 +389,43 @@ void ThemeParkModule::drawParkPage(int pageIndex) {
     const ThemeParkData& park = _parkData[pageIndex];
     
     // Draw park name with country as headline - format: "Parkname (Land)"
-    _u8g2.setFont(u8g2_font_9x15_tf);
+    // Use smaller font (6x13 like CalendarModule uses) and scrolling
+    _u8g2.setFont(u8g2_font_6x13_tf);
     _u8g2.setForegroundColor(0xFFFF);
     
     PsramString displayName = park.name;
     if (!park.country.empty()) {
         displayName = displayName + " (" + park.country + ")";
     }
-    displayName = truncateString(displayName, _canvas.width() - 50);
-    _u8g2.setCursor(2, 10);
-    _u8g2.print(displayName.c_str());
+    
+    int maxNameWidth = _canvas.width() - 50;  // Leave space for crowd level
+    drawScrollingText(displayName, 2, 11, maxNameWidth);
     
     // Draw crowd level as percentage text (no box)
-    // Crowd level is 0-10 scale, convert to percentage: level * 10
+    // Crowd level from API is 0-100 scale
     // Color: green <= 40%, yellow 41-60%, red > 60%
-    int crowdPercent = park.crowdLevel * 10;
-    uint16_t crowdColor;
-    if (crowdPercent <= 40) {
-        crowdColor = 0x07E0;  // Green
-    } else if (crowdPercent <= 60) {
-        crowdColor = 0xFFE0;  // Yellow
-    } else {
-        crowdColor = 0xF800;  // Red
+    // Only show if > 0 (API returns 0 for closed parks)
+    if (park.crowdLevel > 0.0f) {
+        uint16_t crowdColor;
+        if (park.crowdLevel <= 40.0f) {
+            crowdColor = 0x07E0;  // Green
+        } else if (park.crowdLevel <= 60.0f) {
+            crowdColor = 0xFFE0;  // Yellow
+        } else {
+            crowdColor = 0xF800;  // Red
+        }
+        
+        _u8g2.setFont(u8g2_font_6x10_tf);
+        _u8g2.setForegroundColor(crowdColor);
+        char crowdText[8];
+        snprintf(crowdText, sizeof(crowdText), "%.0f%%", park.crowdLevel);
+        int crowdW = _u8g2.getUTF8Width(crowdText);
+        _u8g2.setCursor(_canvas.width() - crowdW - 2, 11);
+        _u8g2.print(crowdText);
     }
     
-    _u8g2.setFont(u8g2_font_6x10_tf);
-    _u8g2.setForegroundColor(crowdColor);
-    char crowdText[8];
-    snprintf(crowdText, sizeof(crowdText), "%d%%", crowdPercent);
-    int crowdW = _u8g2.getUTF8Width(crowdText);
-    _u8g2.setCursor(_canvas.width() - crowdW - 2, 10);
-    _u8g2.print(crowdText);
-    
-    // Draw opening hours if available
-    int yPos = 14;
+    // Draw opening hours if available (smaller font)
+    int yPos = 16;
     _u8g2.setFont(u8g2_font_5x8_tf);
     _u8g2.setForegroundColor(0xFFFF);
     
@@ -377,22 +444,22 @@ void ThemeParkModule::drawParkPage(int pageIndex) {
         yPos += 8;
     }
     
-    // Draw top wait times
-    _u8g2.setFont(u8g2_font_6x10_tf);
+    // Draw top wait times using smaller font like CalendarModule
+    _u8g2.setFont(u8g2_font_5x8_tf);
     _u8g2.setForegroundColor(0xFFFF);
     
-    yPos += 6;  // Add 4 more pixels gap before wait times (was 2, now 6)
-    int lineHeight = 9;
+    yPos += 2;  // Small gap before wait times
+    int lineHeight = 8;  // Reduced from 9 due to smaller font
     int maxLines = (_canvas.height() - yPos) / lineHeight;
-    int linesToShow = min(maxLines, min(8, (int)park.attractions.size()));
+    int linesToShow = min(maxLines, (int)park.attractions.size());
     
     for (int i = 0; i < linesToShow; i++) {
         const Attraction& attr = park.attractions[i];
         
         if (!attr.isOpen) continue;
         
-        // Truncate name to fit
-        PsramString attrName = truncateString(attr.name, _canvas.width() - 40);
+        // Truncate name to fit (leave space for wait time)
+        PsramString attrName = truncateString(attr.name, _canvas.width() - 45);
         
         // Draw attraction name
         _u8g2.setCursor(2, yPos);
@@ -450,13 +517,11 @@ void ThemeParkModule::drawNoDataPage() {
     _u8g2.print(msg2);
 }
 
-uint16_t ThemeParkModule::getCrowdLevelColor(int level) {
-    // 0-10 scale, from green (low) to red (high)
-    if (level <= 3) return 0x07E0;      // Green
-    if (level <= 5) return 0x9FE0;      // Light green
-    if (level <= 7) return 0xFFE0;      // Yellow
-    if (level <= 8) return 0xFD20;      // Orange
-    return 0xF800;                       // Red
+uint16_t ThemeParkModule::getCrowdLevelColor(float level) {
+    // Level is 0-100 scale from API
+    if (level <= 40.0f) return 0x07E0;      // Green
+    if (level <= 60.0f) return 0xFFE0;      // Yellow
+    return 0xF800;                          // Red
 }
 
 PsramString ThemeParkModule::truncateString(const PsramString& text, int maxWidth) {
@@ -473,6 +538,43 @@ PsramString ThemeParkModule::truncateString(const PsramString& text, int maxWidt
     }
     
     return truncated + "...";
+}
+
+void ThemeParkModule::drawScrollingText(const PsramString& text, int x, int y, int maxWidth) {
+    PsramString visiblePart = fitTextToPixelWidth(text, maxWidth);
+    
+    if (text.length() > visiblePart.length()) {
+        // Text needs scrolling
+        PsramString pad("   ");
+        PsramString scrollText = text + pad + text.substr(0, visiblePart.length());
+        _parkNameMaxScroll = scrollText.length() - visiblePart.length();
+        
+        if (_parkNameScrollOffset >= _parkNameMaxScroll) {
+            _parkNameScrollOffset = 0;
+        }
+        
+        PsramString part = scrollText.substr(_parkNameScrollOffset, visiblePart.length());
+        _u8g2.setCursor(x, y);
+        _u8g2.print(part.c_str());
+    } else {
+        // Text fits, no scrolling needed
+        _parkNameMaxScroll = 0;
+        _parkNameScrollOffset = 0;
+        _u8g2.setCursor(x, y);
+        _u8g2.print(text.c_str());
+    }
+}
+
+PsramString ThemeParkModule::fitTextToPixelWidth(const PsramString& text, int maxPixel) {
+    int lastOk = 0;
+    for (int i = 1; i <= (int)text.length(); ++i) {
+        if (_u8g2.getUTF8Width(text.substr(0, i).c_str()) <= maxPixel) {
+            lastOk = i;
+        } else {
+            break;
+        }
+    }
+    return text.substr(0, lastOk);
 }
 
 PsramVector<AvailablePark> ThemeParkModule::getAvailableParks() {

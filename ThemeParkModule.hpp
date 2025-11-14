@@ -21,14 +21,14 @@ struct ThemeParkData {
     PsramString id;
     PsramString name;
     PsramString country;
-    int crowdLevel;  // 0-10 scale
+    float crowdLevel;  // 0-100 scale from API (was int 0-10)
     PsramVector<Attraction> attractions;
     time_t lastUpdate;
     bool isOpen;
     PsramString openingTime;   // e.g. "09:00"
     PsramString closingTime;   // e.g. "18:00"
     
-    ThemeParkData() : crowdLevel(0), lastUpdate(0), isOpen(false) {}
+    ThemeParkData() : crowdLevel(0.0f), lastUpdate(0), isOpen(false) {}
 };
 
 struct AvailablePark {
@@ -92,13 +92,21 @@ private:
     
     time_t _lastUpdate;
     time_t _lastParksListUpdate;  // Track when parks list was last updated
+    time_t _lastParkDetailsUpdate;  // Track when park details (name, hours) were updated
     std::function<void()> _updateCallback;
     
+    // Scrolling support for park name
+    int _parkNameScrollOffset;
+    int _parkNameMaxScroll;
+    
     void parseWaitTimes(const char* jsonBuffer, size_t size, const PsramString& parkId);
+    void parseCrowdLevel(const char* jsonBuffer, size_t size, const PsramString& parkId);
     void drawParkPage(int pageIndex);
     void drawNoDataPage();
-    uint16_t getCrowdLevelColor(int level);
+    uint16_t getCrowdLevelColor(float level);
     PsramString truncateString(const PsramString& text, int maxWidth);
+    void drawScrollingText(const PsramString& text, int x, int y, int maxWidth);
+    PsramString fitTextToPixelWidth(const PsramString& text, int maxPixel);
     
     // Cache management
     void loadParkCache();
