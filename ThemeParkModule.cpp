@@ -78,11 +78,6 @@ void ThemeParkModule::setConfig(const DeviceConfig* config) {
 }
 
 void ThemeParkModule::queueData() {
-    // With the new pattern, WebClientModule handles all scheduling and fetching
-    // We just register resources in setConfig() and access them in processData()
-}
-
-void ThemeParkModule::queueData() {
     if (!_webClient || !_config) return;
     
     // Access wait times data for each configured park from WebClientModule's cache
