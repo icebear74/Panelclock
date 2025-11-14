@@ -336,7 +336,7 @@ void ThemeParkModule::drawParkPage(int pageIndex) {
     _u8g2.setFont(u8g2_font_6x10_tf);
     _u8g2.setForegroundColor(0xFFFF);
     
-    yPos += 2;  // Add small gap before wait times
+    yPos += 6;  // Add 4 more pixels gap before wait times (was 2, now 6)
     int lineHeight = 9;
     int maxLines = (_canvas.height() - yPos) / lineHeight;
     int linesToShow = min(maxLines, min(8, (int)park.attractions.size()));
