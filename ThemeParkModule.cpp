@@ -76,168 +76,31 @@ void ThemeParkModule::setConfig(const DeviceConfig* config) {
 }
 
 void ThemeParkModule::queueData() {
-    // Empty - we now use periodicTick() for background fetching
-    // This method is still called by PanelManager but does nothing
-}
-
-void ThemeParkModule::periodicTick() {
-    // Background fetching - runs always, even when module is not displayed
-    if (!_webClient || !isEnabled() || !_config) {
-        return;
-    }
-    
-    time_t now = time(nullptr);
-    uint32_t fetchIntervalSec = (_config->themeParkFetchIntervalMin > 0) 
-        ? _config->themeParkFetchIntervalMin * 60 : 600; // default 10 minutes
-    
-    if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-        // Check if we have parks to fetch
-        if (_parkIdsToFetch.empty()) {
-            xSemaphoreGive(_dataMutex);
-            return;
-        }
-        
-        // If we're not currently fetching and enough time has passed, start new cycle
-        if (!_isFetchingPark) {
-            if (_lastFetchCycleStart == 0 || (now - _lastFetchCycleStart) >= fetchIntervalSec) {
-                // Start fetching from first park
-                _currentFetchParkIndex = 0;
-                _lastFetchCycleStart = now;
-                _isFetchingPark = true;
-                
-                PsramString parkId = _parkIdsToFetch[_currentFetchParkIndex];
-                xSemaphoreGive(_dataMutex);
-                
-                // Queue the request
-                PsramString url = "https://api.wartezeiten.app/v1/waitingtimes";
-                PsramString headers = "accept: application/json\npark: ";
-                headers += parkId;
-                headers += "\nlanguage: de";
-                
-                Log.printf("[ThemePark] Starting fetch cycle, queuing park %d/%d: %s\n", 
-                    _currentFetchParkIndex + 1, _parkIdsToFetch.size(), parkId.c_str());
-                
-                _webClient->getRequest(url, headers,
-                    [this, parkId](int httpCode, const char* buffer, size_t size) {
-                        Log.printf("[ThemePark] Response for %s: HTTP %d, size %zu\n", 
-                            parkId.c_str(), httpCode, size);
-                        
-                        if (httpCode == 200 && buffer && size > 0) {
-                            if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-                                if (_pendingWaitTimesBuffer) free(_pendingWaitTimesBuffer);
-                                _pendingWaitTimesBuffer = (char*)ps_malloc(size);
-                                if (_pendingWaitTimesBuffer) {
-                                    memcpy(_pendingWaitTimesBuffer, buffer, size);
-                                    _waitTimesBufferSize = size;
-                                    _waitTimesDataPending = true;
-                                }
-                                xSemaphoreGive(_dataMutex);
-                            }
-                        }
-                        
-                        // Mark fetch as complete so next park can be fetched
-                        if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-                            _isFetchingPark = false;
-                            _currentFetchParkIndex++;
-                            
-                            // Check if we've fetched all parks
-                            if (_currentFetchParkIndex >= (int)_parkIdsToFetch.size()) {
-                                Log.println("[ThemePark] Fetch cycle complete, all parks fetched");
-                                _currentFetchParkIndex = -1;  // Reset for next cycle
-                            } else {
-                                Log.printf("[ThemePark] Park %s complete, ready for next\n", parkId.c_str());
-                            }
-                            xSemaphoreGive(_dataMutex);
-                        }
-                    }
-                );
-            } else {
-                xSemaphoreGive(_dataMutex);
-            }
-        } else {
-            // We're waiting for a response, check if we should fetch the next park
-            // (this happens after the previous park's callback marks _isFetchingPark = false)
-            if (_currentFetchParkIndex >= 0 && _currentFetchParkIndex < (int)_parkIdsToFetch.size()) {
-                _isFetchingPark = true;
-                PsramString parkId = _parkIdsToFetch[_currentFetchParkIndex];
-                xSemaphoreGive(_dataMutex);
-                
-                // Queue the next park
-                PsramString url = "https://api.wartezeiten.app/v1/waitingtimes";
-                PsramString headers = "accept: application/json\npark: ";
-                headers += parkId;
-                headers += "\nlanguage: de";
-                
-                Log.printf("[ThemePark] Queuing park %d/%d: %s\n", 
-                    _currentFetchParkIndex + 1, _parkIdsToFetch.size(), parkId.c_str());
-                
-                _webClient->getRequest(url, headers,
-                    [this, parkId](int httpCode, const char* buffer, size_t size) {
-                        Log.printf("[ThemePark] Response for %s: HTTP %d, size %zu\n", 
-                            parkId.c_str(), httpCode, size);
-                        
-                        if (httpCode == 200 && buffer && size > 0) {
-                            if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-                                if (_pendingWaitTimesBuffer) free(_pendingWaitTimesBuffer);
-                                _pendingWaitTimesBuffer = (char*)ps_malloc(size);
-                                if (_pendingWaitTimesBuffer) {
-                                    memcpy(_pendingWaitTimesBuffer, buffer, size);
-                                    _waitTimesBufferSize = size;
-                                    _waitTimesDataPending = true;
-                                }
-                                xSemaphoreGive(_dataMutex);
-                            }
-                        }
-                        
-                        // Mark fetch as complete so next park can be fetched
-                        if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-                            _isFetchingPark = false;
-                            _currentFetchParkIndex++;
-                            
-                            // Check if we've fetched all parks
-                            if (_currentFetchParkIndex >= (int)_parkIdsToFetch.size()) {
-                                Log.println("[ThemePark] Fetch cycle complete, all parks fetched");
-                                _currentFetchParkIndex = -1;  // Reset for next cycle
-                            } else {
-                                Log.printf("[ThemePark] Park %s complete, ready for next\n", parkId.c_str());
-                            }
-                            xSemaphoreGive(_dataMutex);
-                        }
-                    }
-                );
-            } else {
-                xSemaphoreGive(_dataMutex);
-            }
-        }
-    }
+    // With the new pattern, WebClientModule handles all scheduling and fetching
+    // We just register resources in setConfig() and access them in processData()
 }
 
 void ThemeParkModule::processData() {
-    bool dataProcessed = false;
+    if (!_webClient || !_config) return;
     
-    if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        if (_parksListDataPending && _pendingParksListBuffer) {
-            parseAvailableParks(_pendingParksListBuffer, _parksListBufferSize);
-            free(_pendingParksListBuffer);
-            _pendingParksListBuffer = nullptr;
-            _parksListDataPending = false;
-            dataProcessed = true;
-        }
-        
-        if (_waitTimesDataPending && _pendingWaitTimesBuffer) {
-            parseWaitTimes(_pendingWaitTimesBuffer, _waitTimesBufferSize);
-            free(_pendingWaitTimesBuffer);
-            _pendingWaitTimesBuffer = nullptr;
-            _waitTimesDataPending = false;
-            _lastUpdate = time(nullptr);
-            dataProcessed = true;
-        }
-        
-        xSemaphoreGive(_dataMutex);
-    }
+    // Access wait times data for each configured park from WebClientModule's cache
+    PsramString url = "https://api.wartezeiten.app/v1/waitingtimes";
     
-    if (dataProcessed && _updateCallback) {
-        _updateCallback();
+    for (const auto& parkId : _parkIds) {
+        PsramString headers = "accept: application/json\npark: " + parkId + "\nlanguage: de";
+        
+        _webClient->accessResource(url.c_str(), headers.c_str(), 
+            [this, parkId](const char* data, size_t size, time_t last_update, bool is_stale) {
+                if (data && size > 0 && !is_stale) {
+                    Log.printf("[ThemePark] Processing data for park: %s (size: %d)\n", parkId.c_str(), size);
+                    parseWaitTimes(data, size);
+                    _lastUpdate = last_update;
+                    
+                    if (_updateCallback) {
+                        _updateCallback();
+                    }
+                }
+            });
     }
 }
 
@@ -412,6 +275,7 @@ void ThemeParkModule::logicTick() {
 
 void ThemeParkModule::draw() {
     _canvas.fillScreen(0);
+    _u8g2.begin(_canvas);  // Initialize u8g2 with canvas - required for proper rendering
     
     if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
         if (_parkData.empty()) {
