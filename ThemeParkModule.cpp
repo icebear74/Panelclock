@@ -76,15 +76,17 @@ void ThemeParkModule::setConfig(const DeviceConfig* config) {
     for (const auto& parkId : _parkIds) {
         PsramString headers = "accept: application/json\npark: " + parkId + "\nlanguage: de";
         
-        // Create explicit string copy for lambda capture - convert to std::string
-        std::string parkIdStr(parkId.c_str());
+        // Create a copy of parkId as a plain C string for safe capture
+        const char* parkIdCStr = parkId.c_str();
+        char* parkIdCopy = new char[strlen(parkIdCStr) + 1];
+        strcpy(parkIdCopy, parkIdCStr);
         
         // Register wait times with callback
         _webClient->registerResourceWithHeaders(waitTimesUrl.c_str(), headers.c_str(), fetchIntervalMin, 
-            [this, parkIdStr](const char* data, size_t size, time_t last_update, bool is_stale) {
+            [this, parkIdCopy](const char* data, size_t size, time_t last_update, bool is_stale) {
                 if (data && size > 0 && !is_stale && last_update > _lastUpdate) {
-                    Log.printf("[ThemePark] New wait times for park: %s (size: %d)\n", parkIdStr.c_str(), size);
-                    parseWaitTimes(data, size, PsramString(parkIdStr.c_str()));
+                    Log.printf("[ThemePark] New wait times for park: %s (size: %d)\n", parkIdCopy, size);
+                    parseWaitTimes(data, size, PsramString(parkIdCopy));
                     _lastUpdate = last_update;
                     
                     if (_updateCallback) {
@@ -94,12 +96,16 @@ void ThemeParkModule::setConfig(const DeviceConfig* config) {
             });
         Log.printf("[ThemePark] Registered wait times resource for park: %s\n", parkId.c_str());
         
+        // Create another copy for crowd level callback
+        char* parkIdCopy2 = new char[strlen(parkIdCStr) + 1];
+        strcpy(parkIdCopy2, parkIdCStr);
+        
         // Register crowd level with callback (same interval as wait times)
         _webClient->registerResourceWithHeaders(crowdLevelUrl.c_str(), headers.c_str(), fetchIntervalMin,
-            [this, parkIdStr](const char* data, size_t size, time_t last_update, bool is_stale) {
+            [this, parkIdCopy2](const char* data, size_t size, time_t last_update, bool is_stale) {
                 if (data && size > 0 && !is_stale && last_update > _lastUpdate) {
-                    Log.printf("[ThemePark] New crowd level for park: %s\n", parkIdStr.c_str());
-                    parseCrowdLevel(data, size, PsramString(parkIdStr.c_str()));
+                    Log.printf("[ThemePark] New crowd level for park: %s\n", parkIdCopy2);
+                    parseCrowdLevel(data, size, PsramString(parkIdCopy2));
                 }
             });
         Log.printf("[ThemePark] Registered crowd level resource for park: %s\n", parkId.c_str());
