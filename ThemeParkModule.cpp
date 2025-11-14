@@ -264,18 +264,10 @@ void ThemeParkModule::parseWaitTimes(const char* jsonBuffer, size_t size, const 
     // Park is closed if all attractions are closed
     bool allAttractionsClosed = (parkData->attractions.size() > 0 && openAttractionsCount == 0);
     
-    // If park is closed and has no opening hours information, remove it from display
-    if (allAttractionsClosed && parkData->openingTime.empty() && parkData->closingTime.empty()) {
-        Log.printf("[ThemePark] Park %s is closed with no opening hours - skipping\n", parkName.c_str());
-        // Remove this park from _parkData
-        for (size_t i = 0; i < _parkData.size(); i++) {
-            if (_parkData[i].id == parkId) {
-                _parkData.erase(_parkData.begin() + i);
-                break;
-            }
-        }
-        _totalPages = _parkData.size();
-        return;
+    // Don't remove parks here - opening times might not be fetched yet due to async callbacks
+    // The display logic will handle whether to show closed parks based on opening hours
+    if (allAttractionsClosed) {
+        Log.printf("[ThemePark] Park %s is closed (all attractions closed)\n", parkName.c_str());
     }
     
     // Sort attractions by wait time (descending)
@@ -418,6 +410,25 @@ void ThemeParkModule::onActivate() {
     _logicTicksSincePageSwitch = 0;
 }
 
+bool ThemeParkModule::shouldDisplayPark(const ThemeParkData& park) const {
+    // Always display parks with open attractions
+    bool hasOpenAttractions = false;
+    for (const auto& attr : park.attractions) {
+        if (attr.isOpen) {
+            hasOpenAttractions = true;
+            break;
+        }
+    }
+    
+    if (hasOpenAttractions) {
+        return true;
+    }
+    
+    // If all attractions are closed, only display if we have opening hours information
+    // This allows users to see when the park will reopen
+    return !park.openingTime.empty() && !park.closingTime.empty();
+}
+
 void ThemeParkModule::logicTick() {
     _logicTicksSincePageSwitch++;
     
@@ -434,7 +445,15 @@ void ThemeParkModule::logicTick() {
     
     if (_logicTicksSincePageSwitch >= ticksPerPage) {
         if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-            if (_parkData.empty()) {
+            // Filter displayable parks
+            PsramVector<int> displayableIndices;
+            for (size_t i = 0; i < _parkData.size(); i++) {
+                if (shouldDisplayPark(_parkData[i])) {
+                    displayableIndices.push_back(i);
+                }
+            }
+            
+            if (displayableIndices.empty()) {
                 _currentPage = 0;
                 _currentParkIndex = 0;
                 _currentAttractionPage = 0;
@@ -444,21 +463,25 @@ void ThemeParkModule::logicTick() {
                 return;
             }
             
+            // Get the actual park index we're currently on
+            int displayIndex = _currentParkIndex % displayableIndices.size();
+            int actualParkIndex = displayableIndices[displayIndex];
+            
             // Move to next attraction page within current park
             _currentAttractionPage++;
             _parkNameScrollOffset = 0;  // Reset scroll when changing page
             
             // If we've shown all attraction pages for current park, move to next park
-            if (_currentAttractionPage >= _parkData[_currentParkIndex].attractionPages) {
+            if (_currentAttractionPage >= _parkData[actualParkIndex].attractionPages) {
                 _currentAttractionPage = 0;
                 _currentParkIndex++;
                 
-                // If we've shown all parks, we're done
-                if (_currentParkIndex >= (int)_parkData.size()) {
+                // If we've shown all displayable parks, we're done
+                if (_currentParkIndex >= (int)displayableIndices.size()) {
                     _currentParkIndex = 0;
                     _currentPage = 0;
                     _isFinished = true;
-                    Log.printf("[ThemePark] All %d parks shown -> Module finished\n", (int)_parkData.size());
+                    Log.printf("[ThemePark] All %d displayable parks shown -> Module finished\n", (int)displayableIndices.size());
                 } else {
                     _currentPage++;
                     if (_updateCallback) _updateCallback();
@@ -479,10 +502,20 @@ void ThemeParkModule::draw() {
     _u8g2.begin(_canvas);  // Initialize u8g2 with canvas - required for proper rendering
     
     if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-        if (_parkData.empty()) {
+        // Filter displayable parks
+        PsramVector<int> displayableIndices;
+        for (size_t i = 0; i < _parkData.size(); i++) {
+            if (shouldDisplayPark(_parkData[i])) {
+                displayableIndices.push_back(i);
+            }
+        }
+        
+        if (displayableIndices.empty()) {
             drawNoDataPage();
         } else {
-            drawParkPage(_currentParkIndex, _currentAttractionPage);
+            // Find which displayable park we should show based on current index
+            int displayIndex = _currentParkIndex % displayableIndices.size();
+            drawParkPage(displayableIndices[displayIndex], _currentAttractionPage);
         }
         xSemaphoreGive(_dataMutex);
     } else {
@@ -497,6 +530,12 @@ void ThemeParkModule::drawParkPage(int parkIndex, int attractionPage) {
     }
     
     const ThemeParkData& park = _parkData[parkIndex];
+    
+    // Check if this park should be displayed
+    if (!shouldDisplayPark(park)) {
+        drawNoDataPage();
+        return;
+    }
     
     // Draw park name with country and opening hours as headline - all in scrolling text
     // Use smaller font (6x13 like CalendarModule uses) and scrolling
