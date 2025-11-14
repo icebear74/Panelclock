@@ -83,7 +83,15 @@ void ThemeParkModule::setConfig(const DeviceConfig* config) {
                                                     updateIntervalMinutes, 
                                                     nullptr);
             
-            Log.printf("[ThemePark] Registered resource for park %s\n", parkId.c_str());
+            // Register opening times resource (updated less frequently - every 6 hours)
+            PsramString openingTimesUrl = "https://api.wartezeiten.app/v1/openingtimes";
+            PsramString openingTimesHeaders = "accept: application/json\npark: " + parkId;
+            _webClient->registerResourceWithHeaders(String(openingTimesUrl.c_str()),
+                                                    String(openingTimesHeaders.c_str()),
+                                                    360,  // 6 hours
+                                                    nullptr);
+            
+            Log.printf("[ThemePark] Registered resources for park %s\n", parkId.c_str());
         }
         xSemaphoreGive(_dataMutex);
     }
@@ -104,6 +112,7 @@ void ThemeParkModule::queueData() {
     }
     
     for (const auto& parkId : parkIdsCopy) {
+        // Fetch wait times
         PsramString queueUrl = "https://api.wartezeiten.app/v1/parks/" + parkId + "/queue";
         PsramString headers = "accept: application/json\nlanguage: de";
         
@@ -115,6 +124,25 @@ void ThemeParkModule::queueData() {
                     // Take mutex before parsing to ensure thread safety
                     if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
                         parseWaitTimes(buffer, size, parkId);
+                        xSemaphoreGive(_dataMutex);
+                        
+                        // Trigger a redraw if callback is set
+                        if (_updateCallback) {
+                            _updateCallback();
+                        }
+                    }
+                }
+            });
+        
+        // Fetch opening times
+        PsramString openingTimesUrl = "https://api.wartezeiten.app/v1/openingtimes";
+        PsramString openingTimesHeaders = "accept: application/json\npark: " + parkId;
+        
+        _webClient->accessResource(String(openingTimesUrl.c_str()), String(openingTimesHeaders.c_str()),
+            [this, parkId](const char* buffer, size_t size, time_t last_update, bool is_stale) {
+                if (buffer && size > 0) {
+                    if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+                        parseOpeningTimes(buffer, size, parkId);
                         xSemaphoreGive(_dataMutex);
                         
                         // Trigger a redraw if callback is set
@@ -289,6 +317,59 @@ void ThemeParkModule::parseCrowdLevel(const char* jsonBuffer, size_t size, const
         if (park.id == parkId) {
             park.crowdLevel = crowdLevel;
             Log.printf("[ThemePark] Updated crowd level for %s: %.2f%%\n", parkId.c_str(), crowdLevel);
+            break;
+        }
+    }
+}
+
+void ThemeParkModule::parseOpeningTimes(const char* jsonBuffer, size_t size, const PsramString& parkId) {
+    SpiRamAllocator allocator;
+    JsonDocument doc(&allocator);
+    
+    DeserializationError error = deserializeJson(doc, jsonBuffer, size);
+    if (error) {
+        Log.printf("[ThemePark] Failed to parse opening times: %s\n", error.c_str());
+        return;
+    }
+    
+    // API returns array like: [{"opened_today":true,"open_from":"2025-11-14T09:00:00+01:00","closed_from":"2025-11-14T18:00:00+01:00"}]
+    JsonArray timesArray = doc.as<JsonArray>();
+    if (!timesArray || timesArray.size() == 0) {
+        Log.printf("[ThemePark] No opening times data for park %s\n", parkId.c_str());
+        return;
+    }
+    
+    JsonObject today = timesArray[0];
+    bool openedToday = today["opened_today"] | false;
+    const char* openFrom = today["open_from"] | "";
+    const char* closedFrom = today["closed_from"] | "";
+    
+    // Find the park data and update opening times
+    for (auto& park : _parkData) {
+        if (park.id == parkId) {
+            park.isOpen = openedToday;
+            
+            // Extract just the time portion (HH:MM) from ISO 8601 timestamp
+            // Format is "2025-11-14T09:00:00+01:00", we want "09:00"
+            if (openFrom && strlen(openFrom) >= 16) {
+                PsramString openStr(openFrom);
+                size_t tPos = openStr.find('T');
+                if (tPos != PsramString::npos && tPos + 6 <= openStr.length()) {
+                    park.openingTime = openStr.substr(tPos + 1, 5);  // Extract "09:00"
+                }
+            }
+            
+            if (closedFrom && strlen(closedFrom) >= 16) {
+                PsramString closedStr(closedFrom);
+                size_t tPos = closedStr.find('T');
+                if (tPos != PsramString::npos && tPos + 6 <= closedStr.length()) {
+                    park.closingTime = closedStr.substr(tPos + 1, 5);  // Extract "18:00"
+                }
+            }
+            
+            Log.printf("[ThemePark] Updated opening times for %s: %s - %s (open: %s)\n", 
+                      parkId.c_str(), park.openingTime.c_str(), park.closingTime.c_str(), 
+                      park.isOpen ? "yes" : "no");
             break;
         }
     }

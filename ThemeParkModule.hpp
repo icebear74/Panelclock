@@ -104,6 +104,7 @@ private:
     
     void parseWaitTimes(const char* jsonBuffer, size_t size, const PsramString& parkId);
     void parseCrowdLevel(const char* jsonBuffer, size_t size, const PsramString& parkId);
+    void parseOpeningTimes(const char* jsonBuffer, size_t size, const PsramString& parkId);
     void drawParkPage(int parkIndex, int attractionPage);
     void drawNoDataPage();
     uint16_t getCrowdLevelColor(float level);
