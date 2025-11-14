@@ -384,7 +384,7 @@ void ThemeParkModule::drawParkPage(int pageIndex) {
     
     const ThemeParkData& park = _parkData[pageIndex];
     
-    // Draw park name with country as headline - format: "Parkname (Land)"
+    // Draw park name with country and opening hours as headline - all in scrolling text
     // Use smaller font (6x13 like CalendarModule uses) and scrolling
     _u8g2.setFont(u8g2_font_6x13_tf);
     _u8g2.setForegroundColor(0xFFFF);
@@ -392,6 +392,17 @@ void ThemeParkModule::drawParkPage(int pageIndex) {
     PsramString displayName = park.name;
     if (!park.country.empty()) {
         displayName = displayName + " (" + park.country + ")";
+    }
+    
+    // Add opening hours to the scrolling text
+    if (!park.openingTime.empty() && !park.closingTime.empty()) {
+        if (park.isOpen) {
+            // Park is open - show closing time
+            displayName = displayName + " - Geoeffnet bis " + park.closingTime;
+        } else {
+            // Park is closed - show opening and closing times
+            displayName = displayName + " - Geoeffnet " + park.openingTime + "-" + park.closingTime;
+        }
     }
     
     int maxNameWidth = _canvas.width() - 50;  // Leave space for crowd level
@@ -420,31 +431,13 @@ void ThemeParkModule::drawParkPage(int pageIndex) {
         _u8g2.print(crowdText);
     }
     
-    // Draw opening hours if available (smaller font)
+    // Draw top wait times using smaller font like CalendarModule
+    // Start position moved down by 2 more pixels
     int yPos = 16;
     _u8g2.setFont(u8g2_font_5x8_tf);
     _u8g2.setForegroundColor(0xFFFF);
     
-    if (!park.openingTime.empty() && !park.closingTime.empty()) {
-        char hoursText[50];
-        if (park.isOpen) {
-            // Park is open - show closing time
-            snprintf(hoursText, sizeof(hoursText), "Geoeffnet bis %s", park.closingTime.c_str());
-        } else {
-            // Park is closed - show opening and closing times
-            snprintf(hoursText, sizeof(hoursText), "Geoeffnet %s - %s", 
-                     park.openingTime.c_str(), park.closingTime.c_str());
-        }
-        _u8g2.setCursor(2, yPos);
-        _u8g2.print(hoursText);
-        yPos += 8;
-    }
-    
-    // Draw top wait times using smaller font like CalendarModule
-    _u8g2.setFont(u8g2_font_5x8_tf);
-    _u8g2.setForegroundColor(0xFFFF);
-    
-    yPos += 2;  // Small gap before wait times
+    yPos += 4;  // Gap before wait times (was 2, now 4 for +2 pixels more)
     int lineHeight = 8;  // Reduced from 9 due to smaller font
     int maxLines = (_canvas.height() - yPos) / lineHeight;
     int linesToShow = min(maxLines, (int)park.attractions.size());
@@ -484,16 +477,6 @@ void ThemeParkModule::drawParkPage(int pageIndex) {
         _u8g2.setForegroundColor(0xFFFF);
         
         yPos += lineHeight;
-    }
-    
-    // Draw page indicator
-    if (_totalPages > 1) {
-        _u8g2.setFont(u8g2_font_5x8_tf);
-        char pageStr[16];
-        snprintf(pageStr, sizeof(pageStr), "%d/%d", _currentPage + 1, _totalPages);
-        int pageW = _u8g2.getUTF8Width(pageStr);
-        _u8g2.setCursor(_canvas.width() - pageW - 2, _canvas.height() - 2);
-        _u8g2.print(pageStr);
     }
 }
 
