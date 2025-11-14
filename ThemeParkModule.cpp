@@ -123,7 +123,7 @@ void ThemeParkModule::queueData() {
         // Fetch crowd level
         _webClient->accessResource(crowdLevelUrl.c_str(), headers.c_str(),
             [this, parkId](const char* data, size_t size, time_t last_update, bool is_stale) {
-                if (data && size > 0 && !is_stale) {
+                if (data && size > 0 && !is_stale && last_update > _lastUpdate) {
                     Log.printf("[ThemePark] New crowd level for park: %s\n", parkId.c_str());
                     parseCrowdLevel(data, size, parkId);
                 }
@@ -282,10 +282,6 @@ void ThemeParkModule::parseCrowdLevel(const char* jsonBuffer, size_t size, const
         if (park.id == parkId) {
             park.crowdLevel = crowdLevel;
             Log.printf("[ThemePark] Updated crowd level for %s: %.2f%%\n", parkId.c_str(), crowdLevel);
-            
-            if (_updateCallback) {
-                _updateCallback();
-            }
             break;
         }
     }
