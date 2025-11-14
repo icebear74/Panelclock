@@ -15,8 +15,9 @@ struct SpiRamAllocator : ArduinoJson::Allocator {
 
 ThemeParkModule::ThemeParkModule(U8G2_FOR_ADAFRUIT_GFX& u8g2, GFXcanvas16& canvas, WebClientModule* webClient)
     : _u8g2(u8g2), _canvas(canvas), _webClient(webClient), _config(nullptr),
-      _currentPage(0), _totalPages(1), _logicTicksSincePageSwitch(0),
-      _pageDisplayDuration(15000), _lastUpdate(0), _lastParksListUpdate(0), _lastParkDetailsUpdate(0),
+      _currentPage(0), _currentParkIndex(0), _currentAttractionPage(0), _totalPages(1), 
+      _logicTicksSincePageSwitch(0), _pageDisplayDuration(15000), _lastUpdate(0), 
+      _lastParksListUpdate(0), _lastParkDetailsUpdate(0),
       _parkNameScrollOffset(0), _parkNameMaxScroll(0) {
     _dataMutex = xSemaphoreCreateMutex();
 }
@@ -258,10 +259,20 @@ void ThemeParkModule::parseWaitTimes(const char* jsonBuffer, size_t size, const 
                   return a.waitTime > b.waitTime;
               });
     
-    _totalPages = _parkData.size();
+    // Calculate how many pages needed to show all attractions
+    // With 8px line height and starting at yPos ~20, we can fit about 27 attractions per page
+    int attractionsPerPage = 27;  // Conservative estimate
+    parkData->attractionPages = (parkData->attractions.size() + attractionsPerPage - 1) / attractionsPerPage;
+    if (parkData->attractionPages < 1) parkData->attractionPages = 1;
     
-    Log.printf("[ThemePark] Updated park %s with %d attractions (%d open)\n", 
-               parkName.c_str(), parkData->attractions.size(), openAttractionsCount);
+    // Calculate total pages across all parks
+    _totalPages = 0;
+    for (const auto& park : _parkData) {
+        _totalPages += park.attractionPages;
+    }
+    
+    Log.printf("[ThemePark] Updated park %s with %d attractions (%d open), %d pages\n", 
+               parkName.c_str(), parkData->attractions.size(), openAttractionsCount, parkData->attractionPages);
 }
 
 void ThemeParkModule::parseCrowdLevel(const char* jsonBuffer, size_t size, const PsramString& parkId) {
@@ -310,6 +321,8 @@ unsigned long ThemeParkModule::getDisplayDuration() {
 void ThemeParkModule::resetPaging() {
     if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
         _currentPage = 0;
+        _currentParkIndex = 0;
+        _currentAttractionPage = 0;
         _logicTicksSincePageSwitch = 0;
         _isFinished = false;
         xSemaphoreGive(_dataMutex);
@@ -343,17 +356,40 @@ void ThemeParkModule::logicTick() {
     
     if (_logicTicksSincePageSwitch >= ticksPerPage) {
         if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-            int numPages = _parkData.size() > 0 ? _parkData.size() : 1;
-            _currentPage++;
+            if (_parkData.empty()) {
+                _currentPage = 0;
+                _currentParkIndex = 0;
+                _currentAttractionPage = 0;
+                _isFinished = true;
+                xSemaphoreGive(_dataMutex);
+                _logicTicksSincePageSwitch = 0;
+                return;
+            }
+            
+            // Move to next attraction page within current park
+            _currentAttractionPage++;
             _parkNameScrollOffset = 0;  // Reset scroll when changing page
             
-            if (_currentPage >= numPages) {
-                _currentPage = 0;
-                _isFinished = true;
-                Log.printf("[ThemePark] All %d pages shown -> Module finished\n", numPages);
-            } else if (_totalPages > 1) {
+            // If we've shown all attraction pages for current park, move to next park
+            if (_currentAttractionPage >= _parkData[_currentParkIndex].attractionPages) {
+                _currentAttractionPage = 0;
+                _currentParkIndex++;
+                
+                // If we've shown all parks, we're done
+                if (_currentParkIndex >= (int)_parkData.size()) {
+                    _currentParkIndex = 0;
+                    _currentPage = 0;
+                    _isFinished = true;
+                    Log.printf("[ThemePark] All %d parks shown -> Module finished\n", (int)_parkData.size());
+                } else {
+                    _currentPage++;
+                    if (_updateCallback) _updateCallback();
+                }
+            } else {
+                _currentPage++;
                 if (_updateCallback) _updateCallback();
             }
+            
             xSemaphoreGive(_dataMutex);
         }
         _logicTicksSincePageSwitch = 0;
@@ -368,7 +404,7 @@ void ThemeParkModule::draw() {
         if (_parkData.empty()) {
             drawNoDataPage();
         } else {
-            drawParkPage(_currentPage);
+            drawParkPage(_currentParkIndex, _currentAttractionPage);
         }
         xSemaphoreGive(_dataMutex);
     } else {
@@ -376,13 +412,13 @@ void ThemeParkModule::draw() {
     }
 }
 
-void ThemeParkModule::drawParkPage(int pageIndex) {
-    if (pageIndex < 0 || pageIndex >= (int)_parkData.size()) {
+void ThemeParkModule::drawParkPage(int parkIndex, int attractionPage) {
+    if (parkIndex < 0 || parkIndex >= (int)_parkData.size()) {
         drawNoDataPage();
         return;
     }
     
-    const ThemeParkData& park = _parkData[pageIndex];
+    const ThemeParkData& park = _parkData[parkIndex];
     
     // Draw park name with country and opening hours as headline - all in scrolling text
     // Use smaller font (6x13 like CalendarModule uses) and scrolling
@@ -431,52 +467,74 @@ void ThemeParkModule::drawParkPage(int pageIndex) {
         _u8g2.print(crowdText);
     }
     
-    // Draw top wait times using smaller font like CalendarModule
+    // Draw attractions using smaller font like CalendarModule
     // Start position moved down by 2 more pixels
     int yPos = 16;
     _u8g2.setFont(u8g2_font_5x8_tf);
     _u8g2.setForegroundColor(0xFFFF);
     
-    yPos += 4;  // Gap before wait times (was 2, now 4 for +2 pixels more)
-    int lineHeight = 8;  // Reduced from 9 due to smaller font
-    int maxLines = (_canvas.height() - yPos) / lineHeight;
-    int linesToShow = min(maxLines, (int)park.attractions.size());
+    yPos += 4;  // Gap before attractions
+    int lineHeight = 8;
+    int maxLines = (_canvas.height() - yPos - 10) / lineHeight;  // Leave space for page indicator
     
-    for (int i = 0; i < linesToShow; i++) {
+    // Calculate which attractions to show on this page
+    int startIdx = attractionPage * maxLines;
+    int endIdx = min(startIdx + maxLines, (int)park.attractions.size());
+    
+    for (int i = startIdx; i < endIdx; i++) {
         const Attraction& attr = park.attractions[i];
-        
-        if (!attr.isOpen) continue;
         
         // Truncate name to fit (leave space for wait time)
         PsramString attrName = truncateString(attr.name, _canvas.width() - 45);
         
-        // Draw attraction name
+        // Draw attraction name - use RED if closed, WHITE if open
+        _u8g2.setForegroundColor(attr.isOpen ? 0xFFFF : 0xF800);  // White or Red
         _u8g2.setCursor(2, yPos);
         _u8g2.print(attrName.c_str());
         
-        // Draw wait time
-        char waitStr[10];
-        snprintf(waitStr, sizeof(waitStr), "%d min", attr.waitTime);
-        int waitW = _u8g2.getUTF8Width(waitStr);
-        
-        // Color code wait times
-        uint16_t waitColor;
-        if (attr.waitTime >= 60) {
-            waitColor = 0xF800;  // Red
-        } else if (attr.waitTime >= 30) {
-            waitColor = 0xFD20;  // Orange
-        } else if (attr.waitTime >= 15) {
-            waitColor = 0xFFE0;  // Yellow
+        // Draw wait time or "Geschlossen" for closed attractions
+        if (attr.isOpen) {
+            char waitStr[10];
+            snprintf(waitStr, sizeof(waitStr), "%d min", attr.waitTime);
+            int waitW = _u8g2.getUTF8Width(waitStr);
+            
+            // Color code wait times
+            uint16_t waitColor;
+            if (attr.waitTime >= 60) {
+                waitColor = 0xF800;  // Red
+            } else if (attr.waitTime >= 30) {
+                waitColor = 0xFD20;  // Orange
+            } else if (attr.waitTime >= 15) {
+                waitColor = 0xFFE0;  // Yellow
+            } else {
+                waitColor = 0x07E0;  // Green
+            }
+            
+            _u8g2.setForegroundColor(waitColor);
+            _u8g2.setCursor(_canvas.width() - waitW - 2, yPos);
+            _u8g2.print(waitStr);
         } else {
-            waitColor = 0x07E0;  // Green
+            // Show "Geschlossen" in red for closed attractions
+            const char* closedText = "Geschl.";
+            int closedW = _u8g2.getUTF8Width(closedText);
+            _u8g2.setForegroundColor(0xF800);  // Red
+            _u8g2.setCursor(_canvas.width() - closedW - 2, yPos);
+            _u8g2.print(closedText);
         }
         
-        _u8g2.setForegroundColor(waitColor);
-        _u8g2.setCursor(_canvas.width() - waitW - 2, yPos);
-        _u8g2.print(waitStr);
         _u8g2.setForegroundColor(0xFFFF);
-        
         yPos += lineHeight;
+    }
+    
+    // Draw page indicator if multiple attraction pages
+    if (park.attractionPages > 1) {
+        _u8g2.setFont(u8g2_font_5x8_tf);
+        _u8g2.setForegroundColor(0xFFFF);
+        char pageStr[16];
+        snprintf(pageStr, sizeof(pageStr), "%d/%d", attractionPage + 1, park.attractionPages);
+        int pageW = _u8g2.getUTF8Width(pageStr);
+        _u8g2.setCursor(_canvas.width() - pageW - 2, _canvas.height() - 2);
+        _u8g2.print(pageStr);
     }
 }
 

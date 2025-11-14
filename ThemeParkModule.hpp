@@ -27,8 +27,9 @@ struct ThemeParkData {
     bool isOpen;
     PsramString openingTime;   // e.g. "09:00"
     PsramString closingTime;   // e.g. "18:00"
+    int attractionPages;  // Number of pages needed to show all attractions
     
-    ThemeParkData() : crowdLevel(0.0f), lastUpdate(0), isOpen(false) {}
+    ThemeParkData() : crowdLevel(0.0f), lastUpdate(0), isOpen(false), attractionPages(1) {}
 };
 
 struct AvailablePark {
@@ -86,6 +87,8 @@ private:
     PsramVector<PsramString> _parkIds;  // Configured park IDs
     
     int _currentPage;
+    int _currentParkIndex;  // Index of current park being displayed
+    int _currentAttractionPage;  // Current attraction page within park
     int _totalPages;
     uint32_t _logicTicksSincePageSwitch;
     unsigned long _pageDisplayDuration;
@@ -101,7 +104,7 @@ private:
     
     void parseWaitTimes(const char* jsonBuffer, size_t size, const PsramString& parkId);
     void parseCrowdLevel(const char* jsonBuffer, size_t size, const PsramString& parkId);
-    void drawParkPage(int pageIndex);
+    void drawParkPage(int parkIndex, int attractionPage);
     void drawNoDataPage();
     uint16_t getCrowdLevelColor(float level);
     PsramString truncateString(const PsramString& text, int maxWidth);
