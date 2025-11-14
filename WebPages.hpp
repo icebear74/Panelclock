@@ -393,12 +393,13 @@ function loadThemeParks() {
             }
             
             var currentIds = document.getElementById('themeParkIds').value.split(',');
-            var html = '<table><tr><th>Auswahl</th><th>Name</th></tr>';
+            var html = '<table><tr><th>Auswahl</th><th>Name</th><th>Land</th></tr>';
             data.parks.forEach(park => {
                 var checked = currentIds.includes(park.id) ? 'checked' : '';
                 html += '<tr>';
                 html += '<td><input type="checkbox" class="park-checkbox" value="' + park.id + '" ' + checked + ' onchange="collectParkIds()"></td>';
                 html += '<td>' + park.name + '</td>';
+                html += '<td>' + (park.country || '') + '</td>';
                 html += '</tr>';
             });
             html += '</table>';

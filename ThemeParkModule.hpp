@@ -20,23 +20,28 @@ struct Attraction {
 struct ThemeParkData {
     PsramString id;
     PsramString name;
-    int crowdLevel;  // 0-10 scale
+    PsramString country;
+    float crowdLevel;  // 0-100 scale from API (was int 0-10)
     PsramVector<Attraction> attractions;
     time_t lastUpdate;
     bool isOpen;
     PsramString openingTime;   // e.g. "09:00"
     PsramString closingTime;   // e.g. "18:00"
+    int attractionPages;  // Number of pages needed to show all attractions
     
-    ThemeParkData() : crowdLevel(0), lastUpdate(0), isOpen(false) {}
+    ThemeParkData() : crowdLevel(0.0f), lastUpdate(0), isOpen(false), attractionPages(1) {}
 };
 
 struct AvailablePark {
     PsramString id;
     PsramString name;
+    PsramString country;
     
     AvailablePark() {}
     AvailablePark(const PsramString& parkId, const PsramString& parkName) 
         : id(parkId), name(parkName) {}
+    AvailablePark(const PsramString& parkId, const PsramString& parkName, const PsramString& parkCountry) 
+        : id(parkId), name(parkName), country(parkCountry) {}
 };
 
 class ThemeParkModule : public DrawableModule {
@@ -67,6 +72,7 @@ public:
     // Public methods for web configuration
     PsramVector<AvailablePark> getAvailableParks();
     void parseAvailableParks(const char* jsonBuffer, size_t size);
+    void checkAndUpdateParksList();  // Check if parks list needs daily update
 
 private:
     U8G2_FOR_ADAFRUIT_GFX& _u8g2;
@@ -81,23 +87,35 @@ private:
     PsramVector<PsramString> _parkIds;  // Configured park IDs
     
     int _currentPage;
+    int _currentParkIndex;  // Index of current park being displayed
+    int _currentAttractionPage;  // Current attraction page within park
     int _totalPages;
     uint32_t _logicTicksSincePageSwitch;
     unsigned long _pageDisplayDuration;
     
     time_t _lastUpdate;
+    time_t _lastParksListUpdate;  // Track when parks list was last updated
+    time_t _lastParkDetailsUpdate;  // Track when park details (name, hours) were updated
     std::function<void()> _updateCallback;
     
+    // Scrolling support for park name
+    int _parkNameScrollOffset;
+    int _parkNameMaxScroll;
+    
     void parseWaitTimes(const char* jsonBuffer, size_t size, const PsramString& parkId);
-    void drawParkPage(int pageIndex);
+    void parseCrowdLevel(const char* jsonBuffer, size_t size, const PsramString& parkId);
+    void drawParkPage(int parkIndex, int attractionPage);
     void drawNoDataPage();
-    uint16_t getCrowdLevelColor(int level);
+    uint16_t getCrowdLevelColor(float level);
     PsramString truncateString(const PsramString& text, int maxWidth);
+    void drawScrollingText(const PsramString& text, int x, int y, int maxWidth);
+    PsramString fitTextToPixelWidth(const PsramString& text, int maxPixel);
     
     // Cache management
     void loadParkCache();
     void saveParkCache();
     PsramString getParkNameFromCache(const PsramString& parkId);
+    PsramString getParkCountryFromCache(const PsramString& parkId);
 };
 
 #endif // THEMEPARKMODULE_HPP
