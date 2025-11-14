@@ -163,7 +163,8 @@ void ThemeParkModule::parseAvailableParks(const char* jsonBuffer, size_t size) {
     // Save park cache to LittleFS for later use
     saveParkCache();
     
-    // Update timestamp when parks list is refreshed
+    // Update timestamp when parks list is manually refreshed (e.g., via web button)
+    // This ensures the daily auto-update timer is reset
     _lastParksListUpdate = time(nullptr);
     
     Log.printf("[ThemePark] Loaded %d available parks\n", _availableParks.size());
@@ -734,8 +735,15 @@ void ThemeParkModule::checkAndUpdateParksList() {
     time_t now = time(nullptr);
     
     // Check if we need to update (once per day = 86400 seconds)
-    // If _lastParksListUpdate is 0, it means we've never updated automatically
-    if (_lastParksListUpdate > 0 && (now - _lastParksListUpdate) < 86400) {
+    // If _lastParksListUpdate is 0, load from cache instead of fetching
+    if (_lastParksListUpdate == 0) {
+        // First time - load from cache, don't fetch yet
+        loadParkCache();
+        _lastParksListUpdate = now;  // Set to now to prevent immediate fetch
+        return;
+    }
+    
+    if ((now - _lastParksListUpdate) < 86400) {
         return;  // Not yet time to update
     }
     
@@ -744,12 +752,14 @@ void ThemeParkModule::checkAndUpdateParksList() {
     PsramString url = "https://api.wartezeiten.app/v1/parks";
     PsramString headers = "accept: application/json\nlanguage: de";
     
+    // Update timestamp BEFORE making request to prevent multiple simultaneous requests
+    _lastParksListUpdate = now;
+    
     // Fetch parks list asynchronously
     _webClient->getRequest(url, headers, [this](int httpCode, const char* payload, size_t len) {
         if (httpCode == 200 && payload && len > 0) {
             Log.printf("[ThemePark] Daily update: received parks list (size: %d)\n", len);
             parseAvailableParks(payload, len);
-            _lastParksListUpdate = time(nullptr);
         } else {
             Log.printf("[ThemePark] Daily update failed: HTTP %d\n", httpCode);
         }
