@@ -66,6 +66,7 @@ public:
     
     // Public methods for web configuration
     PsramVector<AvailablePark> getAvailableParks();
+    void parseAvailableParks(const char* jsonBuffer, size_t size);
 
 private:
     U8G2_FOR_ADAFRUIT_GFX& _u8g2;
@@ -87,7 +88,6 @@ private:
     time_t _lastUpdate;
     std::function<void()> _updateCallback;
     
-    void parseAvailableParks(const char* jsonBuffer, size_t size);
     void parseWaitTimes(const char* jsonBuffer, size_t size, const PsramString& parkId);
     void drawParkPage(int pageIndex);
     void drawNoDataPage();
