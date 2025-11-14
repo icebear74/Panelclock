@@ -122,7 +122,7 @@ void ThemeParkModule::parseAvailableParks(const char* jsonBuffer, size_t size) {
     for (JsonObject park : parks) {
         const char* id = park["id"] | "";
         const char* name = park["name"] | "";
-        const char* country = park["country"] | "";
+        const char* country = park["land"] | "";  // API uses "land" not "country"
         
         if (id && name && strlen(id) > 0 && strlen(name) > 0) {
             _availableParks.push_back(AvailablePark(id, name, country));
@@ -504,7 +504,7 @@ void ThemeParkModule::loadParkCache() {
             for (JsonObject park : parks) {
                 const char* id = park["id"] | "";
                 const char* name = park["name"] | "";
-                const char* country = park["country"] | "";
+                const char* country = park["land"] | "";  // API uses "land" not "country"
                 
                 if (id && name && strlen(id) > 0 && strlen(name) > 0) {
                     _availableParks.push_back(AvailablePark(id, name, country));
