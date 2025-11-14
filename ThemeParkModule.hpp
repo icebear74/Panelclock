@@ -87,7 +87,6 @@ private:
     
     time_t _lastUpdate;
     std::function<void()> _updateCallback;
-    PsramMap<PsramString, time_t> _lastParkUpdate;  // Track last update time per park
     
     void parseWaitTimes(const char* jsonBuffer, size_t size, const PsramString& parkId);
     void drawParkPage(int pageIndex);
