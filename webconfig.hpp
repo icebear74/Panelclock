@@ -112,6 +112,15 @@ struct DeviceConfig {
     /// @brief Das Wiederholungsintervall für aktive Wetter-Warnungen in Minuten.
     int weatherAlertsRepeatMin = 15;
 
+    // --- Freizeitpark-Modul ---
+    /// @brief Aktiviert das Freizeitpark-Modul.
+    bool themeParkEnabled = false;
+    /// @brief Kommaseparierte Liste der ausgewählten Freizeitpark-IDs.
+    PsramString themeParkIds;
+    /// @brief Das Abrufintervall für Wartezeiten in Minuten.
+    int themeParkFetchIntervalMin = 10;
+    /// @brief Die Anzeigedauer pro Park in Sekunden.
+    int themeParkDisplaySec = 15;
 
     /// @brief Der Dateiname des PEM-Zertifikats für die Tankerkönig-API.
     PsramString tankerkoenigCertFile;

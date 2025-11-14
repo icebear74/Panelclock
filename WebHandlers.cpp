@@ -1,6 +1,7 @@
 #include "WebHandlers.hpp"
 #include "WebServerManager.hpp"
 #include "WebPages.hpp"
+#include "ThemeParkModule.hpp"
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 #include <WiFi.h>
@@ -15,6 +16,7 @@ extern WebClientModule* webClient;
 extern MwaveSensorModule* mwaveSensorModule;
 extern GeneralTimeConverter* timeConverter;
 extern TankerkoenigModule* tankerkoenigModule;
+extern ThemeParkModule* themeParkModule;
 extern bool portalRunning;
 
 // Forward declarations of global functions (declared in WebServerManager.hpp)
@@ -174,6 +176,12 @@ void handleConfigModules() {
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->calendarUrgentDurationSec); replaceAll(content, "{calendarUrgentDurationSec}", num_buf);
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->calendarUrgentRepeatMin); replaceAll(content, "{calendarUrgentRepeatMin}", num_buf);
 
+    // Theme Park configuration
+    replaceAll(content, "{themeParkEnabled_checked}", deviceConfig->themeParkEnabled ? "checked" : "");
+    replaceAll(content, "{themeParkIds}", deviceConfig->themeParkIds.c_str());
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->themeParkFetchIntervalMin); replaceAll(content, "{themeParkFetchIntervalMin}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->themeParkDisplaySec); replaceAll(content, "{themeParkDisplaySec}", num_buf);
+
     page += content;
     page += (const char*)FPSTR(HTML_PAGE_FOOTER);
     server->send(200, "text/html", page.c_str());
@@ -200,6 +208,12 @@ void handleSaveModules() {
     deviceConfig->weatherAlertsEnabled = server->hasArg("weatherAlertsEnabled");
     deviceConfig->weatherAlertsDisplaySec = server->arg("weatherAlertsDisplaySec").toInt();
     deviceConfig->weatherAlertsRepeatMin = server->arg("weatherAlertsRepeatMin").toInt();
+
+    // Theme Park configuration
+    deviceConfig->themeParkEnabled = server->hasArg("themeParkEnabled");
+    deviceConfig->themeParkIds = server->arg("themeParkIds").c_str();
+    deviceConfig->themeParkFetchIntervalMin = server->arg("themeParkFetchIntervalMin").toInt();
+    deviceConfig->themeParkDisplaySec = server->arg("themeParkDisplaySec").toInt();
 
     deviceConfig->tankerApiKey = server->arg("tankerApiKey").c_str();
     deviceConfig->stationFetchIntervalMin = server->arg("stationFetchIntervalMin").toInt();
@@ -618,3 +632,100 @@ void handleStreamPage() {
     page += FPSTR(HTML_PAGE_FOOTER);
     server->send(200, "text/html", page);
 }
+
+void handleThemeParksList() {
+    if (!server || !webClient) {
+        server->send(500, "application/json", "{\"ok\":false, \"message\":\"Server or WebClient not initialized\"}");
+        return;
+    }
+    
+    Log.println("[ThemePark] handleThemeParksList called - fetching parks from API");
+    
+    // Fetch parks list on-demand using webClient with custom headers
+    PsramString url = "https://api.wartezeiten.app/v1/parks";
+    PsramString headers = "accept: application/json\nlanguage: de";
+    
+    struct Result { int httpCode; PsramString payload; } result;
+    result.httpCode = 0;
+    SemaphoreHandle_t sem = xSemaphoreCreateBinary();
+    
+    webClient->getRequest(url, headers, [&](int httpCode, const char* payload, size_t len) {
+        Log.printf("[ThemePark] Callback received - HTTP %d, payload size: %d\n", httpCode, len);
+        result.httpCode = httpCode;
+        if (payload && len > 0) { 
+            result.payload.assign(payload, len); 
+            Log.printf("[ThemePark] Payload first 100 chars: %.100s\n", payload);
+        }
+        xSemaphoreGive(sem);
+    });
+    
+    Log.println("[ThemePark] Waiting for response (20s timeout)...");
+    
+    if (xSemaphoreTake(sem, pdMS_TO_TICKS(20000)) == pdTRUE) {
+        Log.printf("[ThemePark] Response received, HTTP code: %d\n", result.httpCode);
+        
+        if (result.httpCode == 200) {
+            // Parse the response and format it for the web interface
+            DynamicJsonDocument inputDoc(32768);
+            DeserializationError error = deserializeJson(inputDoc, result.payload.c_str());
+            
+            if (error) {
+                Log.printf("[ThemePark] JSON parse error: %s\n", error.c_str());
+                server->send(500, "application/json", "{\"ok\":false, \"message\":\"Failed to parse API response\"}");
+                vSemaphoreDelete(sem);
+                return;
+            }
+            
+            Log.println("[ThemePark] JSON parsed successfully");
+            
+            // Build response
+            DynamicJsonDocument responseDoc(32768);
+            responseDoc["ok"] = true;
+            JsonArray parksArray = responseDoc.createNestedArray("parks");
+            
+            // The API returns an array of parks
+            if (inputDoc.is<JsonArray>()) {
+                JsonArray apiParks = inputDoc.as<JsonArray>();
+                Log.printf("[ThemePark] Found %d parks in API response\n", apiParks.size());
+                
+                // Also parse and save to cache via the module
+                if (themeParkModule) {
+                    themeParkModule->parseAvailableParks(result.payload.c_str(), result.payload.length());
+                }
+                
+                for (JsonObject park : apiParks) {
+                    const char* id = park["id"] | "";
+                    const char* name = park["name"] | "";
+                    
+                    if (id && name && strlen(id) > 0 && strlen(name) > 0) {
+                        JsonObject parkObj = parksArray.createNestedObject();
+                        parkObj["id"] = id;
+                        parkObj["name"] = name;
+                        Log.printf("[ThemePark] Added park: %s (%s)\n", name, id);
+                    }
+                }
+            } else {
+                Log.println("[ThemePark] ERROR: API response is not a JSON array");
+            }
+            
+            String response;
+            serializeJson(responseDoc, response);
+            Log.printf("[ThemePark] Sending response with %d parks\n", parksArray.size());
+            server->send(200, "application/json", response);
+        } else {
+            Log.printf("[ThemePark] HTTP error: %d\n", result.httpCode);
+            PsramString error_msg = "{\"ok\":false, \"message\":\"API Error: HTTP ";
+            char code_buf[5];
+            snprintf(code_buf, sizeof(code_buf), "%d", result.httpCode);
+            error_msg += code_buf;
+            error_msg += "\"}";
+            server->send(result.httpCode > 0 ? result.httpCode : 500, "application/json", error_msg.c_str());
+        }
+        vSemaphoreDelete(sem);
+    } else {
+        Log.println("[ThemePark] TIMEOUT waiting for API response");
+        server->send(504, "application/json", "{\"ok\":false, \"message\":\"Timeout waiting for API response\"}");
+        vSemaphoreDelete(sem);
+    }
+}
+

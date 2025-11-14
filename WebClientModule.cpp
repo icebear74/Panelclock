@@ -96,7 +96,12 @@ size_t PsramBufferStream::getSize() { return _position; }
 // --- ManagedResource Implementierung ---
 
 ManagedResource::ManagedResource(const PsramString& u, uint32_t interval, const char* ca)
-    : url(u), update_interval_ms(interval), root_ca_fallback(ca) {
+    : url(u), customHeaders(""), update_interval_ms(interval), root_ca_fallback(ca) {
+    mutex = xSemaphoreCreateMutex();
+}
+
+ManagedResource::ManagedResource(const PsramString& u, const PsramString& headers, uint32_t interval, const char* ca)
+    : url(u), customHeaders(headers), update_interval_ms(interval), root_ca_fallback(ca) {
     mutex = xSemaphoreCreateMutex();
 }
 
@@ -106,7 +111,7 @@ ManagedResource::~ManagedResource() {
 }
 
 ManagedResource::ManagedResource(ManagedResource&& other) noexcept
-    : url(std::move(other.url)), update_interval_ms(other.update_interval_ms), root_ca_fallback(other.root_ca_fallback),
+    : url(std::move(other.url)), customHeaders(std::move(other.customHeaders)), update_interval_ms(other.update_interval_ms), root_ca_fallback(other.root_ca_fallback),
       cert_filename(std::move(other.cert_filename)), data_buffer(other.data_buffer), data_size(other.data_size), 
       last_successful_update(other.last_successful_update), last_check_attempt(other.last_check_attempt), 
       mutex(other.mutex), retry_count(other.retry_count), is_in_retry_mode(other.is_in_retry_mode), is_data_stale(other.is_data_stale)
@@ -188,6 +193,28 @@ void WebClientModule::registerResource(const String& url, uint32_t update_interv
     Log.printf("[WebDataManager] Ressource registriert: %s (initial Cert-File: '%s')\n", new_res.url.c_str(), new_res.cert_filename.c_str());
 }
 
+void WebClientModule::registerResourceWithHeaders(const String& url, const String& customHeaders, uint32_t update_interval_minutes, const char* root_ca) {
+    if (url.isEmpty() || update_interval_minutes == 0) return;
+    
+    // For resources with custom headers, we register each URL+header combination as a separate resource
+    // This allows multiple resources with the same URL but different headers (e.g., different park IDs)
+    
+    // Check if exact URL+headers combination already exists
+    for(const auto& res : resources) {
+        if (res.url.compare(url.c_str()) == 0 && res.customHeaders.compare(customHeaders.c_str()) == 0) {
+            Log.printf("[WebDataManager] Ressource mit Headers bereits registriert: %s\n", url.c_str());
+            return; // Already exists
+        }
+    }
+    
+    uint32_t interval_ms = update_interval_minutes * 60 * 1000UL;
+    resources.emplace_back(url.c_str(), customHeaders.c_str(), interval_ms, root_ca);
+    ManagedResource& new_res = resources.back();
+    
+    Log.printf("[WebDataManager] Ressource mit Headers registriert: %s (Headers: %s, Cert-File: '%s')\n", 
+               new_res.url.c_str(), new_res.customHeaders.c_str(), new_res.cert_filename.c_str());
+}
+
 void WebClientModule::updateResourceUrl(const String& old_url, const String& new_url) {
     for (auto& resource : resources) {
         if (resource.url.compare(old_url.c_str()) == 0) {
@@ -203,7 +230,7 @@ void WebClientModule::updateResourceUrl(const String& old_url, const String& new
 
 void WebClientModule::accessResource(const String& url, std::function<void(const char* data, size_t size, time_t last_update, bool is_stale)> callback) {
     for (auto& resource : resources) {
-        if (resource.url.compare(url.c_str()) == 0) {
+        if (resource.url.compare(url.c_str()) == 0 && resource.customHeaders.empty()) {
             if (xSemaphoreTake(resource.mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
                 // MODIFIKATION: Wenn disableModuleDataAccess true, gebe leere Daten zurück
                 if (disableModuleDataAccess) {
@@ -214,6 +241,25 @@ void WebClientModule::accessResource(const String& url, std::function<void(const
                 xSemaphoreGive(resource.mutex);
             } else {
                 Log.printf("[WebDataManager] Timeout beim Warten auf Mutex für %s\n", url.c_str());
+            }
+            return;
+        }
+    }
+}
+
+void WebClientModule::accessResource(const String& url, const String& customHeaders, std::function<void(const char* data, size_t size, time_t last_update, bool is_stale)> callback) {
+    for (auto& resource : resources) {
+        if (resource.url.compare(url.c_str()) == 0 && resource.customHeaders.compare(customHeaders.c_str()) == 0) {
+            if (xSemaphoreTake(resource.mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+                // MODIFIKATION: Wenn disableModuleDataAccess true, gebe leere Daten zurück
+                if (disableModuleDataAccess) {
+                    callback(nullptr, 0, resource.last_successful_update, true); // "keine Daten" simulieren
+                } else {
+                    callback(resource.data_buffer, resource.data_size, resource.last_successful_update, resource.is_data_stale);
+                }
+                xSemaphoreGive(resource.mutex);
+            } else {
+                Log.printf("[WebDataManager] Timeout beim Warten auf Mutex für %s (mit Headers)\n", url.c_str());
             }
             return;
         }
@@ -238,7 +284,7 @@ void WebClientModule::getRequest(const PsramString& url, std::function<void(cons
         callback(nullptr, 0);
         return;
     }
-    WebJob* job = new WebJob{WebJob::GET, url, "", "", callback, nullptr};
+    WebJob* job = new WebJob{WebJob::GET, url, "", "", "", callback, nullptr};
     if (!job) {
         Log.println("[WebClientModule] FEHLER: Konnte keinen WebJob für GET allozieren.");
         callback(nullptr, 0);
@@ -257,7 +303,7 @@ void WebClientModule::getRequest(const PsramString& url, std::function<void(int 
         detailed_callback(-1, "No WiFi", 7);
         return;
     }
-    WebJob* job = new WebJob{WebJob::GET, url, "", "", nullptr, detailed_callback};
+    WebJob* job = new WebJob{WebJob::GET, url, "", "", "", nullptr, detailed_callback};
     if (!job) {
         Log.println("[WebClientModule] FEHLER: Konnte keinen WebJob für GET (detailed) allozieren.");
         detailed_callback(-1, "Malloc failed", 12);
@@ -270,6 +316,25 @@ void WebClientModule::getRequest(const PsramString& url, std::function<void(int 
     }
 }
 
+void WebClientModule::getRequest(const PsramString& url, const PsramString& customHeaders, std::function<void(int httpCode, const char* payload, size_t len)> detailed_callback) {
+    if (WiFi.status() != WL_CONNECTED) {
+        Log.println("[WebClientModule] GET-Anfrage (detailed+headers) fehlgeschlagen: Keine WLAN-Verbindung.");
+        detailed_callback(-1, "No WiFi", 7);
+        return;
+    }
+    WebJob* job = new WebJob{WebJob::GET, url, "", "", customHeaders, nullptr, detailed_callback};
+    if (!job) {
+        Log.println("[WebClientModule] FEHLER: Konnte keinen WebJob für GET (detailed+headers) allozieren.");
+        detailed_callback(-1, "Malloc failed", 12);
+        return;
+    }
+    if (xQueueSend(jobQueue, &job, pdMS_TO_TICKS(100)) != pdTRUE) {
+        Log.println("[WebDataManager] FEHLER: Konnte GET-Job (detailed+headers) nicht zur Queue hinzufügen.");
+        delete job;
+        detailed_callback(-1, "Queue full", 10);
+    }
+}
+
 void WebClientModule::postRequest(const PsramString& url, const PsramString& postBody, const PsramString& contentType, std::function<void(const char* buffer, size_t size)> callback) {
     if (WiFi.status() != WL_CONNECTED) {
         Log.println("[WebClientModule] POST-Anfrage fehlgeschlagen: Keine WLAN-Verbindung.");
@@ -277,7 +342,7 @@ void WebClientModule::postRequest(const PsramString& url, const PsramString& pos
         return;
     }
 
-    WebJob* job = new WebJob{WebJob::POST, url, postBody, contentType, callback, nullptr};
+    WebJob* job = new WebJob{WebJob::POST, url, postBody, contentType, "", callback, nullptr};
     if (!job) {
         Log.println("[WebClientModule] FEHLER: Konnte keinen WebJob für POST allozieren.");
         callback(nullptr, 0);
@@ -404,6 +469,30 @@ void WebClientModule::performJob(const WebJob& job) {
     if (connected) {
         if (using_https) {
             if (http.begin(secure_client, job.url.c_str())) {
+                // Add custom headers if provided
+                if (!job.customHeaders.empty()) {
+                    // Parse and add headers (format: "Header1: Value1\nHeader2: Value2")
+                    PsramString headers = job.customHeaders;
+                    size_t pos = 0;
+                    while (pos < headers.length()) {
+                        size_t newlinePos = headers.find('\n', pos);
+                        if (newlinePos == PsramString::npos) newlinePos = headers.length();
+                        
+                        PsramString headerLine = headers.substr(pos, newlinePos - pos);
+                        size_t colonPos = headerLine.find(':');
+                        if (colonPos != PsramString::npos) {
+                            PsramString headerName = headerLine.substr(0, colonPos);
+                            PsramString headerValue = headerLine.substr(colonPos + 1);
+                            // Trim leading/trailing spaces
+                            while (!headerValue.empty() && headerValue[0] == ' ') headerValue = headerValue.substr(1);
+                            while (!headerValue.empty() && headerValue[headerValue.length()-1] == ' ') headerValue = headerValue.substr(0, headerValue.length()-1);
+                            http.addHeader(headerName.c_str(), headerValue.c_str());
+                            Log.printf("[WebDataManager] Added header: %s: %s\n", headerName.c_str(), headerValue.c_str());
+                        }
+                        pos = newlinePos + 1;
+                    }
+                }
+                
                 if (job.type == WebJob::GET) {
                     httpCode = http.GET();
                 } else {
@@ -415,6 +504,30 @@ void WebClientModule::performJob(const WebJob& job) {
             }
         } else {
             if (http.begin(plain_client, job.url.c_str())) {
+                // Add custom headers if provided
+                if (!job.customHeaders.empty()) {
+                    // Parse and add headers (format: "Header1: Value1\nHeader2: Value2")
+                    PsramString headers = job.customHeaders;
+                    size_t pos = 0;
+                    while (pos < headers.length()) {
+                        size_t newlinePos = headers.find('\n', pos);
+                        if (newlinePos == PsramString::npos) newlinePos = headers.length();
+                        
+                        PsramString headerLine = headers.substr(pos, newlinePos - pos);
+                        size_t colonPos = headerLine.find(':');
+                        if (colonPos != PsramString::npos) {
+                            PsramString headerName = headerLine.substr(0, colonPos);
+                            PsramString headerValue = headerLine.substr(colonPos + 1);
+                            // Trim leading/trailing spaces
+                            while (!headerValue.empty() && headerValue[0] == ' ') headerValue = headerValue.substr(1);
+                            while (!headerValue.empty() && headerValue[headerValue.length()-1] == ' ') headerValue = headerValue.substr(0, headerValue.length()-1);
+                            http.addHeader(headerName.c_str(), headerValue.c_str());
+                            Log.printf("[WebDataManager] Added header: %s: %s\n", headerName.c_str(), headerValue.c_str());
+                        }
+                        pos = newlinePos + 1;
+                    }
+                }
+                
                 if (job.type == WebJob::GET) {
                     httpCode = http.GET();
                 } else {
@@ -650,6 +763,32 @@ void WebClientModule::performUpdate(ManagedResource& resource) {
             } else {
                 if (http.begin(secure_client, resource.url.c_str())) {
                      http.setTimeout(15000);
+                     // Add custom headers if present
+                     if (!resource.customHeaders.empty()) {
+                         PsramString headers = resource.customHeaders;
+                         size_t pos = 0;
+                         while (pos < headers.length()) {
+                             size_t newlinePos = headers.find('\n', pos);
+                             if (newlinePos == PsramString::npos) newlinePos = headers.length();
+                             
+                             PsramString headerLine = headers.substr(pos, newlinePos - pos);
+                             size_t colonPos = headerLine.find(':');
+                             if (colonPos != PsramString::npos) {
+                                 PsramString name = headerLine.substr(0, colonPos);
+                                 PsramString value = headerLine.substr(colonPos + 1);
+                                 // Trim leading/trailing whitespace from value
+                                 while (!value.empty() && (value[0] == ' ' || value[0] == '\t')) {
+                                     value = value.substr(1);
+                                 }
+                                 while (!value.empty() && (value[value.length()-1] == ' ' || value[value.length()-1] == '\t' || value[value.length()-1] == '\r')) {
+                                     value = value.substr(0, value.length()-1);
+                                 }
+                                 http.addHeader(name.c_str(), value.c_str());
+                                 Log.printf("[WebDataManager] Added header: %s: %s\n", name.c_str(), value.c_str());
+                             }
+                             pos = newlinePos + 1;
+                         }
+                     }
                      httpCode = http.GET();
                 } else {
                     httpCode = -10;
@@ -658,6 +797,32 @@ void WebClientModule::performUpdate(ManagedResource& resource) {
         } else {
             if (http.begin(plain_client, resource.url.c_str())) {
                 http.setTimeout(15000);
+                // Add custom headers if present
+                if (!resource.customHeaders.empty()) {
+                    PsramString headers = resource.customHeaders;
+                    size_t pos = 0;
+                    while (pos < headers.length()) {
+                        size_t newlinePos = headers.find('\n', pos);
+                        if (newlinePos == PsramString::npos) newlinePos = headers.length();
+                        
+                        PsramString headerLine = headers.substr(pos, newlinePos - pos);
+                        size_t colonPos = headerLine.find(':');
+                        if (colonPos != PsramString::npos) {
+                            PsramString name = headerLine.substr(0, colonPos);
+                            PsramString value = headerLine.substr(colonPos + 1);
+                            // Trim leading/trailing whitespace from value
+                            while (!value.empty() && (value[0] == ' ' || value[0] == '\t')) {
+                                value = value.substr(1);
+                            }
+                            while (!value.empty() && (value[value.length()-1] == ' ' || value[value.length()-1] == '\t' || value[value.length()-1] == '\r')) {
+                                value = value.substr(0, value.length()-1);
+                            }
+                            http.addHeader(name.c_str(), value.c_str());
+                            Log.printf("[WebDataManager] Added header: %s: %s\n", name.c_str(), value.c_str());
+                        }
+                        pos = newlinePos + 1;
+                    }
+                }
                 httpCode = http.GET();
             } else {
                 httpCode = -10;

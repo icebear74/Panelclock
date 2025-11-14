@@ -98,6 +98,11 @@ void loadDeviceConfig() {
                 deviceConfig->movingAverageDays = doc["movingAverageDays"] | 30;
                 deviceConfig->trendAnalysisDays = doc["trendAnalysisDays"] | 7;
 
+                deviceConfig->themeParkEnabled = doc["themeParkEnabled"] | false;
+                deviceConfig->themeParkIds = doc["themeParkIds"] | "";
+                deviceConfig->themeParkFetchIntervalMin = doc["themeParkFetchIntervalMin"] | 10;
+                deviceConfig->themeParkDisplaySec = doc["themeParkDisplaySec"] | 15;
+
                 Serial.println("Geräte-Konfiguration geladen.");
             } else {
                 Serial.println("Fehler beim Parsen der Konfigurationsdatei.");
@@ -179,6 +184,11 @@ void saveDeviceConfig() {
 
     doc["movingAverageDays"] = deviceConfig->movingAverageDays;
     doc["trendAnalysisDays"] = deviceConfig->trendAnalysisDays;
+
+    doc["themeParkEnabled"] = deviceConfig->themeParkEnabled;
+    doc["themeParkIds"] = deviceConfig->themeParkIds.c_str();
+    doc["themeParkFetchIntervalMin"] = deviceConfig->themeParkFetchIntervalMin;
+    doc["themeParkDisplaySec"] = deviceConfig->themeParkDisplaySec;
 
     File configFile = LittleFS.open("/config.json", "w");
     if (configFile) {

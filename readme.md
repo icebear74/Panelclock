@@ -41,6 +41,8 @@ The Panelclock system consists of a series of specialized modules:
 - **CuriousHolidaysModule:** Fetches and displays curious holidays for the current and next day from `kuriose-feiertage.de`.
 - **TankerkoenigModule:** Retrieves current fuel prices for configured gas stations via the Tankerkönig API.
 - **FritzboxModule:** Connects to an AVM FRITZ!Box to display a call list of recent missed, received, or placed calls.
+- **WeatherModule:** Shows weather information and forecasts from OpenWeatherMap.
+- **ThemeParkModule:** Displays wait times for attractions from selected theme parks. Data is fetched via the [Wartezeiten.APP](https://www.wartezeiten.app/) API. For each park, the name, crowd level, and highest wait times are displayed.
 
 ### System Modules
 - **MwaveSensorModule:** Controls an RCWL-0516 microwave motion sensor to detect human presence in the room and toggle the display.

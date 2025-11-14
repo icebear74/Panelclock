@@ -148,6 +148,7 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
 <div class="tab">
   <button class="tablinks" onclick="openTab(event, 'Timezone')" id="defaultOpen">Zeitzone</button>
   <button class="tablinks" onclick="openTab(event, 'Wetter')">Wetter</button>
+  <button class="tablinks" onclick="openTab(event, 'Freizeitpark')">Freizeitparks</button>
   <button class="tablinks" onclick="openTab(event, 'Tankstellen')">Tankstellen</button>
   <button class="tablinks" onclick="openTab(event, 'Kalender')">Kalender</button>
   <button class="tablinks" onclick="openTab(event, 'Darts')">Darts</button>
@@ -201,6 +202,23 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
         <input type="checkbox" id="weatherAlertsEnabled" name="weatherAlertsEnabled" {weatherAlertsEnabled_checked}><label for="weatherAlertsEnabled" style="display:inline;">Warnungen anzeigen (unterbricht normale Anzeige)</label><br>
         <label for="weatherAlertsDisplaySec">Anzeigedauer der Warnung (Sekunden)</label><input type="number" id="weatherAlertsDisplaySec" name="weatherAlertsDisplaySec" value="{weatherAlertsDisplaySec}" min="1">
         <label for="weatherAlertsRepeatMin">Wiederholung der Warnung (Minuten)</label><input type="number" id="weatherAlertsRepeatMin" name="weatherAlertsRepeatMin" value="{weatherAlertsRepeatMin}" min="0">
+    </div>
+</div>
+
+<div id="Freizeitpark" class="tabcontent">
+    <div class="group">
+        <h3>Freizeitpark-Wartezeiten</h3>
+        <p>Zeigt Wartezeiten von Attraktionen aus ausgew&auml;hlten Freizeitparks. Die Daten werden &uuml;ber die API von <a href="https://www.wartezeiten.app/" target="_blank">Wartezeiten.APP</a> abgerufen.</p>
+        <input type="checkbox" id="themeParkEnabled" name="themeParkEnabled" {themeParkEnabled_checked}><label for="themeParkEnabled" style="display:inline;">Freizeitpark-Anzeige aktivieren</label><br>
+        <label for="themeParkFetchIntervalMin">Abrufintervall (Minuten)</label><input type="number" id="themeParkFetchIntervalMin" name="themeParkFetchIntervalMin" value="{themeParkFetchIntervalMin}" min="5">
+        <label for="themeParkDisplaySec">Anzeigedauer pro Park (Sekunden)</label><input type="number" id="themeParkDisplaySec" name="themeParkDisplaySec" value="{themeParkDisplaySec}" min="5">
+    </div>
+    <div class="group">
+        <h4>Freizeitpark-Auswahl</h4>
+        <p>W&auml;hle die Freizeitparks aus, deren Wartezeiten angezeigt werden sollen.</p>
+        <button type="button" onclick="loadThemeParks()" class="button" style="background-color:#007bff;">Verf&uuml;gbare Parks laden</button>
+        <div id="themepark_list" style="margin-top:20px;"></div>
+        <input type="hidden" id="themeParkIds" name="themeParkIds" value="{themeParkIds}">
     </div>
 </div>
 
@@ -361,6 +379,48 @@ function collectStationIds() {
         document.getElementById('tankerkoenigStationIds').value = ids.join(',');
     }
 }
+
+function loadThemeParks() {
+    var resultsDiv = document.getElementById('themepark_list');
+    resultsDiv.innerHTML = '<p>Lade Freizeitparks...</p>';
+    
+    fetch('/api/themeparks/list')
+        .then(response => response.json())
+        .then(data => {
+            if (!data.ok || !data.parks || data.parks.length === 0) {
+                resultsDiv.innerHTML = '<p style="color:red;">Keine Freizeitparks gefunden.</p>';
+                return;
+            }
+            
+            var currentIds = document.getElementById('themeParkIds').value.split(',');
+            var html = '<table><tr><th>Auswahl</th><th>Name</th></tr>';
+            data.parks.forEach(park => {
+                var checked = currentIds.includes(park.id) ? 'checked' : '';
+                html += '<tr>';
+                html += '<td><input type="checkbox" class="park-checkbox" value="' + park.id + '" ' + checked + ' onchange="collectParkIds()"></td>';
+                html += '<td>' + park.name + '</td>';
+                html += '</tr>';
+            });
+            html += '</table>';
+            resultsDiv.innerHTML = html;
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            resultsDiv.innerHTML = '<p style="color:red;">Fehler beim Laden der Parks: ' + error.message + '</p>';
+        });
+}
+
+function collectParkIds() {
+    var checkboxes = document.getElementsByClassName('park-checkbox');
+    var ids = [];
+    for (var i = 0; i < checkboxes.length; i++) {
+        if (checkboxes[i].checked) {
+            ids.push(checkboxes[i].value);
+        }
+    }
+    document.getElementById('themeParkIds').value = ids.join(',');
+}
+
 </script>
 )rawliteral";
 
