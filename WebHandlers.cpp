@@ -688,6 +688,11 @@ void handleThemeParksList() {
                 JsonArray apiParks = inputDoc.as<JsonArray>();
                 Log.printf("[ThemePark] Found %d parks in API response\n", apiParks.size());
                 
+                // Also parse and save to cache via the module
+                if (themeParkModule) {
+                    themeParkModule->parseAvailableParks(result.payload.c_str(), result.payload.length());
+                }
+                
                 for (JsonObject park : apiParks) {
                     const char* id = park["id"] | "";
                     const char* name = park["name"] | "";

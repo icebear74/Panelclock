@@ -88,11 +88,16 @@ private:
     std::function<void()> _updateCallback;
     
     void parseAvailableParks(const char* jsonBuffer, size_t size);
-    void parseWaitTimes(const char* jsonBuffer, size_t size);
+    void parseWaitTimes(const char* jsonBuffer, size_t size, const PsramString& parkId);
     void drawParkPage(int pageIndex);
     void drawNoDataPage();
     uint16_t getCrowdLevelColor(int level);
     PsramString truncateString(const PsramString& text, int maxWidth);
+    
+    // Cache management
+    void loadParkCache();
+    void saveParkCache();
+    PsramString getParkNameFromCache(const PsramString& parkId);
 };
 
 #endif // THEMEPARKMODULE_HPP
