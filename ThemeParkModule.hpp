@@ -20,6 +20,7 @@ struct Attraction {
 struct ThemeParkData {
     PsramString id;
     PsramString name;
+    PsramString country;
     int crowdLevel;  // 0-10 scale
     PsramVector<Attraction> attractions;
     time_t lastUpdate;
@@ -33,10 +34,13 @@ struct ThemeParkData {
 struct AvailablePark {
     PsramString id;
     PsramString name;
+    PsramString country;
     
     AvailablePark() {}
     AvailablePark(const PsramString& parkId, const PsramString& parkName) 
         : id(parkId), name(parkName) {}
+    AvailablePark(const PsramString& parkId, const PsramString& parkName, const PsramString& parkCountry) 
+        : id(parkId), name(parkName), country(parkCountry) {}
 };
 
 class ThemeParkModule : public DrawableModule {
@@ -98,6 +102,7 @@ private:
     void loadParkCache();
     void saveParkCache();
     PsramString getParkNameFromCache(const PsramString& parkId);
+    PsramString getParkCountryFromCache(const PsramString& parkId);
 };
 
 #endif // THEMEPARKMODULE_HPP

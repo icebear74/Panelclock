@@ -122,9 +122,10 @@ void ThemeParkModule::parseAvailableParks(const char* jsonBuffer, size_t size) {
     for (JsonObject park : parks) {
         const char* id = park["id"] | "";
         const char* name = park["name"] | "";
+        const char* country = park["country"] | "";
         
         if (id && name && strlen(id) > 0 && strlen(name) > 0) {
-            _availableParks.push_back(AvailablePark(id, name));
+            _availableParks.push_back(AvailablePark(id, name, country));
         }
     }
     
@@ -145,11 +146,13 @@ void ThemeParkModule::parseWaitTimes(const char* jsonBuffer, size_t size, const 
     }
     
     // The API returns an array of attractions, not park metadata
-    // We need to get the park name from our cache
+    // We need to get the park name and country from our cache
     PsramString parkName = getParkNameFromCache(parkId);
     if (parkName.empty()) {
         parkName = parkId;  // Fallback to ID if name not found
     }
+    
+    PsramString parkCountry = getParkCountryFromCache(parkId);
     
     // Find or create park data
     ThemeParkData* parkData = nullptr;
@@ -167,6 +170,7 @@ void ThemeParkModule::parseWaitTimes(const char* jsonBuffer, size_t size, const 
     
     parkData->id = parkId;
     parkData->name = parkName;
+    parkData->country = parkCountry;
     parkData->attractions.clear();
     parkData->lastUpdate = time(nullptr);
     
@@ -176,6 +180,7 @@ void ThemeParkModule::parseWaitTimes(const char* jsonBuffer, size_t size, const 
     
     // Parse attractions array
     JsonArray attractions = doc.as<JsonArray>();
+    int openAttractionsCount = 0;
     if (attractions) {
         for (JsonObject attr : attractions) {
             const char* name = attr["name"] | "";
@@ -188,8 +193,30 @@ void ThemeParkModule::parseWaitTimes(const char* jsonBuffer, size_t size, const 
                 attraction.waitTime = waitTime;
                 attraction.isOpen = (strcmp(status, "opened") == 0);  // "opened" means open
                 parkData->attractions.push_back(attraction);
+                
+                if (attraction.isOpen) {
+                    openAttractionsCount++;
+                }
             }
         }
+    }
+    
+    // Check if park should be considered closed:
+    // Park is closed if all attractions are closed
+    bool allAttractionsClosed = (parkData->attractions.size() > 0 && openAttractionsCount == 0);
+    
+    // If park is closed and has no opening hours information, remove it from display
+    if (allAttractionsClosed && parkData->openingTime.empty() && parkData->closingTime.empty()) {
+        Log.printf("[ThemePark] Park %s is closed with no opening hours - skipping\n", parkName.c_str());
+        // Remove this park from _parkData
+        for (size_t i = 0; i < _parkData.size(); i++) {
+            if (_parkData[i].id == parkId) {
+                _parkData.erase(_parkData.begin() + i);
+                break;
+            }
+        }
+        _totalPages = _parkData.size();
+        return;
     }
     
     // Sort attractions by wait time (descending)
@@ -200,8 +227,8 @@ void ThemeParkModule::parseWaitTimes(const char* jsonBuffer, size_t size, const 
     
     _totalPages = _parkData.size();
     
-    Log.printf("[ThemePark] Updated park %s with %d attractions\n", 
-               parkName.c_str(), parkData->attractions.size());
+    Log.printf("[ThemePark] Updated park %s with %d attractions (%d open)\n", 
+               parkName.c_str(), parkData->attractions.size(), openAttractionsCount);
 }
 
 void ThemeParkModule::onUpdate(std::function<void()> callback) {
@@ -312,11 +339,18 @@ void ThemeParkModule::drawParkPage(int pageIndex) {
     _u8g2.setCursor(x + (30 - textW) / 2, y + 8);
     _u8g2.print(crowdText);
     
-    // Draw opening hours if available
+    // Draw country if available
     int yPos = 14;
     _u8g2.setFont(u8g2_font_5x8_tf);
     _u8g2.setForegroundColor(0xFFFF);
     
+    if (!park.country.empty()) {
+        _u8g2.setCursor(2, yPos);
+        _u8g2.print(park.country.c_str());
+        yPos += 8;
+    }
+    
+    // Draw opening hours if available
     if (!park.openingTime.empty() && !park.closingTime.empty()) {
         char hoursText[50];
         if (park.isOpen) {
@@ -470,9 +504,10 @@ void ThemeParkModule::loadParkCache() {
             for (JsonObject park : parks) {
                 const char* id = park["id"] | "";
                 const char* name = park["name"] | "";
+                const char* country = park["country"] | "";
                 
                 if (id && name && strlen(id) > 0 && strlen(name) > 0) {
-                    _availableParks.push_back(AvailablePark(id, name));
+                    _availableParks.push_back(AvailablePark(id, name, country));
                 }
             }
         }
@@ -500,6 +535,7 @@ void ThemeParkModule::saveParkCache() {
             JsonObject parkObj = parks.add<JsonObject>();
             parkObj["id"] = park.id.c_str();
             parkObj["name"] = park.name.c_str();
+            parkObj["country"] = park.country.c_str();
         }
         xSemaphoreGive(_dataMutex);
     }
@@ -524,4 +560,20 @@ PsramString ThemeParkModule::getParkNameFromCache(const PsramString& parkId) {
     }
     
     return name;
+}
+
+PsramString ThemeParkModule::getParkCountryFromCache(const PsramString& parkId) {
+    PsramString country;
+    
+    if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        for (const auto& park : _availableParks) {
+            if (park.id == parkId) {
+                country = park.country;
+                break;
+            }
+        }
+        xSemaphoreGive(_dataMutex);
+    }
+    
+    return country;
 }

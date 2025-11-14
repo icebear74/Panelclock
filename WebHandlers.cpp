@@ -696,12 +696,14 @@ void handleThemeParksList() {
                 for (JsonObject park : apiParks) {
                     const char* id = park["id"] | "";
                     const char* name = park["name"] | "";
+                    const char* country = park["country"] | "";
                     
                     if (id && name && strlen(id) > 0 && strlen(name) > 0) {
                         JsonObject parkObj = parksArray.createNestedObject();
                         parkObj["id"] = id;
                         parkObj["name"] = name;
-                        Log.printf("[ThemePark] Added park: %s (%s)\n", name, id);
+                        parkObj["country"] = country;
+                        Log.printf("[ThemePark] Added park: %s (%s) - %s\n", name, id, country);
                     }
                 }
             } else {
