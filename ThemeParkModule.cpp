@@ -68,18 +68,19 @@ void ThemeParkModule::setConfig(const DeviceConfig* config) {
     }
     
     // Register resources for each configured park
-    // Each park needs wait times data from the queue endpoint
+    // Each park needs wait times data from the /waitingtimes endpoint
     unsigned long updateIntervalMinutes = (_config && _config->themeParkFetchIntervalMin > 0) 
         ? _config->themeParkFetchIntervalMin : 10;
     
     if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
         for (const auto& parkId : _parkIds) {
-            PsramString queueUrl = "https://api.wartezeiten.app/v1/parks/" + parkId + "/queue";
-            PsramString headers = "accept: application/json\nlanguage: de";
+            // Wait times endpoint uses header-based park selection
+            PsramString waitTimesUrl = "https://api.wartezeiten.app/v1/waitingtimes";
+            PsramString waitTimesHeaders = "accept: application/json\npark: " + parkId + "\nlanguage: de";
             
             // Register the wait times resource with custom headers
-            _webClient->registerResourceWithHeaders(String(queueUrl.c_str()), 
-                                                    String(headers.c_str()), 
+            _webClient->registerResourceWithHeaders(String(waitTimesUrl.c_str()), 
+                                                    String(waitTimesHeaders.c_str()), 
                                                     updateIntervalMinutes, 
                                                     nullptr);
             
@@ -112,13 +113,13 @@ void ThemeParkModule::queueData() {
     }
     
     for (const auto& parkId : parkIdsCopy) {
-        // Fetch wait times
-        PsramString queueUrl = "https://api.wartezeiten.app/v1/parks/" + parkId + "/queue";
-        PsramString headers = "accept: application/json\nlanguage: de";
+        // Fetch wait times from /waitingtimes endpoint
+        PsramString waitTimesUrl = "https://api.wartezeiten.app/v1/waitingtimes";
+        PsramString waitTimesHeaders = "accept: application/json\npark: " + parkId + "\nlanguage: de";
         
         // Access the resource - this will use cached data if still fresh,
         // or trigger a new fetch if the update interval has passed
-        _webClient->accessResource(String(queueUrl.c_str()), String(headers.c_str()),
+        _webClient->accessResource(String(waitTimesUrl.c_str()), String(waitTimesHeaders.c_str()),
             [this, parkId](const char* buffer, size_t size, time_t last_update, bool is_stale) {
                 if (buffer && size > 0) {
                     // Take mutex before parsing to ensure thread safety
