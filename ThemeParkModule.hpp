@@ -55,7 +55,6 @@ public:
     const char* getModuleDisplayName() const override { return "Freizeitparks"; }
     void draw() override;
     void logicTick() override;
-    void periodicTick() override;  // Background fetching
     void resetPaging() override;
     bool isEnabled() override;
     unsigned long getDisplayDuration() override;
@@ -78,25 +77,14 @@ private:
 
     PsramVector<ThemeParkData> _parkData;
     PsramVector<AvailablePark> _availableParks;
+    PsramVector<PsramString> _parkIds;  // Configured park IDs
     
     int _currentPage;
     int _totalPages;
     uint32_t _logicTicksSincePageSwitch;
     unsigned long _pageDisplayDuration;
     
-    char* _pendingParksListBuffer;
-    size_t _parksListBufferSize;
-    bool _parksListDataPending;
-    
-    char* _pendingWaitTimesBuffer;
-    size_t _waitTimesBufferSize;
-    bool _waitTimesDataPending;
-    
     time_t _lastUpdate;
-    time_t _lastFetchCycleStart;  // When we started the current fetch cycle
-    int _currentFetchParkIndex;   // Which park we're currently fetching (sequential)
-    bool _isFetchingPark;         // True while waiting for response
-    PsramVector<PsramString> _parkIdsToFetch;  // List of park IDs to fetch
     std::function<void()> _updateCallback;
     
     void parseAvailableParks(const char* jsonBuffer, size_t size);

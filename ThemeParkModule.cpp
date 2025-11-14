@@ -15,18 +15,12 @@ struct SpiRamAllocator : ArduinoJson::Allocator {
 ThemeParkModule::ThemeParkModule(U8G2_FOR_ADAFRUIT_GFX& u8g2, GFXcanvas16& canvas, WebClientModule* webClient)
     : _u8g2(u8g2), _canvas(canvas), _webClient(webClient), _config(nullptr),
       _currentPage(0), _totalPages(1), _logicTicksSincePageSwitch(0),
-      _pageDisplayDuration(15000), _pendingParksListBuffer(nullptr),
-      _parksListBufferSize(0), _parksListDataPending(false),
-      _pendingWaitTimesBuffer(nullptr), _waitTimesBufferSize(0),
-      _waitTimesDataPending(false), _lastUpdate(0), _lastFetchCycleStart(0),
-      _currentFetchParkIndex(-1), _isFetchingPark(false) {
+      _pageDisplayDuration(15000), _lastUpdate(0) {
     _dataMutex = xSemaphoreCreateMutex();
 }
 
 ThemeParkModule::~ThemeParkModule() {
     if (_dataMutex) vSemaphoreDelete(_dataMutex);
-    if (_pendingParksListBuffer) free(_pendingParksListBuffer);
-    if (_pendingWaitTimesBuffer) free(_pendingWaitTimesBuffer);
 }
 
 void ThemeParkModule::begin() {
@@ -38,10 +32,12 @@ void ThemeParkModule::setConfig(const DeviceConfig* config) {
     _pageDisplayDuration = (_config && _config->themeParkDisplaySec > 0) 
         ? _config->themeParkDisplaySec * 1000UL : 15000;
     
-    // Parse park IDs from config and store them for sequential fetching
+    if (!_webClient || !_config) return;
+    
+    // Parse park IDs from config
     if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-        _parkIdsToFetch.clear();
-        if (_config && !_config->themeParkIds.empty()) {
+        _parkIds.clear();
+        if (!_config->themeParkIds.empty()) {
             PsramString parkIds = _config->themeParkIds;
             size_t pos = 0;
             while (pos < parkIds.length()) {
@@ -58,17 +54,24 @@ void ThemeParkModule::setConfig(const DeviceConfig* config) {
                 }
                 
                 if (!parkId.empty()) {
-                    _parkIdsToFetch.push_back(parkId);
+                    _parkIds.push_back(parkId);
                 }
                 
                 pos = commaPos + 1;
             }
         }
-        // Reset fetch state when config changes
-        _currentFetchParkIndex = -1;
-        _isFetchingPark = false;
-        _lastFetchCycleStart = 0;
         xSemaphoreGive(_dataMutex);
+    }
+    
+    // Register each park as a separate resource with WebClientModule
+    PsramString url = "https://api.wartezeiten.app/v1/waitingtimes";
+    uint32_t fetchIntervalMin = (_config->themeParkFetchIntervalMin > 0) 
+        ? _config->themeParkFetchIntervalMin : 10;
+    
+    for (const auto& parkId : _parkIds) {
+        PsramString headers = "accept: application/json\npark: " + parkId + "\nlanguage: de";
+        _webClient->registerResourceWithHeaders(url.c_str(), headers.c_str(), fetchIntervalMin, nullptr);
+        Log.printf("[ThemePark] Registered resource for park: %s\n", parkId.c_str());
     }
 }
 
