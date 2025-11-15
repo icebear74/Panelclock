@@ -617,7 +617,7 @@ void ThemeParkModule::drawParkPage(int parkIndex, int attractionPage) {
     // Add opening hours to scrolling text only if park is open
     if (hasOpenAttractions && !park.openingTime.empty() && !park.closingTime.empty()) {
         // Show opening hours in format: "Geöffnet von HH:MM - HH:MM Uhr"
-        displayName = displayName + " : Geoeffnet von " + park.openingTime + " - " + park.closingTime + " Uhr";
+        displayName = displayName + " : Geöffnet von " + park.openingTime + " - " + park.closingTime + " Uhr";
     }
     
     int maxNameWidth = _canvas.width() - 50;  // Leave space for crowd level
@@ -664,7 +664,7 @@ void ThemeParkModule::drawParkPage(int parkIndex, int attractionPage) {
             _u8g2.setFont(u8g2_font_6x13_tf);
             _u8g2.setForegroundColor(0xFFFF);  // White
             
-            PsramString reopenMsg = "Oeffnet wieder von";
+            PsramString reopenMsg = "Öffnet wieder von";
             int reopenW = _u8g2.getUTF8Width(reopenMsg.c_str());
             _u8g2.setCursor((_canvas.width() - reopenW) / 2, yPos);
             _u8g2.print(reopenMsg.c_str());
