@@ -139,8 +139,8 @@ static int drawAndCountLines(U8G2_FOR_ADAFRUIT_GFX& u8g2, PsramString text, int 
     return lines;
 }
 
-CuriousHolidaysModule::CuriousHolidaysModule(U8G2_FOR_ADAFRUIT_GFX& u8g2, GFXcanvas16& canvas, GeneralTimeConverter& timeConverter, WebClientModule* webClient)
-    : u8g2(u8g2), canvas(canvas), timeConverter(timeConverter), webClient(webClient), lastProcessedUpdate(0), _lastCheckedDay(-1) {
+CuriousHolidaysModule::CuriousHolidaysModule(U8G2_FOR_ADAFRUIT_GFX& u8g2, GFXcanvas16& canvas, GeneralTimeConverter& timeConverter, WebClientModule* webClient, DeviceConfig* config)
+    : u8g2(u8g2), canvas(canvas), timeConverter(timeConverter), webClient(webClient), config(config), lastProcessedUpdate(0), _lastCheckedDay(-1) {
     dataMutex = xSemaphoreCreateMutex();
 }
 
@@ -473,6 +473,9 @@ void CuriousHolidaysModule::resetPaging() {
 }
 
 bool CuriousHolidaysModule::isEnabled() {
+    if (!config || !config->curiousHolidaysEnabled) {
+        return false;
+    }
     bool enabled = false;
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
         enabled = !holidaysToday.empty();
@@ -483,6 +486,9 @@ bool CuriousHolidaysModule::isEnabled() {
 
 void CuriousHolidaysModule::onActivate() {
     _logicTicksSincePageSwitch = 0;
+    if (config) {
+        pageDisplayDuration = config->curiousHolidaysDisplaySec * 1000;
+    }
     _currentTicksPerPage = pageDisplayDuration / 100;
     if (_currentTicksPerPage == 0) _currentTicksPerPage = 1;
 }

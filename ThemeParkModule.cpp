@@ -18,7 +18,7 @@ ThemeParkModule::ThemeParkModule(U8G2_FOR_ADAFRUIT_GFX& u8g2, GFXcanvas16& canva
       _currentPage(0), _currentParkIndex(0), _currentAttractionPage(0), _totalPages(1), 
       _logicTicksSincePageSwitch(0), _pageDisplayDuration(15000), _lastUpdate(0), 
       _lastParksListUpdate(0), _lastParkDetailsUpdate(0),
-      _parkNameScrollOffset(0), _parkNameMaxScroll(0) {
+      _parkNameScrollOffset(0), _parkNameMaxScroll(0), _lastScrollStep(0) {
     _dataMutex = xSemaphoreCreateMutex();
 }
 
@@ -551,17 +551,25 @@ bool ThemeParkModule::shouldDisplayPark(const ThemeParkData& park) const {
     return !park.openingTime.empty() || !park.closingTime.empty();
 }
 
-void ThemeParkModule::logicTick() {
-    _logicTicksSincePageSwitch++;
+void ThemeParkModule::tick() {
+    // Handle scrolling with global scroll speed from config
+    if (!_config || _parkNameMaxScroll == 0) return;
     
-    // Advance scrolling every few ticks (every 3 ticks = ~300ms at 100ms tick rate)
-    if (_parkNameMaxScroll > 0 && _logicTicksSincePageSwitch % 3 == 0) {
+    unsigned long scrollInterval = _config->globalScrollSpeedMs > 0 ? _config->globalScrollSpeedMs : 50;
+    unsigned long now = millis();
+    
+    if (now - _lastScrollStep >= scrollInterval) {
+        _lastScrollStep = now;
         _parkNameScrollOffset++;
         if (_parkNameScrollOffset >= _parkNameMaxScroll) {
             _parkNameScrollOffset = 0;
         }
         if (_updateCallback) _updateCallback();
     }
+}
+
+void ThemeParkModule::logicTick() {
+    _logicTicksSincePageSwitch++;
     
     uint32_t ticksPerPage = (_pageDisplayDuration / 100);
     
@@ -893,7 +901,7 @@ void ThemeParkModule::drawScrollingText(const PsramString& text, int x, int y, i
     
     if (text.length() > visiblePart.length()) {
         // Text needs scrolling
-        PsramString pad("   ");
+        PsramString pad("     ");  // 5 spaces for smoother scrolling
         PsramString scrollText = text + pad + text.substr(0, visiblePart.length());
         _parkNameMaxScroll = scrollText.length() - visiblePart.length();
         

@@ -37,7 +37,7 @@ struct DeviceConfig {
     PsramString icsUrl;
     /// @brief Das Intervall in Minuten, in dem die Kalenderdaten abgerufen werden.
     int calendarFetchIntervalMin = 60;
-    /// @brief Die Scroll-Geschwindigkeit für lange Kalendereinträge in Millisekunden pro Pixel.
+    /// @brief Die Scroll-Geschwindigkeit für lange Kalendereinträge in Millisekunden pro Pixel (DEPRECATED: Use globalScrollSpeedMs).
     int calendarScrollMs = 50;
     /// @brief Die Farbe für die Datumsanzeige im Kalender-Modul als Hex-String.
     PsramString calendarDateColor = "#FBE000";
@@ -155,6 +155,16 @@ struct DeviceConfig {
     
     /// @brief Aktiviert das Datenmocking für Datenschutz in der Anzeige (beeinflusst nur die draw()-Methoden).
     bool dataMockingEnabled = false;
+
+    // --- Kuriose Feiertage Modul ---
+    /// @brief Aktiviert die Anzeige kuriosen Feiertage.
+    bool curiousHolidaysEnabled = true;
+    /// @brief Die Anzeigedauer pro Feiertag in Sekunden.
+    int curiousHolidaysDisplaySec = 10;
+
+    // --- Globale Scrolling-Einstellungen ---
+    /// @brief Globale Scroll-Geschwindigkeit in Millisekunden für alle Module.
+    int globalScrollSpeedMs = 50;
 };
 
 // Deklarationen für globale Variablen und Funktionen

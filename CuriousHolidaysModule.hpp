@@ -13,9 +13,11 @@ struct HolidayEntry {
     PsramString description;
 };
 
+struct DeviceConfig;
+
 class CuriousHolidaysModule : public DrawableModule {
 public:
-    CuriousHolidaysModule(U8G2_FOR_ADAFRUIT_GFX& u8g2, GFXcanvas16& canvas, GeneralTimeConverter& timeConverter, WebClientModule* webClient);
+    CuriousHolidaysModule(U8G2_FOR_ADAFRUIT_GFX& u8g2, GFXcanvas16& canvas, GeneralTimeConverter& timeConverter, WebClientModule* webClient, DeviceConfig* config);
     ~CuriousHolidaysModule();
 
     void begin();
@@ -44,6 +46,7 @@ private:
     GFXcanvas16& canvas;
     GeneralTimeConverter& timeConverter;
     WebClientModule* webClient;
+    DeviceConfig* config;
 
     PsramVector<HolidayEntry> holidaysToday;
     PsramVector<HolidayEntry> holidaysTomorrow;

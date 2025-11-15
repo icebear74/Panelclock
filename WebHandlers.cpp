@@ -185,6 +185,13 @@ void handleConfigModules() {
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->themeParkFetchIntervalMin); replaceAll(content, "{themeParkFetchIntervalMin}", num_buf);
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->themeParkDisplaySec); replaceAll(content, "{themeParkDisplaySec}", num_buf);
 
+    // Curious Holidays configuration
+    replaceAll(content, "{curiousHolidaysEnabled_checked}", deviceConfig->curiousHolidaysEnabled ? "checked" : "");
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->curiousHolidaysDisplaySec); replaceAll(content, "{curiousHolidaysDisplaySec}", num_buf);
+    
+    // Global scrolling configuration
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->globalScrollSpeedMs); replaceAll(content, "{globalScrollSpeedMs}", num_buf);
+
     page += content;
     page += (const char*)FPSTR(HTML_PAGE_FOOTER);
     server->send(200, "text/html", page.c_str());
@@ -283,7 +290,6 @@ void handleSaveModules() {
     deviceConfig->icsUrl = server->arg("icsUrl").c_str();
     deviceConfig->calendarFetchIntervalMin = server->arg("calendarFetchIntervalMin").toInt();
     deviceConfig->calendarDisplaySec = server->arg("calendarDisplaySec").toInt();
-    deviceConfig->calendarScrollMs = server->arg("calendarScrollMs").toInt();
     deviceConfig->calendarDateColor = server->arg("calendarDateColor").c_str();
     deviceConfig->calendarTextColor = server->arg("calendarTextColor").c_str();
 
@@ -292,6 +298,13 @@ void handleSaveModules() {
     if (server->hasArg("calendarUrgentThresholdHours")) deviceConfig->calendarUrgentThresholdHours = server->arg("calendarUrgentThresholdHours").toInt();
     if (server->hasArg("calendarUrgentDurationSec")) deviceConfig->calendarUrgentDurationSec = server->arg("calendarUrgentDurationSec").toInt();
     if (server->hasArg("calendarUrgentRepeatMin")) deviceConfig->calendarUrgentRepeatMin = server->arg("calendarUrgentRepeatMin").toInt();
+
+    // Curious Holidays configuration
+    deviceConfig->curiousHolidaysEnabled = server->hasArg("curiousHolidaysEnabled");
+    if (server->hasArg("curiousHolidaysDisplaySec")) deviceConfig->curiousHolidaysDisplaySec = server->arg("curiousHolidaysDisplaySec").toInt();
+    
+    // Global scrolling configuration
+    if (server->hasArg("globalScrollSpeedMs")) deviceConfig->globalScrollSpeedMs = server->arg("globalScrollSpeedMs").toInt();
 
     deviceConfig->dartsOomEnabled = server->hasArg("dartsOomEnabled");
     deviceConfig->dartsProTourEnabled = server->hasArg("dartsProTourEnabled");

@@ -153,6 +153,7 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
   <button class="tablinks" onclick="openTab(event, 'Kalender')">Kalender</button>
   <button class="tablinks" onclick="openTab(event, 'Darts')">Darts</button>
   <button class="tablinks" onclick="openTab(event, 'Fritzbox')">Fritz!Box</button>
+  <button class="tablinks" onclick="openTab(event, 'Diverses')">Diverses</button>
 </div>
 
 <form action="/save_modules" method="POST" onsubmit="collectStationIds()">
@@ -161,11 +162,6 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
     <div class="group">
         <h3>Zeitzone</h3>
         <label for="timezone">Zeitzone</label><select id="timezone" name="timezone">{tz_options}</select>
-    </div>
-    <div class="group">
-        <h3>Datenschutz-Optionen</h3>
-        <input type="checkbox" id="dataMockingEnabled" name="dataMockingEnabled" {dataMockingEnabled_checked}><label for="dataMockingEnabled" style="display:inline;">Datenmocking aktivieren (Sensible Daten in der Anzeige maskieren)</label><br>
-        <p style="color:#ffc107; margin-top:10px;">Hinweis: Wenn aktiviert, werden Adressen in Tankstellenanzeige und Terminbeschreibungen im Kalender durch Platzhalter ersetzt. Dies betrifft nur die Anzeige, nicht die gespeicherten Daten.</p>
     </div>
 </div>
 
@@ -261,7 +257,6 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
         <label for="icsUrl">iCal URL (.ics)</label><input type="text" id="icsUrl" name="icsUrl" value="{icsUrl}">
         <label for="calendarFetchIntervalMin">Abrufintervall (Minuten)</label><input type="number" id="calendarFetchIntervalMin" name="calendarFetchIntervalMin" value="{calendarFetchIntervalMin}">
         <label for="calendarDisplaySec">Anzeigedauer (Sekunden)</label><input type="number" id="calendarDisplaySec" name="calendarDisplaySec" value="{calendarDisplaySec}">
-        <label for="calendarScrollMs">Scroll-Geschwindigkeit (ms)</label><input type="number" id="calendarScrollMs" name="calendarScrollMs" value="{calendarScrollMs}">
         <label for="calendarDateColor">Farbe Datum</label><input type="color" id="calendarDateColor" name="calendarDateColor" value="{calendarDateColor}">
         <label for="calendarTextColor">Farbe Text</label><input type="color" id="calendarTextColor" name="calendarTextColor" value="{calendarTextColor}">
         <hr>
@@ -289,6 +284,25 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
         <p style="color:#ffc107;">Hinweis: Damit dies funktioniert, muss der "Call Monitor" auf der Fritz!Box einmalig per Telefon aktiviert werden. W&auml;hlen Sie dazu: <strong>#96*5*</strong></p>
         <input type="checkbox" id="fritzboxEnabled" name="fritzboxEnabled" {fritzboxEnabled_checked}><label for="fritzboxEnabled" style="display:inline;">Anrufanzeige aktivieren</label><br><br>
         <label for="fritzboxIp">Fritz!Box IP-Adresse (leer lassen f&uuml;r autom. Erkennung)</label><input type="text" id="fritzboxIp" name="fritzboxIp" value="{fritzboxIp}">
+    </div>
+</div>
+
+<div id="Diverses" class="tabcontent">
+    <div class="group">
+        <h3>Datenschutz-Optionen</h3>
+        <input type="checkbox" id="dataMockingEnabled" name="dataMockingEnabled" {dataMockingEnabled_checked}><label for="dataMockingEnabled" style="display:inline;">Datenmocking aktivieren (Sensible Daten in der Anzeige maskieren)</label><br>
+        <p style="color:#ffc107; margin-top:10px;">Hinweis: Wenn aktiviert, werden Adressen in Tankstellenanzeige und Terminbeschreibungen im Kalender durch Platzhalter ersetzt. Dies betrifft nur die Anzeige, nicht die gespeicherten Daten.</p>
+    </div>
+    <div class="group">
+        <h3>Kuriose Feiertage</h3>
+        <input type="checkbox" id="curiousHolidaysEnabled" name="curiousHolidaysEnabled" {curiousHolidaysEnabled_checked}><label for="curiousHolidaysEnabled" style="display:inline;">Kuriose Feiertage aktivieren</label><br>
+        <label for="curiousHolidaysDisplaySec">Anzeigedauer pro Feiertag (Sekunden)</label><input type="number" id="curiousHolidaysDisplaySec" name="curiousHolidaysDisplaySec" value="{curiousHolidaysDisplaySec}" min="1">
+        <p style="color:#bbb; margin-top:10px;">Zeigt t&auml;glich verschiedene kuriose Feiertage aus Deutschland an.</p>
+    </div>
+    <div class="group">
+        <h3>Globale Scrolling-Einstellungen</h3>
+        <label for="globalScrollSpeedMs">Scroll-Geschwindigkeit (Millisekunden)</label><input type="number" id="globalScrollSpeedMs" name="globalScrollSpeedMs" value="{globalScrollSpeedMs}" min="10" max="500">
+        <p style="color:#bbb; margin-top:10px;">Diese Einstellung gilt f&uuml;r alle Module mit scrollenden Texten (Kalender, Freizeitparks, etc.). Niedrigere Werte = schnelleres Scrolling.</p>
     </div>
 </div>
 
