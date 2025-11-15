@@ -284,15 +284,18 @@ void WebClientModule::getRequest(const PsramString& url, std::function<void(cons
         callback(nullptr, 0);
         return;
     }
-    WebJob* job = new WebJob{WebJob::GET, url, "", "", "", callback, nullptr};
-    if (!job) {
+    // Allocate WebJob in PSRAM to reduce heap fragmentation
+    void* jobMem = ps_malloc(sizeof(WebJob));
+    if (!jobMem) {
         Log.println("[WebClientModule] FEHLER: Konnte keinen WebJob für GET allozieren.");
         callback(nullptr, 0);
         return;
     }
+    WebJob* job = new (jobMem) WebJob{WebJob::GET, url, "", "", "", callback, nullptr};
     if (xQueueSend(jobQueue, &job, pdMS_TO_TICKS(100)) != pdTRUE) {
         Log.println("[WebClientModule] FEHLER: Konnte GET-Job nicht zur Queue hinzufügen.");
-        delete job;
+        job->~WebJob();  // Call destructor
+        free(jobMem);
         callback(nullptr, 0);
     }
 }
@@ -303,15 +306,18 @@ void WebClientModule::getRequest(const PsramString& url, std::function<void(int 
         detailed_callback(-1, "No WiFi", 7);
         return;
     }
-    WebJob* job = new WebJob{WebJob::GET, url, "", "", "", nullptr, detailed_callback};
-    if (!job) {
+    // Allocate WebJob in PSRAM to reduce heap fragmentation
+    void* jobMem = ps_malloc(sizeof(WebJob));
+    if (!jobMem) {
         Log.println("[WebClientModule] FEHLER: Konnte keinen WebJob für GET (detailed) allozieren.");
         detailed_callback(-1, "Malloc failed", 12);
         return;
     }
+    WebJob* job = new (jobMem) WebJob{WebJob::GET, url, "", "", "", nullptr, detailed_callback};
     if (xQueueSend(jobQueue, &job, pdMS_TO_TICKS(100)) != pdTRUE) {
         Log.println("[WebDataManager] FEHLER: Konnte GET-Job (detailed) nicht zur Queue hinzufügen.");
-        delete job;
+        job->~WebJob();  // Call destructor
+        free(jobMem);
         detailed_callback(-1, "Queue full", 10);
     }
 }
@@ -322,15 +328,18 @@ void WebClientModule::getRequest(const PsramString& url, const PsramString& cust
         detailed_callback(-1, "No WiFi", 7);
         return;
     }
-    WebJob* job = new WebJob{WebJob::GET, url, "", "", customHeaders, nullptr, detailed_callback};
-    if (!job) {
+    // Allocate WebJob in PSRAM to reduce heap fragmentation
+    void* jobMem = ps_malloc(sizeof(WebJob));
+    if (!jobMem) {
         Log.println("[WebClientModule] FEHLER: Konnte keinen WebJob für GET (detailed+headers) allozieren.");
         detailed_callback(-1, "Malloc failed", 12);
         return;
     }
+    WebJob* job = new (jobMem) WebJob{WebJob::GET, url, "", "", customHeaders, nullptr, detailed_callback};
     if (xQueueSend(jobQueue, &job, pdMS_TO_TICKS(100)) != pdTRUE) {
         Log.println("[WebDataManager] FEHLER: Konnte GET-Job (detailed+headers) nicht zur Queue hinzufügen.");
-        delete job;
+        job->~WebJob();  // Call destructor
+        free(jobMem);
         detailed_callback(-1, "Queue full", 10);
     }
 }
@@ -342,16 +351,19 @@ void WebClientModule::postRequest(const PsramString& url, const PsramString& pos
         return;
     }
 
-    WebJob* job = new WebJob{WebJob::POST, url, postBody, contentType, "", callback, nullptr};
-    if (!job) {
+    // Allocate WebJob in PSRAM to reduce heap fragmentation
+    void* jobMem = ps_malloc(sizeof(WebJob));
+    if (!jobMem) {
         Log.println("[WebClientModule] FEHLER: Konnte keinen WebJob für POST allozieren.");
         callback(nullptr, 0);
         return;
     }
 
+    WebJob* job = new (jobMem) WebJob{WebJob::POST, url, postBody, contentType, "", callback, nullptr};
     if (xQueueSend(jobQueue, &job, pdMS_TO_TICKS(100)) != pdTRUE) {
         Log.println("[WebClientModule] FEHLER: Konnte POST-Job nicht zur Queue hinzufügen.");
-        delete job;
+        job->~WebJob();  // Call destructor
+        free(jobMem);
         callback(nullptr, 0);
     }
 }
@@ -640,14 +652,16 @@ void WebClientModule::webWorkerTask(void* param) {
                     if (xQueueSendToFront(self->jobQueue, &receivedJob, pdMS_TO_TICKS(100)) != pdTRUE) {
                         // if failed to put back, drop it gracefully after short wait
                         Log.println("[WebDataManager] WARNUNG: Konnte Job nicht zurück in Queue einreihen, verwerfe.");
-                        delete receivedJob;
+                        receivedJob->~WebJob();  // Call destructor
+                        free(receivedJob);  // Free PSRAM memory
                     }
                     vTaskDelay(pdMS_TO_TICKS(200));
                 } else {
                     // mark last download time and perform job
                     self->_lastDownloadMs = millis();
                     self->performJob(*receivedJob);
-                    delete receivedJob;
+                    receivedJob->~WebJob();  // Call destructor
+                    free(receivedJob);  // Free PSRAM memory
                 }
             }
 

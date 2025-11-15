@@ -659,8 +659,7 @@ bool DartsRankingModule::parseTable(const char* html, std::vector<DartsPlayer, P
             const char* th_end_tag = strstr(th_content_start, "</th>"); 
             if (!th_end_tag) break;
             
-            String headerTextStr = extractText(th_content_start, th_end_tag - th_content_start);
-            PsramString headerText(headerTextStr.c_str());
+            PsramString headerText = extractText(th_content_start, th_end_tag - th_content_start);
             headers.push_back(headerText);
             
             if (headerText != "Rk" && headerText != "+/-" && headerText != "Name" && headerText != "Prize Money" && headerText.length() > 0 && headerText.length() <= 4) {
