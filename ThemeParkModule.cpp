@@ -28,6 +28,13 @@ ThemeParkModule::~ThemeParkModule() {
 
 void ThemeParkModule::begin() {
     loadParkCache();
+    
+    // If cache is empty, trigger immediate fetch of parks list
+    if (_availableParks.empty()) {
+        Log.println("[ThemePark] Cache is empty, will fetch parks list on first queueData call");
+        _lastParksListUpdate = 0;  // Ensure checkAndUpdateParksList will load cache or fetch
+    }
+    
     Log.println("[ThemePark] Module initialized");
 }
 
@@ -571,7 +578,16 @@ void ThemeParkModule::drawParkPage(int parkIndex, int attractionPage) {
         return;
     }
     
-    // Draw park name with country and opening hours as headline - all in scrolling text
+    // Check if park has any open attractions
+    bool hasOpenAttractions = false;
+    for (const auto& attr : park.attractions) {
+        if (attr.isOpen) {
+            hasOpenAttractions = true;
+            break;
+        }
+    }
+    
+    // Draw park name with country as headline - scrolling text
     // Use smaller font (6x13 like CalendarModule uses) and scrolling
     _u8g2.setFont(u8g2_font_6x13_tf);
     _u8g2.setForegroundColor(0xFFFF);
@@ -581,8 +597,8 @@ void ThemeParkModule::drawParkPage(int parkIndex, int attractionPage) {
         displayName = displayName + " (" + park.country + ")";
     }
     
-    // Add opening hours to the scrolling text
-    if (!park.openingTime.empty() && !park.closingTime.empty()) {
+    // Add opening hours to scrolling text only if park is open
+    if (hasOpenAttractions && !park.openingTime.empty() && !park.closingTime.empty()) {
         // Show opening hours in format: "Geöffnet von HH:MM - HH:MM Uhr"
         displayName = displayName + " : Geoeffnet von " + park.openingTime + " - " + park.closingTime + " Uhr";
     }
@@ -613,7 +629,40 @@ void ThemeParkModule::drawParkPage(int parkIndex, int attractionPage) {
         _u8g2.print(crowdText);
     }
     
-    // Draw attractions using smaller font like CalendarModule
+    // If park is closed (no open attractions), show closed message instead of attraction list
+    if (!hasOpenAttractions) {
+        int yPos = 16;
+        _u8g2.setFont(u8g2_font_9x15_tf);
+        _u8g2.setForegroundColor(0xF800);  // Red
+        
+        yPos += 10;
+        const char* closedMsg = "Geschlossen";
+        int closedW = _u8g2.getUTF8Width(closedMsg);
+        _u8g2.setCursor((_canvas.width() - closedW) / 2, yPos);
+        _u8g2.print(closedMsg);
+        
+        // Show when park reopens if opening hours available
+        if (!park.openingTime.empty() && !park.closingTime.empty()) {
+            yPos += 20;
+            _u8g2.setFont(u8g2_font_6x13_tf);
+            _u8g2.setForegroundColor(0xFFFF);  // White
+            
+            PsramString reopenMsg = "Oeffnet wieder von";
+            int reopenW = _u8g2.getUTF8Width(reopenMsg.c_str());
+            _u8g2.setCursor((_canvas.width() - reopenW) / 2, yPos);
+            _u8g2.print(reopenMsg.c_str());
+            
+            yPos += 16;
+            PsramString timeMsg = park.openingTime + " - " + park.closingTime + " Uhr";
+            int timeW = _u8g2.getUTF8Width(timeMsg.c_str());
+            _u8g2.setCursor((_canvas.width() - timeW) / 2, yPos);
+            _u8g2.print(timeMsg.c_str());
+        }
+        
+        return;  // Don't draw attractions list
+    }
+    
+    // Park is open - draw attractions using smaller font like CalendarModule
     // Start position moved down by 2 more pixels
     int yPos = 16;
     _u8g2.setFont(u8g2_font_5x8_tf);
@@ -871,19 +920,30 @@ void ThemeParkModule::checkAndUpdateParksList() {
     time_t now = time(nullptr);
     
     // Check if we need to update (once per day = 86400 seconds)
-    // If _lastParksListUpdate is 0, load from cache instead of fetching
+    // If _lastParksListUpdate is 0, load from cache first
     if (_lastParksListUpdate == 0) {
-        // First time - load from cache, don't fetch yet
+        // First time - try to load from cache
         loadParkCache();
-        _lastParksListUpdate = now;  // Set to now to prevent immediate fetch
-        return;
-    }
-    
-    if ((now - _lastParksListUpdate) < 86400) {
+        
+        // If cache is still empty after loading, fetch from API immediately
+        bool cacheEmpty = false;
+        if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            cacheEmpty = _availableParks.empty();
+            xSemaphoreGive(_dataMutex);
+        }
+        
+        if (cacheEmpty) {
+            Log.println("[ThemePark] Cache empty, fetching parks list from API");
+            // Don't set _lastParksListUpdate yet, let it fetch
+        } else {
+            _lastParksListUpdate = now;  // Set to now to prevent immediate fetch
+            return;
+        }
+    } else if ((now - _lastParksListUpdate) < 86400) {
         return;  // Not yet time to update
     }
     
-    Log.println("[ThemePark] Performing daily parks list update");
+    Log.println("[ThemePark] Fetching parks list from API");
     
     PsramString url = "https://api.wartezeiten.app/v1/parks";
     PsramString headers = "accept: application/json\nlanguage: de";
@@ -894,10 +954,10 @@ void ThemeParkModule::checkAndUpdateParksList() {
     // Fetch parks list asynchronously
     _webClient->getRequest(url, headers, [this](int httpCode, const char* payload, size_t len) {
         if (httpCode == 200 && payload && len > 0) {
-            Log.printf("[ThemePark] Daily update: received parks list (size: %d)\n", len);
+            Log.printf("[ThemePark] Received parks list (size: %d)\n", len);
             parseAvailableParks(payload, len);
         } else {
-            Log.printf("[ThemePark] Daily update failed: HTTP %d\n", httpCode);
+            Log.printf("[ThemePark] Parks list fetch failed: HTTP %d\n", httpCode);
         }
     });
 }
