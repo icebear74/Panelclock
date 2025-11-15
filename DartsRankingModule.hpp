@@ -121,7 +121,8 @@ private:
     uint16_t dimColor(uint16_t color);
     void clearAllData();
     void filterAndSortPlayers(DartsRankingType type);
-    String extractText(const char* htmlFragment, size_t maxLen);
+    // Helper: Extract text from HTML fragment (allocates on heap - short-lived)
+    PsramString extractText(const char* htmlFragment, size_t maxLen);
     void parsePlayerRow(const char* tr_start, const char* tr_end, const PsramVector<PsramString>& headers, DartsPlayer& player, bool isLiveFormat);
     void parseHtml(const char* html, size_t len, DartsRankingType type);
     bool parseTable(const char* html, std::vector<DartsPlayer, PsramAllocator<DartsPlayer>>& players_ref);

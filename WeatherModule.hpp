@@ -114,8 +114,8 @@ private:
 
     std::function<void()> _onUpdateCallback = nullptr;
     
-    // Track missing icons to log only once
-    std::set<std::string> _loggedMissingIcons;
+    // Track missing icons to log only once (using PsramAllocator to reduce heap usage)
+    std::set<PsramString, std::less<PsramString>, PsramAllocator<PsramString>> _loggedMissingIcons;
 
     void buildApiUrls();
     void parseForecastData(char* jsonBuffer, size_t size);

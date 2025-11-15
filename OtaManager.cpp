@@ -22,8 +22,8 @@ static inline uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b) {
     return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
 }
 
-// Zentrischer Text-Renderer, nutzt u8g2
-void OtaManager::displayOtaTextCentered(const String& line1, const String& line2, const String& line3, uint16_t textColor) {
+// Zentrischer Text-Renderer, nutzt u8g2 - accepts const char* to avoid heap allocations
+void OtaManager::displayOtaTextCentered(const char* line1, const char* line2, const char* line3, uint16_t textColor) {
     if (!_fullCanvas || !_u8g2) return;
     _u8g2->begin(*_fullCanvas);
     _u8g2->setFont(u8g2_font_6x13_tf);
@@ -31,18 +31,18 @@ void OtaManager::displayOtaTextCentered(const String& line1, const String& line2
     _u8g2->setBackgroundColor(0);
 
     int y = 12;
-    if (!line1.isEmpty()) {
-        _u8g2->setCursor((_fullCanvas->width() - _u8g2->getUTF8Width(line1.c_str())) / 2, y);
+    if (line1 && line1[0] != '\0') {
+        _u8g2->setCursor((_fullCanvas->width() - _u8g2->getUTF8Width(line1)) / 2, y);
         _u8g2->print(line1);
         y += 14;
     }
-    if (!line2.isEmpty()) {
-        _u8g2->setCursor((_fullCanvas->width() - _u8g2->getUTF8Width(line2.c_str())) / 2, y);
+    if (line2 && line2[0] != '\0') {
+        _u8g2->setCursor((_fullCanvas->width() - _u8g2->getUTF8Width(line2)) / 2, y);
         _u8g2->print(line2);
         y += 14;
     }
-    if (!line3.isEmpty()) {
-        _u8g2->setCursor((_fullCanvas->width() - _u8g2->getUTF8Width(line3.c_str())) / 2, y);
+    if (line3 && line3[0] != '\0') {
+        _u8g2->setCursor((_fullCanvas->width() - _u8g2->getUTF8Width(line3)) / 2, y);
         _u8g2->print(line3);
     }
 }
@@ -426,9 +426,11 @@ void OtaManager::drawPacmanProgressSmooth(float percentage) {
 void OtaManager::begin() {
     ArduinoOTA.onStart([this]() {
         if (!_fullCanvas || !_dma_display || !_virtualDisp) return;
-        String type = ArduinoOTA.getCommand() == U_FLASH ? "Firmware" : "Filesystem";
+        const char* type = ArduinoOTA.getCommand() == U_FLASH ? "Firmware" : "Filesystem";
         drawPacmanProgressSmooth(0.0f);
-        displayOtaTextCentered("OTA Update", type + " wird geladen...", "");
+        char typeBuf[64];
+        snprintf(typeBuf, sizeof(typeBuf), "%s wird geladen...", type);
+        displayOtaTextCentered("OTA Update", typeBuf, "");
     });
 
     ArduinoOTA.onProgress([this](unsigned int progress, unsigned int total) {
@@ -461,7 +463,7 @@ void OtaManager::begin() {
 
     ArduinoOTA.onError([this](ota_error_t error) {
         if (!_fullCanvas || !_dma_display || !_virtualDisp) return;
-        String msg;
+        const char* msg = nullptr;
         EmojiKind ek = Emoji_Angry;
         switch (error) {
             case OTA_AUTH_ERROR: msg = "Auth Fehler"; ek = Emoji_Angry; break;

@@ -210,9 +210,11 @@ void DartsRankingModule::draw() {
         drawScrollingText(subTitle, (canvas.width() - u8g2.getUTF8Width(" ") * 40) / 2, 18, u8g2.getUTF8Width(" ") * 40, -1);
     }
     
-    String page_info = String(currentPage + 1) + "/" + String(totalPages);
+    // Page info using stack buffer instead of String
+    char page_info[32];
+    snprintf(page_info, sizeof(page_info), "%d/%d", currentPage + 1, totalPages);
     u8g2.setFont(u8g2_font_profont10_tf);
-    int page_info_width = u8g2.getUTF8Width(page_info.c_str());
+    int page_info_width = u8g2.getUTF8Width(page_info);
     u8g2.setCursor(canvas.width() - page_info_width - 2, 8);
     u8g2.print(page_info);
 
@@ -268,23 +270,35 @@ void DartsRankingModule::draw() {
         }
         u8g2.setForegroundColor(name_color); 
         
-        String roundPart = "";
+        // Build round and right text using stack buffers to avoid heap allocations
+        char roundPart[64] = "";
         if (player.currentRound) {
             if (strcmp(player.currentRound, "--") == 0) {
-                String dashes = "";
-                for(int j=0; j<max_round_len; ++j) dashes += "-";
-                roundPart = "(" + dashes + ")";
+                char dashes[32] = "";
+                for(int j=0; j<max_round_len && j<30; ++j) dashes[j] = '-';
+                dashes[max_round_len < 30 ? max_round_len : 30] = '\0';
+                snprintf(roundPart, sizeof(roundPart), "(%s)", dashes);
             } else {
-                String roundStr(player.currentRound);
-                while(roundStr.length() < max_round_len) {
-                    roundStr += " ";
+                char roundStr[32];
+                strncpy(roundStr, player.currentRound, sizeof(roundStr)-1);
+                roundStr[sizeof(roundStr)-1] = '\0';
+                int len = strlen(roundStr);
+                while(len < max_round_len && len < 30) {
+                    roundStr[len++] = ' ';
                 }
-                roundPart = "(" + roundStr + ")";
+                roundStr[len] = '\0';
+                snprintf(roundPart, sizeof(roundPart), "(%s)", roundStr);
             }
         }
-        String rightText = (player.prizeMoney ? "£" + String(player.prizeMoney) : "") + " " + roundPart;
         
-        int x_right = canvas.width() - u8g2.getUTF8Width(rightText.c_str()) - 2;
+        char rightText[128];
+        if (player.prizeMoney) {
+            snprintf(rightText, sizeof(rightText), "£%s %s", player.prizeMoney, roundPart);
+        } else {
+            snprintf(rightText, sizeof(rightText), " %s", roundPart);
+        }
+        
+        int x_right = canvas.width() - u8g2.getUTF8Width(rightText) - 2;
         int nameX = 45;
         int maxNameWidth = x_right - nameX - 4;
         drawScrollingText(player.name, nameX, y, maxNameWidth, i);
@@ -464,14 +478,30 @@ void DartsRankingModule::filterAndSortPlayers(DartsRankingType type) {
     });
 }
 
-String DartsRankingModule::extractText(const char* htmlFragment, size_t maxLen) {
-    String result = ""; bool inTag = false;
+PsramString DartsRankingModule::extractText(const char* htmlFragment, size_t maxLen) {
+    PsramString result;
+    result.reserve(maxLen / 2); // Reserve some space to reduce allocations
+    bool inTag = false;
     for (size_t i = 0; i < maxLen && htmlFragment[i] != '\0'; ++i) {
         if (htmlFragment[i] == '<') inTag = true;
         else if (htmlFragment[i] == '>') inTag = false;
         else if (!inTag) result += htmlFragment[i];
     }
-    result.replace("&pound;", ""); result.trim(); return result;
+    // Remove &pound; and trim - use PsramString operations
+    replaceAll(result, PsramString("&pound;"), PsramString(""));
+    // Simple trim
+    while (!result.empty() && (result[0] == ' ' || result[0] == '\t' || result[0] == '\n' || result[0] == '\r')) {
+        result = result.substr(1);
+    }
+    while (!result.empty()) {
+        char c = result[result.length()-1];
+        if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+            result = result.substr(0, result.length()-1);
+        } else {
+            break;
+        }
+    }
+    return result;
 }
 
 void DartsRankingModule::parsePlayerRow(const char* tr_start, const char* tr_end, const PsramVector<PsramString>& headers, DartsPlayer& player, bool isLiveFormat) {
@@ -490,7 +520,7 @@ void DartsRankingModule::parsePlayerRow(const char* tr_start, const char* tr_end
         const char* td_end_tag = strstr(td_content_start, "</td>");
         if (!td_end_tag) break;
 
-        String content = extractText(td_content_start, td_end_tag - td_content_start);
+        PsramString content = extractText(td_content_start, td_end_tag - td_content_start);
         
         if (isLiveFormat) {
             int tag_search_len = td_tag_end - td_start_tag;
