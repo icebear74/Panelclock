@@ -5,6 +5,7 @@
 #include <U8g2_for_Adafruit_GFX.h>
 #include "PsramUtils.hpp"
 #include <functional>
+#include <map>
 
 class WebClientModule;
 struct DeviceConfig;
@@ -86,6 +87,11 @@ private:
     PsramVector<AvailablePark> _availableParks;
     PsramVector<PsramString> _parkIds;  // Configured park IDs
     
+    // Track last processed update time for each park to avoid reprocessing same data
+    std::map<PsramString, time_t> _lastProcessedWaitTimes;
+    std::map<PsramString, time_t> _lastProcessedOpeningTimes;
+    std::map<PsramString, time_t> _lastProcessedCrowdLevel;
+    
     int _currentPage;
     int _currentParkIndex;  // Index of current park being displayed
     int _currentAttractionPage;  // Current attraction page within park
@@ -104,6 +110,8 @@ private:
     
     void parseWaitTimes(const char* jsonBuffer, size_t size, const PsramString& parkId);
     void parseCrowdLevel(const char* jsonBuffer, size_t size, const PsramString& parkId);
+    void parseOpeningTimes(const char* jsonBuffer, size_t size, const PsramString& parkId);
+    bool shouldDisplayPark(const ThemeParkData& park) const;
     void drawParkPage(int parkIndex, int attractionPage);
     void drawNoDataPage();
     uint16_t getCrowdLevelColor(float level);

@@ -28,6 +28,13 @@ ThemeParkModule::~ThemeParkModule() {
 
 void ThemeParkModule::begin() {
     loadParkCache();
+    
+    // If cache is empty, trigger immediate fetch of parks list
+    if (_availableParks.empty()) {
+        Log.println("[ThemePark] Cache is empty, will fetch parks list on first queueData call");
+        _lastParksListUpdate = 0;  // Ensure checkAndUpdateParksList will load cache or fetch
+    }
+    
     Log.println("[ThemePark] Module initialized");
 }
 
@@ -67,8 +74,43 @@ void ThemeParkModule::setConfig(const DeviceConfig* config) {
         xSemaphoreGive(_dataMutex);
     }
     
-    // Note: Resources will be registered on-demand in queueData()
-    // to avoid lambda capture issues with PsramString in ESP32 compiler
+    // Register resources for each configured park
+    // Each park needs wait times data from the /waitingtimes endpoint
+    unsigned long updateIntervalMinutes = (_config && _config->themeParkFetchIntervalMin > 0) 
+        ? _config->themeParkFetchIntervalMin : 10;
+    
+    if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        for (const auto& parkId : _parkIds) {
+            // Wait times endpoint uses header-based park selection
+            PsramString waitTimesUrl = "https://api.wartezeiten.app/v1/waitingtimes";
+            PsramString waitTimesHeaders = "accept: application/json\npark: " + parkId + "\nlanguage: de";
+            
+            // Register the wait times resource with custom headers
+            _webClient->registerResourceWithHeaders(String(waitTimesUrl.c_str()), 
+                                                    String(waitTimesHeaders.c_str()), 
+                                                    updateIntervalMinutes, 
+                                                    nullptr);
+            
+            // Register opening times resource (updated less frequently - every 6 hours)
+            PsramString openingTimesUrl = "https://api.wartezeiten.app/v1/openingtimes";
+            PsramString openingTimesHeaders = "accept: application/json\npark: " + parkId;
+            _webClient->registerResourceWithHeaders(String(openingTimesUrl.c_str()),
+                                                    String(openingTimesHeaders.c_str()),
+                                                    360,  // 6 hours
+                                                    nullptr);
+            
+            // Register crowd level resource (updated every 30 minutes)
+            PsramString crowdLevelUrl = "https://api.wartezeiten.app/v1/crowdlevel";
+            PsramString crowdLevelHeaders = "accept: application/json\npark: " + parkId + "\nlanguage: de";
+            _webClient->registerResourceWithHeaders(String(crowdLevelUrl.c_str()),
+                                                    String(crowdLevelHeaders.c_str()),
+                                                    30,  // 30 minutes
+                                                    nullptr);
+            
+            Log.printf("[ThemePark] Registered resources for park %s\n", parkId.c_str());
+        }
+        xSemaphoreGive(_dataMutex);
+    }
 }
 
 void ThemeParkModule::queueData() {
@@ -77,14 +119,114 @@ void ThemeParkModule::queueData() {
     // Check if parks list needs daily update
     checkAndUpdateParksList();
     
-    // Check if park details (names, opening hours) need update (every 2 hours = 7200 seconds)
-    time_t now = time(nullptr);
-    if (_lastParkDetailsUpdate == 0 || (now - _lastParkDetailsUpdate) >= 7200) {
-        _lastParkDetailsUpdate = now;
+    // Fetch wait times for each configured park
+    // Create a copy of park IDs to avoid holding the mutex during network operations
+    PsramVector<PsramString> parkIdsCopy;
+    if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        parkIdsCopy = _parkIds;
+        xSemaphoreGive(_dataMutex);
     }
     
-    // Note: Resources for wait times and crowd level are already registered in configure()
-    // WebClientModule will automatically fetch them at the configured interval
+    for (const auto& parkId : parkIdsCopy) {
+        // Fetch wait times from /waitingtimes endpoint
+        PsramString waitTimesUrl = "https://api.wartezeiten.app/v1/waitingtimes";
+        PsramString waitTimesHeaders = "accept: application/json\npark: " + parkId + "\nlanguage: de";
+        
+        // Access the resource - this will use cached data if still fresh,
+        // or trigger a new fetch if the update interval has passed
+        _webClient->accessResource(String(waitTimesUrl.c_str()), String(waitTimesHeaders.c_str()),
+            [this, parkId](const char* buffer, size_t size, time_t last_update, bool is_stale) {
+                if (buffer && size > 0) {
+                    // Only process if this is new data (not already processed)
+                    bool shouldProcess = false;
+                    if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+                        auto it = _lastProcessedWaitTimes.find(parkId);
+                        if (it == _lastProcessedWaitTimes.end() || it->second < last_update) {
+                            shouldProcess = true;
+                            _lastProcessedWaitTimes[parkId] = last_update;
+                        }
+                        xSemaphoreGive(_dataMutex);
+                    }
+                    
+                    if (shouldProcess) {
+                        // Take mutex before parsing to ensure thread safety
+                        if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+                            parseWaitTimes(buffer, size, parkId);
+                            xSemaphoreGive(_dataMutex);
+                            
+                            // Trigger a redraw if callback is set
+                            if (_updateCallback) {
+                                _updateCallback();
+                            }
+                        }
+                    }
+                }
+            });
+        
+        // Fetch opening times
+        PsramString openingTimesUrl = "https://api.wartezeiten.app/v1/openingtimes";
+        PsramString openingTimesHeaders = "accept: application/json\npark: " + parkId;
+        
+        _webClient->accessResource(String(openingTimesUrl.c_str()), String(openingTimesHeaders.c_str()),
+            [this, parkId](const char* buffer, size_t size, time_t last_update, bool is_stale) {
+                if (buffer && size > 0) {
+                    // Only process if this is new data (not already processed)
+                    bool shouldProcess = false;
+                    if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+                        auto it = _lastProcessedOpeningTimes.find(parkId);
+                        if (it == _lastProcessedOpeningTimes.end() || it->second < last_update) {
+                            shouldProcess = true;
+                            _lastProcessedOpeningTimes[parkId] = last_update;
+                        }
+                        xSemaphoreGive(_dataMutex);
+                    }
+                    
+                    if (shouldProcess) {
+                        if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+                            parseOpeningTimes(buffer, size, parkId);
+                            xSemaphoreGive(_dataMutex);
+                            
+                            // Trigger a redraw if callback is set
+                            if (_updateCallback) {
+                                _updateCallback();
+                            }
+                        }
+                    }
+                }
+            });
+        
+        // Fetch crowd level
+        PsramString crowdLevelUrl = "https://api.wartezeiten.app/v1/crowdlevel";
+        PsramString crowdLevelHeaders = "accept: application/json\npark: " + parkId + "\nlanguage: de";
+        
+        _webClient->accessResource(String(crowdLevelUrl.c_str()), String(crowdLevelHeaders.c_str()),
+            [this, parkId](const char* buffer, size_t size, time_t last_update, bool is_stale) {
+                if (buffer && size > 0) {
+                    // Only process if this is new data (not already processed)
+                    bool shouldProcess = false;
+                    if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+                        auto it = _lastProcessedCrowdLevel.find(parkId);
+                        if (it == _lastProcessedCrowdLevel.end() || it->second < last_update) {
+                            shouldProcess = true;
+                            _lastProcessedCrowdLevel[parkId] = last_update;
+                        }
+                        xSemaphoreGive(_dataMutex);
+                    }
+                    
+                    if (shouldProcess) {
+                        if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+                            parseCrowdLevel(buffer, size, parkId);
+                            xSemaphoreGive(_dataMutex);
+                            
+                            // Trigger a redraw if callback is set
+                            if (_updateCallback) {
+                                _updateCallback();
+                            }
+                        }
+                    }
+                }
+            });
+    }
 }
 
 void ThemeParkModule::processData() {
@@ -126,6 +268,8 @@ void ThemeParkModule::parseAvailableParks(const char* jsonBuffer, size_t size) {
 }
 
 void ThemeParkModule::parseWaitTimes(const char* jsonBuffer, size_t size, const PsramString& parkId) {
+    Log.printf("[ThemePark] parseWaitTimes called for park: %s\n", parkId.c_str());
+    
     SpiRamAllocator allocator;
     JsonDocument doc(&allocator);
     
@@ -137,11 +281,14 @@ void ThemeParkModule::parseWaitTimes(const char* jsonBuffer, size_t size, const 
     
     // The API returns an array of attractions, not park metadata
     // We need to get the park name and country from our cache
+    Log.printf("[ThemePark] About to lookup name for: %s\n", parkId.c_str());
     PsramString parkName = getParkNameFromCache(parkId);
     if (parkName.empty()) {
         parkName = parkId;  // Fallback to ID if name not found
+        Log.printf("[ThemePark] Using parkId as fallback name: %s\n", parkId.c_str());
     }
     
+    Log.printf("[ThemePark] About to lookup country for: %s\n", parkId.c_str());
     PsramString parkCountry = getParkCountryFromCache(parkId);
     
     // Find or create park data
@@ -195,29 +342,40 @@ void ThemeParkModule::parseWaitTimes(const char* jsonBuffer, size_t size, const 
     // Park is closed if all attractions are closed
     bool allAttractionsClosed = (parkData->attractions.size() > 0 && openAttractionsCount == 0);
     
-    // If park is closed and has no opening hours information, remove it from display
-    if (allAttractionsClosed && parkData->openingTime.empty() && parkData->closingTime.empty()) {
-        Log.printf("[ThemePark] Park %s is closed with no opening hours - skipping\n", parkName.c_str());
-        // Remove this park from _parkData
-        for (size_t i = 0; i < _parkData.size(); i++) {
-            if (_parkData[i].id == parkId) {
-                _parkData.erase(_parkData.begin() + i);
-                break;
-            }
-        }
-        _totalPages = _parkData.size();
-        return;
+    // Don't remove parks here - opening times might not be fetched yet due to async callbacks
+    // The display logic will handle whether to show closed parks based on opening hours
+    if (allAttractionsClosed) {
+        Log.printf("[ThemePark] Park %s is closed (all attractions closed)\n", parkName.c_str());
     }
     
-    // Sort attractions by wait time (descending)
+    // Sort attractions by multiple criteria:
+    // 1. Open status (open attractions first)
+    // 2. Wait time (higher wait time first) - even 0 min counts if open
+    // 3. Name (alphabetical as tiebreaker, case-insensitive)
     std::sort(parkData->attractions.begin(), parkData->attractions.end(),
               [](const Attraction& a, const Attraction& b) {
-                  return a.waitTime > b.waitTime;
+                  // Criterion 1: Open status (open first)
+                  if (a.isOpen != b.isOpen) {
+                      return a.isOpen > b.isOpen;  // true > false, so open attractions come first
+                  }
+                  
+                  // Criterion 2: Wait time (higher first)
+                  if (a.waitTime != b.waitTime) {
+                      return a.waitTime > b.waitTime;
+                  }
+                  
+                  // Criterion 3: Name (alphabetical, case-insensitive)
+                  // Convert to lowercase for comparison
+                  PsramString aLower = a.name;
+                  PsramString bLower = b.name;
+                  std::transform(aLower.begin(), aLower.end(), aLower.begin(), ::tolower);
+                  std::transform(bLower.begin(), bLower.end(), bLower.begin(), ::tolower);
+                  return aLower < bLower;
               });
     
     // Calculate how many pages needed to show all attractions
-    // With 8px line height and starting at yPos ~20, we can fit about 27 attractions per page
-    int attractionsPerPage = 27;  // Conservative estimate
+    // 6 attractions per page as requested
+    int attractionsPerPage = 6;
     parkData->attractionPages = (parkData->attractions.size() + attractionsPerPage - 1) / attractionsPerPage;
     if (parkData->attractionPages < 1) parkData->attractionPages = 1;
     
@@ -254,6 +412,59 @@ void ThemeParkModule::parseCrowdLevel(const char* jsonBuffer, size_t size, const
     }
 }
 
+void ThemeParkModule::parseOpeningTimes(const char* jsonBuffer, size_t size, const PsramString& parkId) {
+    SpiRamAllocator allocator;
+    JsonDocument doc(&allocator);
+    
+    DeserializationError error = deserializeJson(doc, jsonBuffer, size);
+    if (error) {
+        Log.printf("[ThemePark] Failed to parse opening times: %s\n", error.c_str());
+        return;
+    }
+    
+    // API returns array like: [{"opened_today":true,"open_from":"2025-11-14T09:00:00+01:00","closed_from":"2025-11-14T18:00:00+01:00"}]
+    JsonArray timesArray = doc.as<JsonArray>();
+    if (!timesArray || timesArray.size() == 0) {
+        Log.printf("[ThemePark] No opening times data for park %s\n", parkId.c_str());
+        return;
+    }
+    
+    JsonObject today = timesArray[0];
+    bool openedToday = today["opened_today"] | false;
+    const char* openFrom = today["open_from"] | "";
+    const char* closedFrom = today["closed_from"] | "";
+    
+    // Find the park data and update opening times
+    for (auto& park : _parkData) {
+        if (park.id == parkId) {
+            park.isOpen = openedToday;
+            
+            // Extract just the time portion (HH:MM) from ISO 8601 timestamp
+            // Format is "2025-11-14T09:00:00+01:00", we want "09:00"
+            if (openFrom && strlen(openFrom) >= 16) {
+                PsramString openStr(openFrom);
+                size_t tPos = openStr.find('T');
+                if (tPos != PsramString::npos && tPos + 6 <= openStr.length()) {
+                    park.openingTime = openStr.substr(tPos + 1, 5);  // Extract "09:00"
+                }
+            }
+            
+            if (closedFrom && strlen(closedFrom) >= 16) {
+                PsramString closedStr(closedFrom);
+                size_t tPos = closedStr.find('T');
+                if (tPos != PsramString::npos && tPos + 6 <= closedStr.length()) {
+                    park.closingTime = closedStr.substr(tPos + 1, 5);  // Extract "18:00"
+                }
+            }
+            
+            Log.printf("[ThemePark] Updated opening times for %s: %s - %s (open: %s)\n", 
+                      parkId.c_str(), park.openingTime.c_str(), park.closingTime.c_str(), 
+                      park.isOpen ? "yes" : "no");
+            break;
+        }
+    }
+}
+
 void ThemeParkModule::onUpdate(std::function<void()> callback) {
     _updateCallback = callback;
 }
@@ -265,8 +476,33 @@ bool ThemeParkModule::isEnabled() {
 unsigned long ThemeParkModule::getDisplayDuration() {
     unsigned long duration;
     if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-        int numPages = _parkData.size() > 0 ? _parkData.size() : 1;
-        duration = (numPages * _pageDisplayDuration) + runtime_safe_buffer;
+        // Sum all pages across all displayable parks
+        // Closed parks count as 1 page (showing "Geschlossen" message)
+        // Open parks count based on their attraction pages
+        int totalPages = 0;
+        for (const auto& park : _parkData) {
+            if (shouldDisplayPark(park)) {
+                // Check if park has any open attractions
+                bool hasOpenAttractions = false;
+                for (const auto& attr : park.attractions) {
+                    if (attr.isOpen) {
+                        hasOpenAttractions = true;
+                        break;
+                    }
+                }
+                
+                if (hasOpenAttractions) {
+                    // Open park: count all attraction pages
+                    totalPages += park.attractionPages;
+                } else {
+                    // Closed park: count as 1 page (showing closed message)
+                    totalPages += 1;
+                }
+            }
+        }
+        
+        if (totalPages == 0) totalPages = 1;
+        duration = (totalPages * _pageDisplayDuration) + runtime_safe_buffer;
         xSemaphoreGive(_dataMutex);
     } else {
         duration = _pageDisplayDuration;
@@ -296,6 +532,25 @@ void ThemeParkModule::onActivate() {
     _logicTicksSincePageSwitch = 0;
 }
 
+bool ThemeParkModule::shouldDisplayPark(const ThemeParkData& park) const {
+    // Always display parks with open attractions
+    bool hasOpenAttractions = false;
+    for (const auto& attr : park.attractions) {
+        if (attr.isOpen) {
+            hasOpenAttractions = true;
+            break;
+        }
+    }
+    
+    if (hasOpenAttractions) {
+        return true;
+    }
+    
+    // If all attractions are closed, display if we have opening OR closing time information
+    // This allows users to see when the park will reopen
+    return !park.openingTime.empty() || !park.closingTime.empty();
+}
+
 void ThemeParkModule::logicTick() {
     _logicTicksSincePageSwitch++;
     
@@ -312,7 +567,47 @@ void ThemeParkModule::logicTick() {
     
     if (_logicTicksSincePageSwitch >= ticksPerPage) {
         if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-            if (_parkData.empty()) {
+            // Filter displayable parks
+            PsramVector<int> displayableIndices;
+            for (size_t i = 0; i < _parkData.size(); i++) {
+                if (shouldDisplayPark(_parkData[i])) {
+                    displayableIndices.push_back(i);
+                }
+            }
+            
+            // Sort displayable parks:
+            // 1. Open parks first (those with at least one open attraction)
+            // 2. Then closed parks with opening times
+            // 3. Alphabetically by name within each group (case-insensitive)
+            std::sort(displayableIndices.begin(), displayableIndices.end(),
+                      [this](int idxA, int idxB) {
+                          const auto& parkA = _parkData[idxA];
+                          const auto& parkB = _parkData[idxB];
+                          
+                          // Check if parks have open attractions
+                          bool aHasOpen = false;
+                          bool bHasOpen = false;
+                          for (const auto& attr : parkA.attractions) {
+                              if (attr.isOpen) { aHasOpen = true; break; }
+                          }
+                          for (const auto& attr : parkB.attractions) {
+                              if (attr.isOpen) { bHasOpen = true; break; }
+                          }
+                          
+                          // Criterion 1: Open parks first
+                          if (aHasOpen != bHasOpen) {
+                              return aHasOpen > bHasOpen;  // Open parks first
+                          }
+                          
+                          // Criterion 2: Alphabetically by name (case-insensitive)
+                          PsramString aLower = parkA.name;
+                          PsramString bLower = parkB.name;
+                          std::transform(aLower.begin(), aLower.end(), aLower.begin(), ::tolower);
+                          std::transform(bLower.begin(), bLower.end(), bLower.begin(), ::tolower);
+                          return aLower < bLower;
+                      });
+            
+            if (displayableIndices.empty()) {
                 _currentPage = 0;
                 _currentParkIndex = 0;
                 _currentAttractionPage = 0;
@@ -322,21 +617,37 @@ void ThemeParkModule::logicTick() {
                 return;
             }
             
+            // Get the actual park index we're currently on
+            int displayIndex = _currentParkIndex % displayableIndices.size();
+            int actualParkIndex = displayableIndices[displayIndex];
+            
+            // Check if current park is closed (for paging logic)
+            bool parkIsClosed = true;
+            for (const auto& attr : _parkData[actualParkIndex].attractions) {
+                if (attr.isOpen) {
+                    parkIsClosed = false;
+                    break;
+                }
+            }
+            
+            // Determine pages for current park
+            int pagesForThisPark = parkIsClosed ? 1 : _parkData[actualParkIndex].attractionPages;
+            
             // Move to next attraction page within current park
             _currentAttractionPage++;
             _parkNameScrollOffset = 0;  // Reset scroll when changing page
             
-            // If we've shown all attraction pages for current park, move to next park
-            if (_currentAttractionPage >= _parkData[_currentParkIndex].attractionPages) {
+            // If we've shown all pages for current park, move to next park
+            if (_currentAttractionPage >= pagesForThisPark) {
                 _currentAttractionPage = 0;
                 _currentParkIndex++;
                 
-                // If we've shown all parks, we're done
-                if (_currentParkIndex >= (int)_parkData.size()) {
+                // If we've shown all displayable parks, we're done
+                if (_currentParkIndex >= (int)displayableIndices.size()) {
                     _currentParkIndex = 0;
                     _currentPage = 0;
                     _isFinished = true;
-                    Log.printf("[ThemePark] All %d parks shown -> Module finished\n", (int)_parkData.size());
+                    Log.printf("[ThemePark] All %d displayable parks shown -> Module finished\n", (int)displayableIndices.size());
                 } else {
                     _currentPage++;
                     if (_updateCallback) _updateCallback();
@@ -357,10 +668,20 @@ void ThemeParkModule::draw() {
     _u8g2.begin(_canvas);  // Initialize u8g2 with canvas - required for proper rendering
     
     if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-        if (_parkData.empty()) {
+        // Filter displayable parks
+        PsramVector<int> displayableIndices;
+        for (size_t i = 0; i < _parkData.size(); i++) {
+            if (shouldDisplayPark(_parkData[i])) {
+                displayableIndices.push_back(i);
+            }
+        }
+        
+        if (displayableIndices.empty()) {
             drawNoDataPage();
         } else {
-            drawParkPage(_currentParkIndex, _currentAttractionPage);
+            // Find which displayable park we should show based on current index
+            int displayIndex = _currentParkIndex % displayableIndices.size();
+            drawParkPage(displayableIndices[displayIndex], _currentAttractionPage);
         }
         xSemaphoreGive(_dataMutex);
     } else {
@@ -376,7 +697,22 @@ void ThemeParkModule::drawParkPage(int parkIndex, int attractionPage) {
     
     const ThemeParkData& park = _parkData[parkIndex];
     
-    // Draw park name with country and opening hours as headline - all in scrolling text
+    // Check if this park should be displayed
+    if (!shouldDisplayPark(park)) {
+        drawNoDataPage();
+        return;
+    }
+    
+    // Check if park has any open attractions
+    bool hasOpenAttractions = false;
+    for (const auto& attr : park.attractions) {
+        if (attr.isOpen) {
+            hasOpenAttractions = true;
+            break;
+        }
+    }
+    
+    // Draw park name with country as headline - scrolling text
     // Use smaller font (6x13 like CalendarModule uses) and scrolling
     _u8g2.setFont(u8g2_font_6x13_tf);
     _u8g2.setForegroundColor(0xFFFF);
@@ -386,15 +722,10 @@ void ThemeParkModule::drawParkPage(int parkIndex, int attractionPage) {
         displayName = displayName + " (" + park.country + ")";
     }
     
-    // Add opening hours to the scrolling text
-    if (!park.openingTime.empty() && !park.closingTime.empty()) {
-        if (park.isOpen) {
-            // Park is open - show closing time
-            displayName = displayName + " - Geoeffnet bis " + park.closingTime;
-        } else {
-            // Park is closed - show opening and closing times
-            displayName = displayName + " - Geoeffnet " + park.openingTime + "-" + park.closingTime;
-        }
+    // Add opening hours to scrolling text only if park is open
+    if (hasOpenAttractions && !park.openingTime.empty() && !park.closingTime.empty()) {
+        // Show opening hours in format: "Geöffnet von HH:MM - HH:MM Uhr"
+        displayName = displayName + " : Geöffnet von " + park.openingTime + " - " + park.closingTime + " Uhr";
     }
     
     int maxNameWidth = _canvas.width() - 50;  // Leave space for crowd level
@@ -423,7 +754,40 @@ void ThemeParkModule::drawParkPage(int parkIndex, int attractionPage) {
         _u8g2.print(crowdText);
     }
     
-    // Draw attractions using smaller font like CalendarModule
+    // If park is closed (no open attractions), show closed message instead of attraction list
+    if (!hasOpenAttractions) {
+        int yPos = 16;
+        _u8g2.setFont(u8g2_font_9x15_tf);
+        _u8g2.setForegroundColor(0xF800);  // Red
+        
+        yPos += 10;
+        const char* closedMsg = "Geschlossen";
+        int closedW = _u8g2.getUTF8Width(closedMsg);
+        _u8g2.setCursor((_canvas.width() - closedW) / 2, yPos);
+        _u8g2.print(closedMsg);
+        
+        // Show when park reopens if opening hours available
+        if (!park.openingTime.empty() && !park.closingTime.empty()) {
+            yPos += 20;
+            _u8g2.setFont(u8g2_font_6x13_tf);
+            _u8g2.setForegroundColor(0xFFFF);  // White
+            
+            PsramString reopenMsg = "Öffnet wieder von";
+            int reopenW = _u8g2.getUTF8Width(reopenMsg.c_str());
+            _u8g2.setCursor((_canvas.width() - reopenW) / 2, yPos);
+            _u8g2.print(reopenMsg.c_str());
+            
+            yPos += 16;
+            PsramString timeMsg = park.openingTime + " - " + park.closingTime + " Uhr";
+            int timeW = _u8g2.getUTF8Width(timeMsg.c_str());
+            _u8g2.setCursor((_canvas.width() - timeW) / 2, yPos);
+            _u8g2.print(timeMsg.c_str());
+        }
+        
+        return;  // Don't draw attractions list
+    }
+    
+    // Park is open - draw attractions using smaller font like CalendarModule
     // Start position moved down by 2 more pixels
     int yPos = 16;
     _u8g2.setFont(u8g2_font_5x8_tf);
@@ -431,7 +795,9 @@ void ThemeParkModule::drawParkPage(int parkIndex, int attractionPage) {
     
     yPos += 4;  // Gap before attractions
     int lineHeight = 8;
-    int maxLines = (_canvas.height() - yPos - 10) / lineHeight;  // Leave space for page indicator
+    
+    // Force exactly 6 attractions per page as requested
+    int maxLines = 6;
     
     // Calculate which attractions to show on this page
     int startIdx = attractionPage * maxLines;
@@ -480,17 +846,6 @@ void ThemeParkModule::drawParkPage(int parkIndex, int attractionPage) {
         
         _u8g2.setForegroundColor(0xFFFF);
         yPos += lineHeight;
-    }
-    
-    // Draw page indicator if multiple attraction pages
-    if (park.attractionPages > 1) {
-        _u8g2.setFont(u8g2_font_5x8_tf);
-        _u8g2.setForegroundColor(0xFFFF);
-        char pageStr[16];
-        snprintf(pageStr, sizeof(pageStr), "%d/%d", attractionPage + 1, park.attractionPages);
-        int pageW = _u8g2.getUTF8Width(pageStr);
-        _u8g2.setCursor(_canvas.width() - pageW - 2, _canvas.height() - 2);
-        _u8g2.print(pageStr);
     }
 }
 
@@ -610,10 +965,12 @@ void ThemeParkModule::loadParkCache() {
             for (JsonObject park : parks) {
                 const char* id = park["id"] | "";
                 const char* name = park["name"] | "";
-                const char* country = park["land"] | "";  // API uses "land" not "country"
+                // Try both "land" (from API) and "country" (from cache) for compatibility
+                const char* country = park["land"] | park["country"] | "";
                 
                 if (id && name && strlen(id) > 0 && strlen(name) > 0) {
                     _availableParks.push_back(AvailablePark(id, name, country));
+                    Log.printf("[ThemePark] Loaded from cache: id=%s, name=%s, country=%s\n", id, name, country);
                 }
             }
         }
@@ -653,32 +1010,38 @@ void ThemeParkModule::saveParkCache() {
 }
 
 PsramString ThemeParkModule::getParkNameFromCache(const PsramString& parkId) {
+    // NOTE: This function expects _dataMutex to already be held by the caller
     PsramString name;
     
-    if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        for (const auto& park : _availableParks) {
-            if (park.id == parkId) {
-                name = park.name;
-                break;
-            }
+    Log.printf("[ThemePark] getParkNameFromCache: searching %d parks for %s\n", _availableParks.size(), parkId.c_str());
+    for (const auto& park : _availableParks) {
+        if (park.id == parkId) {
+            name = park.name;
+            Log.printf("[ThemePark] Found name for %s: %s\n", parkId.c_str(), name.c_str());
+            break;
         }
-        xSemaphoreGive(_dataMutex);
+    }
+    if (name.empty()) {
+        Log.printf("[ThemePark] No name found for %s in cache (%d parks)\n", parkId.c_str(), _availableParks.size());
     }
     
     return name;
 }
 
 PsramString ThemeParkModule::getParkCountryFromCache(const PsramString& parkId) {
+    // NOTE: This function expects _dataMutex to already be held by the caller
     PsramString country;
     
-    if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        for (const auto& park : _availableParks) {
-            if (park.id == parkId) {
-                country = park.country;
-                break;
-            }
+    Log.printf("[ThemePark] getParkCountryFromCache: searching %d parks for %s\n", _availableParks.size(), parkId.c_str());
+    for (const auto& park : _availableParks) {
+        if (park.id == parkId) {
+            country = park.country;
+            Log.printf("[ThemePark] Found country for %s: %s\n", parkId.c_str(), country.c_str());
+            break;
         }
-        xSemaphoreGive(_dataMutex);
+    }
+    if (country.empty()) {
+        Log.printf("[ThemePark] No country found for %s in cache\n", parkId.c_str());
     }
     
     return country;
@@ -690,19 +1053,30 @@ void ThemeParkModule::checkAndUpdateParksList() {
     time_t now = time(nullptr);
     
     // Check if we need to update (once per day = 86400 seconds)
-    // If _lastParksListUpdate is 0, load from cache instead of fetching
+    // If _lastParksListUpdate is 0, load from cache first
     if (_lastParksListUpdate == 0) {
-        // First time - load from cache, don't fetch yet
+        // First time - try to load from cache
         loadParkCache();
-        _lastParksListUpdate = now;  // Set to now to prevent immediate fetch
-        return;
-    }
-    
-    if ((now - _lastParksListUpdate) < 86400) {
+        
+        // If cache is still empty after loading, fetch from API immediately
+        bool cacheEmpty = false;
+        if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            cacheEmpty = _availableParks.empty();
+            xSemaphoreGive(_dataMutex);
+        }
+        
+        if (cacheEmpty) {
+            Log.println("[ThemePark] Cache empty, fetching parks list from API");
+            // Don't set _lastParksListUpdate yet, let it fetch
+        } else {
+            _lastParksListUpdate = now;  // Set to now to prevent immediate fetch
+            return;
+        }
+    } else if ((now - _lastParksListUpdate) < 86400) {
         return;  // Not yet time to update
     }
     
-    Log.println("[ThemePark] Performing daily parks list update");
+    Log.println("[ThemePark] Fetching parks list from API");
     
     PsramString url = "https://api.wartezeiten.app/v1/parks";
     PsramString headers = "accept: application/json\nlanguage: de";
@@ -713,10 +1087,10 @@ void ThemeParkModule::checkAndUpdateParksList() {
     // Fetch parks list asynchronously
     _webClient->getRequest(url, headers, [this](int httpCode, const char* payload, size_t len) {
         if (httpCode == 200 && payload && len > 0) {
-            Log.printf("[ThemePark] Daily update: received parks list (size: %d)\n", len);
+            Log.printf("[ThemePark] Received parks list (size: %d)\n", len);
             parseAvailableParks(payload, len);
         } else {
-            Log.printf("[ThemePark] Daily update failed: HTTP %d\n", httpCode);
+            Log.printf("[ThemePark] Parks list fetch failed: HTTP %d\n", httpCode);
         }
     });
 }
