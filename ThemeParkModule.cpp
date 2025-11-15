@@ -228,6 +228,8 @@ void ThemeParkModule::parseAvailableParks(const char* jsonBuffer, size_t size) {
 }
 
 void ThemeParkModule::parseWaitTimes(const char* jsonBuffer, size_t size, const PsramString& parkId) {
+    Log.printf("[ThemePark] parseWaitTimes called for park: %s\n", parkId.c_str());
+    
     SpiRamAllocator allocator;
     JsonDocument doc(&allocator);
     
@@ -239,11 +241,14 @@ void ThemeParkModule::parseWaitTimes(const char* jsonBuffer, size_t size, const 
     
     // The API returns an array of attractions, not park metadata
     // We need to get the park name and country from our cache
+    Log.printf("[ThemePark] About to lookup name for: %s\n", parkId.c_str());
     PsramString parkName = getParkNameFromCache(parkId);
     if (parkName.empty()) {
         parkName = parkId;  // Fallback to ID if name not found
+        Log.printf("[ThemePark] Using parkId as fallback name: %s\n", parkId.c_str());
     }
     
+    Log.printf("[ThemePark] About to lookup country for: %s\n", parkId.c_str());
     PsramString parkCountry = getParkCountryFromCache(parkId);
     
     // Find or create park data
@@ -916,7 +921,9 @@ void ThemeParkModule::saveParkCache() {
 PsramString ThemeParkModule::getParkNameFromCache(const PsramString& parkId) {
     PsramString name;
     
+    Log.printf("[ThemePark] getParkNameFromCache: trying to acquire mutex for %s\n", parkId.c_str());
     if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        Log.printf("[ThemePark] getParkNameFromCache: mutex acquired, searching %d parks\n", _availableParks.size());
         for (const auto& park : _availableParks) {
             if (park.id == parkId) {
                 name = park.name;
@@ -928,6 +935,8 @@ PsramString ThemeParkModule::getParkNameFromCache(const PsramString& parkId) {
             Log.printf("[ThemePark] No name found for %s in cache (%d parks)\n", parkId.c_str(), _availableParks.size());
         }
         xSemaphoreGive(_dataMutex);
+    } else {
+        Log.printf("[ThemePark] getParkNameFromCache: FAILED to acquire mutex for %s\n", parkId.c_str());
     }
     
     return name;
@@ -936,7 +945,9 @@ PsramString ThemeParkModule::getParkNameFromCache(const PsramString& parkId) {
 PsramString ThemeParkModule::getParkCountryFromCache(const PsramString& parkId) {
     PsramString country;
     
+    Log.printf("[ThemePark] getParkCountryFromCache: trying to acquire mutex for %s\n", parkId.c_str());
     if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        Log.printf("[ThemePark] getParkCountryFromCache: mutex acquired, searching %d parks\n", _availableParks.size());
         for (const auto& park : _availableParks) {
             if (park.id == parkId) {
                 country = park.country;
@@ -948,6 +959,8 @@ PsramString ThemeParkModule::getParkCountryFromCache(const PsramString& parkId) 
             Log.printf("[ThemePark] No country found for %s in cache\n", parkId.c_str());
         }
         xSemaphoreGive(_dataMutex);
+    } else {
+        Log.printf("[ThemePark] getParkCountryFromCache: FAILED to acquire mutex for %s\n", parkId.c_str());
     }
     
     return country;
