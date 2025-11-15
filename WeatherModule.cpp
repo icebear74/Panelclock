@@ -520,7 +520,7 @@ void WeatherModule::buildPages() {
         // Page 3: Today Part 2 (cloud coverage, precipitation, wind, mean temp)
         _pages.push_back({WeatherPageType::TODAY_PART2, 0}); 
         
-        // Page 4: Precipitation chart (only if rain/snow expected today)
+        // Page 4: Precipitation chart (if rain/snow expected or likely today)
         bool precipitationExpected = false;
         time_t now_utc = time(nullptr);
         struct tm tm_now;
@@ -531,7 +531,8 @@ void WeatherModule::buildPages() {
             struct tm tm_hour;
             gmtime_r(&hour.dt, &tm_hour);
             if (tm_hour.tm_yday != tm_now.tm_yday) break;
-            if (hour.rain_1h > 0 || hour.snow_1h > 0) {
+            // Show chart if there's actual precipitation or significant probability (>20%)
+            if (hour.rain_1h > 0 || hour.snow_1h > 0 || hour.pop > 0.2f) {
                 precipitationExpected = true;
                 break;
             }
@@ -827,7 +828,7 @@ void WeatherModule::drawPrecipitationChartPage() {
     if (num_hours > 1) {
         float step_width = (float)chart_w / (num_hours - 1);
         
-        // Draw rain area (blue)
+        // Draw rain area (blue) or probability area (lighter blue if no actual rain)
         for (int i = 0; i < num_hours - 1; i++) {
             const auto* hour1 = today_hours[i];
             const auto* hour2 = today_hours[i + 1];
@@ -835,16 +836,22 @@ void WeatherModule::drawPrecipitationChartPage() {
             int x1 = chart_x + (int)(i * step_width);
             int x2 = chart_x + (int)((i + 1) * step_width);
             
-            int rain_y1 = chart_y + chart_h - (int)((hour1->rain_1h / max_precip) * chart_h);
-            int rain_y2 = chart_y + chart_h - (int)((hour2->rain_1h / max_precip) * chart_h);
+            // Use rain amount if available, otherwise use pop * max_precip for visual representation
+            float rain1 = (hour1->rain_1h > 0) ? hour1->rain_1h : (hour1->pop * max_precip * 0.3f);
+            float rain2 = (hour2->rain_1h > 0) ? hour2->rain_1h : (hour2->pop * max_precip * 0.3f);
+            
+            int rain_y1 = chart_y + chart_h - (int)((rain1 / max_precip) * chart_h);
+            int rain_y2 = chart_y + chart_h - (int)((rain2 / max_precip) * chart_h);
             
             // Fill area under the line
-            if (hour1->rain_1h > 0 || hour2->rain_1h > 0) {
+            if (rain1 > 0 || rain2 > 0) {
+                // Use different color for probability vs actual rain
+                uint16_t rain_color = (hour1->rain_1h > 0 || hour2->rain_1h > 0) ? 0x001F : 0x4210;  // Blue or lighter blue
                 // Draw filled polygon (trapezoid) from baseline to line
                 for (int x = x1; x <= x2; x++) {
                     float t = (float)(x - x1) / (float)(x2 - x1);
                     int y = rain_y1 + (int)(t * (rain_y2 - rain_y1));
-                    _canvas.drawLine(x, y, x, chart_y + chart_h, 0x001F);  // Blue
+                    _canvas.drawLine(x, y, x, chart_y + chart_h, rain_color);
                 }
             }
         }
