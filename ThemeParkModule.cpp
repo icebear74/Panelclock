@@ -122,14 +122,27 @@ void ThemeParkModule::queueData() {
         _webClient->accessResource(String(waitTimesUrl.c_str()), String(waitTimesHeaders.c_str()),
             [this, parkId](const char* buffer, size_t size, time_t last_update, bool is_stale) {
                 if (buffer && size > 0) {
-                    // Take mutex before parsing to ensure thread safety
+                    // Only process if this is new data (not already processed)
+                    bool shouldProcess = false;
                     if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                        parseWaitTimes(buffer, size, parkId);
+                        auto it = _lastProcessedWaitTimes.find(parkId);
+                        if (it == _lastProcessedWaitTimes.end() || it->second < last_update) {
+                            shouldProcess = true;
+                            _lastProcessedWaitTimes[parkId] = last_update;
+                        }
                         xSemaphoreGive(_dataMutex);
-                        
-                        // Trigger a redraw if callback is set
-                        if (_updateCallback) {
-                            _updateCallback();
+                    }
+                    
+                    if (shouldProcess) {
+                        // Take mutex before parsing to ensure thread safety
+                        if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+                            parseWaitTimes(buffer, size, parkId);
+                            xSemaphoreGive(_dataMutex);
+                            
+                            // Trigger a redraw if callback is set
+                            if (_updateCallback) {
+                                _updateCallback();
+                            }
                         }
                     }
                 }
@@ -142,13 +155,26 @@ void ThemeParkModule::queueData() {
         _webClient->accessResource(String(openingTimesUrl.c_str()), String(openingTimesHeaders.c_str()),
             [this, parkId](const char* buffer, size_t size, time_t last_update, bool is_stale) {
                 if (buffer && size > 0) {
+                    // Only process if this is new data (not already processed)
+                    bool shouldProcess = false;
                     if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                        parseOpeningTimes(buffer, size, parkId);
+                        auto it = _lastProcessedOpeningTimes.find(parkId);
+                        if (it == _lastProcessedOpeningTimes.end() || it->second < last_update) {
+                            shouldProcess = true;
+                            _lastProcessedOpeningTimes[parkId] = last_update;
+                        }
                         xSemaphoreGive(_dataMutex);
-                        
-                        // Trigger a redraw if callback is set
-                        if (_updateCallback) {
-                            _updateCallback();
+                    }
+                    
+                    if (shouldProcess) {
+                        if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+                            parseOpeningTimes(buffer, size, parkId);
+                            xSemaphoreGive(_dataMutex);
+                            
+                            // Trigger a redraw if callback is set
+                            if (_updateCallback) {
+                                _updateCallback();
+                            }
                         }
                     }
                 }

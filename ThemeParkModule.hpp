@@ -5,6 +5,7 @@
 #include <U8g2_for_Adafruit_GFX.h>
 #include "PsramUtils.hpp"
 #include <functional>
+#include <map>
 
 class WebClientModule;
 struct DeviceConfig;
@@ -85,6 +86,10 @@ private:
     PsramVector<ThemeParkData> _parkData;
     PsramVector<AvailablePark> _availableParks;
     PsramVector<PsramString> _parkIds;  // Configured park IDs
+    
+    // Track last processed update time for each park to avoid reprocessing same data
+    std::map<PsramString, time_t> _lastProcessedWaitTimes;
+    std::map<PsramString, time_t> _lastProcessedOpeningTimes;
     
     int _currentPage;
     int _currentParkIndex;  // Index of current park being displayed
