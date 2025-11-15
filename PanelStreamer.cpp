@@ -262,21 +262,28 @@ void PanelStreamer::sendLogMessages() {
     // Use Serial directly to avoid recursive logging (these debug messages would create infinite loop)
     // Serial.printf("[PanelStreamer::sendLogMessages] Sending %d log lines\n", count);
     
-    // Send each line as JSON text message
+    // Send each line as JSON text message using PSRAM allocator
+    struct SpiRamAllocator : ArduinoJson::Allocator {
+        void* allocate(size_t size) override { return ps_malloc(size); }
+        void deallocate(void* pointer) override { free(pointer); }
+        void* reallocate(void* ptr, size_t new_size) override { return ps_realloc(ptr, new_size); }
+    };
+    
     for (const auto& line : newLines) {
-        // Create JSON wrapper
-        DynamicJsonDocument doc(512);
+        // Create JSON wrapper with PSRAM allocator
+        SpiRamAllocator allocator;
+        BasicJsonDocument<SpiRamAllocator> doc(&allocator, 512);
         doc["type"] = "log";
         doc["data"] = line.c_str();
         
-        String jsonStr;
-        serializeJson(doc, jsonStr);
+        // Use stack buffer for serialization
+        char jsonBuffer[512];
+        size_t len = serializeJson(doc, jsonBuffer, sizeof(jsonBuffer));
         
-        // Don't log the sending action - it creates recursive loop
-        // Serial.printf("[PanelStreamer::sendLogMessages] Sending: %s\n", jsonStr.c_str());
-        
-        // Send as text message to all connected clients
-        _wsServer->broadcastTXT(jsonStr);
+        if (len > 0 && len < sizeof(jsonBuffer)) {
+            // Send as text message to all connected clients
+            _wsServer->broadcastTXT(jsonBuffer, len);
+        }
     }
 }
 

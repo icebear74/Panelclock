@@ -7,7 +7,7 @@
 #include <ArduinoJson.h>
 #include <WebServer.h>
 #include <FS.h>
-#include <vector>
+#include "PsramUtils.hpp"  // Include for PsramVector instead of std::vector
 #include <errno.h>
 #include <unistd.h>
 #include <string.h>
@@ -190,7 +190,7 @@ static bool moveDirectoryRecursive(const String& srcDir, const String& dstDir) {
     }
 
     struct Pair { String src; String dst; };
-    std::vector<Pair> stack;
+    PsramVector<Pair> stack;
     stack.push_back({ssrc, sdst});
 
     while (!stack.empty()) {
@@ -292,7 +292,7 @@ static void diagnosticListAll() {
         Log.println("[WebFS DIAG] Failed to open root");
         return;
     }
-    std::vector<String> stack;
+    PsramVector<String> stack;
     stack.push_back("/");
     while (!stack.empty()) {
         String cur = stack.back();
@@ -558,16 +558,29 @@ refreshInfo();
 
 // GET /fs/info -> returns storage info { total, used, free, total_readable, used_readable, free_readable }
 static void handleFsInfo() {
-    DynamicJsonDocument doc(256);
+    // Use PSRAM allocator for JSON
+    struct SpiRamAllocator : ArduinoJson::Allocator {
+        void* allocate(size_t size) override { return ps_malloc(size); }
+        void deallocate(void* pointer) override { free(pointer); }
+        void* reallocate(void* ptr, size_t new_size) override { return ps_realloc(ptr, new_size); }
+    };
+    
+    SpiRamAllocator allocator;
+    BasicJsonDocument<SpiRamAllocator> doc(&allocator, 256);
     uint64_t total = (uint64_t)LittleFS.totalBytes();
     uint64_t used  = (uint64_t)LittleFS.usedBytes();
     uint64_t free = (total >= used) ? (total - used) : 0;
     doc["total"] = total;
     doc["used"] = used;
     doc["free"] = free;
-    doc["total_readable"] = humanReadableSize(total);
-    doc["used_readable"] = humanReadableSize(used);
-    doc["free_readable"] = humanReadableSize(free);
+    
+    // humanReadableSize returns String, but we'll use it briefly
+    String total_str = humanReadableSize(total);
+    String used_str = humanReadableSize(used);
+    String free_str = humanReadableSize(free);
+    doc["total_readable"] = total_str;
+    doc["used_readable"] = used_str;
+    doc["free_readable"] = free_str;
 
     String out;
     serializeJson(doc, out);
@@ -579,7 +592,15 @@ static void handleFsList() {
     String raw = server->hasArg("path") ? server->arg("path") : "/";
     String path = sanitizePathParam(raw);
 
-    DynamicJsonDocument doc(8192);
+    // Use PSRAM allocator for large JSON document
+    struct SpiRamAllocator : ArduinoJson::Allocator {
+        void* allocate(size_t size) override { return ps_malloc(size); }
+        void deallocate(void* pointer) override { free(pointer); }
+        void* reallocate(void* ptr, size_t new_size) override { return ps_realloc(ptr, new_size); }
+    };
+    
+    SpiRamAllocator allocator;
+    BasicJsonDocument<SpiRamAllocator> doc(&allocator, 8192);
     doc["path"] = path;
     JsonArray arr = doc.createNestedArray("entries");
 
@@ -622,7 +643,8 @@ static void handleFsList() {
         if (!isdir) {
             uint64_t sz = (uint64_t)file.size();
             e["size_bytes"] = sz;
-            e["size_readable"] = humanReadableSize(sz);
+            String sz_str = humanReadableSize(sz);
+            e["size_readable"] = sz_str;
         }
         e["modified"] = 0;
         file = dir.openNextFile();
@@ -682,8 +704,8 @@ static void handleFsDelete() {
     String path = sanitizePathParam(raw);
     Log.printf("[WebFS] handleFsDelete requested path='%s'\n", path.c_str());
 
-    // Build candidate path variants to try (prefer normalized absolute path first)
-    std::vector<String> variants;
+    // Build candidate path variants to try (prefer normalized absolute path first) using PSRAM
+    PsramVector<String> variants;
     // normalized absolute
     if (!path.startsWith("/")) path = "/" + path;
     // push canonical, canonical without leading slash, without trailing slash, with trailing slash
@@ -723,7 +745,7 @@ static void handleFsDelete() {
         if (f.isDirectory()) {
             // Check if directory is empty: iterate openNextFile() and count children
             int childCount = 0;
-            std::vector<String> childNames;
+            PsramVector<String> childNames;
             File child = f.openNextFile();
             while (child) {
                 ++childCount;

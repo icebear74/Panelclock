@@ -600,7 +600,15 @@ void handleTankerkoenigSearchLive() {
             }
             if (!currentCacheDoc->is<JsonObject>()) { currentCacheDoc->to<JsonObject>(); }
 
-            DynamicJsonDocument newResultsDoc(32768);
+            // Use PSRAM allocator for large JSON document
+            struct SpiRamAllocator : ArduinoJson::Allocator {
+                void* allocate(size_t size) override { return ps_malloc(size); }
+                void deallocate(void* pointer) override { free(pointer); }
+                void* reallocate(void* ptr, size_t new_size) override { return ps_realloc(ptr, new_size); }
+            };
+            
+            SpiRamAllocator allocator;
+            BasicJsonDocument<SpiRamAllocator> newResultsDoc(&allocator, 32768);
             deserializeJson(newResultsDoc, result.payload);
 
             if (newResultsDoc["ok"] == true) {
@@ -692,8 +700,15 @@ void handleThemeParksList() {
         Log.printf("[ThemePark] Response received, HTTP code: %d\n", result.httpCode);
         
         if (result.httpCode == 200) {
-            // Parse the response and format it for the web interface
-            DynamicJsonDocument inputDoc(32768);
+            // Parse the response and format it for the web interface using PSRAM allocator
+            struct SpiRamAllocator : ArduinoJson::Allocator {
+                void* allocate(size_t size) override { return ps_malloc(size); }
+                void deallocate(void* pointer) override { free(pointer); }
+                void* reallocate(void* ptr, size_t new_size) override { return ps_realloc(ptr, new_size); }
+            };
+            
+            SpiRamAllocator allocator1;
+            BasicJsonDocument<SpiRamAllocator> inputDoc(&allocator1, 32768);
             DeserializationError error = deserializeJson(inputDoc, result.payload.c_str());
             
             if (error) {
@@ -706,7 +721,8 @@ void handleThemeParksList() {
             Log.println("[ThemePark] JSON parsed successfully");
             
             // Build response
-            DynamicJsonDocument responseDoc(32768);
+            SpiRamAllocator allocator2;
+            BasicJsonDocument<SpiRamAllocator> responseDoc(&allocator2, 32768);
             responseDoc["ok"] = true;
             JsonArray parksArray = responseDoc.createNestedArray("parks");
             

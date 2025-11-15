@@ -5,7 +5,7 @@
 #include <math.h>
 #include <esp_system.h> // für esp_random()
 #include <algorithm>
-#include <vector>
+#include "PsramUtils.hpp"  // Include for PsramVector
 
 using std::min;
 using std::max;
@@ -158,7 +158,7 @@ static void drawParticle(GFXcanvas16* canvas, const Particle& p) {
     canvas->fillCircle(px, py, 1, p.color);
 }
 
-static void spawnParticlesFromSource(std::vector<Particle>& parts, float sx, float sy, uint16_t baseColor, int baseCount) {
+static void spawnParticlesFromSource(PsramVector<Particle>& parts, float sx, float sy, uint16_t baseColor, int baseCount) {
     for (int i = 0; i < baseCount; ++i) {
         Particle P;
         float angle = ((esp_random() & 0xFFFF) / 65535.0f) * 2.0f * M_PI;
@@ -199,11 +199,11 @@ static void drawGhostShapeLocal(GFXcanvas16* canvas, int gx, int gy, uint16_t co
 static void playExplosionFromSources_NoClear(GFXcanvas16* canvas, VirtualMatrixPanel_T<PANEL_CHAIN_TYPE>* virtualDisp, MatrixPanel_I2S_DMA* dma_display,
                                              int pacX, int pacY, int pacR, uint16_t pacColor,
                                              GhostState* ghosts, int ghostCount,
-                                             const std::vector<std::pair<int,int>>& eatenDotPos,
+                                             const PsramVector<std::pair<int,int>>& eatenDotPos,
                                              uint16_t dotColor) {
     if (!canvas || !virtualDisp || !dma_display) return;
 
-    std::vector<Particle> parts;
+    PsramVector<Particle> parts;
     parts.reserve(300);
 
     spawnParticlesFromSource(parts, (float)pacX, (float)pacY, pacColor, 80);
@@ -296,8 +296,8 @@ void OtaManager::drawPacmanProgressSmooth(float percentage) {
     float exactPos = (percentage / 100.0f) * (float)(totalDots - 1);
     int eatenCount = (int)floor(exactPos);
 
-    // draw dots
-    std::vector<std::pair<int,int>> dotPositions;
+    // draw dots using PsramVector
+    PsramVector<std::pair<int,int>> dotPositions;
     for (int i = 0; i < totalDots; ++i) {
         if ((i % subsample) != 0) continue;
         int x = startX + (int)round(i * spacing);
@@ -449,7 +449,7 @@ void OtaManager::begin() {
         const int usableWidth = FULL_WIDTH - 2 * marginX;
         float spacing = (float)usableWidth / (float)(baseTotalDots - 1);
         const int baselineY = FULL_HEIGHT / 2 + 6;
-        std::vector<std::pair<int,int>> eatenDots;
+        PsramVector<std::pair<int,int>> eatenDots;
         int startDotIndex = max(0, baseTotalDots - 24);
         for (int i = startDotIndex; i < baseTotalDots; i += 2) {
             int dx = marginX + (int)round(i * spacing);
