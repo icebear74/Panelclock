@@ -351,7 +351,7 @@ void ThemeParkModule::parseWaitTimes(const char* jsonBuffer, size_t size, const 
     // Sort attractions by multiple criteria:
     // 1. Open status (open attractions first)
     // 2. Wait time (higher wait time first) - even 0 min counts if open
-    // 3. Name (alphabetical as tiebreaker)
+    // 3. Name (alphabetical as tiebreaker, case-insensitive)
     std::sort(parkData->attractions.begin(), parkData->attractions.end(),
               [](const Attraction& a, const Attraction& b) {
                   // Criterion 1: Open status (open first)
@@ -364,8 +364,13 @@ void ThemeParkModule::parseWaitTimes(const char* jsonBuffer, size_t size, const 
                       return a.waitTime > b.waitTime;
                   }
                   
-                  // Criterion 3: Name (alphabetical)
-                  return a.name < b.name;
+                  // Criterion 3: Name (alphabetical, case-insensitive)
+                  // Convert to lowercase for comparison
+                  PsramString aLower = a.name;
+                  PsramString bLower = b.name;
+                  std::transform(aLower.begin(), aLower.end(), aLower.begin(), ::tolower);
+                  std::transform(bLower.begin(), bLower.end(), bLower.begin(), ::tolower);
+                  return aLower < bLower;
               });
     
     // Calculate how many pages needed to show all attractions
@@ -569,6 +574,38 @@ void ThemeParkModule::logicTick() {
                     displayableIndices.push_back(i);
                 }
             }
+            
+            // Sort displayable parks:
+            // 1. Open parks first (those with at least one open attraction)
+            // 2. Then closed parks with opening times
+            // 3. Alphabetically by name within each group (case-insensitive)
+            std::sort(displayableIndices.begin(), displayableIndices.end(),
+                      [this](int idxA, int idxB) {
+                          const auto& parkA = _parkData[idxA];
+                          const auto& parkB = _parkData[idxB];
+                          
+                          // Check if parks have open attractions
+                          bool aHasOpen = false;
+                          bool bHasOpen = false;
+                          for (const auto& attr : parkA.attractions) {
+                              if (attr.isOpen) { aHasOpen = true; break; }
+                          }
+                          for (const auto& attr : parkB.attractions) {
+                              if (attr.isOpen) { bHasOpen = true; break; }
+                          }
+                          
+                          // Criterion 1: Open parks first
+                          if (aHasOpen != bHasOpen) {
+                              return aHasOpen > bHasOpen;  // Open parks first
+                          }
+                          
+                          // Criterion 2: Alphabetically by name (case-insensitive)
+                          PsramString aLower = parkA.name;
+                          PsramString bLower = parkB.name;
+                          std::transform(aLower.begin(), aLower.end(), aLower.begin(), ::tolower);
+                          std::transform(bLower.begin(), bLower.end(), bLower.begin(), ::tolower);
+                          return aLower < bLower;
+                      });
             
             if (displayableIndices.empty()) {
                 _currentPage = 0;
