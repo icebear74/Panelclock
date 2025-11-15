@@ -379,14 +379,12 @@ void ThemeParkModule::parseWaitTimes(const char* jsonBuffer, size_t size, const 
     parkData->attractionPages = (parkData->attractions.size() + attractionsPerPage - 1) / attractionsPerPage;
     if (parkData->attractionPages < 1) parkData->attractionPages = 1;
     
-    // Calculate total pages across all parks
-    _totalPages = 0;
-    for (const auto& park : _parkData) {
-        _totalPages += park.attractionPages;
-    }
+    // Calculate total pages across all parks using the helper method
+    // This properly accounts for closed parks (1 page) vs open parks (attraction pages)
+    _totalPages = calculateTotalPages();
     
-    Log.printf("[ThemePark] Updated park %s with %d attractions (%d open), %d pages\n", 
-               parkName.c_str(), parkData->attractions.size(), openAttractionsCount, parkData->attractionPages);
+    Log.printf("[ThemePark] Updated park %s with %d attractions (%d open), %d pages, total pages: %d\n", 
+               parkName.c_str(), parkData->attractions.size(), openAttractionsCount, parkData->attractionPages, _totalPages);
 }
 
 void ThemeParkModule::parseCrowdLevel(const char* jsonBuffer, size_t size, const PsramString& parkId) {
@@ -476,32 +474,9 @@ bool ThemeParkModule::isEnabled() {
 unsigned long ThemeParkModule::getDisplayDuration() {
     unsigned long duration;
     if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-        // Sum all pages across all displayable parks
-        // Closed parks count as 1 page (showing "Geschlossen" message)
-        // Open parks count based on their attraction pages
-        int totalPages = 0;
-        for (const auto& park : _parkData) {
-            if (shouldDisplayPark(park)) {
-                // Check if park has any open attractions
-                bool hasOpenAttractions = false;
-                for (const auto& attr : park.attractions) {
-                    if (attr.isOpen) {
-                        hasOpenAttractions = true;
-                        break;
-                    }
-                }
-                
-                if (hasOpenAttractions) {
-                    // Open park: count all attraction pages
-                    totalPages += park.attractionPages;
-                } else {
-                    // Closed park: count as 1 page (showing closed message)
-                    totalPages += 1;
-                }
-            }
-        }
-        
-        if (totalPages == 0) totalPages = 1;
+        // Use the helper method to calculate total pages
+        // This properly accounts for closed parks (1 page) vs open parks (attraction pages)
+        int totalPages = calculateTotalPages();
         duration = (totalPages * _pageDisplayDuration) + runtime_safe_buffer;
         xSemaphoreGive(_dataMutex);
     } else {
@@ -549,6 +524,37 @@ bool ThemeParkModule::shouldDisplayPark(const ThemeParkData& park) const {
     // If all attractions are closed, display if we have opening OR closing time information
     // This allows users to see when the park will reopen
     return !park.openingTime.empty() || !park.closingTime.empty();
+}
+
+int ThemeParkModule::calculateTotalPages() const {
+    // NOTE: This function expects _dataMutex to already be held by the caller
+    // Calculate total pages across all displayable parks
+    // Closed parks count as 1 page (showing "Geschlossen" message)
+    // Open parks count based on their attraction pages
+    int totalPages = 0;
+    for (const auto& park : _parkData) {
+        if (shouldDisplayPark(park)) {
+            // Check if park has any open attractions
+            bool hasOpenAttractions = false;
+            for (const auto& attr : park.attractions) {
+                if (attr.isOpen) {
+                    hasOpenAttractions = true;
+                    break;
+                }
+            }
+            
+            if (hasOpenAttractions) {
+                // Open park: count all attraction pages
+                totalPages += park.attractionPages;
+            } else {
+                // Closed park: count as 1 page (showing closed message)
+                totalPages += 1;
+            }
+        }
+    }
+    
+    if (totalPages == 0) totalPages = 1;
+    return totalPages;
 }
 
 void ThemeParkModule::tick() {
