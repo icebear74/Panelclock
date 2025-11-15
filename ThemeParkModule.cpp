@@ -303,8 +303,8 @@ void ThemeParkModule::parseWaitTimes(const char* jsonBuffer, size_t size, const 
               });
     
     // Calculate how many pages needed to show all attractions
-    // With 8px line height and starting at yPos ~20, we can fit about 27 attractions per page
-    int attractionsPerPage = 27;  // Conservative estimate
+    // 6 attractions per page as requested
+    int attractionsPerPage = 6;
     parkData->attractionPages = (parkData->attractions.size() + attractionsPerPage - 1) / attractionsPerPage;
     if (parkData->attractionPages < 1) parkData->attractionPages = 1;
     
@@ -575,13 +575,8 @@ void ThemeParkModule::drawParkPage(int parkIndex, int attractionPage) {
     
     // Add opening hours to the scrolling text
     if (!park.openingTime.empty() && !park.closingTime.empty()) {
-        if (park.isOpen) {
-            // Park is open - show closing time
-            displayName = displayName + " - Geoeffnet bis " + park.closingTime;
-        } else {
-            // Park is closed - show opening and closing times
-            displayName = displayName + " - Geoeffnet " + park.openingTime + "-" + park.closingTime;
-        }
+        // Show opening hours in format: "Geöffnet von HH:MM - HH:MM Uhr"
+        displayName = displayName + " : Geoeffnet von " + park.openingTime + " - " + park.closingTime + " Uhr";
     }
     
     int maxNameWidth = _canvas.width() - 50;  // Leave space for crowd level
@@ -618,7 +613,7 @@ void ThemeParkModule::drawParkPage(int parkIndex, int attractionPage) {
     
     yPos += 4;  // Gap before attractions
     int lineHeight = 8;
-    int maxLines = (_canvas.height() - yPos - 10) / lineHeight;  // Leave space for page indicator
+    int maxLines = (_canvas.height() - yPos) / lineHeight;  // Use all available space (no page indicator)
     
     // Calculate which attractions to show on this page
     int startIdx = attractionPage * maxLines;
@@ -667,17 +662,6 @@ void ThemeParkModule::drawParkPage(int parkIndex, int attractionPage) {
         
         _u8g2.setForegroundColor(0xFFFF);
         yPos += lineHeight;
-    }
-    
-    // Draw page indicator if multiple attraction pages
-    if (park.attractionPages > 1) {
-        _u8g2.setFont(u8g2_font_5x8_tf);
-        _u8g2.setForegroundColor(0xFFFF);
-        char pageStr[16];
-        snprintf(pageStr, sizeof(pageStr), "%d/%d", attractionPage + 1, park.attractionPages);
-        int pageW = _u8g2.getUTF8Width(pageStr);
-        _u8g2.setCursor(_canvas.width() - pageW - 2, _canvas.height() - 2);
-        _u8g2.print(pageStr);
     }
 }
 
