@@ -36,7 +36,8 @@ bool ConnectionManager::begin() {
     while (WiFi.status() != WL_CONNECTED && retries > 0) { delay(500); retries--; }
 
     if (WiFi.status() == WL_CONNECTED) {
-        String msg = "Verbunden!\nIP: " + WiFi.localIP().toString();
+        PsramString msg = "Verbunden!\nIP: ";
+        msg += WiFi.localIP().toString().c_str();
         displayStatus(msg.c_str());
         delay(1000);
         memcpy(lastBssid, WiFi.BSSID(), 6);

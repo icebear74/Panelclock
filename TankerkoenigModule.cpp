@@ -504,14 +504,28 @@ void TankerkoenigModule::drawPriceLine(int y, const char* label, float current, 
 int TankerkoenigModule::drawPrice(int x, int y, float price, uint16_t color) {
     if (price <= 0) return 0;
     u8g2.setForegroundColor(color);
-    String priceStr = String(price, 3);
-    priceStr.replace('.', ',');
-    String mainPricePart = priceStr.substring(0, priceStr.length() - 1);
-    char last_digit_char = priceStr.charAt(priceStr.length() - 1);
-    char last_digit_str[2] = {last_digit_char, '\0'};
+    
+    // Use stack buffer instead of String
+    char priceStr[16];
+    snprintf(priceStr, sizeof(priceStr), "%.3f", price);
+    
+    // Replace . with ,
+    for (int i = 0; priceStr[i] != '\0'; ++i) {
+        if (priceStr[i] == '.') priceStr[i] = ',';
+    }
+    
+    // Split into main part and last digit
+    int len = strlen(priceStr);
+    if (len == 0) return 0;
+    
+    char mainPricePart[16];
+    strncpy(mainPricePart, priceStr, len - 1);
+    mainPricePart[len - 1] = '\0';
+    
+    char last_digit_str[2] = {priceStr[len - 1], '\0'};
     
     u8g2.setFont(u8g2_font_7x14_tf);
-    int mainPriceWidth = u8g2.getUTF8Width(mainPricePart.c_str());
+    int mainPriceWidth = u8g2.getUTF8Width(mainPricePart);
     u8g2.setCursor(x, y);
     u8g2.print(mainPricePart);
     

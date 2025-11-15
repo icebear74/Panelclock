@@ -1000,22 +1000,23 @@ void WeatherModule::drawAlertPage(int index) {
 
 void WeatherModule::drawWeatherIcon(int x, int y, int size, const PsramString& name, bool isNight) {
     // Retrieves the appropriate icon from the registry/cache, independent of Main/Special!
-    // Converts PsramString to std::string for cache lookup
+    // Use std::string for cache lookup (WeatherIconCache requires std::string)
     std::string iconName(name.c_str());
     
     // TEMPORARY TEST: Bypass cache and read directly from PROGMEM
     // This helps diagnose if the issue is with cache/PSRAM or PROGMEM reading
     const WeatherIcon* src = globalWeatherIconSet.getIcon(iconName, isNight);
     
-    // Log missing icons only once per unique icon name
+    // Log missing icons only once per unique icon name (using PSRAM-backed set)
     if (!src) {
         src = globalWeatherIconSet.getIcon(iconName, false);
         if (!src) {
-            // Create unique key for this missing icon
-            std::string missingKey = iconName + (isNight ? "_night" : "_day");
+            // Create unique key for this missing icon using PsramString
+            PsramString missingKey = name;
+            missingKey += (isNight ? "_night" : "_day");
             if (_loggedMissingIcons.find(missingKey) == _loggedMissingIcons.end()) {
                 // First time seeing this missing icon - log it
-                Log.printf("[Weather] Missing icon: '%s' (isNight: %d)\n", iconName.c_str(), isNight);
+                Log.printf("[Weather] Missing icon: '%s' (isNight: %d)\n", name.c_str(), isNight);
                 _loggedMissingIcons.insert(missingKey);
             }
             src = globalWeatherIconSet.getUnknown();
@@ -1024,7 +1025,7 @@ void WeatherModule::drawWeatherIcon(int x, int y, int size, const PsramString& n
     
     if (!src || !src->data) {
         // This is a critical error - log every time
-        Log.printf("[Weather] ERROR: No valid icon found for '%s'!\n", iconName.c_str());
+        Log.printf("[Weather] ERROR: No valid icon found for '%s'!\n", name.c_str());
         return;
     }
     
@@ -1032,10 +1033,14 @@ void WeatherModule::drawWeatherIcon(int x, int y, int size, const PsramString& n
     const WeatherIcon* iconPtr = globalWeatherIconCache.getScaled(iconName, size, isNight);
     if(!iconPtr || !iconPtr->data) {
         iconPtr = globalWeatherIconCache.getScaled("unknown", size, false);
-        // Log fallback only once per icon
-        std::string fallbackKey = iconName + "_fallback_" + std::to_string(size);
+        // Log fallback only once per icon using PsramString
+        PsramString fallbackKey = name;
+        fallbackKey += "_fallback_";
+        char sizeBuf[16];
+        snprintf(sizeBuf, sizeof(sizeBuf), "%d", size);
+        fallbackKey += sizeBuf;
         if (_loggedMissingIcons.find(fallbackKey) == _loggedMissingIcons.end()) {
-            Log.printf("[Weather] Fallback to unknown icon (icon: %s, size: %d)\n", iconName.c_str(), size);
+            Log.printf("[Weather] Fallback to unknown icon (icon: %s, size: %d)\n", name.c_str(), size);
             _loggedMissingIcons.insert(fallbackKey);
         }
     }
