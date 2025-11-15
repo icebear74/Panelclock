@@ -405,8 +405,16 @@ bool ThemeParkModule::isEnabled() {
 unsigned long ThemeParkModule::getDisplayDuration() {
     unsigned long duration;
     if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-        int numPages = _parkData.size() > 0 ? _parkData.size() : 1;
-        duration = (numPages * _pageDisplayDuration) + runtime_safe_buffer;
+        // Sum all pages across all displayable parks
+        int totalPages = 0;
+        for (const auto& park : _parkData) {
+            if (shouldDisplayPark(park)) {
+                totalPages += park.attractionPages;
+            }
+        }
+        
+        if (totalPages == 0) totalPages = 1;
+        duration = (totalPages * _pageDisplayDuration) + runtime_safe_buffer;
         xSemaphoreGive(_dataMutex);
     } else {
         duration = _pageDisplayDuration;
@@ -613,7 +621,9 @@ void ThemeParkModule::drawParkPage(int parkIndex, int attractionPage) {
     
     yPos += 4;  // Gap before attractions
     int lineHeight = 8;
-    int maxLines = (_canvas.height() - yPos) / lineHeight;  // Use all available space (no page indicator)
+    
+    // Force exactly 6 attractions per page as requested
+    int maxLines = 6;
     
     // Calculate which attractions to show on this page
     int startIdx = attractionPage * maxLines;
