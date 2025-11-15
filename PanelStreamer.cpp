@@ -272,7 +272,7 @@ void PanelStreamer::sendLogMessages() {
     for (const auto& line : newLines) {
         // Create JSON wrapper with PSRAM allocator
         SpiRamAllocator allocator;
-        BasicJsonDocument<SpiRamAllocator> doc(&allocator, 512);
+        JsonDocument doc(&allocator);
         doc["type"] = "log";
         doc["data"] = line.c_str();
         

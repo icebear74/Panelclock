@@ -608,7 +608,7 @@ void handleTankerkoenigSearchLive() {
             };
             
             SpiRamAllocator allocator;
-            BasicJsonDocument<SpiRamAllocator> newResultsDoc(&allocator, 32768);
+            JsonDocument newResultsDoc(&allocator);
             deserializeJson(newResultsDoc, result.payload);
 
             if (newResultsDoc["ok"] == true) {
@@ -708,7 +708,7 @@ void handleThemeParksList() {
             };
             
             SpiRamAllocator allocator1;
-            BasicJsonDocument<SpiRamAllocator> inputDoc(&allocator1, 32768);
+            JsonDocument inputDoc(&allocator1);
             DeserializationError error = deserializeJson(inputDoc, result.payload.c_str());
             
             if (error) {
@@ -722,7 +722,7 @@ void handleThemeParksList() {
             
             // Build response
             SpiRamAllocator allocator2;
-            BasicJsonDocument<SpiRamAllocator> responseDoc(&allocator2, 32768);
+            JsonDocument responseDoc(&allocator2);
             responseDoc["ok"] = true;
             JsonArray parksArray = responseDoc.createNestedArray("parks");
             

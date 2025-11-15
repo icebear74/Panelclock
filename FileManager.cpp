@@ -566,7 +566,7 @@ static void handleFsInfo() {
     };
     
     SpiRamAllocator allocator;
-    BasicJsonDocument<SpiRamAllocator> doc(&allocator, 256);
+    JsonDocument doc(&allocator);
     uint64_t total = (uint64_t)LittleFS.totalBytes();
     uint64_t used  = (uint64_t)LittleFS.usedBytes();
     uint64_t free = (total >= used) ? (total - used) : 0;
@@ -600,7 +600,7 @@ static void handleFsList() {
     };
     
     SpiRamAllocator allocator;
-    BasicJsonDocument<SpiRamAllocator> doc(&allocator, 8192);
+    JsonDocument doc(&allocator);
     doc["path"] = path;
     JsonArray arr = doc.createNestedArray("entries");
 

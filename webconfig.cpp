@@ -33,7 +33,7 @@ void loadDeviceConfig() {
             };
             
             SpiRamAllocator allocator;
-            BasicJsonDocument<SpiRamAllocator> doc(&allocator, 4096);
+            JsonDocument doc(&allocator);
             DeserializationError error = deserializeJson(doc, configFile);
             if (!error) {
                 deviceConfig->hostname = doc["hostname"] | "Panel-Clock";
@@ -136,7 +136,7 @@ void saveDeviceConfig() {
     };
     
     SpiRamAllocator allocator;
-    BasicJsonDocument<SpiRamAllocator> doc(&allocator, 4096);
+    JsonDocument doc(&allocator);
     doc["hostname"] = deviceConfig->hostname.c_str();
     doc["ssid"] = deviceConfig->ssid.c_str();
     doc["password"] = deviceConfig->password.c_str();
