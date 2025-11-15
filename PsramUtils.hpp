@@ -26,15 +26,28 @@ char* psram_strdup(const char* str);
 template <typename T>
 struct PsramAllocator {
     using value_type = T;
+    using size_type = std::size_t;
+    using difference_type = std::ptrdiff_t;
+    using propagate_on_container_move_assignment = std::true_type;
+    using is_always_equal = std::true_type;
+    
     PsramAllocator() = default;
+    PsramAllocator(const PsramAllocator&) = default;
     template <typename U>
     constexpr PsramAllocator(const PsramAllocator<U>&) noexcept {}
+    
     [[nodiscard]] T* allocate(std::size_t n) {
         if (n > std::size_t(-1) / sizeof(T)) throw std::bad_alloc();
         if (auto p = static_cast<T*>(ps_malloc(n * sizeof(T)))) return p;
         throw std::bad_alloc();
     }
     void deallocate(T* p, std::size_t) noexcept { std::free(p); }
+    
+    // Rebind support for nested containers
+    template <typename U>
+    struct rebind {
+        using other = PsramAllocator<U>;
+    };
 };
 template <typename T, typename U>
 bool operator==(const PsramAllocator<T>&, const PsramAllocator<U>&) { return true; }
