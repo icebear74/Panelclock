@@ -525,12 +525,24 @@ void ThemeParkModule::logicTick() {
             int displayIndex = _currentParkIndex % displayableIndices.size();
             int actualParkIndex = displayableIndices[displayIndex];
             
+            // Check if current park is closed (for paging logic)
+            bool parkIsClosed = true;
+            for (const auto& attr : _parkData[actualParkIndex].attractions) {
+                if (attr.isOpen) {
+                    parkIsClosed = false;
+                    break;
+                }
+            }
+            
+            // Determine pages for current park
+            int pagesForThisPark = parkIsClosed ? 1 : _parkData[actualParkIndex].attractionPages;
+            
             // Move to next attraction page within current park
             _currentAttractionPage++;
             _parkNameScrollOffset = 0;  // Reset scroll when changing page
             
-            // If we've shown all attraction pages for current park, move to next park
-            if (_currentAttractionPage >= _parkData[actualParkIndex].attractionPages) {
+            // If we've shown all pages for current park, move to next park
+            if (_currentAttractionPage >= pagesForThisPark) {
                 _currentAttractionPage = 0;
                 _currentParkIndex++;
                 
@@ -862,6 +874,7 @@ void ThemeParkModule::loadParkCache() {
                 
                 if (id && name && strlen(id) > 0 && strlen(name) > 0) {
                     _availableParks.push_back(AvailablePark(id, name, country));
+                    Log.printf("[ThemePark] Loaded from cache: id=%s, name=%s, country=%s\n", id, name, country);
                 }
             }
         }
@@ -907,8 +920,12 @@ PsramString ThemeParkModule::getParkNameFromCache(const PsramString& parkId) {
         for (const auto& park : _availableParks) {
             if (park.id == parkId) {
                 name = park.name;
+                Log.printf("[ThemePark] Found name for %s: %s\n", parkId.c_str(), name.c_str());
                 break;
             }
+        }
+        if (name.empty()) {
+            Log.printf("[ThemePark] No name found for %s in cache (%d parks)\n", parkId.c_str(), _availableParks.size());
         }
         xSemaphoreGive(_dataMutex);
     }
@@ -923,8 +940,12 @@ PsramString ThemeParkModule::getParkCountryFromCache(const PsramString& parkId) 
         for (const auto& park : _availableParks) {
             if (park.id == parkId) {
                 country = park.country;
+                Log.printf("[ThemePark] Found country for %s: %s\n", parkId.c_str(), country.c_str());
                 break;
             }
+        }
+        if (country.empty()) {
+            Log.printf("[ThemePark] No country found for %s in cache\n", parkId.c_str());
         }
         xSemaphoreGive(_dataMutex);
     }
