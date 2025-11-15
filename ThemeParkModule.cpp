@@ -919,48 +919,38 @@ void ThemeParkModule::saveParkCache() {
 }
 
 PsramString ThemeParkModule::getParkNameFromCache(const PsramString& parkId) {
+    // NOTE: This function expects _dataMutex to already be held by the caller
     PsramString name;
     
-    Log.printf("[ThemePark] getParkNameFromCache: trying to acquire mutex for %s\n", parkId.c_str());
-    if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        Log.printf("[ThemePark] getParkNameFromCache: mutex acquired, searching %d parks\n", _availableParks.size());
-        for (const auto& park : _availableParks) {
-            if (park.id == parkId) {
-                name = park.name;
-                Log.printf("[ThemePark] Found name for %s: %s\n", parkId.c_str(), name.c_str());
-                break;
-            }
+    Log.printf("[ThemePark] getParkNameFromCache: searching %d parks for %s\n", _availableParks.size(), parkId.c_str());
+    for (const auto& park : _availableParks) {
+        if (park.id == parkId) {
+            name = park.name;
+            Log.printf("[ThemePark] Found name for %s: %s\n", parkId.c_str(), name.c_str());
+            break;
         }
-        if (name.empty()) {
-            Log.printf("[ThemePark] No name found for %s in cache (%d parks)\n", parkId.c_str(), _availableParks.size());
-        }
-        xSemaphoreGive(_dataMutex);
-    } else {
-        Log.printf("[ThemePark] getParkNameFromCache: FAILED to acquire mutex for %s\n", parkId.c_str());
+    }
+    if (name.empty()) {
+        Log.printf("[ThemePark] No name found for %s in cache (%d parks)\n", parkId.c_str(), _availableParks.size());
     }
     
     return name;
 }
 
 PsramString ThemeParkModule::getParkCountryFromCache(const PsramString& parkId) {
+    // NOTE: This function expects _dataMutex to already be held by the caller
     PsramString country;
     
-    Log.printf("[ThemePark] getParkCountryFromCache: trying to acquire mutex for %s\n", parkId.c_str());
-    if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        Log.printf("[ThemePark] getParkCountryFromCache: mutex acquired, searching %d parks\n", _availableParks.size());
-        for (const auto& park : _availableParks) {
-            if (park.id == parkId) {
-                country = park.country;
-                Log.printf("[ThemePark] Found country for %s: %s\n", parkId.c_str(), country.c_str());
-                break;
-            }
+    Log.printf("[ThemePark] getParkCountryFromCache: searching %d parks for %s\n", _availableParks.size(), parkId.c_str());
+    for (const auto& park : _availableParks) {
+        if (park.id == parkId) {
+            country = park.country;
+            Log.printf("[ThemePark] Found country for %s: %s\n", parkId.c_str(), country.c_str());
+            break;
         }
-        if (country.empty()) {
-            Log.printf("[ThemePark] No country found for %s in cache\n", parkId.c_str());
-        }
-        xSemaphoreGive(_dataMutex);
-    } else {
-        Log.printf("[ThemePark] getParkCountryFromCache: FAILED to acquire mutex for %s\n", parkId.c_str());
+    }
+    if (country.empty()) {
+        Log.printf("[ThemePark] No country found for %s in cache\n", parkId.c_str());
     }
     
     return country;
