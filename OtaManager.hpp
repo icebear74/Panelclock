@@ -29,7 +29,7 @@ private:
 
     // Neue Helper für Pac-Man Anzeige / Victory
     // textColor hat Default-Wert Weiß, damit bestehende Aufrufe weiterhin funktionieren
-    void displayOtaTextCentered(const String& line1, const String& line2 = "", const String& line3 = "", uint16_t textColor = 0xFFFF);
+    void displayOtaTextCentered(const char* line1, const char* line2 = "", const char* line3 = "", uint16_t textColor = 0xFFFF);
     void drawPacmanProgressSmooth(float percentage);
     void victoryFireworksLoop();
 };

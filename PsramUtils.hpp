@@ -66,6 +66,23 @@ int indexOf(const PsramString& str, const String& substring, size_t fromIndex = 
 void replaceAll(PsramString& str, const PsramString& from, const PsramString& to);
 PsramString escapeJsonString(const PsramString& input);
 
+// Conversion helpers for PsramString (similar to Arduino String methods)
+inline int toInt(const PsramString& str) {
+    return atoi(str.c_str());
+}
+
+inline long toLong(const PsramString& str) {
+    return atol(str.c_str());
+}
+
+inline float toFloat(const PsramString& str) {
+    return atof(str.c_str());
+}
+
+inline double toDouble(const PsramString& str) {
+    return atof(str.c_str());
+}
+
 #if __has_include(<WString.h>)
 // Operatoren, die auf PsramString operieren, müssen auch deklariert werden
 PsramString& operator+=(PsramString& s, const __FlashStringHelper* f);

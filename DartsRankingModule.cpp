@@ -547,11 +547,11 @@ void DartsRankingModule::parsePlayerRow(const char* tr_start, const char* tr_end
 
         if (col_idx < headers.size()) {
             const PsramString& header = headers[col_idx];
-            if (header == "Rk") player.rank = content.toInt();
+            if (header == "Rk") player.rank = toInt(content);
             else if (header == "Name") player.name = psram_strdup(content.c_str());
             else if (header == "Prize Money") {
-                content.replace(",", "");
-                float money = content.toFloat();
+                replaceAll(content, PsramString(","), PsramString(""));
+                float money = toFloat(content);
                 char* formatted_money = (char*)ps_malloc(16);
                 if (formatted_money) {
                     snprintf(formatted_money, 16, "%.2f", money);
@@ -560,13 +560,13 @@ void DartsRankingModule::parsePlayerRow(const char* tr_start, const char* tr_end
             }
             
             if (header == "+/-") {
-                player.movementValue = content.toInt();
+                player.movementValue = toInt(content);
                 if (strstr(td_start_tag, "change-up")) player.movement = PlayerMovement::UP;
                 else if (strstr(td_start_tag, "change-down")) player.movement = PlayerMovement::DOWN;
                 else player.movement = PlayerMovement::SAME;
             }
         } else if (!isLiveFormat && col_idx == 0) {
-             player.rank = content.toInt();
+             player.rank = toInt(content);
         }
         current_pos = td_end_tag + 5;
         col_idx++;
