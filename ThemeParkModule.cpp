@@ -375,18 +375,18 @@ void ThemeParkModule::parseWaitTimes(const char* jsonBuffer, size_t size, const 
     
     // Calculate how many pages needed to show all attractions
     // 6 attractions per page as requested
+    // For open parks: show ALL attractions (both open and closed)
+    // For closed parks: show 1 page with opening times
     int attractionsPerPage = 6;
     parkData->attractionPages = (parkData->attractions.size() + attractionsPerPage - 1) / attractionsPerPage;
     if (parkData->attractionPages < 1) parkData->attractionPages = 1;
     
-    // Calculate total pages across all parks
-    _totalPages = 0;
-    for (const auto& park : _parkData) {
-        _totalPages += park.attractionPages;
-    }
+    // Calculate total pages across all parks using the helper method
+    // This properly accounts for closed parks (1 page) vs open parks (all attractions)
+    _totalPages = calculateTotalPages();
     
-    Log.printf("[ThemePark] Updated park %s with %d attractions (%d open), %d pages\n", 
-               parkName.c_str(), parkData->attractions.size(), openAttractionsCount, parkData->attractionPages);
+    Log.printf("[ThemePark] Updated park %s with %d attractions (%d open), %d pages, total pages: %d\n", 
+               parkName.c_str(), parkData->attractions.size(), openAttractionsCount, parkData->attractionPages, _totalPages);
 }
 
 void ThemeParkModule::parseCrowdLevel(const char* jsonBuffer, size_t size, const PsramString& parkId) {
@@ -476,32 +476,9 @@ bool ThemeParkModule::isEnabled() {
 unsigned long ThemeParkModule::getDisplayDuration() {
     unsigned long duration;
     if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-        // Sum all pages across all displayable parks
-        // Closed parks count as 1 page (showing "Geschlossen" message)
-        // Open parks count based on their attraction pages
-        int totalPages = 0;
-        for (const auto& park : _parkData) {
-            if (shouldDisplayPark(park)) {
-                // Check if park has any open attractions
-                bool hasOpenAttractions = false;
-                for (const auto& attr : park.attractions) {
-                    if (attr.isOpen) {
-                        hasOpenAttractions = true;
-                        break;
-                    }
-                }
-                
-                if (hasOpenAttractions) {
-                    // Open park: count all attraction pages
-                    totalPages += park.attractionPages;
-                } else {
-                    // Closed park: count as 1 page (showing closed message)
-                    totalPages += 1;
-                }
-            }
-        }
-        
-        if (totalPages == 0) totalPages = 1;
+        // Use the helper method to calculate total pages
+        // This properly accounts for closed parks (1 page) vs open parks (attraction pages)
+        int totalPages = calculateTotalPages();
         duration = (totalPages * _pageDisplayDuration) + runtime_safe_buffer;
         xSemaphoreGive(_dataMutex);
     } else {
@@ -549,6 +526,37 @@ bool ThemeParkModule::shouldDisplayPark(const ThemeParkData& park) const {
     // If all attractions are closed, display if we have opening OR closing time information
     // This allows users to see when the park will reopen
     return !park.openingTime.empty() || !park.closingTime.empty();
+}
+
+int ThemeParkModule::calculateTotalPages() const {
+    // NOTE: This function expects _dataMutex to already be held by the caller
+    // Calculate total pages across all displayable parks
+    // Closed parks count as 1 page (showing "Geschlossen" message with opening times)
+    // Open parks: use their attractionPages (ALL attractions, 6 per page)
+    int totalPages = 0;
+    for (const auto& park : _parkData) {
+        if (shouldDisplayPark(park)) {
+            // Check if park has any open attractions
+            bool hasOpenAttractions = false;
+            for (const auto& attr : park.attractions) {
+                if (attr.isOpen) {
+                    hasOpenAttractions = true;
+                    break;
+                }
+            }
+            
+            if (hasOpenAttractions) {
+                // Open park: use attractionPages (already calculated based on ALL attractions)
+                totalPages += park.attractionPages;
+            } else {
+                // Closed park: count as 1 page (showing closed message with opening times)
+                totalPages += 1;
+            }
+        }
+    }
+    
+    if (totalPages == 0) totalPages = 1;
+    return totalPages;
 }
 
 void ThemeParkModule::tick() {
@@ -730,7 +738,7 @@ void ThemeParkModule::drawParkPage(int parkIndex, int attractionPage) {
         displayName = displayName + " (" + park.country + ")";
     }
     
-    // Add opening hours to scrolling text only if park is open
+    // Add opening hours to scrolling text ONLY if park is OPEN
     if (hasOpenAttractions && !park.openingTime.empty() && !park.closingTime.empty()) {
         // Show opening hours in format: "Geöffnet von HH:MM - HH:MM Uhr"
         displayName = displayName + " : Geöffnet von " + park.openingTime + " - " + park.closingTime + " Uhr";
@@ -740,10 +748,10 @@ void ThemeParkModule::drawParkPage(int parkIndex, int attractionPage) {
     drawScrollingText(displayName, 2, 11, maxNameWidth);
     
     // Draw crowd level as percentage text (no box)
-    // Crowd level from API is 0-100 scale
+    // Only show for OPEN parks (not closed parks)
+    // Use same font as park name (u8g2_font_6x13_tf)
     // Color: green <= 40%, yellow 41-60%, red > 60%
-    // Only show if > 0 (API returns 0 for closed parks)
-    if (park.crowdLevel > 0.0f) {
+    if (hasOpenAttractions && park.crowdLevel > 0.0f) {
         uint16_t crowdColor;
         if (park.crowdLevel <= 40.0f) {
             crowdColor = 0x07E0;  // Green
@@ -753,7 +761,7 @@ void ThemeParkModule::drawParkPage(int parkIndex, int attractionPage) {
             crowdColor = 0xF800;  // Red
         }
         
-        _u8g2.setFont(u8g2_font_6x10_tf);
+        _u8g2.setFont(u8g2_font_6x13_tf);  // Same font as park name
         _u8g2.setForegroundColor(crowdColor);
         char crowdText[8];
         snprintf(crowdText, sizeof(crowdText), "%.0f%%", park.crowdLevel);
@@ -807,6 +815,17 @@ void ThemeParkModule::drawParkPage(int parkIndex, int attractionPage) {
     // Force exactly 6 attractions per page as requested
     int maxLines = 6;
     
+    // Find maximum wait time for this park (for dynamic color gradient)
+    int maxWaitTime = 0;
+    for (const auto& attr : park.attractions) {
+        if (attr.isOpen && attr.waitTime > maxWaitTime) {
+            maxWaitTime = attr.waitTime;
+        }
+    }
+    // Ensure we have a reasonable maximum (at least 1 to avoid division by zero)
+    if (maxWaitTime < 1) maxWaitTime = 1;
+    
+    // Show ALL attractions (both open and closed) when park is open
     // Calculate which attractions to show on this page
     int startIdx = attractionPage * maxLines;
     int endIdx = min(startIdx + maxLines, (int)park.attractions.size());
@@ -817,8 +836,8 @@ void ThemeParkModule::drawParkPage(int parkIndex, int attractionPage) {
         // Truncate name to fit (leave space for wait time)
         PsramString attrName = truncateString(attr.name, _canvas.width() - 45);
         
-        // Draw attraction name - use RED if closed, WHITE if open
-        _u8g2.setForegroundColor(attr.isOpen ? 0xFFFF : 0xF800);  // White or Red
+        // Draw attraction name - use WHITE if open, RED if closed
+        _u8g2.setForegroundColor(attr.isOpen ? 0xFFFF : 0xF800);
         _u8g2.setCursor(2, yPos);
         _u8g2.print(attrName.c_str());
         
@@ -828,17 +847,8 @@ void ThemeParkModule::drawParkPage(int parkIndex, int attractionPage) {
             snprintf(waitStr, sizeof(waitStr), "%d min", attr.waitTime);
             int waitW = _u8g2.getUTF8Width(waitStr);
             
-            // Color code wait times
-            uint16_t waitColor;
-            if (attr.waitTime >= 60) {
-                waitColor = 0xF800;  // Red
-            } else if (attr.waitTime >= 30) {
-                waitColor = 0xFD20;  // Orange
-            } else if (attr.waitTime >= 15) {
-                waitColor = 0xFFE0;  // Yellow
-            } else {
-                waitColor = 0x07E0;  // Green
-            }
+            // Calculate color using dynamic gradient from green (0 min) to red (max wait time)
+            uint16_t waitColor = calcColor(attr.waitTime, 0, maxWaitTime);
             
             _u8g2.setForegroundColor(waitColor);
             _u8g2.setCursor(_canvas.width() - waitW - 2, yPos);
@@ -878,6 +888,32 @@ uint16_t ThemeParkModule::getCrowdLevelColor(float level) {
     if (level <= 40.0f) return 0x07E0;      // Green
     if (level <= 60.0f) return 0xFFE0;      // Yellow
     return 0xF800;                          // Red
+}
+
+uint16_t ThemeParkModule::calcColor(float value, float low, float high) {
+    // Calculate smooth color gradient from green (low) to red (high)
+    // Adapted from TankerkoenigModule
+    if (low >= high || value <= 0) return rgb565(255, 255, 0);
+
+    float val = (value < low) ? low : (value > high ? high : value);
+    
+    int diff = (int)roundf(((high - val) / (high - low)) * 100.0f);
+
+    uint8_t rval, gval;
+
+    if (diff <= 50) { 
+        rval = 255;
+        gval = map(diff, 0, 50, 0, 255);
+    } else { 
+        gval = 255;
+        rval = map(diff, 50, 100, 255, 0);
+    }
+    return rgb565(rval, gval, 0);
+}
+
+uint16_t ThemeParkModule::rgb565(uint8_t r, uint8_t g, uint8_t b) {
+    // Convert RGB888 to RGB565 format
+    return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
 }
 
 PsramString ThemeParkModule::truncateString(const PsramString& text, int maxWidth) {

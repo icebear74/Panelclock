@@ -114,9 +114,12 @@ private:
     void parseCrowdLevel(const char* jsonBuffer, size_t size, const PsramString& parkId);
     void parseOpeningTimes(const char* jsonBuffer, size_t size, const PsramString& parkId);
     bool shouldDisplayPark(const ThemeParkData& park) const;
+    int calculateTotalPages() const;  // Calculate total pages considering closed/open parks
     void drawParkPage(int parkIndex, int attractionPage);
     void drawNoDataPage();
     uint16_t getCrowdLevelColor(float level);
+    uint16_t calcColor(float value, float low, float high);  // Calculate color gradient
+    uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b);  // Convert RGB to RGB565
     PsramString truncateString(const PsramString& text, int maxWidth);
     void drawScrollingText(const PsramString& text, int x, int y, int maxWidth);
     PsramString fitTextToPixelWidth(const PsramString& text, int maxPixel);
