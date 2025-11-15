@@ -1,5 +1,6 @@
 #include "CalendarModule.hpp"
 #include "MultiLogger.hpp"
+#include "webconfig.hpp"
 
 uint16_t hexColorTo565(const PsramString& hex) {
   if (hex.length() != 7 || hex[0] != '#') return 0xFFFF;
