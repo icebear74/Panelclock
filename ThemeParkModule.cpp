@@ -413,10 +413,27 @@ unsigned long ThemeParkModule::getDisplayDuration() {
     unsigned long duration;
     if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
         // Sum all pages across all displayable parks
+        // Closed parks count as 1 page (showing "Geschlossen" message)
+        // Open parks count based on their attraction pages
         int totalPages = 0;
         for (const auto& park : _parkData) {
             if (shouldDisplayPark(park)) {
-                totalPages += park.attractionPages;
+                // Check if park has any open attractions
+                bool hasOpenAttractions = false;
+                for (const auto& attr : park.attractions) {
+                    if (attr.isOpen) {
+                        hasOpenAttractions = true;
+                        break;
+                    }
+                }
+                
+                if (hasOpenAttractions) {
+                    // Open park: count all attraction pages
+                    totalPages += park.attractionPages;
+                } else {
+                    // Closed park: count as 1 page (showing closed message)
+                    totalPages += 1;
+                }
             }
         }
         
@@ -840,7 +857,8 @@ void ThemeParkModule::loadParkCache() {
             for (JsonObject park : parks) {
                 const char* id = park["id"] | "";
                 const char* name = park["name"] | "";
-                const char* country = park["land"] | "";  // API uses "land" not "country"
+                // Try both "land" (from API) and "country" (from cache) for compatibility
+                const char* country = park["land"] | park["country"] | "";
                 
                 if (id && name && strlen(id) > 0 && strlen(name) > 0) {
                     _availableParks.push_back(AvailablePark(id, name, country));
