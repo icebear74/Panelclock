@@ -1,4 +1,5 @@
 #include "CuriousHolidaysModule.hpp"
+#include "webconfig.hpp"
 #include <algorithm>
 #include <cctype>
 
