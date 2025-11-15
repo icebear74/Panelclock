@@ -93,6 +93,16 @@ void handleConfigLocation() {
     if (!server || !deviceConfig) return;
     PsramString page = (const char*)FPSTR(HTML_PAGE_HEADER);
     PsramString content = (const char*)FPSTR(HTML_CONFIG_LOCATION);
+    
+    // Add timezone options
+    PsramString tz_options_html;
+    for (const auto& tz : timezones) {
+        tz_options_html += "<option value=\""; tz_options_html += tz.second; tz_options_html += "\"";
+        if (deviceConfig->timezone == tz.second) tz_options_html += " selected";
+        tz_options_html += ">"; tz_options_html += tz.first; tz_options_html += "</option>";
+    }
+    replaceAll(content, "{tz_options}", tz_options_html.c_str());
+    
     replaceAll(content, "{latitude}", String(deviceConfig->userLatitude, 6).c_str());
     replaceAll(content, "{longitude}", String(deviceConfig->userLongitude, 6).c_str());
     page += content;
@@ -102,6 +112,12 @@ void handleConfigLocation() {
 
 void handleSaveLocation() {
     if (!server || !deviceConfig) return;
+    
+    // Save timezone
+    if (server->hasArg("timezone")) {
+        deviceConfig->timezone = server->arg("timezone").c_str();
+    }
+    
     if (server->hasArg("latitude") && server->hasArg("longitude")) {
         deviceConfig->userLatitude = server->arg("latitude").toFloat();
         deviceConfig->userLongitude = server->arg("longitude").toFloat();
@@ -118,13 +134,6 @@ void handleConfigModules() {
     if (!server || !deviceConfig) return;
     PsramString page = (const char*)FPSTR(HTML_PAGE_HEADER);
     PsramString content = (const char*)FPSTR(HTML_CONFIG_MODULES);
-    PsramString tz_options_html;
-    for (const auto& tz : timezones) {
-        tz_options_html += "<option value=\""; tz_options_html += tz.second; tz_options_html += "\"";
-        if (deviceConfig->timezone == tz.second) tz_options_html += " selected";
-        tz_options_html += ">"; tz_options_html += tz.first; tz_options_html += "</option>";
-    }
-    replaceAll(content, "{tz_options}", tz_options_html.c_str());
 
     // Datenmocking-Checkbox
     replaceAll(content, "{dataMockingEnabled_checked}", deviceConfig->dataMockingEnabled ? "checked" : "");
@@ -199,7 +208,6 @@ void handleConfigModules() {
 
 void handleSaveModules() {
     if (!server || !deviceConfig) return;
-    deviceConfig->timezone = server->arg("timezone").c_str();
     
     // Datenmocking
     deviceConfig->dataMockingEnabled = server->hasArg("dataMockingEnabled");

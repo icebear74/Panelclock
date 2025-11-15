@@ -357,6 +357,7 @@ h1{font-size:18px;margin-bottom:8px}
 <div class="fsinfo" id="fs_info">Lade Speicherinfo...</div>
 <span id="cwd" class="path-breadcrumb">/</span>
 <div class="controls">
+<a href="/" class="btn" style="background:#555">← Zurück zum Hauptmenü</a>
 <button id="refresh" class="btn">Refresh</button>
 <form id="uploadForm" style="display:inline-block;margin-left:8px">
 <input id="fileInput" class="input" type="file" name="file" />

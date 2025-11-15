@@ -82,6 +82,10 @@ const char HTML_CONFIG_LOCATION[] PROGMEM = R"rawliteral(
 <p>Dieser Standort wird f&uuml;r die Umkreissuche von Tankstellen und zuk&uuml;nftig f&uuml;r Wetterdaten verwendet.</p>
 <form action="/save_location" method="POST">
 <div class="group">
+    <h3>Zeitzone</h3>
+    <label for="timezone">Zeitzone</label><select id="timezone" name="timezone">{tz_options}</select>
+</div>
+<div class="group">
     <h3>Standort festlegen</h3>
     <label for="address">Adresse suchen</label>
     <div style="display:flex;">
@@ -146,22 +150,25 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
 <h2>Anzeige-Module</h2>
 
 <div class="tab">
-  <button class="tablinks" onclick="openTab(event, 'Timezone')" id="defaultOpen">Zeitzone</button>
-  <button class="tablinks" onclick="openTab(event, 'Wetter')">Wetter</button>
+  <button class="tablinks" onclick="openTab(event, 'Darts')" id="defaultOpen">Darts</button>
   <button class="tablinks" onclick="openTab(event, 'Freizeitpark')">Freizeitparks</button>
-  <button class="tablinks" onclick="openTab(event, 'Tankstellen')">Tankstellen</button>
-  <button class="tablinks" onclick="openTab(event, 'Kalender')">Kalender</button>
-  <button class="tablinks" onclick="openTab(event, 'Darts')">Darts</button>
   <button class="tablinks" onclick="openTab(event, 'Fritzbox')">Fritz!Box</button>
+  <button class="tablinks" onclick="openTab(event, 'Kalender')">Kalender</button>
+  <button class="tablinks" onclick="openTab(event, 'KurioseFeiertage')">Kuriose Feiertage</button>
+  <button class="tablinks" onclick="openTab(event, 'Tankstellen')">Tankstellen</button>
+  <button class="tablinks" onclick="openTab(event, 'Wetter')">Wetter</button>
   <button class="tablinks" onclick="openTab(event, 'Diverses')">Diverses</button>
 </div>
 
 <form action="/save_modules" method="POST" onsubmit="collectStationIds()">
 
-<div id="Timezone" class="tabcontent">
+<div id="Darts" class="tabcontent">
     <div class="group">
-        <h3>Zeitzone</h3>
-        <label for="timezone">Zeitzone</label><select id="timezone" name="timezone">{tz_options}</select>
+        <h3>Darts-Ranglisten</h3>
+        <input type="checkbox" id="dartsOomEnabled" name="dartsOomEnabled" {dartsOomEnabled_checked}><label for="dartsOomEnabled" style="display:inline;">Order of Merit anzeigen</label><br>
+        <input type="checkbox" id="dartsProTourEnabled" name="dartsProTourEnabled" {dartsProTourEnabled_checked}><label for="dartsProTourEnabled" style="display:inline;">Pro Tour anzeigen</label><br>
+        <label for="dartsDisplaySec">Anzeigedauer (Sekunden)</label><input type="number" id="dartsDisplaySec" name="dartsDisplaySec" value="{dartsDisplaySec}">
+        <label for="trackedDartsPlayers">Lieblingsspieler (kommagetrennt)</label><input type="text" id="trackedDartsPlayers" name="trackedDartsPlayers" value="{trackedDartsPlayers}">
     </div>
 </div>
 
@@ -268,16 +275,6 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
     </div>
 </div>
 
-<div id="Darts" class="tabcontent">
-    <div class="group">
-        <h3>Darts-Ranglisten</h3>
-        <input type="checkbox" id="dartsOomEnabled" name="dartsOomEnabled" {dartsOomEnabled_checked}><label for="dartsOomEnabled" style="display:inline;">Order of Merit anzeigen</label><br>
-        <input type="checkbox" id="dartsProTourEnabled" name="dartsProTourEnabled" {dartsProTourEnabled_checked}><label for="dartsProTourEnabled" style="display:inline;">Pro Tour anzeigen</label><br>
-        <label for="dartsDisplaySec">Anzeigedauer (Sekunden)</label><input type="number" id="dartsDisplaySec" name="dartsDisplaySec" value="{dartsDisplaySec}">
-        <label for="trackedDartsPlayers">Lieblingsspieler (kommagetrennt)</label><input type="text" id="trackedDartsPlayers" name="trackedDartsPlayers" value="{trackedDartsPlayers}">
-    </div>
-</div>
-
 <div id="Fritzbox" class="tabcontent">
     <div class="group">
         <h3>Fritz!Box Anrufanzeige</h3>
@@ -287,17 +284,20 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
     </div>
 </div>
 
-<div id="Diverses" class="tabcontent">
-    <div class="group">
-        <h3>Datenschutz-Optionen</h3>
-        <input type="checkbox" id="dataMockingEnabled" name="dataMockingEnabled" {dataMockingEnabled_checked}><label for="dataMockingEnabled" style="display:inline;">Datenmocking aktivieren (Sensible Daten in der Anzeige maskieren)</label><br>
-        <p style="color:#ffc107; margin-top:10px;">Hinweis: Wenn aktiviert, werden Adressen in Tankstellenanzeige und Terminbeschreibungen im Kalender durch Platzhalter ersetzt. Dies betrifft nur die Anzeige, nicht die gespeicherten Daten.</p>
-    </div>
+<div id="KurioseFeiertage" class="tabcontent">
     <div class="group">
         <h3>Kuriose Feiertage</h3>
         <input type="checkbox" id="curiousHolidaysEnabled" name="curiousHolidaysEnabled" {curiousHolidaysEnabled_checked}><label for="curiousHolidaysEnabled" style="display:inline;">Kuriose Feiertage aktivieren</label><br>
         <label for="curiousHolidaysDisplaySec">Anzeigedauer pro Feiertag (Sekunden)</label><input type="number" id="curiousHolidaysDisplaySec" name="curiousHolidaysDisplaySec" value="{curiousHolidaysDisplaySec}" min="1">
         <p style="color:#bbb; margin-top:10px;">Zeigt t&auml;glich verschiedene kuriose Feiertage aus Deutschland an.</p>
+    </div>
+</div>
+
+<div id="Diverses" class="tabcontent">
+    <div class="group">
+        <h3>Datenschutz-Optionen</h3>
+        <input type="checkbox" id="dataMockingEnabled" name="dataMockingEnabled" {dataMockingEnabled_checked}><label for="dataMockingEnabled" style="display:inline;">Datenmocking aktivieren (Sensible Daten in der Anzeige maskieren)</label><br>
+        <p style="color:#ffc107; margin-top:10px;">Hinweis: Wenn aktiviert, werden Adressen in Tankstellenanzeige und Terminbeschreibungen im Kalender durch Platzhalter ersetzt. Dies betrifft nur die Anzeige, nicht die gespeicherten Daten.</p>
     </div>
     <div class="group">
         <h3>Globale Scrolling-Einstellungen</h3>
@@ -336,7 +336,7 @@ function toggleHourlyMode() {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    openTab(null, 'Timezone');
+    openTab(null, 'Darts');
     toggleHourlyMode();
 });
 
