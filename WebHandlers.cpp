@@ -126,6 +126,9 @@ void handleConfigModules() {
     }
     replaceAll(content, "{tz_options}", tz_options_html.c_str());
 
+    // Datenmocking-Checkbox
+    replaceAll(content, "{dataMockingEnabled_checked}", deviceConfig->dataMockingEnabled ? "checked" : "");
+
     // Wetter-Platzhalter ersetzen
     replaceAll(content, "{weatherEnabled_checked}", deviceConfig->weatherEnabled ? "checked" : "");
     replaceAll(content, "{weatherApiKey}", deviceConfig->weatherApiKey.c_str());
@@ -190,6 +193,9 @@ void handleConfigModules() {
 void handleSaveModules() {
     if (!server || !deviceConfig) return;
     deviceConfig->timezone = server->arg("timezone").c_str();
+    
+    // Datenmocking
+    deviceConfig->dataMockingEnabled = server->hasArg("dataMockingEnabled");
 
     // Wetter-Werte speichern
     deviceConfig->weatherEnabled = server->hasArg("weatherEnabled");

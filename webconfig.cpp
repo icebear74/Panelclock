@@ -103,6 +103,8 @@ void loadDeviceConfig() {
                 deviceConfig->themeParkFetchIntervalMin = doc["themeParkFetchIntervalMin"] | 10;
                 deviceConfig->themeParkDisplaySec = doc["themeParkDisplaySec"] | 15;
 
+                deviceConfig->dataMockingEnabled = doc["dataMockingEnabled"] | false;
+
                 Serial.println("Geräte-Konfiguration geladen.");
             } else {
                 Serial.println("Fehler beim Parsen der Konfigurationsdatei.");
@@ -189,6 +191,8 @@ void saveDeviceConfig() {
     doc["themeParkIds"] = deviceConfig->themeParkIds.c_str();
     doc["themeParkFetchIntervalMin"] = deviceConfig->themeParkFetchIntervalMin;
     doc["themeParkDisplaySec"] = deviceConfig->themeParkDisplaySec;
+
+    doc["dataMockingEnabled"] = deviceConfig->dataMockingEnabled;
 
     File configFile = LittleFS.open("/config.json", "w");
     if (configFile) {

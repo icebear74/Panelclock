@@ -162,6 +162,11 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
         <h3>Zeitzone</h3>
         <label for="timezone">Zeitzone</label><select id="timezone" name="timezone">{tz_options}</select>
     </div>
+    <div class="group">
+        <h3>Datenschutz-Optionen</h3>
+        <input type="checkbox" id="dataMockingEnabled" name="dataMockingEnabled" {dataMockingEnabled_checked}><label for="dataMockingEnabled" style="display:inline;">Datenmocking aktivieren (Sensible Daten in der Anzeige maskieren)</label><br>
+        <p style="color:#ffc107; margin-top:10px;">Hinweis: Wenn aktiviert, werden Adressen in Tankstellenanzeige und Terminbeschreibungen im Kalender durch Platzhalter ersetzt. Dies betrifft nur die Anzeige, nicht die gespeicherten Daten.</p>
+    </div>
 </div>
 
 <div id="Wetter" class="tabcontent">

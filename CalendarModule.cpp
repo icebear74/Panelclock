@@ -9,8 +9,8 @@ uint16_t hexColorTo565(const PsramString& hex) {
   return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
 }
 
-CalendarModule::CalendarModule(U8G2_FOR_ADAFRUIT_GFX &u8g2, GFXcanvas16 &canvas, const GeneralTimeConverter& converter, WebClientModule* webClient)
-    : u8g2(u8g2), canvas(canvas), timeConverter(converter), webClient(webClient), last_processed_update(0) {
+CalendarModule::CalendarModule(U8G2_FOR_ADAFRUIT_GFX &u8g2, GFXcanvas16 &canvas, const GeneralTimeConverter& converter, WebClientModule* webClient, DeviceConfig* config)
+    : u8g2(u8g2), canvas(canvas), timeConverter(converter), webClient(webClient), _deviceConfig(config), last_processed_update(0) {
     dataMutex = xSemaphoreCreateMutex();
 }
 
@@ -286,7 +286,15 @@ void CalendarModule::draw() {
 
             u8g2.setForegroundColor(currentTextColor);
             
-            const char* src_cstr = ev.summary.c_str();
+            // Datenmocking: Verwende gemockte Beschreibung wenn aktiviert
+            PsramString displaySummary = ev.summary;
+            if (_deviceConfig && _deviceConfig->dataMockingEnabled) {
+                char mockText[20];
+                snprintf(mockText, sizeof(mockText), "Termin %zu", i + 1);
+                displaySummary = mockText;
+            }
+            
+            const char* src_cstr = displaySummary.c_str();
             int src_len = strlen(src_cstr);
             PsramString visiblePart = fitTextToPixelWidth(src_cstr, maxSummaryPixel);
             int visibleChars = visiblePart.length();
@@ -380,7 +388,15 @@ void CalendarModule::drawUrgentView() {
             u8g2.setFont(u8g2_font_logisoso16_tf);
             u8g2.setForegroundColor(textColor);
             
-            const char* summaryText = ev.summary.c_str();
+            // Datenmocking: Verwende gemockte Beschreibung wenn aktiviert
+            PsramString displaySummary = ev.summary;
+            if (_deviceConfig && _deviceConfig->dataMockingEnabled) {
+                char mockText[20];
+                snprintf(mockText, sizeof(mockText), "Termin %zu", i + 1);
+                displaySummary = mockText;
+            }
+            
+            const char* summaryText = displaySummary.c_str();
             width = u8g2.getUTF8Width(summaryText);
             
             if (width > canvas.width() - 4) {
