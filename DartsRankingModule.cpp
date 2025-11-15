@@ -59,8 +59,8 @@ DartsPlayer::~DartsPlayer() {
 
 // --- DartsRankingModule Klassenimplementierung ---
 
-DartsRankingModule::DartsRankingModule(U8G2_FOR_ADAFRUIT_GFX& u8g2_ref, GFXcanvas16& canvas_ref, WebClientModule* webClient_ptr)
-    : u8g2(u8g2_ref), canvas(canvas_ref), webClient(webClient_ptr) {
+DartsRankingModule::DartsRankingModule(U8G2_FOR_ADAFRUIT_GFX& u8g2_ref, GFXcanvas16& canvas_ref, WebClientModule* webClient_ptr, DeviceConfig* config)
+    : u8g2(u8g2_ref), canvas(canvas_ref), webClient(webClient_ptr), config(config) {
     dataMutex = xSemaphoreCreateMutex();
 }
 
@@ -111,6 +111,11 @@ void DartsRankingModule::resetPaging() {
 }
 
 void DartsRankingModule::tick() {
+    // Use global scroll speed from config
+    if (config && config->globalScrollSpeedMs > 0) {
+        scrollStepInterval = config->globalScrollSpeedMs;
+    }
+    
     unsigned long now = millis();
     if (now - lastScrollStepTime > scrollStepInterval) {
         tickScroll();
@@ -699,7 +704,7 @@ void DartsRankingModule::drawScrollingText(const char* text, int x, int y, int m
     ScrollState& currentScrollState = (scrollIndex == -1) ? subtitleScrollState : scrollPos[scrollIndex];
 
     if (p_text.length() > visiblePart.length()) {
-        PsramString pad("   ");
+        PsramString pad("     ");  // 5 spaces for smoother scrolling
         PsramString scrollText = p_text + pad + p_text.substr(0, visiblePart.length());
         int maxScroll = scrollText.length() - visiblePart.length();
         

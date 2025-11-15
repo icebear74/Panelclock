@@ -60,6 +60,7 @@ public:
     const char* getModuleName() const override { return "ThemeParkModule"; }
     const char* getModuleDisplayName() const override { return "Freizeitparks"; }
     void draw() override;
+    void tick() override;
     void logicTick() override;
     void resetPaging() override;
     bool isEnabled() override;
@@ -107,6 +108,7 @@ private:
     // Scrolling support for park name
     int _parkNameScrollOffset;
     int _parkNameMaxScroll;
+    unsigned long _lastScrollStep;  // Track last scroll update time
     
     void parseWaitTimes(const char* jsonBuffer, size_t size, const PsramString& parkId);
     void parseCrowdLevel(const char* jsonBuffer, size_t size, const PsramString& parkId);

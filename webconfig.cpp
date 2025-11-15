@@ -105,6 +105,10 @@ void loadDeviceConfig() {
 
                 deviceConfig->dataMockingEnabled = doc["dataMockingEnabled"] | false;
 
+                deviceConfig->curiousHolidaysEnabled = doc["curiousHolidaysEnabled"] | true;
+                deviceConfig->curiousHolidaysDisplaySec = doc["curiousHolidaysDisplaySec"] | 10;
+                deviceConfig->globalScrollSpeedMs = doc["globalScrollSpeedMs"] | 50;
+
                 Serial.println("Geräte-Konfiguration geladen.");
             } else {
                 Serial.println("Fehler beim Parsen der Konfigurationsdatei.");
@@ -193,6 +197,10 @@ void saveDeviceConfig() {
     doc["themeParkDisplaySec"] = deviceConfig->themeParkDisplaySec;
 
     doc["dataMockingEnabled"] = deviceConfig->dataMockingEnabled;
+
+    doc["curiousHolidaysEnabled"] = deviceConfig->curiousHolidaysEnabled;
+    doc["curiousHolidaysDisplaySec"] = deviceConfig->curiousHolidaysDisplaySec;
+    doc["globalScrollSpeedMs"] = deviceConfig->globalScrollSpeedMs;
 
     File configFile = LittleFS.open("/config.json", "w");
     if (configFile) {
