@@ -815,6 +815,16 @@ void ThemeParkModule::drawParkPage(int parkIndex, int attractionPage) {
     // Force exactly 6 attractions per page as requested
     int maxLines = 6;
     
+    // Find maximum wait time for this park (for dynamic color gradient)
+    int maxWaitTime = 0;
+    for (const auto& attr : park.attractions) {
+        if (attr.isOpen && attr.waitTime > maxWaitTime) {
+            maxWaitTime = attr.waitTime;
+        }
+    }
+    // Ensure we have a reasonable maximum (at least 1 to avoid division by zero)
+    if (maxWaitTime < 1) maxWaitTime = 1;
+    
     // Show ALL attractions (both open and closed) when park is open
     // Calculate which attractions to show on this page
     int startIdx = attractionPage * maxLines;
@@ -837,17 +847,8 @@ void ThemeParkModule::drawParkPage(int parkIndex, int attractionPage) {
             snprintf(waitStr, sizeof(waitStr), "%d min", attr.waitTime);
             int waitW = _u8g2.getUTF8Width(waitStr);
             
-            // Color code wait times
-            uint16_t waitColor;
-            if (attr.waitTime >= 60) {
-                waitColor = 0xF800;  // Red
-            } else if (attr.waitTime >= 30) {
-                waitColor = 0xFD20;  // Orange
-            } else if (attr.waitTime >= 15) {
-                waitColor = 0xFFE0;  // Yellow
-            } else {
-                waitColor = 0x07E0;  // Green
-            }
+            // Calculate color using dynamic gradient from green (0 min) to red (max wait time)
+            uint16_t waitColor = calcColor(attr.waitTime, 0, maxWaitTime);
             
             _u8g2.setForegroundColor(waitColor);
             _u8g2.setCursor(_canvas.width() - waitW - 2, yPos);
@@ -887,6 +888,32 @@ uint16_t ThemeParkModule::getCrowdLevelColor(float level) {
     if (level <= 40.0f) return 0x07E0;      // Green
     if (level <= 60.0f) return 0xFFE0;      // Yellow
     return 0xF800;                          // Red
+}
+
+uint16_t ThemeParkModule::calcColor(float value, float low, float high) {
+    // Calculate smooth color gradient from green (low) to red (high)
+    // Adapted from TankerkoenigModule
+    if (low >= high || value <= 0) return rgb565(255, 255, 0);
+
+    float val = (value < low) ? low : (value > high ? high : value);
+    
+    int diff = (int)roundf(((high - val) / (high - low)) * 100.0f);
+
+    uint8_t rval, gval;
+
+    if (diff <= 50) { 
+        rval = 255;
+        gval = map(diff, 0, 50, 0, 255);
+    } else { 
+        gval = 255;
+        rval = map(diff, 50, 100, 255, 0);
+    }
+    return rgb565(rval, gval, 0);
+}
+
+uint16_t ThemeParkModule::rgb565(uint8_t r, uint8_t g, uint8_t b) {
+    // Convert RGB888 to RGB565 format
+    return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
 }
 
 PsramString ThemeParkModule::truncateString(const PsramString& text, int maxWidth) {
