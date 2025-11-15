@@ -40,11 +40,13 @@ using PsramEventPair = std::pair<time_t, Event>;
 using PsramEventPairVector = std::vector<PsramEventPair, PsramAllocator<PsramEventPair>>;
 using PsramCalendarEventVector = std::vector<CalendarEvent, PsramAllocator<CalendarEvent>>;
 
+struct DeviceConfig;
+
 uint16_t hexColorTo565(const PsramString& hex);
 
 class CalendarModule : public DrawableModule {
 public:
-    CalendarModule(U8G2_FOR_ADAFRUIT_GFX &u8g2, GFXcanvas16 &canvas, const GeneralTimeConverter& converter, WebClientModule* webClient);
+    CalendarModule(U8G2_FOR_ADAFRUIT_GFX &u8g2, GFXcanvas16 &canvas, const GeneralTimeConverter& converter, WebClientModule* webClient, DeviceConfig* config);
     ~CalendarModule();
 
     void onUpdate(std::function<void()> callback);
@@ -73,6 +75,7 @@ private:
     GFXcanvas16 &canvas;
     const GeneralTimeConverter& timeConverter;
     WebClientModule* webClient;
+    DeviceConfig* _deviceConfig;
     std::function<void()> updateCallback;
     PsramString icsUrl;
     uint32_t fetchIntervalMinutes = 60;

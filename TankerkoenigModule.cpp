@@ -367,6 +367,19 @@ void TankerkoenigModule::draw() {
     
     const StationData& data = station_data_list[currentPage];
 
+    // Datenmocking: Erstelle gemockte Kopie der Daten nur für die Anzeige
+    PsramString displayStreet = data.street;
+    PsramString displayHouseNumber = data.houseNumber;
+    PsramString displayPostCode = data.postCode;
+    PsramString displayPlace = data.place;
+    
+    if (_deviceConfig && _deviceConfig->dataMockingEnabled) {
+        displayStreet = "Musterstraße";
+        displayHouseNumber = "1";
+        displayPostCode = "12345";
+        displayPlace = "Musterstadt";
+    }
+
     const int PADDING = 10;
     const int LEFT_MARGIN = 5;
     const int RIGHT_MARGIN = 5;
@@ -377,10 +390,10 @@ void TankerkoenigModule::draw() {
     int brandWidth = u8g2.getUTF8Width(brandText.c_str());
 
     u8g2.setFont(u8g2_font_5x8_tf);
-    PsramString line1 = data.street;
-    if (!data.houseNumber.empty()) { line1 += " "; line1 += data.houseNumber; }
-    PsramString line2 = data.postCode;
-    if (!data.place.empty()) { line2 += " "; line2 += data.place; }
+    PsramString line1 = displayStreet;
+    if (!displayHouseNumber.empty()) { line1 += " "; line1 += displayHouseNumber; }
+    PsramString line2 = displayPostCode;
+    if (!displayPlace.empty()) { line2 += " "; line2 += displayPlace; }
     int addressWidth = std::max(u8g2.getUTF8Width(line1.c_str()), u8g2.getUTF8Width(line2.c_str()));
 
     if (brandWidth + addressWidth + PADDING > totalWidth) {

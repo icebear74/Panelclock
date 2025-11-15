@@ -152,6 +152,9 @@ struct DeviceConfig {
     int movingAverageDays = 30;
     /// @brief Die Anzahl der vergangenen Tage, die für die Trendanalyse mittels linearer Regression verwendet werden.
     int trendAnalysisDays = 7;
+    
+    /// @brief Aktiviert das Datenmocking für Datenschutz in der Anzeige (beeinflusst nur die draw()-Methoden).
+    bool dataMockingEnabled = false;
 };
 
 // Deklarationen für globale Variablen und Funktionen
