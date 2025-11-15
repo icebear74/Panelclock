@@ -90,6 +90,7 @@ private:
     // Track last processed update time for each park to avoid reprocessing same data
     std::map<PsramString, time_t> _lastProcessedWaitTimes;
     std::map<PsramString, time_t> _lastProcessedOpeningTimes;
+    std::map<PsramString, time_t> _lastProcessedCrowdLevel;
     
     int _currentPage;
     int _currentParkIndex;  // Index of current park being displayed
