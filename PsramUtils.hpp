@@ -71,12 +71,25 @@ inline bool endsWith(const PsramString& str, const char* suffix) {
     return str.ends_with(suffix);
 }
 
+inline bool endsWith(const PsramString& str, const PsramString& suffix) {
+    return str.ends_with(suffix);
+}
+
 inline bool startsWith(const PsramString& str, const char* prefix) {
+    return str.starts_with(prefix);
+}
+
+inline bool startsWith(const PsramString& str, const PsramString& prefix) {
     return str.starts_with(prefix);
 }
 
 inline int lastIndexOf(const PsramString& str, char ch) {
     size_t pos = str.find_last_of(ch);
+    return (pos == PsramString::npos) ? -1 : static_cast<int>(pos);
+}
+
+inline int lastIndexOf(const PsramString& str, const char* substring) {
+    size_t pos = str.rfind(substring);
     return (pos == PsramString::npos) ? -1 : static_cast<int>(pos);
 }
 
