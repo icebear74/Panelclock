@@ -848,7 +848,7 @@ void ThemeParkModule::drawParkPage(int parkIndex, int attractionPage) {
             int waitW = _u8g2.getUTF8Width(waitStr);
             
             // Calculate color using dynamic gradient from green (0 min) to red (max wait time)
-            uint16_t waitColor = calcColor(attr.waitTime, 0, maxWaitTime);
+            uint16_t waitColor = calcColor(attr.waitTime, 5, maxWaitTime);
             
             _u8g2.setForegroundColor(waitColor);
             _u8g2.setCursor(_canvas.width() - waitW - 2, yPos);

@@ -78,7 +78,7 @@ Application::~Application() {
 void Application::begin() {
     LOG_MEMORY_STRATEGIC("Application: Start");
 
-    if (!LittleFS.begin()) {
+    if (!LittleFS.begin(true)) {
         Log.println("FATAL: LittleFS konnte nicht initialisiert werden!");
         while(true) delay(1000);
     }
