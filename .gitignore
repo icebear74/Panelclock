@@ -1,0 +1,2 @@
+# Ignore only the provided partitions file at repository root
+/partitions.csv
