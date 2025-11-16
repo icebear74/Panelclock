@@ -35,6 +35,7 @@ const char HTML_INDEX[] PROGMEM = R"rawliteral(
 <a href="/config_hardware" class="button">Optionale Hardware</a>
 <!-- File manager button added to main menu -->
 <a href="/fs" class="button">Dateimanager</a>
+<a href="/backup" class="button" style="background-color:#FF9800;">Backup & Wiederherstellung</a>
 <hr>
 <a href="/stream" class="button" style="background-color:#2196F3;">Live-Stream & Debug</a>
 <a href="/debug" class="button" style="background-color:#555;">Debug Daten</a>
@@ -740,6 +741,177 @@ try {
     console.error('[Init] Initialization error:', e);
 }
 
+</script>
+)rawliteral";
+
+// Backup & Restore Page
+const char HTML_BACKUP_PAGE[] PROGMEM = R"rawliteral(
+<h2>Backup & Wiederherstellung</h2>
+<p>Hier k&ouml;nnen Sie ein vollst&auml;ndiges System-Backup erstellen oder ein vorhandenes Backup wiederherstellen.</p>
+
+<div class="group">
+    <h3>Neues Backup erstellen</h3>
+    <p>Erstellt ein Backup aller Konfigurationen, Modul-Daten und Zertifikate.</p>
+    <button onclick="createBackup()" class="button">Backup jetzt erstellen</button>
+    <div id="createStatus" style="margin-top:10px;"></div>
+</div>
+
+<div class="group">
+    <h3>Backup hochladen & wiederherstellen</h3>
+    <p><strong>Wichtig:</strong> Nach der Wiederherstellung wird das Ger&auml;t automatisch neu gestartet!</p>
+    <form id="uploadForm" enctype="multipart/form-data">
+        <input type="file" id="backupFile" name="backup" accept=".json" style="margin-top:10px;">
+        <button type="button" onclick="uploadBackup()" class="button" style="background-color:#FF9800;margin-top:10px;">Backup hochladen & wiederherstellen</button>
+    </form>
+    <div id="uploadStatus" style="margin-top:10px;"></div>
+</div>
+
+<div class="group">
+    <h3>Verf&uuml;gbare Backups</h3>
+    <button onclick="refreshBackupList()" class="button" style="background-color:#2196F3;width:auto;">Liste aktualisieren</button>
+    <div id="backupList" style="margin-top:15px;">
+        <p style="color:#888;">Lade Backup-Liste...</p>
+    </div>
+</div>
+
+<div class="footer-link"><a href="/">&laquo; Zur&uuml;ck zum Hauptmen&uuml;</a></div>
+
+<script>
+function showStatus(elementId, message, isError = false) {
+    const el = document.getElementById(elementId);
+    el.textContent = message;
+    el.style.color = isError ? '#f44336' : '#4CAF50';
+}
+
+function createBackup() {
+    showStatus('createStatus', 'Erstelle Backup...', false);
+    
+    fetch('/api/backup/create', {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showStatus('createStatus', 'Backup erfolgreich erstellt: ' + data.filename, false);
+            refreshBackupList();
+        } else {
+            showStatus('createStatus', 'Fehler: ' + (data.error || 'Unbekannter Fehler'), true);
+        }
+    })
+    .catch(error => {
+        showStatus('createStatus', 'Fehler beim Erstellen: ' + error, true);
+    });
+}
+
+function uploadBackup() {
+    const fileInput = document.getElementById('backupFile');
+    const file = fileInput.files[0];
+    
+    if (!file) {
+        showStatus('uploadStatus', 'Bitte w&auml;hlen Sie eine Backup-Datei aus!', true);
+        return;
+    }
+    
+    if (!confirm('WARNUNG: Das Ger&auml;t wird nach der Wiederherstellung neu gestartet! Fortfahren?')) {
+        return;
+    }
+    
+    showStatus('uploadStatus', 'Lade Backup hoch...', false);
+    
+    const formData = new FormData();
+    formData.append('backup', file);
+    
+    fetch('/api/backup/upload', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showStatus('uploadStatus', 'Backup erfolgreich hochgeladen! Wiederherstellung wird gestartet...', false);
+            // Restore the backup
+            setTimeout(() => {
+                restoreBackup(data.filename);
+            }, 1000);
+        } else {
+            showStatus('uploadStatus', 'Fehler: ' + (data.error || 'Upload fehlgeschlagen'), true);
+        }
+    })
+    .catch(error => {
+        showStatus('uploadStatus', 'Fehler beim Upload: ' + error, true);
+    });
+}
+
+function restoreBackup(filename) {
+    if (!confirm('Backup "' + filename + '" wirklich wiederherstellen? Das Ger&auml;t wird neu gestartet!')) {
+        return;
+    }
+    
+    showStatus('uploadStatus', 'Stelle Backup wieder her...', false);
+    
+    fetch('/api/backup/restore', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({filename: filename})
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showStatus('uploadStatus', 'Wiederherstellung erfolgreich! Ger&auml;t startet neu...', false);
+            setTimeout(() => {
+                window.location.href = '/';
+            }, 3000);
+        } else {
+            showStatus('uploadStatus', 'Fehler: ' + (data.error || 'Wiederherstellung fehlgeschlagen'), true);
+        }
+    })
+    .catch(error => {
+        showStatus('uploadStatus', 'Fehler bei Wiederherstellung: ' + error, true);
+    });
+}
+
+function downloadBackup(filename) {
+    window.location.href = '/api/backup/download?file=' + encodeURIComponent(filename);
+}
+
+function refreshBackupList() {
+    const listDiv = document.getElementById('backupList');
+    listDiv.innerHTML = '<p style="color:#888;">Lade Backup-Liste...</p>';
+    
+    fetch('/api/backup/list')
+    .then(response => response.json())
+    .then(data => {
+        if (data.backups && data.backups.length > 0) {
+            let html = '<table><tr><th>Dateiname</th><th>Zeitstempel</th><th>Gr&ouml;&szlig;e</th><th>Aktionen</th></tr>';
+            
+            data.backups.forEach(backup => {
+                const sizeKB = (backup.size / 1024).toFixed(2);
+                html += '<tr>';
+                html += '<td>' + backup.filename + '</td>';
+                html += '<td>' + backup.timestamp + '</td>';
+                html += '<td>' + sizeKB + ' KB</td>';
+                html += '<td>';
+                html += '<button onclick="downloadBackup(\'' + backup.filename + '\')" class="button" style="width:auto;padding:5px 10px;margin:2px;">Download</button>';
+                html += '<button onclick="restoreBackup(\'' + backup.filename + '\')" class="button" style="width:auto;padding:5px 10px;margin:2px;background-color:#FF9800;">Wiederherstellen</button>';
+                html += '</td>';
+                html += '</tr>';
+            });
+            
+            html += '</table>';
+            listDiv.innerHTML = html;
+        } else {
+            listDiv.innerHTML = '<p style="color:#888;">Keine Backups vorhanden.</p>';
+        }
+    })
+    .catch(error => {
+        listDiv.innerHTML = '<p style="color:#f44336;">Fehler beim Laden der Liste: ' + error + '</p>';
+    });
+}
+
+// Load backup list on page load
+refreshBackupList();
 </script>
 )rawliteral";
 

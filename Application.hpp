@@ -12,6 +12,7 @@
 #include "WeatherModule.hpp" // HINZUGEFÜGT
 #include "ThemeParkModule.hpp" // HINZUGEFÜGT
 #include "PanelStreamer.hpp" // HINZUGEFÜGT
+#include "BackupManager.hpp" // HINZUGEFÜGT
 
 // Forward-Deklarationen, um zirkuläre Abhängigkeiten in Headern zu vermeiden
 class PanelManager;
@@ -24,6 +25,7 @@ class CuriousHolidaysModule;
 class WeatherModule; // HINZUGEFÜGT
 class ThemeParkModule; // HINZUGEFÜGT
 class PanelStreamer; // HINZUGEFÜGT
+class BackupManager; // HINZUGEFÜGT
 
 /**
  * @brief Hauptanwendungsklasse, die den gesamten Lebenszyklus der Panelclock steuert.
@@ -70,6 +72,13 @@ public:
      * @return PanelManager* Ein Zeiger auf die PanelManager-Instanz.
      */
     PanelManager* getPanelManager() { return _panelManager; }
+    
+    /**
+     * @brief Gibt einen Zeiger auf den BackupManager zurück.
+     * 
+     * @return BackupManager* Ein Zeiger auf die BackupManager-Instanz.
+     */
+    BackupManager* getBackupManager() { return _backupManager; }
 
     /// @brief Statischer Zeiger auf die einzige Instanz der Application-Klasse (Singleton).
     static Application* _instance;
@@ -106,6 +115,8 @@ private:
     ThemeParkModule* _themeParkMod = nullptr; // HINZUGEFÜGT
     /// @brief Zeiger auf den Panel-Streamer für Remote-Debugging.
     PanelStreamer* _panelStreamer = nullptr; // HINZUGEFÜGT
+    /// @brief Zeiger auf den Backup-Manager für System-Backups.
+    BackupManager* _backupManager = nullptr; // HINZUGEFÜGT
     
     /// @brief Flag, das eine sofortige Neuzeichnung des Displays anfordert.
     bool _redrawRequest = false;

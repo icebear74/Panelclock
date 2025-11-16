@@ -25,6 +25,7 @@ DNSServer* dnsServer = nullptr;
 WebClientModule* webClient = nullptr;
 MwaveSensorModule* mwaveSensorModule = nullptr;
 OtaManager* otaManager = nullptr;
+BackupManager* backupManager = nullptr;
 bool portalRunning = false;
 
 TankerkoenigModule* tankerkoenigModule = nullptr;
@@ -63,6 +64,7 @@ Application::~Application() {
     delete webClient;
     delete mwaveSensorModule;
     delete otaManager;
+    delete backupManager;
     delete _panelManager;
     delete _clockMod;
     delete _tankerkoenigMod;
@@ -147,6 +149,12 @@ void Application::begin() {
         
         otaManager->begin();
         ArduinoOTA.begin();
+        
+        // Initialize BackupManager before web server setup
+        backupManager = new BackupManager(this);
+        backupManager->begin();
+        Log.println("[Application] BackupManager initialized");
+        
         setupWebServer(portalRunning);
         
         // Initialize Panel Streamer after WiFi is connected
@@ -158,6 +166,12 @@ void Application::begin() {
         portalRunning = true;
         WiFi.softAP("Panelclock-Setup");
         mwaveSensorModule->begin();
+        
+        // Initialize BackupManager also in AP mode for recovery
+        backupManager = new BackupManager(this);
+        backupManager->begin();
+        Log.println("[Application] BackupManager initialized (AP mode)");
+        
         setupWebServer(portalRunning);
     }
     LOG_MEMORY_STRATEGIC("Nach Netzwerk-Stack Init");
@@ -185,6 +199,17 @@ void Application::update() {
     if (_configNeedsApplying) {
         executeApplyLiveConfig();
         _configNeedsApplying = false;
+    }
+
+    // Periodic backup check (once per update cycle - checks internally if backup is needed)
+    if (backupManager) {
+        static unsigned long lastBackupCheck = 0;
+        unsigned long now = millis();
+        // Check every hour if automatic backup is needed
+        if (now - lastBackupCheck >= 3600000) { // 1 hour
+            lastBackupCheck = now;
+            backupManager->periodicCheck();
+        }
     }
 
     handleWebServer(portalRunning);

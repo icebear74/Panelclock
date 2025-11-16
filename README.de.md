@@ -13,12 +13,14 @@ Das Herzstück des Projekts ist eine modulare Architektur, die von der zentralen
 - **DrawableModule (`DrawableModule.hpp`):** Eine virtuelle Basisklasse (Interface), die von allen Anzeigemodulen implementiert wird. Sie definiert die grundlegenden Funktionen, die ein Modul haben muss, wie `draw()`, `logicTick()` und `getDisplayDuration()`.
 - **WebClientModule (`WebClientModule.cpp/.hpp`):** Ein zentraler, asynchroner Manager für alle HTTP-Anfragen. Module registrieren hier die benötigten Web-Ressourcen, und der WebClient kümmert sich effizient um das Abrufen und Cachen der Daten im Hintergrund.
 - **WebServer & Konfiguration (`webconfig.cpp/.hpp`, `WebServerManager.cpp/.hpp`):** Das Projekt hostet ein umfangreiches Web-Interface, das eine vollständige Konfiguration aller Module ohne Neu-Kompilierung ermöglicht. Einstellungen werden auf dem Gerät im LittleFS gespeichert.
+- **BackupManager (`BackupManager.cpp/.hpp`):** Verwaltet vollständige System-Backups inklusive aller Konfigurationen, Modul-Daten und Zertifikate. Unterstützt automatische tägliche Backups, manuelle Backup-Erstellung, Download/Upload über Webinterface und Notfall-Wiederherstellung im Access Point Modus. Details siehe [BACKUP_SYSTEM.md](BACKUP_SYSTEM.md).
 
 ## Hauptfunktionen
 
 - **Modulare Anzeige:** Einfache Erweiterbarkeit durch neue Module. Die angezeigten Informationen rotieren automatisch.
 - **Web-Konfiguration:** Ein integrierter Webserver ermöglicht die bequeme Konfiguration von WLAN, Zeitzone, Modul-Einstellungen und mehr über einen Browser.
 - **OTA-Updates:** Die Firmware kann "Over-the-Air" über das Web-Interface aktualisiert werden.
+- **Backup & Wiederherstellung:** Vollständige System-Backups inklusive aller Konfigurationen, Modul-Daten und Zertifikate. Automatische tägliche Backups mit Web-basiertem Download/Upload und Notfall-Wiederherstellung im Access Point Modus. Details siehe [BACKUP_SYSTEM.md](BACKUP_SYSTEM.md).
 - **Effizientes Ressourcen-Management:** Intensive Nutzung von PSRAM für Web-Daten, JSON-Parsing und Spielerlisten, um den knappen internen Speicher des ESP32 zu schonen.
 - **Asynchrone Datenabrufe:** Alle externen Daten werden im Hintergrund geladen, ohne die Anzeige oder andere Operationen zu blockieren.
 - **Präsenz-Erkennung:** Durch das `MwaveSensorModule` kann das Display bei Abwesenheit automatisch abgeschaltet und bei Anwesenheit reaktiviert werden, um Strom zu sparen.

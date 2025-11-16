@@ -24,6 +24,10 @@ extern MwaveSensorModule* mwaveSensorModule;
 extern GeneralTimeConverter* timeConverter;
 extern TankerkoenigModule* tankerkoenigModule;
 
+// Forward declaration for BackupManager
+class BackupManager;
+extern BackupManager* backupManager;
+
 // Globale Funktionen aus der .ino-Datei bekannt machen
 void saveDeviceConfig();
 void saveHardwareConfig();

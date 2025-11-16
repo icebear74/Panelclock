@@ -87,8 +87,6 @@ public:
     
     void configure(const ModuleConfig& config) override;
     void onActivate() override;
-    JsonObject backup(JsonDocument& doc) override;
-    void restore(JsonObject& obj) override;
     
     // Public Methoden für WebServer
     PsramVector<StationData> getStationCache();

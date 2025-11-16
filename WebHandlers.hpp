@@ -20,4 +20,12 @@ void handleTankerkoenigSearchLive();
 void handleThemeParksList();
 void handleStreamPage();
 
+// Backup handlers
+void handleBackupPage();
+void handleBackupCreate();
+void handleBackupDownload();
+void handleBackupUpload();
+void handleBackupList();
+void handleBackupRestore();
+
 #endif // WEB_HANDLERS_HPP

@@ -66,6 +66,42 @@ int indexOf(const PsramString& str, const String& substring, size_t fromIndex = 
 void replaceAll(PsramString& str, const PsramString& from, const PsramString& to);
 PsramString escapeJsonString(const PsramString& input);
 
+// Arduino-style string helper methods for PsramString
+inline bool endsWith(const PsramString& str, const char* suffix) {
+    return str.ends_with(suffix);
+}
+
+inline bool endsWith(const PsramString& str, const PsramString& suffix) {
+    return str.ends_with(suffix);
+}
+
+inline bool startsWith(const PsramString& str, const char* prefix) {
+    return str.starts_with(prefix);
+}
+
+inline bool startsWith(const PsramString& str, const PsramString& prefix) {
+    return str.starts_with(prefix);
+}
+
+inline int lastIndexOf(const PsramString& str, char ch) {
+    size_t pos = str.find_last_of(ch);
+    return (pos == PsramString::npos) ? -1 : static_cast<int>(pos);
+}
+
+inline int lastIndexOf(const PsramString& str, const char* substring) {
+    size_t pos = str.rfind(substring);
+    return (pos == PsramString::npos) ? -1 : static_cast<int>(pos);
+}
+
+inline PsramString substring(const PsramString& str, size_t start) {
+    return str.substr(start);
+}
+
+inline PsramString substring(const PsramString& str, size_t start, size_t length) {
+    return str.substr(start, length);
+}
+
+
 // Conversion helpers for PsramString (similar to Arduino String methods)
 inline int toInt(const PsramString& str) {
     return atoi(str.c_str());

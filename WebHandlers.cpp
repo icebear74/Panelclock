@@ -1,12 +1,20 @@
 #include "WebHandlers.hpp"
 #include "WebServerManager.hpp"
 #include "WebPages.hpp"
+#include "BackupManager.hpp"
 #include "ThemeParkModule.hpp"
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 #include <WiFi.h>
 #include "MemoryLogger.hpp"
 #include "MultiLogger.hpp"
+
+// PSRAM Allocator for ArduinoJson (same pattern as ThemeParkModule and WeatherModule)
+struct SpiRamAllocator : ArduinoJson::Allocator {
+    void* allocate(size_t size) override { return ps_malloc(size); }
+    void deallocate(void* pointer) override { free(pointer); }
+    void* reallocate(void* ptr, size_t new_size) override { return ps_realloc(ptr, new_size); }
+};
 
 // Externals from main application / WebServerManager.hpp
 extern WebServer* server;
@@ -16,6 +24,7 @@ extern WebClientModule* webClient;
 extern MwaveSensorModule* mwaveSensorModule;
 extern GeneralTimeConverter* timeConverter;
 extern TankerkoenigModule* tankerkoenigModule;
+extern BackupManager* backupManager;
 extern ThemeParkModule* themeParkModule;
 extern bool portalRunning;
 
@@ -667,6 +676,196 @@ void handleStreamPage() {
     page += FPSTR(HTML_PAGE_FOOTER);
     server->send(200, "text/html", page);
 }
+
+// =============================================================================
+// Backup & Restore Handlers
+// =============================================================================
+
+void handleBackupPage() {
+    if (!server) return;
+    PsramString page = (const char*)FPSTR(HTML_PAGE_HEADER);
+    page += (const char*)FPSTR(HTML_BACKUP_PAGE);
+    page += (const char*)FPSTR(HTML_PAGE_FOOTER);
+    server->send(200, "text/html", page.c_str());
+}
+
+void handleBackupCreate() {
+    if (!server || !backupManager) {
+        server->send(500, "application/json", "{\"success\":false,\"error\":\"BackupManager not available\"}");
+        return;
+    }
+    
+    Log.println("[WebHandler] Creating manual backup...");
+    bool success = backupManager->createBackup(true); // manual backup
+    
+    if (success) {
+        // Get the most recent backup
+        PsramVector<BackupInfo> backups = backupManager->listBackups();
+        if (backups.size() > 0) {
+            PsramString response = "{\"success\":true,\"filename\":\"";
+            response += backups[0].filename;
+            response += "\"}";
+            server->send(200, "application/json", response.c_str());
+        } else {
+            server->send(200, "application/json", "{\"success\":true,\"filename\":\"unknown\"}");
+        }
+    } else {
+        server->send(500, "application/json", "{\"success\":false,\"error\":\"Failed to create backup\"}");
+    }
+}
+
+void handleBackupDownload() {
+    if (!server || !backupManager) {
+        server->send(500, "text/plain", "BackupManager not available");
+        return;
+    }
+    
+    if (!server->hasArg("file")) {
+        server->send(400, "text/plain", "Missing 'file' parameter");
+        return;
+    }
+    
+    PsramString filename = server->arg("file").c_str();
+    PsramString fullPath = backupManager->getBackupPath(filename);
+    
+    if (!LittleFS.exists(fullPath.c_str())) {
+        server->send(404, "text/plain", "Backup file not found");
+        return;
+    }
+    
+    File file = LittleFS.open(fullPath.c_str(), "r");
+    if (!file) {
+        server->send(500, "text/plain", "Could not open backup file");
+        return;
+    }
+    
+    Log.printf("[WebHandler] Downloading backup: %s\n", filename.c_str());
+    
+    server->sendHeader("Content-Disposition", "attachment; filename=\"" + String(filename.c_str()) + "\"");
+    server->streamFile(file, "application/json");
+    file.close();
+}
+
+void handleBackupUpload() {
+    if (!server || !backupManager) {
+        server->send(500, "application/json", "{\"success\":false,\"error\":\"BackupManager not available\"}");
+        return;
+    }
+    
+    HTTPUpload& upload = server->upload();
+    static File uploadFile;
+    static PsramString uploadFilename;
+    
+    if (upload.status == UPLOAD_FILE_START) {
+        // Generate a temporary filename for the uploaded backup
+        char tempName[64];
+        snprintf(tempName, sizeof(tempName), "uploaded_backup_%lu.json", millis());
+        uploadFilename = tempName;
+        
+        PsramString fullPath = backupManager->getBackupPath(uploadFilename);
+        Log.printf("[WebHandler] Starting backup upload: %s\n", fullPath.c_str());
+        
+        uploadFile = LittleFS.open(fullPath.c_str(), "w");
+        if (!uploadFile) {
+            Log.println("[WebHandler] ERROR: Could not create upload file");
+        }
+    } else if (upload.status == UPLOAD_FILE_WRITE) {
+        if (uploadFile) {
+            uploadFile.write(upload.buf, upload.currentSize);
+        }
+    } else if (upload.status == UPLOAD_FILE_END) {
+        if (uploadFile) {
+            uploadFile.close();
+            Log.printf("[WebHandler] Upload complete: %u bytes\n", upload.totalSize);
+            
+            // Send success response with filename
+            PsramString response = "{\"success\":true,\"filename\":\"";
+            response += uploadFilename;
+            response += "\"}";
+            server->send(200, "application/json", response.c_str());
+        } else {
+            server->send(500, "application/json", "{\"success\":false,\"error\":\"Upload failed\"}");
+        }
+    } else if (upload.status == UPLOAD_FILE_ABORTED) {
+        if (uploadFile) {
+            uploadFile.close();
+        }
+        // Delete the potentially corrupted file
+        if (uploadFilename.length() > 0 && backupManager) {
+            PsramString fullPath = backupManager->getBackupPath(uploadFilename);
+            if (LittleFS.exists(fullPath.c_str())) {
+                LittleFS.remove(fullPath.c_str());
+                Log.printf("[WebHandler] Aborted upload file deleted: %s\n", fullPath.c_str());
+            }
+        }
+        Log.println("[WebHandler] Upload aborted");
+        server->send(500, "application/json", "{\"success\":false,\"error\":\"Upload aborted\"}");
+    }
+}
+
+void handleBackupRestore() {
+    if (!server || !backupManager) {
+        server->send(500, "application/json", "{\"success\":false,\"error\":\"BackupManager not available\"}");
+        return;
+    }
+    
+    // Parse JSON body
+    String body = server->arg("plain");
+    SpiRamAllocator allocator;
+    JsonDocument doc(&allocator);
+    DeserializationError error = deserializeJson(doc, body);
+    
+    if (error) {
+        server->send(400, "application/json", "{\"success\":false,\"error\":\"Invalid JSON\"}");
+        return;
+    }
+    
+    if (!doc.containsKey("filename")) {
+        server->send(400, "application/json", "{\"success\":false,\"error\":\"Missing filename\"}");
+        return;
+    }
+    
+    PsramString filename = doc["filename"].as<const char*>();
+    Log.printf("[WebHandler] Restoring from backup: %s\n", filename.c_str());
+    
+    bool success = backupManager->restoreFromBackup(filename);
+    
+    if (success) {
+        server->send(200, "application/json", "{\"success\":true,\"message\":\"Restore successful, rebooting...\"}");
+        delay(2000);  // Increased from 1000ms to ensure response is sent
+        ESP.restart();
+    } else {
+        server->send(500, "application/json", "{\"success\":false,\"error\":\"Restore failed\"}");
+    }
+}
+
+void handleBackupList() {
+    if (!server || !backupManager) {
+        server->send(500, "application/json", "{\"success\":false,\"error\":\"BackupManager not available\"}");
+        return;
+    }
+    
+    PsramVector<BackupInfo> backups = backupManager->listBackups();
+    
+    SpiRamAllocator allocator;
+    JsonDocument doc(&allocator);
+    JsonArray array = doc["backups"].to<JsonArray>();
+    
+    for (const auto& backup : backups) {
+        JsonObject obj = array.add<JsonObject>();
+        obj["filename"] = backup.filename.c_str();
+        obj["timestamp"] = backup.timestamp.c_str();
+        obj["size"] = backup.size;
+    }
+    
+    String response;
+    serializeJson(doc, response);
+    server->send(200, "application/json", response.c_str());
+}
+
+// =============================================================================
+// Theme Park Handlers
+// =============================================================================
 
 void handleThemeParksList() {
     if (!server || !webClient) {
