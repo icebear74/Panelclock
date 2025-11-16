@@ -783,6 +783,14 @@ void handleBackupUpload() {
         if (uploadFile) {
             uploadFile.close();
         }
+        // Delete the potentially corrupted file
+        if (uploadFilename.length() > 0 && backupManager) {
+            PsramString fullPath = backupManager->getBackupPath(uploadFilename);
+            if (LittleFS.exists(fullPath.c_str())) {
+                LittleFS.remove(fullPath.c_str());
+                Log.printf("[WebHandler] Aborted upload file deleted: %s\n", fullPath.c_str());
+            }
+        }
         Log.println("[WebHandler] Upload aborted");
         server->send(500, "application/json", "{\"success\":false,\"error\":\"Upload aborted\"}");
     }
@@ -796,7 +804,7 @@ void handleBackupRestore() {
     
     // Parse JSON body
     String body = server->arg("plain");
-    DynamicJsonDocument doc(256);
+    JsonDocument doc;
     DeserializationError error = deserializeJson(doc, body);
     
     if (error) {
@@ -816,7 +824,7 @@ void handleBackupRestore() {
     
     if (success) {
         server->send(200, "application/json", "{\"success\":true,\"message\":\"Restore successful, rebooting...\"}");
-        delay(1000);
+        delay(2000);  // Increased from 1000ms to ensure response is sent
         ESP.restart();
     } else {
         server->send(500, "application/json", "{\"success\":false,\"error\":\"Restore failed\"}");
@@ -831,11 +839,11 @@ void handleBackupList() {
     
     PsramVector<BackupInfo> backups = backupManager->listBackups();
     
-    DynamicJsonDocument doc(4096);
-    JsonArray array = doc.createNestedArray("backups");
+    JsonDocument doc;
+    JsonArray array = doc["backups"].to<JsonArray>();
     
     for (const auto& backup : backups) {
-        JsonObject obj = array.createNestedObject();
+        JsonObject obj = array.add<JsonObject>();
         obj["filename"] = backup.filename.c_str();
         obj["timestamp"] = backup.timestamp.c_str();
         obj["size"] = backup.size;

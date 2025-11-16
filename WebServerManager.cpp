@@ -47,7 +47,7 @@ void setupWebServer(bool portalMode) {
     server->on("/api/backup/create", HTTP_POST, handleBackupCreate);
     server->on("/api/backup/download", HTTP_GET, handleBackupDownload);
     server->on("/api/backup/upload", HTTP_POST, []() {
-        server->send(200); // Send response after upload completes
+        // Empty lambda - response handled by handleBackupUpload
     }, handleBackupUpload);
     server->on("/api/backup/restore", HTTP_POST, handleBackupRestore);
     server->on("/api/backup/list", HTTP_GET, handleBackupList);

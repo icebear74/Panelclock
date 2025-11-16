@@ -71,8 +71,8 @@ bool BackupManager::createBackup(bool manualBackup) {
     
     Log.printf("[BackupManager] Backup file: %s\n", fullPath.c_str());
     
-    // Create JSON document (allocate in PSRAM)
-    DynamicJsonDocument doc(256 * 1024); // 256KB should be enough
+    // Create JSON document (uses PSRAM automatically with ArduinoJson v7)
+    JsonDocument doc;
     
     // Add metadata
     doc["version"] = "1.0";
@@ -229,6 +229,8 @@ void BackupManager::collectCertificates(JsonDocument& doc) {
                 
                 certs[filename.c_str()] = buffer;
                 free(buffer);
+            } else {
+                Log.printf("[BackupManager] ERROR: Memory allocation failed for %s\n", filename.c_str());
             }
         }
         file.close();
@@ -242,42 +244,63 @@ void BackupManager::collectJsonFiles(JsonDocument& doc) {
     
     JsonObject jsonFiles = doc["json_files"].to<JsonObject>();
     
-    // List of JSON files to back up (excluding config.json and hardware.json as they're handled separately)
-    const char* jsonFileList[] = {
-        "/station_cache.json",
-        "/station_price_stats.json",
-        "/price_cache.json",
-        "/calendar_cache.json",
-        "/weather_cache.json",
-        nullptr
-    };
+    // Automatically discover and backup all JSON files in LittleFS root directory
+    // Exclude files that are handled separately or should not be backed up
+    File root = LittleFS.open("/", "r");
+    if (!root || !root.isDirectory()) {
+        Log.println("[BackupManager] Could not open root directory");
+        return;
+    }
     
-    for (int i = 0; jsonFileList[i] != nullptr; i++) {
-        const char* filepath = jsonFileList[i];
-        if (LittleFS.exists(filepath)) {
-            Log.printf("[BackupManager] Backing up JSON file: %s\n", filepath);
+    File file = root.openNextFile();
+    while (file) {
+        if (!file.isDirectory()) {
+            PsramString filename = file.name();
             
-            File file = LittleFS.open(filepath, "r");
-            if (file) {
-                DynamicJsonDocument fileDoc(32 * 1024);
-                DeserializationError error = deserializeJson(fileDoc, file);
-                file.close();
+            // Extract just filename without path
+            int lastSlash = filename.lastIndexOf('/');
+            if (lastSlash >= 0) {
+                filename = filename.substring(lastSlash + 1);
+            }
+            
+            // Skip files that should not be backed up:
+            // - config.json and hardware.json (handled separately)
+            // - backup files themselves
+            // - last_backup_time.txt (internal backup manager state)
+            // - any non-JSON files
+            if (filename.endsWith(".json") && 
+                filename != "config.json" && 
+                filename != "hardware.json" &&
+                !filename.startsWith("backup_") &&
+                !filename.startsWith("manual_backup_") &&
+                !filename.startsWith("uploaded_backup_")) {
                 
-                if (!error) {
-                    // Extract just the filename (without path) for the key
-                    PsramString filename = filepath;
-                    int lastSlash = filename.lastIndexOf('/');
-                    if (lastSlash >= 0) {
-                        filename = filename.substring(lastSlash + 1);
+                Log.printf("[BackupManager] Backing up JSON file: %s\n", filename.c_str());
+                
+                // Re-open the file for reading (the iterator file is for listing only)
+                PsramString fullPath = "/";
+                fullPath += filename;
+                File jsonFile = LittleFS.open(fullPath.c_str(), "r");
+                if (jsonFile) {
+                    JsonDocument fileDoc;
+                    DeserializationError error = deserializeJson(fileDoc, jsonFile);
+                    jsonFile.close();
+                    
+                    if (!error) {
+                        jsonFiles[filename.c_str()] = fileDoc.as<JsonObject>();
+                    } else {
+                        Log.printf("[BackupManager] Error parsing JSON file %s: %s\n", 
+                                   filename.c_str(), error.c_str());
                     }
-                    jsonFiles[filename.c_str()] = fileDoc.as<JsonObject>();
-                } else {
-                    Log.printf("[BackupManager] Error parsing JSON file %s: %s\n", 
-                               filepath, error.c_str());
                 }
             }
         }
+        file.close();
+        file = root.openNextFile();
     }
+    root.close();
+    
+    Log.printf("[BackupManager] Finished collecting JSON files\n");
 }
 
 bool BackupManager::restoreFromBackup(const PsramString& filename) {
@@ -296,8 +319,8 @@ bool BackupManager::restoreFromBackup(const PsramString& filename) {
         return false;
     }
     
-    // Parse backup file
-    DynamicJsonDocument doc(256 * 1024);
+    // Parse backup file (uses PSRAM automatically with ArduinoJson v7)
+    JsonDocument doc;
     DeserializationError error = deserializeJson(doc, file);
     file.close();
     
