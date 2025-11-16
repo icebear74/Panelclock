@@ -226,7 +226,7 @@ void BackupManager::collectCertificates(JsonDocument& doc) {
     File file = root.openNextFile();
     while (file) {
         PsramString filename = file.name();
-        if (filename.ends_with(".pem") || filename.ends_with(".crt") || filename.ends_with(".cer")) {
+        if (endsWith(filename, ".pem") || endsWith(filename, ".crt") || endsWith(filename, ".cer")) {
             Log.printf("[BackupManager] Backing up certificate: %s\n", filename.c_str());
             
             // Read certificate content
@@ -268,9 +268,9 @@ void BackupManager::collectJsonFiles(JsonDocument& doc) {
             PsramString filename = file.name();
             
             // Extract just filename without path
-            size_t lastSlash = filename.find_last_of('/');
-            if (lastSlash != PsramString::npos) {
-                filename = filename.substr(lastSlash + 1);
+            int lastSlash = lastIndexOf(filename, '/');
+            if (lastSlash >= 0) {
+                filename = substring(filename, lastSlash + 1);
             }
             
             // Skip files that should not be backed up:
@@ -278,12 +278,12 @@ void BackupManager::collectJsonFiles(JsonDocument& doc) {
             // - backup files themselves
             // - last_backup_time.txt (internal backup manager state)
             // - any non-JSON files
-            if (filename.ends_with(".json") && 
+            if (endsWith(filename, ".json") && 
                 filename != "config.json" && 
                 filename != "hardware.json" &&
-                !filename.starts_with("backup_") &&
-                !filename.starts_with("manual_backup_") &&
-                !filename.starts_with("uploaded_backup_")) {
+                !startsWith(filename, "backup_") &&
+                !startsWith(filename, "manual_backup_") &&
+                !startsWith(filename, "uploaded_backup_")) {
                 
                 Log.printf("[BackupManager] Backing up JSON file: %s\n", filename.c_str());
                 
@@ -423,12 +423,12 @@ PsramVector<BackupInfo> BackupManager::listBackups() {
         if (!file.isDirectory()) {
             PsramString filename = file.name();
             // Extract just filename without path
-            size_t lastSlash = filename.find_last_of('/');
-            if (lastSlash != PsramString::npos) {
-                filename = filename.substr(lastSlash + 1);
+            int lastSlash = lastIndexOf(filename, '/');
+            if (lastSlash >= 0) {
+                filename = substring(filename, lastSlash + 1);
             }
             
-            if (filename.ends_with(".json")) {
+            if (endsWith(filename, ".json")) {
                 size_t fileSize = file.size();
                 
                 // Try to extract timestamp from file content
