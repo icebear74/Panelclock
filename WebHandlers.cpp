@@ -9,6 +9,13 @@
 #include "MemoryLogger.hpp"
 #include "MultiLogger.hpp"
 
+// PSRAM Allocator for ArduinoJson (same pattern as ThemeParkModule and WeatherModule)
+struct SpiRamAllocator : ArduinoJson::Allocator {
+    void* allocate(size_t size) override { return ps_malloc(size); }
+    void deallocate(void* pointer) override { free(pointer); }
+    void* reallocate(void* ptr, size_t new_size) override { return ps_realloc(ptr, new_size); }
+};
+
 // Externals from main application / WebServerManager.hpp
 extern WebServer* server;
 extern DeviceConfig* deviceConfig;
@@ -804,7 +811,8 @@ void handleBackupRestore() {
     
     // Parse JSON body
     String body = server->arg("plain");
-    JsonDocument doc;
+    SpiRamAllocator allocator;
+    JsonDocument doc(&allocator);
     DeserializationError error = deserializeJson(doc, body);
     
     if (error) {
@@ -839,7 +847,8 @@ void handleBackupList() {
     
     PsramVector<BackupInfo> backups = backupManager->listBackups();
     
-    JsonDocument doc;
+    SpiRamAllocator allocator;
+    JsonDocument doc(&allocator);
     JsonArray array = doc["backups"].to<JsonArray>();
     
     for (const auto& backup : backups) {

@@ -8,6 +8,13 @@
 #include <sys/stat.h>
 #include <algorithm>
 
+// PSRAM Allocator for ArduinoJson (same pattern as ThemeParkModule and WeatherModule)
+struct SpiRamAllocator : ArduinoJson::Allocator {
+    void* allocate(size_t size) override { return ps_malloc(size); }
+    void deallocate(void* pointer) override { free(pointer); }
+    void* reallocate(void* ptr, size_t new_size) override { return ps_realloc(ptr, new_size); }
+};
+
 // External references
 extern DeviceConfig* deviceConfig;
 extern HardwareConfig* hardwareConfig;
@@ -39,18 +46,20 @@ void BackupManager::ensureBackupDirectory() {
 
 PsramString BackupManager::generateBackupFilename(bool manualBackup) {
     char filename[64];
-    time_t now = time(nullptr);
-    struct tm* timeinfo = localtime(&now);
+    time_t now_utc = time(nullptr);
+    time_t now_local = timeConverter ? timeConverter->toLocal(now_utc) : now_utc;
+    struct tm timeinfo;
+    gmtime_r(&now_local, &timeinfo);
     
     const char* prefix = manualBackup ? "manual_" : "";
     snprintf(filename, sizeof(filename), "%sbackup_%04d-%02d-%02d_%02d-%02d-%02d.json",
              prefix,
-             timeinfo->tm_year + 1900,
-             timeinfo->tm_mon + 1,
-             timeinfo->tm_mday,
-             timeinfo->tm_hour,
-             timeinfo->tm_min,
-             timeinfo->tm_sec);
+             timeinfo.tm_year + 1900,
+             timeinfo.tm_mon + 1,
+             timeinfo.tm_mday,
+             timeinfo.tm_hour,
+             timeinfo.tm_min,
+             timeinfo.tm_sec);
     
     return filename;
 }
@@ -71,8 +80,9 @@ bool BackupManager::createBackup(bool manualBackup) {
     
     Log.printf("[BackupManager] Backup file: %s\n", fullPath.c_str());
     
-    // Create JSON document (uses PSRAM automatically with ArduinoJson v7)
-    JsonDocument doc;
+    // Create JSON document with PSRAM allocator (same pattern as ThemeParkModule and WeatherModule)
+    SpiRamAllocator allocator;
+    JsonDocument doc(&allocator);
     
     // Add metadata
     doc["version"] = "1.0";
@@ -282,7 +292,8 @@ void BackupManager::collectJsonFiles(JsonDocument& doc) {
                 fullPath += filename;
                 File jsonFile = LittleFS.open(fullPath.c_str(), "r");
                 if (jsonFile) {
-                    JsonDocument fileDoc;
+                    SpiRamAllocator allocator;
+                    JsonDocument fileDoc(&allocator);
                     DeserializationError error = deserializeJson(fileDoc, jsonFile);
                     jsonFile.close();
                     
@@ -319,8 +330,9 @@ bool BackupManager::restoreFromBackup(const PsramString& filename) {
         return false;
     }
     
-    // Parse backup file (uses PSRAM automatically with ArduinoJson v7)
-    JsonDocument doc;
+    // Parse backup file with PSRAM allocator (same pattern as ThemeParkModule and WeatherModule)
+    SpiRamAllocator allocator;
+    JsonDocument doc(&allocator);
     DeserializationError error = deserializeJson(doc, file);
     file.close();
     
@@ -420,16 +432,18 @@ PsramVector<BackupInfo> BackupManager::listBackups() {
                 size_t fileSize = file.size();
                 
                 // Try to extract timestamp from file content
-                time_t timestamp = file.getLastWrite();
+                time_t timestamp_utc = file.getLastWrite();
+                time_t timestamp_local = timeConverter ? timeConverter->toLocal(timestamp_utc) : timestamp_utc;
                 char timeStr[32];
-                struct tm* timeinfo = localtime(&timestamp);
+                struct tm timeinfo;
+                gmtime_r(&timestamp_local, &timeinfo);
                 snprintf(timeStr, sizeof(timeStr), "%04d-%02d-%02d %02d:%02d:%02d",
-                        timeinfo->tm_year + 1900,
-                        timeinfo->tm_mon + 1,
-                        timeinfo->tm_mday,
-                        timeinfo->tm_hour,
-                        timeinfo->tm_min,
-                        timeinfo->tm_sec);
+                        timeinfo.tm_year + 1900,
+                        timeinfo.tm_mon + 1,
+                        timeinfo.tm_mday,
+                        timeinfo.tm_hour,
+                        timeinfo.tm_min,
+                        timeinfo.tm_sec);
                 
                 backups.push_back(BackupInfo(filename, timeStr, fileSize));
             }
