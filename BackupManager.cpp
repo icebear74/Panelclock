@@ -395,8 +395,16 @@ bool BackupManager::restoreFromBackup(const PsramString& filename) {
     if (doc["certificates"].is<JsonObject>()) {
         JsonObject certs = doc["certificates"];
         for (JsonPair kv : certs) {
+            PsramString relativePath = kv.key().c_str();
+            
+            // Security: Validate path to prevent directory traversal
+            if (indexOf(relativePath, "..") >= 0 || startsWith(relativePath, "/")) {
+                Log.printf("[BackupManager] WARNING: Skipping invalid certificate path: %s\n", relativePath.c_str());
+                continue;
+            }
+            
             PsramString certPath = "/";
-            certPath += kv.key().c_str();
+            certPath += relativePath;
             
             // Ensure parent directory exists
             int lastSlash = lastIndexOf(certPath, '/');
@@ -421,8 +429,16 @@ bool BackupManager::restoreFromBackup(const PsramString& filename) {
     if (doc["json_files"].is<JsonObject>()) {
         JsonObject jsonFiles = doc["json_files"];
         for (JsonPair kv : jsonFiles) {
+            PsramString relativePath = kv.key().c_str();
+            
+            // Security: Validate path to prevent directory traversal
+            if (indexOf(relativePath, "..") >= 0 || startsWith(relativePath, "/")) {
+                Log.printf("[BackupManager] WARNING: Skipping invalid JSON file path: %s\n", relativePath.c_str());
+                continue;
+            }
+            
             PsramString filepath = "/";
-            filepath += kv.key().c_str();
+            filepath += relativePath;
             
             // Ensure parent directory exists
             int lastSlash = lastIndexOf(filepath, '/');
