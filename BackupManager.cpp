@@ -216,37 +216,55 @@ void BackupManager::collectCertificates(JsonDocument& doc) {
     
     JsonObject certs = doc["certificates"].to<JsonObject>();
     
-    // Collect all .pem files from root directory
-    File root = LittleFS.open("/", "r");
-    if (!root || !root.isDirectory()) {
-        Log.println("[BackupManager] Could not open root directory");
-        return;
-    }
-    
-    File file = root.openNextFile();
-    while (file) {
-        PsramString filename = file.name();
-        if (endsWith(filename, ".pem") || endsWith(filename, ".crt") || endsWith(filename, ".cer")) {
-            Log.printf("[BackupManager] Backing up certificate: %s\n", filename.c_str());
-            
-            // Read certificate content
-            size_t fileSize = file.size();
-            char* buffer = (char*)ps_malloc(fileSize + 1);
-            if (buffer) {
-                file.seek(0);
-                size_t bytesRead = file.readBytes(buffer, fileSize);
-                buffer[bytesRead] = '\0';
-                
-                certs[filename.c_str()] = buffer;
-                free(buffer);
-            } else {
-                Log.printf("[BackupManager] ERROR: Memory allocation failed for %s\n", filename.c_str());
-            }
+    // Helper lambda to scan directory for certificates
+    auto scanDirForCerts = [&](const char* dirPath) {
+        File dir = LittleFS.open(dirPath, "r");
+        if (!dir || !dir.isDirectory()) {
+            Log.printf("[BackupManager] Could not open directory: %s\n", dirPath);
+            return;
         }
-        file.close();
-        file = root.openNextFile();
+        
+        File file = dir.openNextFile();
+        while (file) {
+            if (!file.isDirectory()) {
+                PsramString filename = file.name();
+                if (endsWith(filename, ".pem") || endsWith(filename, ".crt") || endsWith(filename, ".cer")) {
+                    // Extract relative path (remove leading slash if present)
+                    PsramString relativePath = filename;
+                    if (startsWith(relativePath, "/")) {
+                        relativePath = substring(relativePath, 1);
+                    }
+                    
+                    Log.printf("[BackupManager] Backing up certificate: %s\n", relativePath.c_str());
+                    
+                    // Read certificate content
+                    size_t fileSize = file.size();
+                    char* buffer = (char*)ps_malloc(fileSize + 1);
+                    if (buffer) {
+                        file.seek(0);
+                        size_t bytesRead = file.readBytes(buffer, fileSize);
+                        buffer[bytesRead] = '\0';
+                        
+                        certs[relativePath.c_str()] = buffer;
+                        free(buffer);
+                    } else {
+                        Log.printf("[BackupManager] ERROR: Memory allocation failed for %s\n", relativePath.c_str());
+                    }
+                }
+            }
+            file.close();
+            file = dir.openNextFile();
+        }
+        dir.close();
+    };
+    
+    // Scan root directory for certificates
+    scanDirForCerts("/");
+    
+    // Scan /certs directory for certificates (if it exists)
+    if (LittleFS.exists("/certs")) {
+        scanDirForCerts("/certs");
     }
-    root.close();
 }
 
 void BackupManager::collectJsonFiles(JsonDocument& doc) {
@@ -298,7 +316,9 @@ void BackupManager::collectJsonFiles(JsonDocument& doc) {
                     jsonFile.close();
                     
                     if (!error) {
-                        jsonFiles[filename.c_str()] = fileDoc.as<JsonObject>();
+                        // Copy the entire JSON structure (object, array, or primitive)
+                        // This preserves the original structure of the file
+                        jsonFiles[filename.c_str()] = fileDoc.as<JsonVariant>();
                     } else {
                         Log.printf("[BackupManager] Error parsing JSON file %s: %s\n", 
                                    filename.c_str(), error.c_str());
@@ -375,8 +395,26 @@ bool BackupManager::restoreFromBackup(const PsramString& filename) {
     if (doc["certificates"].is<JsonObject>()) {
         JsonObject certs = doc["certificates"];
         for (JsonPair kv : certs) {
+            PsramString relativePath = kv.key().c_str();
+            
+            // Security: Validate path to prevent directory traversal
+            if (indexOf(relativePath, "..") >= 0 || startsWith(relativePath, "/")) {
+                Log.printf("[BackupManager] WARNING: Skipping invalid certificate path: %s\n", relativePath.c_str());
+                continue;
+            }
+            
             PsramString certPath = "/";
-            certPath += kv.key().c_str();
+            certPath += relativePath;
+            
+            // Ensure parent directory exists
+            int lastSlash = lastIndexOf(certPath, '/');
+            if (lastSlash > 0) {
+                PsramString parentDir = substring(certPath, 0, lastSlash);
+                if (!LittleFS.exists(parentDir.c_str())) {
+                    LittleFS.mkdir(parentDir.c_str());
+                    Log.printf("[BackupManager] Created directory: %s\n", parentDir.c_str());
+                }
+            }
             
             File certFile = LittleFS.open(certPath.c_str(), "w");
             if (certFile) {
@@ -391,8 +429,26 @@ bool BackupManager::restoreFromBackup(const PsramString& filename) {
     if (doc["json_files"].is<JsonObject>()) {
         JsonObject jsonFiles = doc["json_files"];
         for (JsonPair kv : jsonFiles) {
+            PsramString relativePath = kv.key().c_str();
+            
+            // Security: Validate path to prevent directory traversal
+            if (indexOf(relativePath, "..") >= 0 || startsWith(relativePath, "/")) {
+                Log.printf("[BackupManager] WARNING: Skipping invalid JSON file path: %s\n", relativePath.c_str());
+                continue;
+            }
+            
             PsramString filepath = "/";
-            filepath += kv.key().c_str();
+            filepath += relativePath;
+            
+            // Ensure parent directory exists
+            int lastSlash = lastIndexOf(filepath, '/');
+            if (lastSlash > 0) {
+                PsramString parentDir = substring(filepath, 0, lastSlash);
+                if (!LittleFS.exists(parentDir.c_str())) {
+                    LittleFS.mkdir(parentDir.c_str());
+                    Log.printf("[BackupManager] Created directory: %s\n", parentDir.c_str());
+                }
+            }
             
             File jsonFile = LittleFS.open(filepath.c_str(), "w");
             if (jsonFile) {
