@@ -59,8 +59,8 @@ DartsPlayer::~DartsPlayer() {
 
 // --- DartsRankingModule Klassenimplementierung ---
 
-DartsRankingModule::DartsRankingModule(U8G2_FOR_ADAFRUIT_GFX& u8g2_ref, GFXcanvas16& canvas_ref, WebClientModule* webClient_ptr)
-    : u8g2(u8g2_ref), canvas(canvas_ref), webClient(webClient_ptr) {
+DartsRankingModule::DartsRankingModule(U8G2_FOR_ADAFRUIT_GFX& u8g2_ref, GFXcanvas16& canvas_ref, WebClientModule* webClient_ptr, DeviceConfig* config)
+    : u8g2(u8g2_ref), canvas(canvas_ref), webClient(webClient_ptr), config(config) {
     dataMutex = xSemaphoreCreateMutex();
 }
 
@@ -111,6 +111,11 @@ void DartsRankingModule::resetPaging() {
 }
 
 void DartsRankingModule::tick() {
+    // Use global scroll speed from config
+    if (config && config->globalScrollSpeedMs > 0) {
+        scrollStepInterval = config->globalScrollSpeedMs;
+    }
+    
     unsigned long now = millis();
     if (now - lastScrollStepTime > scrollStepInterval) {
         tickScroll();
@@ -205,9 +210,11 @@ void DartsRankingModule::draw() {
         drawScrollingText(subTitle, (canvas.width() - u8g2.getUTF8Width(" ") * 40) / 2, 18, u8g2.getUTF8Width(" ") * 40, -1);
     }
     
-    String page_info = String(currentPage + 1) + "/" + String(totalPages);
+    // Page info using stack buffer instead of String
+    char page_info[32];
+    snprintf(page_info, sizeof(page_info), "%d/%d", currentPage + 1, totalPages);
     u8g2.setFont(u8g2_font_profont10_tf);
-    int page_info_width = u8g2.getUTF8Width(page_info.c_str());
+    int page_info_width = u8g2.getUTF8Width(page_info);
     u8g2.setCursor(canvas.width() - page_info_width - 2, 8);
     u8g2.print(page_info);
 
@@ -263,23 +270,35 @@ void DartsRankingModule::draw() {
         }
         u8g2.setForegroundColor(name_color); 
         
-        String roundPart = "";
+        // Build round and right text using stack buffers to avoid heap allocations
+        char roundPart[64] = "";
         if (player.currentRound) {
             if (strcmp(player.currentRound, "--") == 0) {
-                String dashes = "";
-                for(int j=0; j<max_round_len; ++j) dashes += "-";
-                roundPart = "(" + dashes + ")";
+                char dashes[32] = "";
+                for(int j=0; j<max_round_len && j<30; ++j) dashes[j] = '-';
+                dashes[max_round_len < 30 ? max_round_len : 30] = '\0';
+                snprintf(roundPart, sizeof(roundPart), "(%s)", dashes);
             } else {
-                String roundStr(player.currentRound);
-                while(roundStr.length() < max_round_len) {
-                    roundStr += " ";
+                char roundStr[32];
+                strncpy(roundStr, player.currentRound, sizeof(roundStr)-1);
+                roundStr[sizeof(roundStr)-1] = '\0';
+                int len = strlen(roundStr);
+                while(len < max_round_len && len < 30) {
+                    roundStr[len++] = ' ';
                 }
-                roundPart = "(" + roundStr + ")";
+                roundStr[len] = '\0';
+                snprintf(roundPart, sizeof(roundPart), "(%s)", roundStr);
             }
         }
-        String rightText = (player.prizeMoney ? "£" + String(player.prizeMoney) : "") + " " + roundPart;
         
-        int x_right = canvas.width() - u8g2.getUTF8Width(rightText.c_str()) - 2;
+        char rightText[128];
+        if (player.prizeMoney) {
+            snprintf(rightText, sizeof(rightText), "£%s %s", player.prizeMoney, roundPart);
+        } else {
+            snprintf(rightText, sizeof(rightText), " %s", roundPart);
+        }
+        
+        int x_right = canvas.width() - u8g2.getUTF8Width(rightText) - 2;
         int nameX = 45;
         int maxNameWidth = x_right - nameX - 4;
         drawScrollingText(player.name, nameX, y, maxNameWidth, i);
@@ -459,14 +478,30 @@ void DartsRankingModule::filterAndSortPlayers(DartsRankingType type) {
     });
 }
 
-String DartsRankingModule::extractText(const char* htmlFragment, size_t maxLen) {
-    String result = ""; bool inTag = false;
+PsramString DartsRankingModule::extractText(const char* htmlFragment, size_t maxLen) {
+    PsramString result;
+    result.reserve(maxLen / 2); // Reserve some space to reduce allocations
+    bool inTag = false;
     for (size_t i = 0; i < maxLen && htmlFragment[i] != '\0'; ++i) {
         if (htmlFragment[i] == '<') inTag = true;
         else if (htmlFragment[i] == '>') inTag = false;
         else if (!inTag) result += htmlFragment[i];
     }
-    result.replace("&pound;", ""); result.trim(); return result;
+    // Remove &pound; and trim - use PsramString operations
+    replaceAll(result, PsramString("&pound;"), PsramString(""));
+    // Simple trim
+    while (!result.empty() && (result[0] == ' ' || result[0] == '\t' || result[0] == '\n' || result[0] == '\r')) {
+        result = result.substr(1);
+    }
+    while (!result.empty()) {
+        char c = result[result.length()-1];
+        if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+            result = result.substr(0, result.length()-1);
+        } else {
+            break;
+        }
+    }
+    return result;
 }
 
 void DartsRankingModule::parsePlayerRow(const char* tr_start, const char* tr_end, const PsramVector<PsramString>& headers, DartsPlayer& player, bool isLiveFormat) {
@@ -485,7 +520,7 @@ void DartsRankingModule::parsePlayerRow(const char* tr_start, const char* tr_end
         const char* td_end_tag = strstr(td_content_start, "</td>");
         if (!td_end_tag) break;
 
-        String content = extractText(td_content_start, td_end_tag - td_content_start);
+        PsramString content = extractText(td_content_start, td_end_tag - td_content_start);
         
         if (isLiveFormat) {
             int tag_search_len = td_tag_end - td_start_tag;
@@ -512,11 +547,11 @@ void DartsRankingModule::parsePlayerRow(const char* tr_start, const char* tr_end
 
         if (col_idx < headers.size()) {
             const PsramString& header = headers[col_idx];
-            if (header == "Rk") player.rank = content.toInt();
+            if (header == "Rk") player.rank = toInt(content);
             else if (header == "Name") player.name = psram_strdup(content.c_str());
             else if (header == "Prize Money") {
-                content.replace(",", "");
-                float money = content.toFloat();
+                replaceAll(content, PsramString(","), PsramString(""));
+                float money = toFloat(content);
                 char* formatted_money = (char*)ps_malloc(16);
                 if (formatted_money) {
                     snprintf(formatted_money, 16, "%.2f", money);
@@ -525,13 +560,13 @@ void DartsRankingModule::parsePlayerRow(const char* tr_start, const char* tr_end
             }
             
             if (header == "+/-") {
-                player.movementValue = content.toInt();
+                player.movementValue = toInt(content);
                 if (strstr(td_start_tag, "change-up")) player.movement = PlayerMovement::UP;
                 else if (strstr(td_start_tag, "change-down")) player.movement = PlayerMovement::DOWN;
                 else player.movement = PlayerMovement::SAME;
             }
         } else if (!isLiveFormat && col_idx == 0) {
-             player.rank = content.toInt();
+             player.rank = toInt(content);
         }
         current_pos = td_end_tag + 5;
         col_idx++;
@@ -624,8 +659,7 @@ bool DartsRankingModule::parseTable(const char* html, std::vector<DartsPlayer, P
             const char* th_end_tag = strstr(th_content_start, "</th>"); 
             if (!th_end_tag) break;
             
-            String headerTextStr = extractText(th_content_start, th_end_tag - th_content_start);
-            PsramString headerText(headerTextStr.c_str());
+            PsramString headerText = extractText(th_content_start, th_end_tag - th_content_start);
             headers.push_back(headerText);
             
             if (headerText != "Rk" && headerText != "+/-" && headerText != "Name" && headerText != "Prize Money" && headerText.length() > 0 && headerText.length() <= 4) {
@@ -699,7 +733,7 @@ void DartsRankingModule::drawScrollingText(const char* text, int x, int y, int m
     ScrollState& currentScrollState = (scrollIndex == -1) ? subtitleScrollState : scrollPos[scrollIndex];
 
     if (p_text.length() > visiblePart.length()) {
-        PsramString pad("   ");
+        PsramString pad("     ");  // 5 spaces for smoother scrolling
         PsramString scrollText = p_text + pad + p_text.substr(0, visiblePart.length());
         int maxScroll = scrollText.length() - visiblePart.length();
         

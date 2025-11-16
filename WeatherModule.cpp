@@ -520,7 +520,7 @@ void WeatherModule::buildPages() {
         // Page 3: Today Part 2 (cloud coverage, precipitation, wind, mean temp)
         _pages.push_back({WeatherPageType::TODAY_PART2, 0}); 
         
-        // Page 4: Precipitation chart (only if rain/snow expected today)
+        // Page 4: Precipitation chart (if rain/snow expected or likely today)
         bool precipitationExpected = false;
         time_t now_utc = time(nullptr);
         struct tm tm_now;
@@ -531,7 +531,8 @@ void WeatherModule::buildPages() {
             struct tm tm_hour;
             gmtime_r(&hour.dt, &tm_hour);
             if (tm_hour.tm_yday != tm_now.tm_yday) break;
-            if (hour.rain_1h > 0 || hour.snow_1h > 0) {
+            // Show chart if there's actual precipitation or significant probability (>20%)
+            if (hour.rain_1h > 0 || hour.snow_1h > 0 || hour.pop > 0.2f) {
                 precipitationExpected = true;
                 break;
             }
@@ -596,11 +597,11 @@ void WeatherModule::drawCurrentWeatherPage() {
     // Use consistent font throughout
     _u8g2.setFont(u8g2_font_helvR08_tr);
     
-    // Title with data timestamp
+    // Title with data fetch timestamp (not current time)
     _u8g2.setForegroundColor(0xFFFF);
     char titleBuf[20];
     char timeBuf[6];
-    formatTime(timeBuf, sizeof(timeBuf), now_utc);
+    formatTime(timeBuf, sizeof(timeBuf), _lastForecastUpdate);
     snprintf(titleBuf, sizeof(titleBuf), "JETZT %s", timeBuf);
     _u8g2.setCursor(data_x, 10);
     _u8g2.print(titleBuf);
@@ -789,11 +790,11 @@ void WeatherModule::drawPrecipitationChartPage() {
         return;
     }
     
-    // Chart dimensions
-    const int chart_x = 10;
+    // Chart dimensions - adjusted to make room for axis labels
+    const int chart_x = 20;  // More space for Y-axis labels
     const int chart_y = 15;
-    const int chart_w = _canvas.width() - 20;
-    const int chart_h = 45;
+    const int chart_w = _canvas.width() - 30;
+    const int chart_h = 38;  // Slightly smaller to make room for X-axis labels
     
     // Find max precipitation for scaling
     float max_precip = 0.1f;  // Minimum scale
@@ -806,45 +807,105 @@ void WeatherModule::drawPrecipitationChartPage() {
     _canvas.drawLine(chart_x, chart_y + chart_h, chart_x + chart_w, chart_y + chart_h, 0x7BEF);
     _canvas.drawLine(chart_x, chart_y, chart_x, chart_y + chart_h, 0x7BEF);
     
-    // Draw precipitation areas
+    // Draw Y-axis labels
+    _u8g2.setFont(u8g2_font_4x6_tf);
+    _u8g2.setForegroundColor(0xAAAA);
+    char labelBuf[8];
+    // Top label
+    snprintf(labelBuf, sizeof(labelBuf), "%.1f", max_precip);
+    _u8g2.setCursor(2, chart_y + 4);
+    _u8g2.print(labelBuf);
+    // Middle label
+    snprintf(labelBuf, sizeof(labelBuf), "%.1f", max_precip / 2);
+    _u8g2.setCursor(2, chart_y + chart_h / 2 + 2);
+    _u8g2.print(labelBuf);
+    // Bottom label (0)
+    _u8g2.setCursor(2, chart_y + chart_h);
+    _u8g2.print("0");
+    
+    // Draw precipitation as area chart (not bars)
     int num_hours = today_hours.size();
     if (num_hours > 1) {
-        float bar_width = (float)chart_w / num_hours;
+        float step_width = (float)chart_w / (num_hours - 1);
         
-        for (int i = 0; i < num_hours; i++) {
-            const auto* hour = today_hours[i];
-            int x = chart_x + (int)(i * bar_width);
-            int bar_w = (int)bar_width + 1;
+        // Draw rain area (blue) or probability area (lighter blue if no actual rain)
+        for (int i = 0; i < num_hours - 1; i++) {
+            const auto* hour1 = today_hours[i];
+            const auto* hour2 = today_hours[i + 1];
             
-            // Calculate heights
-            int rain_h = (int)((hour->rain_1h / max_precip) * chart_h);
-            int snow_h = (int)((hour->snow_1h / max_precip) * chart_h);
+            int x1 = chart_x + (int)(i * step_width);
+            int x2 = chart_x + (int)((i + 1) * step_width);
             
-            // Draw rain (blue)
-            if (rain_h > 0) {
-                _canvas.fillRect(x, chart_y + chart_h - rain_h, bar_w, rain_h, 0x001F);
+            // Use rain amount if available, otherwise use pop * max_precip for visual representation
+            float rain1 = (hour1->rain_1h > 0) ? hour1->rain_1h : (hour1->pop * max_precip * 0.3f);
+            float rain2 = (hour2->rain_1h > 0) ? hour2->rain_1h : (hour2->pop * max_precip * 0.3f);
+            
+            int rain_y1 = chart_y + chart_h - (int)((rain1 / max_precip) * chart_h);
+            int rain_y2 = chart_y + chart_h - (int)((rain2 / max_precip) * chart_h);
+            
+            // Fill area under the line
+            if (rain1 > 0 || rain2 > 0) {
+                // Use different color for probability vs actual rain
+                uint16_t rain_color = (hour1->rain_1h > 0 || hour2->rain_1h > 0) ? 0x001F : 0x4210;  // Blue or lighter blue
+                // Draw filled polygon (trapezoid) from baseline to line
+                for (int x = x1; x <= x2; x++) {
+                    float t = (float)(x - x1) / (float)(x2 - x1);
+                    int y = rain_y1 + (int)(t * (rain_y2 - rain_y1));
+                    _canvas.drawLine(x, y, x, chart_y + chart_h, rain_color);
+                }
             }
+        }
+        
+        // Draw snow area (cyan) on top
+        for (int i = 0; i < num_hours - 1; i++) {
+            const auto* hour1 = today_hours[i];
+            const auto* hour2 = today_hours[i + 1];
             
-            // Draw snow (cyan), overlapping creates darker color
-            if (snow_h > 0) {
-                uint16_t snow_color = (rain_h > 0 && snow_h >= rain_h) ? 0x0417 : 0x07FF;  // Darker if overlapping
-                _canvas.fillRect(x, chart_y + chart_h - snow_h, bar_w, snow_h, snow_color);
+            int x1 = chart_x + (int)(i * step_width);
+            int x2 = chart_x + (int)((i + 1) * step_width);
+            
+            int snow_y1 = chart_y + chart_h - (int)((hour1->snow_1h / max_precip) * chart_h);
+            int snow_y2 = chart_y + chart_h - (int)((hour2->snow_1h / max_precip) * chart_h);
+            
+            // Fill area under the line
+            if (hour1->snow_1h > 0 || hour2->snow_1h > 0) {
+                // Draw filled polygon (trapezoid) from baseline to line
+                for (int x = x1; x <= x2; x++) {
+                    float t = (float)(x - x1) / (float)(x2 - x1);
+                    int y = snow_y1 + (int)(t * (snow_y2 - snow_y1));
+                    _canvas.drawLine(x, y, x, chart_y + chart_h, 0x07FF);  // Cyan
+                }
             }
         }
     }
     
-    // Draw time labels (every 3-4 hours)
+    // Draw time labels with better distribution and positioning
     _u8g2.setFont(u8g2_font_4x6_tf);
     _u8g2.setForegroundColor(0xAAAA);
-    int label_interval = max(1, num_hours / 6);  // Show ~6 labels
+    // Show labels at better intervals
+    int label_count = min(8, num_hours);  // Show max 8 labels
+    int label_interval = max(1, num_hours / label_count);
+    
     for (int i = 0; i < num_hours; i += label_interval) {
         const auto* hour = today_hours[i];
         char timeBuf[6];
         formatTime(timeBuf, sizeof(timeBuf), hour->dt);
         // Only show hour part (HH:MM -> HH)
         timeBuf[2] = '\0';  // Truncate after HH
-        int x = chart_x + (int)(i * ((float)chart_w / num_hours));
-        _u8g2.setCursor(x, chart_y + chart_h + 8);
+        
+        int x = chart_x + (int)(i * ((float)chart_w / (num_hours - 1)));
+        // Position labels higher up (moved from +8 to +6)
+        _u8g2.setCursor(x - 4, chart_y + chart_h + 6);
+        _u8g2.print(timeBuf);
+    }
+    // Always show last hour label
+    if ((num_hours - 1) % label_interval != 0) {
+        const auto* hour = today_hours[num_hours - 1];
+        char timeBuf[6];
+        formatTime(timeBuf, sizeof(timeBuf), hour->dt);
+        timeBuf[2] = '\0';
+        int x = chart_x + chart_w;
+        _u8g2.setCursor(x - 8, chart_y + chart_h + 6);
         _u8g2.print(timeBuf);
     }
 }
@@ -1000,22 +1061,23 @@ void WeatherModule::drawAlertPage(int index) {
 
 void WeatherModule::drawWeatherIcon(int x, int y, int size, const PsramString& name, bool isNight) {
     // Retrieves the appropriate icon from the registry/cache, independent of Main/Special!
-    // Converts PsramString to std::string for cache lookup
+    // Use std::string for cache lookup (WeatherIconCache requires std::string)
     std::string iconName(name.c_str());
     
     // TEMPORARY TEST: Bypass cache and read directly from PROGMEM
     // This helps diagnose if the issue is with cache/PSRAM or PROGMEM reading
     const WeatherIcon* src = globalWeatherIconSet.getIcon(iconName, isNight);
     
-    // Log missing icons only once per unique icon name
+    // Log missing icons only once per unique icon name (using PSRAM-backed set)
     if (!src) {
         src = globalWeatherIconSet.getIcon(iconName, false);
         if (!src) {
-            // Create unique key for this missing icon
-            std::string missingKey = iconName + (isNight ? "_night" : "_day");
+            // Create unique key for this missing icon using PsramString
+            PsramString missingKey = name;
+            missingKey += (isNight ? "_night" : "_day");
             if (_loggedMissingIcons.find(missingKey) == _loggedMissingIcons.end()) {
                 // First time seeing this missing icon - log it
-                Log.printf("[Weather] Missing icon: '%s' (isNight: %d)\n", iconName.c_str(), isNight);
+                Log.printf("[Weather] Missing icon: '%s' (isNight: %d)\n", name.c_str(), isNight);
                 _loggedMissingIcons.insert(missingKey);
             }
             src = globalWeatherIconSet.getUnknown();
@@ -1024,7 +1086,7 @@ void WeatherModule::drawWeatherIcon(int x, int y, int size, const PsramString& n
     
     if (!src || !src->data) {
         // This is a critical error - log every time
-        Log.printf("[Weather] ERROR: No valid icon found for '%s'!\n", iconName.c_str());
+        Log.printf("[Weather] ERROR: No valid icon found for '%s'!\n", name.c_str());
         return;
     }
     
@@ -1032,10 +1094,14 @@ void WeatherModule::drawWeatherIcon(int x, int y, int size, const PsramString& n
     const WeatherIcon* iconPtr = globalWeatherIconCache.getScaled(iconName, size, isNight);
     if(!iconPtr || !iconPtr->data) {
         iconPtr = globalWeatherIconCache.getScaled("unknown", size, false);
-        // Log fallback only once per icon
-        std::string fallbackKey = iconName + "_fallback_" + std::to_string(size);
+        // Log fallback only once per icon using PsramString
+        PsramString fallbackKey = name;
+        fallbackKey += "_fallback_";
+        char sizeBuf[16];
+        snprintf(sizeBuf, sizeof(sizeBuf), "%d", size);
+        fallbackKey += sizeBuf;
         if (_loggedMissingIcons.find(fallbackKey) == _loggedMissingIcons.end()) {
-            Log.printf("[Weather] Fallback to unknown icon (icon: %s, size: %d)\n", iconName.c_str(), size);
+            Log.printf("[Weather] Fallback to unknown icon (icon: %s, size: %d)\n", name.c_str(), size);
             _loggedMissingIcons.insert(fallbackKey);
         }
     }

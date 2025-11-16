@@ -38,6 +38,7 @@ private:
 
 struct ManagedResource {
     PsramString url;
+    PsramString customHeaders;  // Optional headers for this resource (format: "Header1: Value1\nHeader2: Value2")
     uint32_t update_interval_ms;
     const char* root_ca_fallback;
     PsramString cert_filename;
@@ -51,6 +52,7 @@ struct ManagedResource {
     bool is_data_stale = true;
 
     ManagedResource(const PsramString& u, uint32_t interval, const char* ca);
+    ManagedResource(const PsramString& u, const PsramString& headers, uint32_t interval, const char* ca);
     ~ManagedResource();
     ManagedResource(ManagedResource&& other) noexcept;
 };
@@ -61,6 +63,7 @@ struct WebJob {
     PsramString url;
     PsramString body;
     PsramString contentType;
+    PsramString customHeaders;  // Format: "Header1: Value1\nHeader2: Value2"
     std::function<void(const char* buffer, size_t size)> callback;
     std::function<void(int httpCode, const char* payload, size_t len)> detailed_callback;
 };
@@ -72,12 +75,15 @@ public:
 
     void begin();
     void registerResource(const String& url, uint32_t update_interval_minutes, const char* root_ca = nullptr);
+    void registerResourceWithHeaders(const String& url, const String& customHeaders, uint32_t update_interval_minutes, const char* root_ca = nullptr);
     void updateResourceUrl(const String& old_url, const String& new_url);
     void accessResource(const String& url, std::function<void(const char* data, size_t size, time_t last_update, bool is_stale)> callback);
+    void accessResource(const String& url, const String& customHeaders, std::function<void(const char* data, size_t size, time_t last_update, bool is_stale)> callback);
     void updateResourceCertificateByHost(const String& host, const String& cert_filename);
     
     void getRequest(const PsramString& url, std::function<void(const char* buffer, size_t size)> callback);
     void getRequest(const PsramString& url, std::function<void(int httpCode, const char* payload, size_t len)> detailed_callback);
+    void getRequest(const PsramString& url, const PsramString& customHeaders, std::function<void(int httpCode, const char* payload, size_t len)> detailed_callback);
     void postRequest(const PsramString& url, const PsramString& postBody, const PsramString& contentType, std::function<void(const char* buffer, size_t size)> callback);
 
 private:

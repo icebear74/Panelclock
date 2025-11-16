@@ -25,9 +25,15 @@ void loadDeviceConfig() {
     if (LittleFS.exists("/config.json")) {
         File configFile = LittleFS.open("/config.json", "r");
         if (configFile) {
-            // Use a sufficiently sized StaticJsonDocument on stack for reading small config
-            // (On memory constrained systems you might want to allocate dynamically)
-            StaticJsonDocument<4096> doc;
+            // Use PSRAM allocator for JSON document
+            struct SpiRamAllocator : ArduinoJson::Allocator {
+                void* allocate(size_t size) override { return ps_malloc(size); }
+                void deallocate(void* pointer) override { free(pointer); }
+                void* reallocate(void* ptr, size_t new_size) override { return ps_realloc(ptr, new_size); }
+            };
+            
+            SpiRamAllocator allocator;
+            JsonDocument doc(&allocator);
             DeserializationError error = deserializeJson(doc, configFile);
             if (!error) {
                 deviceConfig->hostname = doc["hostname"] | "Panel-Clock";
@@ -98,6 +104,17 @@ void loadDeviceConfig() {
                 deviceConfig->movingAverageDays = doc["movingAverageDays"] | 30;
                 deviceConfig->trendAnalysisDays = doc["trendAnalysisDays"] | 7;
 
+                deviceConfig->themeParkEnabled = doc["themeParkEnabled"] | false;
+                deviceConfig->themeParkIds = doc["themeParkIds"] | "";
+                deviceConfig->themeParkFetchIntervalMin = doc["themeParkFetchIntervalMin"] | 10;
+                deviceConfig->themeParkDisplaySec = doc["themeParkDisplaySec"] | 15;
+
+                deviceConfig->dataMockingEnabled = doc["dataMockingEnabled"] | false;
+
+                deviceConfig->curiousHolidaysEnabled = doc["curiousHolidaysEnabled"] | true;
+                deviceConfig->curiousHolidaysDisplaySec = doc["curiousHolidaysDisplaySec"] | 10;
+                deviceConfig->globalScrollSpeedMs = doc["globalScrollSpeedMs"] | 50;
+
                 Serial.println("Geräte-Konfiguration geladen.");
             } else {
                 Serial.println("Fehler beim Parsen der Konfigurationsdatei.");
@@ -111,7 +128,15 @@ void loadDeviceConfig() {
 
 void saveDeviceConfig() {
     if (!deviceConfig) return;
-    StaticJsonDocument<4096> doc;
+    // Use PSRAM allocator for JSON document
+    struct SpiRamAllocator : ArduinoJson::Allocator {
+        void* allocate(size_t size) override { return ps_malloc(size); }
+        void deallocate(void* pointer) override { free(pointer); }
+        void* reallocate(void* ptr, size_t new_size) override { return ps_realloc(ptr, new_size); }
+    };
+    
+    SpiRamAllocator allocator;
+    JsonDocument doc(&allocator);
     doc["hostname"] = deviceConfig->hostname.c_str();
     doc["ssid"] = deviceConfig->ssid.c_str();
     doc["password"] = deviceConfig->password.c_str();
@@ -179,6 +204,17 @@ void saveDeviceConfig() {
 
     doc["movingAverageDays"] = deviceConfig->movingAverageDays;
     doc["trendAnalysisDays"] = deviceConfig->trendAnalysisDays;
+
+    doc["themeParkEnabled"] = deviceConfig->themeParkEnabled;
+    doc["themeParkIds"] = deviceConfig->themeParkIds.c_str();
+    doc["themeParkFetchIntervalMin"] = deviceConfig->themeParkFetchIntervalMin;
+    doc["themeParkDisplaySec"] = deviceConfig->themeParkDisplaySec;
+
+    doc["dataMockingEnabled"] = deviceConfig->dataMockingEnabled;
+
+    doc["curiousHolidaysEnabled"] = deviceConfig->curiousHolidaysEnabled;
+    doc["curiousHolidaysDisplaySec"] = deviceConfig->curiousHolidaysDisplaySec;
+    doc["globalScrollSpeedMs"] = deviceConfig->globalScrollSpeedMs;
 
     File configFile = LittleFS.open("/config.json", "w");
     if (configFile) {

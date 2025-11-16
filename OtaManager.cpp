@@ -5,7 +5,7 @@
 #include <math.h>
 #include <esp_system.h> // für esp_random()
 #include <algorithm>
-#include <vector>
+#include "PsramUtils.hpp"  // Include for PsramVector
 
 using std::min;
 using std::max;
@@ -22,8 +22,8 @@ static inline uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b) {
     return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
 }
 
-// Zentrischer Text-Renderer, nutzt u8g2
-void OtaManager::displayOtaTextCentered(const String& line1, const String& line2, const String& line3, uint16_t textColor) {
+// Zentrischer Text-Renderer, nutzt u8g2 - accepts const char* to avoid heap allocations
+void OtaManager::displayOtaTextCentered(const char* line1, const char* line2, const char* line3, uint16_t textColor) {
     if (!_fullCanvas || !_u8g2) return;
     _u8g2->begin(*_fullCanvas);
     _u8g2->setFont(u8g2_font_6x13_tf);
@@ -31,18 +31,18 @@ void OtaManager::displayOtaTextCentered(const String& line1, const String& line2
     _u8g2->setBackgroundColor(0);
 
     int y = 12;
-    if (!line1.isEmpty()) {
-        _u8g2->setCursor((_fullCanvas->width() - _u8g2->getUTF8Width(line1.c_str())) / 2, y);
+    if (line1 && line1[0] != '\0') {
+        _u8g2->setCursor((_fullCanvas->width() - _u8g2->getUTF8Width(line1)) / 2, y);
         _u8g2->print(line1);
         y += 14;
     }
-    if (!line2.isEmpty()) {
-        _u8g2->setCursor((_fullCanvas->width() - _u8g2->getUTF8Width(line2.c_str())) / 2, y);
+    if (line2 && line2[0] != '\0') {
+        _u8g2->setCursor((_fullCanvas->width() - _u8g2->getUTF8Width(line2)) / 2, y);
         _u8g2->print(line2);
         y += 14;
     }
-    if (!line3.isEmpty()) {
-        _u8g2->setCursor((_fullCanvas->width() - _u8g2->getUTF8Width(line3.c_str())) / 2, y);
+    if (line3 && line3[0] != '\0') {
+        _u8g2->setCursor((_fullCanvas->width() - _u8g2->getUTF8Width(line3)) / 2, y);
         _u8g2->print(line3);
     }
 }
@@ -158,7 +158,7 @@ static void drawParticle(GFXcanvas16* canvas, const Particle& p) {
     canvas->fillCircle(px, py, 1, p.color);
 }
 
-static void spawnParticlesFromSource(std::vector<Particle>& parts, float sx, float sy, uint16_t baseColor, int baseCount) {
+static void spawnParticlesFromSource(PsramVector<Particle>& parts, float sx, float sy, uint16_t baseColor, int baseCount) {
     for (int i = 0; i < baseCount; ++i) {
         Particle P;
         float angle = ((esp_random() & 0xFFFF) / 65535.0f) * 2.0f * M_PI;
@@ -199,11 +199,11 @@ static void drawGhostShapeLocal(GFXcanvas16* canvas, int gx, int gy, uint16_t co
 static void playExplosionFromSources_NoClear(GFXcanvas16* canvas, VirtualMatrixPanel_T<PANEL_CHAIN_TYPE>* virtualDisp, MatrixPanel_I2S_DMA* dma_display,
                                              int pacX, int pacY, int pacR, uint16_t pacColor,
                                              GhostState* ghosts, int ghostCount,
-                                             const std::vector<std::pair<int,int>>& eatenDotPos,
+                                             const PsramVector<std::pair<int,int>>& eatenDotPos,
                                              uint16_t dotColor) {
     if (!canvas || !virtualDisp || !dma_display) return;
 
-    std::vector<Particle> parts;
+    PsramVector<Particle> parts;
     parts.reserve(300);
 
     spawnParticlesFromSource(parts, (float)pacX, (float)pacY, pacColor, 80);
@@ -296,8 +296,8 @@ void OtaManager::drawPacmanProgressSmooth(float percentage) {
     float exactPos = (percentage / 100.0f) * (float)(totalDots - 1);
     int eatenCount = (int)floor(exactPos);
 
-    // draw dots
-    std::vector<std::pair<int,int>> dotPositions;
+    // draw dots using PsramVector
+    PsramVector<std::pair<int,int>> dotPositions;
     for (int i = 0; i < totalDots; ++i) {
         if ((i % subsample) != 0) continue;
         int x = startX + (int)round(i * spacing);
@@ -426,9 +426,11 @@ void OtaManager::drawPacmanProgressSmooth(float percentage) {
 void OtaManager::begin() {
     ArduinoOTA.onStart([this]() {
         if (!_fullCanvas || !_dma_display || !_virtualDisp) return;
-        String type = ArduinoOTA.getCommand() == U_FLASH ? "Firmware" : "Filesystem";
+        const char* type = ArduinoOTA.getCommand() == U_FLASH ? "Firmware" : "Filesystem";
         drawPacmanProgressSmooth(0.0f);
-        displayOtaTextCentered("OTA Update", type + " wird geladen...", "");
+        char typeBuf[64];
+        snprintf(typeBuf, sizeof(typeBuf), "%s wird geladen...", type);
+        displayOtaTextCentered("OTA Update", typeBuf, "");
     });
 
     ArduinoOTA.onProgress([this](unsigned int progress, unsigned int total) {
@@ -447,7 +449,7 @@ void OtaManager::begin() {
         const int usableWidth = FULL_WIDTH - 2 * marginX;
         float spacing = (float)usableWidth / (float)(baseTotalDots - 1);
         const int baselineY = FULL_HEIGHT / 2 + 6;
-        std::vector<std::pair<int,int>> eatenDots;
+        PsramVector<std::pair<int,int>> eatenDots;
         int startDotIndex = max(0, baseTotalDots - 24);
         for (int i = startDotIndex; i < baseTotalDots; i += 2) {
             int dx = marginX + (int)round(i * spacing);
@@ -461,7 +463,7 @@ void OtaManager::begin() {
 
     ArduinoOTA.onError([this](ota_error_t error) {
         if (!_fullCanvas || !_dma_display || !_virtualDisp) return;
-        String msg;
+        const char* msg = nullptr;
         EmojiKind ek = Emoji_Angry;
         switch (error) {
             case OTA_AUTH_ERROR: msg = "Auth Fehler"; ek = Emoji_Angry; break;

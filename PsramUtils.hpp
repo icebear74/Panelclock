@@ -26,15 +26,28 @@ char* psram_strdup(const char* str);
 template <typename T>
 struct PsramAllocator {
     using value_type = T;
+    using size_type = std::size_t;
+    using difference_type = std::ptrdiff_t;
+    using propagate_on_container_move_assignment = std::true_type;
+    using is_always_equal = std::true_type;
+    
     PsramAllocator() = default;
+    PsramAllocator(const PsramAllocator&) = default;
     template <typename U>
     constexpr PsramAllocator(const PsramAllocator<U>&) noexcept {}
+    
     [[nodiscard]] T* allocate(std::size_t n) {
         if (n > std::size_t(-1) / sizeof(T)) throw std::bad_alloc();
         if (auto p = static_cast<T*>(ps_malloc(n * sizeof(T)))) return p;
         throw std::bad_alloc();
     }
     void deallocate(T* p, std::size_t) noexcept { std::free(p); }
+    
+    // Rebind support for nested containers
+    template <typename U>
+    struct rebind {
+        using other = PsramAllocator<U>;
+    };
 };
 template <typename T, typename U>
 bool operator==(const PsramAllocator<T>&, const PsramAllocator<U>&) { return true; }
@@ -52,6 +65,23 @@ int indexOf(const PsramString& str, const char* substring, size_t fromIndex = 0)
 int indexOf(const PsramString& str, const String& substring, size_t fromIndex = 0);
 void replaceAll(PsramString& str, const PsramString& from, const PsramString& to);
 PsramString escapeJsonString(const PsramString& input);
+
+// Conversion helpers for PsramString (similar to Arduino String methods)
+inline int toInt(const PsramString& str) {
+    return atoi(str.c_str());
+}
+
+inline long toLong(const PsramString& str) {
+    return atol(str.c_str());
+}
+
+inline float toFloat(const PsramString& str) {
+    return atof(str.c_str());
+}
+
+inline double toDouble(const PsramString& str) {
+    return atof(str.c_str());
+}
 
 #if __has_include(<WString.h>)
 // Operatoren, die auf PsramString operieren, müssen auch deklariert werden

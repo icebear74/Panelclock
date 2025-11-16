@@ -44,9 +44,11 @@ struct DartsPlayer {
 
 enum class DartsRankingType { ORDER_OF_MERIT, PRO_TOUR };
 
+struct DeviceConfig;
+
 class DartsRankingModule : public DrawableModule {
 public:
-    DartsRankingModule(U8G2_FOR_ADAFRUIT_GFX& u8g2_ref, GFXcanvas16& canvas_ref, WebClientModule* webClient_ptr);
+    DartsRankingModule(U8G2_FOR_ADAFRUIT_GFX& u8g2_ref, GFXcanvas16& canvas_ref, WebClientModule* webClient_ptr, DeviceConfig* config);
     ~DartsRankingModule();
 
     void onUpdate(std::function<void(DartsRankingType)> callback);
@@ -70,6 +72,7 @@ private:
     U8G2_FOR_ADAFRUIT_GFX& u8g2;
     GFXcanvas16& canvas;
     WebClientModule* webClient;
+    DeviceConfig* config;
     std::function<void(DartsRankingType)> updateCallback;
     SemaphoreHandle_t dataMutex;
     DartsDisplayColors colors;
@@ -93,7 +96,7 @@ private:
     std::vector<ScrollState, PsramAllocator<ScrollState>> scrollPos;
     ScrollState subtitleScrollState;
     unsigned long lastScrollStepTime = 0;
-    uint32_t scrollStepInterval = 150;
+    uint32_t scrollStepInterval = 150;  // Will be overridden by globalScrollSpeedMs from config
 
     time_t oom_last_processed_update = 0;
     char* oom_mainTitleText = nullptr;
@@ -118,7 +121,8 @@ private:
     uint16_t dimColor(uint16_t color);
     void clearAllData();
     void filterAndSortPlayers(DartsRankingType type);
-    String extractText(const char* htmlFragment, size_t maxLen);
+    // Helper: Extract text from HTML fragment (allocates on heap - short-lived)
+    PsramString extractText(const char* htmlFragment, size_t maxLen);
     void parsePlayerRow(const char* tr_start, const char* tr_end, const PsramVector<PsramString>& headers, DartsPlayer& player, bool isLiveFormat);
     void parseHtml(const char* html, size_t len, DartsRankingType type);
     bool parseTable(const char* html, std::vector<DartsPlayer, PsramAllocator<DartsPlayer>>& players_ref);

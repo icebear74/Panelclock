@@ -37,7 +37,7 @@ struct DeviceConfig {
     PsramString icsUrl;
     /// @brief Das Intervall in Minuten, in dem die Kalenderdaten abgerufen werden.
     int calendarFetchIntervalMin = 60;
-    /// @brief Die Scroll-Geschwindigkeit für lange Kalendereinträge in Millisekunden pro Pixel.
+    /// @brief Die Scroll-Geschwindigkeit für lange Kalendereinträge in Millisekunden pro Pixel (DEPRECATED: Use globalScrollSpeedMs).
     int calendarScrollMs = 50;
     /// @brief Die Farbe für die Datumsanzeige im Kalender-Modul als Hex-String.
     PsramString calendarDateColor = "#FBE000";
@@ -112,6 +112,15 @@ struct DeviceConfig {
     /// @brief Das Wiederholungsintervall für aktive Wetter-Warnungen in Minuten.
     int weatherAlertsRepeatMin = 15;
 
+    // --- Freizeitpark-Modul ---
+    /// @brief Aktiviert das Freizeitpark-Modul.
+    bool themeParkEnabled = false;
+    /// @brief Kommaseparierte Liste der ausgewählten Freizeitpark-IDs.
+    PsramString themeParkIds;
+    /// @brief Das Abrufintervall für Wartezeiten in Minuten.
+    int themeParkFetchIntervalMin = 10;
+    /// @brief Die Anzeigedauer pro Park in Sekunden.
+    int themeParkDisplaySec = 15;
 
     /// @brief Der Dateiname des PEM-Zertifikats für die Tankerkönig-API.
     PsramString tankerkoenigCertFile;
@@ -143,6 +152,19 @@ struct DeviceConfig {
     int movingAverageDays = 30;
     /// @brief Die Anzahl der vergangenen Tage, die für die Trendanalyse mittels linearer Regression verwendet werden.
     int trendAnalysisDays = 7;
+    
+    /// @brief Aktiviert das Datenmocking für Datenschutz in der Anzeige (beeinflusst nur die draw()-Methoden).
+    bool dataMockingEnabled = false;
+
+    // --- Kuriose Feiertage Modul ---
+    /// @brief Aktiviert die Anzeige kuriosen Feiertage.
+    bool curiousHolidaysEnabled = true;
+    /// @brief Die Anzeigedauer pro Feiertag in Sekunden.
+    int curiousHolidaysDisplaySec = 10;
+
+    // --- Globale Scrolling-Einstellungen ---
+    /// @brief Globale Scroll-Geschwindigkeit in Millisekunden für alle Module.
+    int globalScrollSpeedMs = 50;
 };
 
 // Deklarationen für globale Variablen und Funktionen

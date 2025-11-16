@@ -83,6 +83,10 @@ const char HTML_CONFIG_LOCATION[] PROGMEM = R"rawliteral(
 <p>Dieser Standort wird f&uuml;r die Umkreissuche von Tankstellen und zuk&uuml;nftig f&uuml;r Wetterdaten verwendet.</p>
 <form action="/save_location" method="POST">
 <div class="group">
+    <h3>Zeitzone</h3>
+    <label for="timezone">Zeitzone</label><select id="timezone" name="timezone">{tz_options}</select>
+</div>
+<div class="group">
     <h3>Standort festlegen</h3>
     <label for="address">Adresse suchen</label>
     <div style="display:flex;">
@@ -147,20 +151,25 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
 <h2>Anzeige-Module</h2>
 
 <div class="tab">
-  <button class="tablinks" onclick="openTab(event, 'Timezone')" id="defaultOpen">Zeitzone</button>
-  <button class="tablinks" onclick="openTab(event, 'Wetter')">Wetter</button>
-  <button class="tablinks" onclick="openTab(event, 'Tankstellen')">Tankstellen</button>
-  <button class="tablinks" onclick="openTab(event, 'Kalender')">Kalender</button>
-  <button class="tablinks" onclick="openTab(event, 'Darts')">Darts</button>
+  <button class="tablinks" onclick="openTab(event, 'Darts')" id="defaultOpen">Darts</button>
+  <button class="tablinks" onclick="openTab(event, 'Freizeitpark')">Freizeitparks</button>
   <button class="tablinks" onclick="openTab(event, 'Fritzbox')">Fritz!Box</button>
+  <button class="tablinks" onclick="openTab(event, 'Kalender')">Kalender</button>
+  <button class="tablinks" onclick="openTab(event, 'KurioseFeiertage')">Kuriose Feiertage</button>
+  <button class="tablinks" onclick="openTab(event, 'Tankstellen')">Tankstellen</button>
+  <button class="tablinks" onclick="openTab(event, 'Wetter')">Wetter</button>
+  <button class="tablinks" onclick="openTab(event, 'Diverses')">Diverses</button>
 </div>
 
 <form action="/save_modules" method="POST" onsubmit="collectStationIds()">
 
-<div id="Timezone" class="tabcontent">
+<div id="Darts" class="tabcontent">
     <div class="group">
-        <h3>Zeitzone</h3>
-        <label for="timezone">Zeitzone</label><select id="timezone" name="timezone">{tz_options}</select>
+        <h3>Darts-Ranglisten</h3>
+        <input type="checkbox" id="dartsOomEnabled" name="dartsOomEnabled" {dartsOomEnabled_checked}><label for="dartsOomEnabled" style="display:inline;">Order of Merit anzeigen</label><br>
+        <input type="checkbox" id="dartsProTourEnabled" name="dartsProTourEnabled" {dartsProTourEnabled_checked}><label for="dartsProTourEnabled" style="display:inline;">Pro Tour anzeigen</label><br>
+        <label for="dartsDisplaySec">Anzeigedauer (Sekunden)</label><input type="number" id="dartsDisplaySec" name="dartsDisplaySec" value="{dartsDisplaySec}">
+        <label for="trackedDartsPlayers">Lieblingsspieler (kommagetrennt)</label><input type="text" id="trackedDartsPlayers" name="trackedDartsPlayers" value="{trackedDartsPlayers}">
     </div>
 </div>
 
@@ -205,6 +214,23 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
     </div>
 </div>
 
+<div id="Freizeitpark" class="tabcontent">
+    <div class="group">
+        <h3>Freizeitpark-Wartezeiten</h3>
+        <p>Zeigt Wartezeiten von Attraktionen aus ausgew&auml;hlten Freizeitparks. Die Daten werden &uuml;ber die API von <a href="https://www.wartezeiten.app/" target="_blank">Wartezeiten.APP</a> abgerufen.</p>
+        <input type="checkbox" id="themeParkEnabled" name="themeParkEnabled" {themeParkEnabled_checked}><label for="themeParkEnabled" style="display:inline;">Freizeitpark-Anzeige aktivieren</label><br>
+        <label for="themeParkFetchIntervalMin">Abrufintervall (Minuten)</label><input type="number" id="themeParkFetchIntervalMin" name="themeParkFetchIntervalMin" value="{themeParkFetchIntervalMin}" min="5">
+        <label for="themeParkDisplaySec">Anzeigedauer pro Park (Sekunden)</label><input type="number" id="themeParkDisplaySec" name="themeParkDisplaySec" value="{themeParkDisplaySec}" min="5">
+    </div>
+    <div class="group">
+        <h4>Freizeitpark-Auswahl</h4>
+        <p>W&auml;hle die Freizeitparks aus, deren Wartezeiten angezeigt werden sollen.</p>
+        <button type="button" onclick="loadThemeParks()" class="button" style="background-color:#007bff;">Verf&uuml;gbare Parks laden</button>
+        <div id="themepark_list" style="margin-top:20px;"></div>
+        <input type="hidden" id="themeParkIds" name="themeParkIds" value="{themeParkIds}">
+    </div>
+</div>
+
 <div id="Tankstellen" class="tabcontent">
     <div class="group">
         <h3>Tankstellen-Anzeige</h3>
@@ -239,7 +265,6 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
         <label for="icsUrl">iCal URL (.ics)</label><input type="text" id="icsUrl" name="icsUrl" value="{icsUrl}">
         <label for="calendarFetchIntervalMin">Abrufintervall (Minuten)</label><input type="number" id="calendarFetchIntervalMin" name="calendarFetchIntervalMin" value="{calendarFetchIntervalMin}">
         <label for="calendarDisplaySec">Anzeigedauer (Sekunden)</label><input type="number" id="calendarDisplaySec" name="calendarDisplaySec" value="{calendarDisplaySec}">
-        <label for="calendarScrollMs">Scroll-Geschwindigkeit (ms)</label><input type="number" id="calendarScrollMs" name="calendarScrollMs" value="{calendarScrollMs}">
         <label for="calendarDateColor">Farbe Datum</label><input type="color" id="calendarDateColor" name="calendarDateColor" value="{calendarDateColor}">
         <label for="calendarTextColor">Farbe Text</label><input type="color" id="calendarTextColor" name="calendarTextColor" value="{calendarTextColor}">
         <hr>
@@ -251,22 +276,34 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
     </div>
 </div>
 
-<div id="Darts" class="tabcontent">
-    <div class="group">
-        <h3>Darts-Ranglisten</h3>
-        <input type="checkbox" id="dartsOomEnabled" name="dartsOomEnabled" {dartsOomEnabled_checked}><label for="dartsOomEnabled" style="display:inline;">Order of Merit anzeigen</label><br>
-        <input type="checkbox" id="dartsProTourEnabled" name="dartsProTourEnabled" {dartsProTourEnabled_checked}><label for="dartsProTourEnabled" style="display:inline;">Pro Tour anzeigen</label><br>
-        <label for="dartsDisplaySec">Anzeigedauer (Sekunden)</label><input type="number" id="dartsDisplaySec" name="dartsDisplaySec" value="{dartsDisplaySec}">
-        <label for="trackedDartsPlayers">Lieblingsspieler (kommagetrennt)</label><input type="text" id="trackedDartsPlayers" name="trackedDartsPlayers" value="{trackedDartsPlayers}">
-    </div>
-</div>
-
 <div id="Fritzbox" class="tabcontent">
     <div class="group">
         <h3>Fritz!Box Anrufanzeige</h3>
         <p style="color:#ffc107;">Hinweis: Damit dies funktioniert, muss der "Call Monitor" auf der Fritz!Box einmalig per Telefon aktiviert werden. W&auml;hlen Sie dazu: <strong>#96*5*</strong></p>
         <input type="checkbox" id="fritzboxEnabled" name="fritzboxEnabled" {fritzboxEnabled_checked}><label for="fritzboxEnabled" style="display:inline;">Anrufanzeige aktivieren</label><br><br>
         <label for="fritzboxIp">Fritz!Box IP-Adresse (leer lassen f&uuml;r autom. Erkennung)</label><input type="text" id="fritzboxIp" name="fritzboxIp" value="{fritzboxIp}">
+    </div>
+</div>
+
+<div id="KurioseFeiertage" class="tabcontent">
+    <div class="group">
+        <h3>Kuriose Feiertage</h3>
+        <input type="checkbox" id="curiousHolidaysEnabled" name="curiousHolidaysEnabled" {curiousHolidaysEnabled_checked}><label for="curiousHolidaysEnabled" style="display:inline;">Kuriose Feiertage aktivieren</label><br>
+        <label for="curiousHolidaysDisplaySec">Anzeigedauer pro Feiertag (Sekunden)</label><input type="number" id="curiousHolidaysDisplaySec" name="curiousHolidaysDisplaySec" value="{curiousHolidaysDisplaySec}" min="1">
+        <p style="color:#bbb; margin-top:10px;">Zeigt t&auml;glich verschiedene kuriose Feiertage aus Deutschland an.</p>
+    </div>
+</div>
+
+<div id="Diverses" class="tabcontent">
+    <div class="group">
+        <h3>Datenschutz-Optionen</h3>
+        <input type="checkbox" id="dataMockingEnabled" name="dataMockingEnabled" {dataMockingEnabled_checked}><label for="dataMockingEnabled" style="display:inline;">Datenmocking aktivieren (Sensible Daten in der Anzeige maskieren)</label><br>
+        <p style="color:#ffc107; margin-top:10px;">Hinweis: Wenn aktiviert, werden Adressen in Tankstellenanzeige und Terminbeschreibungen im Kalender durch Platzhalter ersetzt. Dies betrifft nur die Anzeige, nicht die gespeicherten Daten.</p>
+    </div>
+    <div class="group">
+        <h3>Globale Scrolling-Einstellungen</h3>
+        <label for="globalScrollSpeedMs">Scroll-Geschwindigkeit (Millisekunden)</label><input type="number" id="globalScrollSpeedMs" name="globalScrollSpeedMs" value="{globalScrollSpeedMs}" min="10" max="500">
+        <p style="color:#bbb; margin-top:10px;">Diese Einstellung gilt f&uuml;r alle Module mit scrollenden Texten (Kalender, Freizeitparks, etc.). Niedrigere Werte = schnelleres Scrolling.</p>
     </div>
 </div>
 
@@ -300,7 +337,7 @@ function toggleHourlyMode() {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    openTab(null, 'Timezone');
+    openTab(null, 'Darts');
     toggleHourlyMode();
 });
 
@@ -362,6 +399,49 @@ function collectStationIds() {
         document.getElementById('tankerkoenigStationIds').value = ids.join(',');
     }
 }
+
+function loadThemeParks() {
+    var resultsDiv = document.getElementById('themepark_list');
+    resultsDiv.innerHTML = '<p>Lade Freizeitparks...</p>';
+    
+    fetch('/api/themeparks/list')
+        .then(response => response.json())
+        .then(data => {
+            if (!data.ok || !data.parks || data.parks.length === 0) {
+                resultsDiv.innerHTML = '<p style="color:red;">Keine Freizeitparks gefunden.</p>';
+                return;
+            }
+            
+            var currentIds = document.getElementById('themeParkIds').value.split(',');
+            var html = '<table><tr><th>Auswahl</th><th>Name</th><th>Land</th></tr>';
+            data.parks.forEach(park => {
+                var checked = currentIds.includes(park.id) ? 'checked' : '';
+                html += '<tr>';
+                html += '<td><input type="checkbox" class="park-checkbox" value="' + park.id + '" ' + checked + ' onchange="collectParkIds()"></td>';
+                html += '<td>' + park.name + '</td>';
+                html += '<td>' + (park.country || '') + '</td>';
+                html += '</tr>';
+            });
+            html += '</table>';
+            resultsDiv.innerHTML = html;
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            resultsDiv.innerHTML = '<p style="color:red;">Fehler beim Laden der Parks: ' + error.message + '</p>';
+        });
+}
+
+function collectParkIds() {
+    var checkboxes = document.getElementsByClassName('park-checkbox');
+    var ids = [];
+    for (var i = 0; i < checkboxes.length; i++) {
+        if (checkboxes[i].checked) {
+            ids.push(checkboxes[i].value);
+        }
+    }
+    document.getElementById('themeParkIds').value = ids.join(',');
+}
+
 </script>
 )rawliteral";
 

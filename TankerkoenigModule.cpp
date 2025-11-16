@@ -310,6 +310,19 @@ void TankerkoenigModule::draw() {
     
     const StationData& data = station_data_list[currentPage];
 
+    // Datenmocking: Erstelle gemockte Kopie der Daten nur für die Anzeige
+    PsramString displayStreet = data.street;
+    PsramString displayHouseNumber = data.houseNumber;
+    PsramString displayPostCode = data.postCode;
+    PsramString displayPlace = data.place;
+    
+    if (_deviceConfig && _deviceConfig->dataMockingEnabled) {
+        displayStreet = "Musterstraße";
+        displayHouseNumber = "1";
+        displayPostCode = "12345";
+        displayPlace = "Musterstadt";
+    }
+
     const int PADDING = 10;
     const int LEFT_MARGIN = 5;
     const int RIGHT_MARGIN = 5;
@@ -320,10 +333,10 @@ void TankerkoenigModule::draw() {
     int brandWidth = u8g2.getUTF8Width(brandText.c_str());
 
     u8g2.setFont(u8g2_font_5x8_tf);
-    PsramString line1 = data.street;
-    if (!data.houseNumber.empty()) { line1 += " "; line1 += data.houseNumber; }
-    PsramString line2 = data.postCode;
-    if (!data.place.empty()) { line2 += " "; line2 += data.place; }
+    PsramString line1 = displayStreet;
+    if (!displayHouseNumber.empty()) { line1 += " "; line1 += displayHouseNumber; }
+    PsramString line2 = displayPostCode;
+    if (!displayPlace.empty()) { line2 += " "; line2 += displayPlace; }
     int addressWidth = std::max(u8g2.getUTF8Width(line1.c_str()), u8g2.getUTF8Width(line2.c_str()));
 
     if (brandWidth + addressWidth + PADDING > totalWidth) {
@@ -434,14 +447,28 @@ void TankerkoenigModule::drawPriceLine(int y, const char* label, float current, 
 int TankerkoenigModule::drawPrice(int x, int y, float price, uint16_t color) {
     if (price <= 0) return 0;
     u8g2.setForegroundColor(color);
-    String priceStr = String(price, 3);
-    priceStr.replace('.', ',');
-    String mainPricePart = priceStr.substring(0, priceStr.length() - 1);
-    char last_digit_char = priceStr.charAt(priceStr.length() - 1);
-    char last_digit_str[2] = {last_digit_char, '\0'};
+    
+    // Use stack buffer instead of String
+    char priceStr[16];
+    snprintf(priceStr, sizeof(priceStr), "%.3f", price);
+    
+    // Replace . with ,
+    for (int i = 0; priceStr[i] != '\0'; ++i) {
+        if (priceStr[i] == '.') priceStr[i] = ',';
+    }
+    
+    // Split into main part and last digit
+    int len = strlen(priceStr);
+    if (len == 0) return 0;
+    
+    char mainPricePart[16];
+    strncpy(mainPricePart, priceStr, len - 1);
+    mainPricePart[len - 1] = '\0';
+    
+    char last_digit_str[2] = {priceStr[len - 1], '\0'};
     
     u8g2.setFont(u8g2_font_7x14_tf);
-    int mainPriceWidth = u8g2.getUTF8Width(mainPricePart.c_str());
+    int mainPriceWidth = u8g2.getUTF8Width(mainPricePart);
     u8g2.setCursor(x, y);
     u8g2.print(mainPricePart);
     

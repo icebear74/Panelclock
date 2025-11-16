@@ -2,6 +2,7 @@
 #include "WebServerManager.hpp"
 #include "WebPages.hpp"
 #include "BackupManager.hpp"
+#include "ThemeParkModule.hpp"
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 #include <WiFi.h>
@@ -17,6 +18,7 @@ extern MwaveSensorModule* mwaveSensorModule;
 extern GeneralTimeConverter* timeConverter;
 extern TankerkoenigModule* tankerkoenigModule;
 extern BackupManager* backupManager;
+extern ThemeParkModule* themeParkModule;
 extern bool portalRunning;
 
 // Forward declarations of global functions (declared in WebServerManager.hpp)
@@ -93,6 +95,16 @@ void handleConfigLocation() {
     if (!server || !deviceConfig) return;
     PsramString page = (const char*)FPSTR(HTML_PAGE_HEADER);
     PsramString content = (const char*)FPSTR(HTML_CONFIG_LOCATION);
+    
+    // Add timezone options
+    PsramString tz_options_html;
+    for (const auto& tz : timezones) {
+        tz_options_html += "<option value=\""; tz_options_html += tz.second; tz_options_html += "\"";
+        if (deviceConfig->timezone == tz.second) tz_options_html += " selected";
+        tz_options_html += ">"; tz_options_html += tz.first; tz_options_html += "</option>";
+    }
+    replaceAll(content, "{tz_options}", tz_options_html.c_str());
+    
     replaceAll(content, "{latitude}", String(deviceConfig->userLatitude, 6).c_str());
     replaceAll(content, "{longitude}", String(deviceConfig->userLongitude, 6).c_str());
     page += content;
@@ -102,6 +114,12 @@ void handleConfigLocation() {
 
 void handleSaveLocation() {
     if (!server || !deviceConfig) return;
+    
+    // Save timezone
+    if (server->hasArg("timezone")) {
+        deviceConfig->timezone = server->arg("timezone").c_str();
+    }
+    
     if (server->hasArg("latitude") && server->hasArg("longitude")) {
         deviceConfig->userLatitude = server->arg("latitude").toFloat();
         deviceConfig->userLongitude = server->arg("longitude").toFloat();
@@ -118,13 +136,9 @@ void handleConfigModules() {
     if (!server || !deviceConfig) return;
     PsramString page = (const char*)FPSTR(HTML_PAGE_HEADER);
     PsramString content = (const char*)FPSTR(HTML_CONFIG_MODULES);
-    PsramString tz_options_html;
-    for (const auto& tz : timezones) {
-        tz_options_html += "<option value=\""; tz_options_html += tz.second; tz_options_html += "\"";
-        if (deviceConfig->timezone == tz.second) tz_options_html += " selected";
-        tz_options_html += ">"; tz_options_html += tz.first; tz_options_html += "</option>";
-    }
-    replaceAll(content, "{tz_options}", tz_options_html.c_str());
+
+    // Datenmocking-Checkbox
+    replaceAll(content, "{dataMockingEnabled_checked}", deviceConfig->dataMockingEnabled ? "checked" : "");
 
     // Wetter-Platzhalter ersetzen
     replaceAll(content, "{weatherEnabled_checked}", deviceConfig->weatherEnabled ? "checked" : "");
@@ -176,6 +190,19 @@ void handleConfigModules() {
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->calendarUrgentDurationSec); replaceAll(content, "{calendarUrgentDurationSec}", num_buf);
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->calendarUrgentRepeatMin); replaceAll(content, "{calendarUrgentRepeatMin}", num_buf);
 
+    // Theme Park configuration
+    replaceAll(content, "{themeParkEnabled_checked}", deviceConfig->themeParkEnabled ? "checked" : "");
+    replaceAll(content, "{themeParkIds}", deviceConfig->themeParkIds.c_str());
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->themeParkFetchIntervalMin); replaceAll(content, "{themeParkFetchIntervalMin}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->themeParkDisplaySec); replaceAll(content, "{themeParkDisplaySec}", num_buf);
+
+    // Curious Holidays configuration
+    replaceAll(content, "{curiousHolidaysEnabled_checked}", deviceConfig->curiousHolidaysEnabled ? "checked" : "");
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->curiousHolidaysDisplaySec); replaceAll(content, "{curiousHolidaysDisplaySec}", num_buf);
+    
+    // Global scrolling configuration
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->globalScrollSpeedMs); replaceAll(content, "{globalScrollSpeedMs}", num_buf);
+
     page += content;
     page += (const char*)FPSTR(HTML_PAGE_FOOTER);
     server->send(200, "text/html", page.c_str());
@@ -183,7 +210,9 @@ void handleConfigModules() {
 
 void handleSaveModules() {
     if (!server || !deviceConfig) return;
-    deviceConfig->timezone = server->arg("timezone").c_str();
+    
+    // Datenmocking
+    deviceConfig->dataMockingEnabled = server->hasArg("dataMockingEnabled");
 
     // Wetter-Werte speichern
     deviceConfig->weatherEnabled = server->hasArg("weatherEnabled");
@@ -202,6 +231,12 @@ void handleSaveModules() {
     deviceConfig->weatherAlertsEnabled = server->hasArg("weatherAlertsEnabled");
     deviceConfig->weatherAlertsDisplaySec = server->arg("weatherAlertsDisplaySec").toInt();
     deviceConfig->weatherAlertsRepeatMin = server->arg("weatherAlertsRepeatMin").toInt();
+
+    // Theme Park configuration
+    deviceConfig->themeParkEnabled = server->hasArg("themeParkEnabled");
+    deviceConfig->themeParkIds = server->arg("themeParkIds").c_str();
+    deviceConfig->themeParkFetchIntervalMin = server->arg("themeParkFetchIntervalMin").toInt();
+    deviceConfig->themeParkDisplaySec = server->arg("themeParkDisplaySec").toInt();
 
     deviceConfig->tankerApiKey = server->arg("tankerApiKey").c_str();
     deviceConfig->stationFetchIntervalMin = server->arg("stationFetchIntervalMin").toInt();
@@ -265,7 +300,6 @@ void handleSaveModules() {
     deviceConfig->icsUrl = server->arg("icsUrl").c_str();
     deviceConfig->calendarFetchIntervalMin = server->arg("calendarFetchIntervalMin").toInt();
     deviceConfig->calendarDisplaySec = server->arg("calendarDisplaySec").toInt();
-    deviceConfig->calendarScrollMs = server->arg("calendarScrollMs").toInt();
     deviceConfig->calendarDateColor = server->arg("calendarDateColor").c_str();
     deviceConfig->calendarTextColor = server->arg("calendarTextColor").c_str();
 
@@ -274,6 +308,13 @@ void handleSaveModules() {
     if (server->hasArg("calendarUrgentThresholdHours")) deviceConfig->calendarUrgentThresholdHours = server->arg("calendarUrgentThresholdHours").toInt();
     if (server->hasArg("calendarUrgentDurationSec")) deviceConfig->calendarUrgentDurationSec = server->arg("calendarUrgentDurationSec").toInt();
     if (server->hasArg("calendarUrgentRepeatMin")) deviceConfig->calendarUrgentRepeatMin = server->arg("calendarUrgentRepeatMin").toInt();
+
+    // Curious Holidays configuration
+    deviceConfig->curiousHolidaysEnabled = server->hasArg("curiousHolidaysEnabled");
+    if (server->hasArg("curiousHolidaysDisplaySec")) deviceConfig->curiousHolidaysDisplaySec = server->arg("curiousHolidaysDisplaySec").toInt();
+    
+    // Global scrolling configuration
+    if (server->hasArg("globalScrollSpeedMs")) deviceConfig->globalScrollSpeedMs = server->arg("globalScrollSpeedMs").toInt();
 
     deviceConfig->dartsOomEnabled = server->hasArg("dartsOomEnabled");
     deviceConfig->dartsProTourEnabled = server->hasArg("dartsProTourEnabled");
@@ -561,7 +602,15 @@ void handleTankerkoenigSearchLive() {
             }
             if (!currentCacheDoc->is<JsonObject>()) { currentCacheDoc->to<JsonObject>(); }
 
-            DynamicJsonDocument newResultsDoc(32768);
+            // Use PSRAM allocator for large JSON document
+            struct SpiRamAllocator : ArduinoJson::Allocator {
+                void* allocate(size_t size) override { return ps_malloc(size); }
+                void deallocate(void* pointer) override { free(pointer); }
+                void* reallocate(void* ptr, size_t new_size) override { return ps_realloc(ptr, new_size); }
+            };
+            
+            SpiRamAllocator allocator;
+            JsonDocument newResultsDoc(&allocator);
             deserializeJson(newResultsDoc, result.payload);
 
             if (newResultsDoc["ok"] == true) {
@@ -795,5 +844,115 @@ void handleBackupList() {
     String response;
     serializeJson(doc, response);
     server->send(200, "application/json", response.c_str());
+}
+
+// =============================================================================
+// Theme Park Handlers
+// =============================================================================
+
+void handleThemeParksList() {
+    if (!server || !webClient) {
+        server->send(500, "application/json", "{\"ok\":false, \"message\":\"Server or WebClient not initialized\"}");
+        return;
+    }
+    
+    Log.println("[ThemePark] handleThemeParksList called - fetching parks from API");
+    
+    // Fetch parks list on-demand using webClient with custom headers
+    PsramString url = "https://api.wartezeiten.app/v1/parks";
+    PsramString headers = "accept: application/json\nlanguage: de";
+    
+    struct Result { int httpCode; PsramString payload; } result;
+    result.httpCode = 0;
+    SemaphoreHandle_t sem = xSemaphoreCreateBinary();
+    
+    webClient->getRequest(url, headers, [&](int httpCode, const char* payload, size_t len) {
+        Log.printf("[ThemePark] Callback received - HTTP %d, payload size: %d\n", httpCode, len);
+        result.httpCode = httpCode;
+        if (payload && len > 0) { 
+            result.payload.assign(payload, len); 
+            Log.printf("[ThemePark] Payload first 100 chars: %.100s\n", payload);
+        }
+        xSemaphoreGive(sem);
+    });
+    
+    Log.println("[ThemePark] Waiting for response (20s timeout)...");
+    
+    if (xSemaphoreTake(sem, pdMS_TO_TICKS(20000)) == pdTRUE) {
+        Log.printf("[ThemePark] Response received, HTTP code: %d\n", result.httpCode);
+        
+        if (result.httpCode == 200) {
+            // Parse the response and format it for the web interface using PSRAM allocator
+            struct SpiRamAllocator : ArduinoJson::Allocator {
+                void* allocate(size_t size) override { return ps_malloc(size); }
+                void deallocate(void* pointer) override { free(pointer); }
+                void* reallocate(void* ptr, size_t new_size) override { return ps_realloc(ptr, new_size); }
+            };
+            
+            SpiRamAllocator allocator1;
+            JsonDocument inputDoc(&allocator1);
+            DeserializationError error = deserializeJson(inputDoc, result.payload.c_str());
+            
+            if (error) {
+                Log.printf("[ThemePark] JSON parse error: %s\n", error.c_str());
+                server->send(500, "application/json", "{\"ok\":false, \"message\":\"Failed to parse API response\"}");
+                vSemaphoreDelete(sem);
+                return;
+            }
+            
+            Log.println("[ThemePark] JSON parsed successfully");
+            
+            // Build response
+            SpiRamAllocator allocator2;
+            JsonDocument responseDoc(&allocator2);
+            responseDoc["ok"] = true;
+            JsonArray parksArray = responseDoc.createNestedArray("parks");
+            
+            // The API returns an array of parks
+            if (inputDoc.is<JsonArray>()) {
+                JsonArray apiParks = inputDoc.as<JsonArray>();
+                Log.printf("[ThemePark] Found %d parks in API response\n", apiParks.size());
+                
+                // Also parse and save to cache via the module
+                if (themeParkModule) {
+                    themeParkModule->parseAvailableParks(result.payload.c_str(), result.payload.length());
+                }
+                
+                for (JsonObject park : apiParks) {
+                    const char* id = park["id"] | "";
+                    const char* name = park["name"] | "";
+                    const char* country = park["land"] | "";  // API uses "land" not "country"
+                    
+                    if (id && name && strlen(id) > 0 && strlen(name) > 0) {
+                        JsonObject parkObj = parksArray.createNestedObject();
+                        parkObj["id"] = id;
+                        parkObj["name"] = name;
+                        parkObj["country"] = country;
+                        Log.printf("[ThemePark] Added park: %s (%s) - %s\n", name, id, country);
+                    }
+                }
+            } else {
+                Log.println("[ThemePark] ERROR: API response is not a JSON array");
+            }
+            
+            String response;
+            serializeJson(responseDoc, response);
+            Log.printf("[ThemePark] Sending response with %d parks\n", parksArray.size());
+            server->send(200, "application/json", response);
+        } else {
+            Log.printf("[ThemePark] HTTP error: %d\n", result.httpCode);
+            PsramString error_msg = "{\"ok\":false, \"message\":\"API Error: HTTP ";
+            char code_buf[5];
+            snprintf(code_buf, sizeof(code_buf), "%d", result.httpCode);
+            error_msg += code_buf;
+            error_msg += "\"}";
+            server->send(result.httpCode > 0 ? result.httpCode : 500, "application/json", error_msg.c_str());
+        }
+        vSemaphoreDelete(sem);
+    } else {
+        Log.println("[ThemePark] TIMEOUT waiting for API response");
+        server->send(504, "application/json", "{\"ok\":false, \"message\":\"Timeout waiting for API response\"}");
+        vSemaphoreDelete(sem);
+    }
 }
 

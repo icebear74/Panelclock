@@ -39,6 +39,8 @@ Das Panelclock-System besteht aus einer Reihe von spezialisierten Modulen:
 - **CuriousHolidaysModule:** Holt und zeigt kuriose Feiertage für den aktuellen und den nächsten Tag von `kuriose-feiertage.de`.
 - **TankerkoenigModule:** Ruft über die Tankerkönig-API die aktuellen Spritpreise für konfigurierte Tankstellen ab und zeigt diese an.
 - **FritzboxModule:** Stellt eine Verbindung zu einer AVM FRITZ!Box her, um eine Anrufliste der letzten verpassten, angenommenen oder getätigten Anrufe anzuzeigen.
+- **WeatherModule:** Zeigt Wetterinformationen und Vorhersagen von OpenWeatherMap.
+- **ThemeParkModule:** Zeigt Wartezeiten von Attraktionen aus ausgewählten Freizeitparks. Die Daten werden über die [Wartezeiten.APP](https://www.wartezeiten.app/) API abgerufen. Pro Park werden der Name, die Auslastung (Crowd Level) und die höchsten Wartezeiten angezeigt.
 
 ### System-Module
 - **MwaveSensorModule:** Steuert einen RCWL-0516 Mikrowellen-Bewegungssensor, um die Anwesenheit von Personen im Raum zu erkennen und das Display zu schalten.
