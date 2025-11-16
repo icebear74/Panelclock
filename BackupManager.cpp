@@ -52,7 +52,7 @@ PsramString BackupManager::generateBackupFilename(bool manualBackup) {
              timeinfo->tm_min,
              timeinfo->tm_sec);
     
-    return PsramString(filename);
+    return filename;
 }
 
 PsramString BackupManager::getBackupPath(const PsramString& filename) {
@@ -431,7 +431,7 @@ PsramVector<BackupInfo> BackupManager::listBackups() {
                         timeinfo->tm_min,
                         timeinfo->tm_sec);
                 
-                backups.push_back(BackupInfo(filename, PsramString(timeStr), fileSize));
+                backups.push_back(BackupInfo(filename, timeStr, fileSize));
             }
         }
         file.close();
@@ -502,7 +502,7 @@ void BackupManager::saveLastBackupTime() {
 
 PsramString BackupManager::readFileAsBase64(const PsramString& path) {
     // Not currently used but kept for potential binary file support
-    return PsramString("");
+    return "";
 }
 
 bool BackupManager::writeBase64ToFile(const PsramString& path, const PsramString& base64Content) {
