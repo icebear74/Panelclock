@@ -88,63 +88,6 @@ void TankerkoenigModule::logicTick() {
     }
 }
 
-JsonObject TankerkoenigModule::backup(JsonDocument& doc) {
-    JsonObject root = doc.to<JsonObject>();
-    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
-        JsonObject stats_root = root["price_statistics"].to<JsonObject>();
-        for (const auto& history : price_statistics) {
-            JsonArray stats_array = stats_root[history.stationId.c_str()].to<JsonArray>();
-            for (const auto& stats : history.dailyStats) {
-                JsonObject obj = stats_array.add<JsonObject>();
-                obj["date"] = stats.date;
-                obj["e5_low"] = stats.e5_low; obj["e5_high"] = stats.e5_high;
-                obj["e10_low"] = stats.e10_low; obj["e10_high"] = stats.e10_high;
-                obj["diesel_low"] = stats.diesel_low; obj["diesel_high"] = stats.diesel_high;
-            }
-        }
-        JsonArray cache_array = root["last_price_cache"].to<JsonArray>();
-        for (const auto& entry : _lastPriceCache) {
-            JsonObject obj = cache_array.add<JsonObject>();
-            obj["id"] = entry.stationId; obj["e5"] = entry.e5; obj["e10"] = entry.e10;
-            obj["diesel"] = entry.diesel; obj["ts"] = entry.timestamp;
-        }
-        xSemaphoreGive(dataMutex);
-    }
-    return root;
-}
-
-void TankerkoenigModule::restore(JsonObject& obj) {
-    bool restored_something = false;
-    if (obj["price_statistics"].is<JsonObject>()) {
-        JsonDocument stats_doc;
-        stats_doc["version"] = STATION_PRICE_STATS_VERSION;
-        stats_doc["prices"] = obj["price_statistics"]; 
-        
-        File file = LittleFS.open("/station_price_stats.json", "w");
-        if (file) {
-            serializeJson(stats_doc, file);
-            file.close();
-            restored_something = true;
-        }
-    }
-
-    if (obj["last_price_cache"].is<JsonArray>()) {
-        JsonDocument cache_doc;
-        cache_doc.set(obj["last_price_cache"]); 
-
-        File file = LittleFS.open(PRICE_CACHE_FILENAME, "w");
-        if (file) {
-            serializeJson(cache_doc, file);
-            file.close();
-            restored_something = true;
-        }
-    }
-
-    if (restored_something) {
-        Log.println("[TankerkoenigModule] Restore abgeschlossen. Reboot erforderlich.");
-    }
-}
-
 void TankerkoenigModule::updateFailsafeTimeout() {
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
         int num_pages = 0;

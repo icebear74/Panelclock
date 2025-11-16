@@ -12,7 +12,6 @@
 extern DeviceConfig* deviceConfig;
 extern HardwareConfig* hardwareConfig;
 extern GeneralTimeConverter* timeConverter;
-extern TankerkoenigModule* tankerkoenigModule;
 
 #define BACKUP_DIR "/backups"
 #define LAST_BACKUP_TIME_FILE "/last_backup_time.txt"
@@ -197,21 +196,9 @@ void BackupManager::collectConfiguration(JsonDocument& doc) {
 }
 
 void BackupManager::collectModuleData(JsonDocument& doc) {
-    Log.println("[BackupManager] Collecting module data...");
-    
-    JsonObject modules = doc["modules"].to<JsonObject>();
-    
-    // Collect from TankerkoenigModule (has existing backup method)
-    if (tankerkoenigModule) {
-        DynamicJsonDocument moduleDoc(64 * 1024);
-        JsonObject moduleData = tankerkoenigModule->backup(moduleDoc);
-        if (!moduleData.isNull()) {
-            modules["tankerkoenig"] = moduleData;
-        }
-    }
-    
-    // TODO: Add other modules that implement backup() method when they exist
-    // For now, we'll also collect their JSON files via collectJsonFiles()
+    // Module data is now backed up directly via their JSON files in collectJsonFiles()
+    // No need for individual module backup() methods anymore
+    Log.println("[BackupManager] Module data will be backed up via JSON files");
 }
 
 void BackupManager::collectCertificates(JsonDocument& doc) {
@@ -381,17 +368,7 @@ bool BackupManager::restoreFromBackup(const PsramString& filename) {
         }
     }
     
-    // Restore module data
-    if (doc["modules"].is<JsonObject>()) {
-        JsonObject modules = doc["modules"];
-        
-        // Restore TankerkoenigModule data
-        if (modules["tankerkoenig"].is<JsonObject>() && tankerkoenigModule) {
-            JsonObject tankerData = modules["tankerkoenig"];
-            tankerkoenigModule->restore(tankerData);
-            Log.println("[BackupManager] TankerkoenigModule data restored");
-        }
-    }
+    // Module data is restored via JSON files (no individual module restore needed)
     
     Log.println("[BackupManager] Restore completed successfully. Device needs restart.");
     return true;

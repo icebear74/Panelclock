@@ -109,10 +109,6 @@ public:
     void setReleaseCallback(std::function<void(DrawableModule*)> cb) {
         // Leer - ignoriert während Umbau
     }
-
-    // --- Backup/Restore für Zustandssicherung ---
-    virtual JsonObject backup(JsonDocument& doc) { return doc.to<JsonObject>(); }
-    virtual void restore(JsonObject& obj) {}
     
     /**
      * Wird aufgerufen wenn das Modul wegen Timeout hart beendet wird.

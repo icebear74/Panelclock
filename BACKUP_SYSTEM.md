@@ -63,14 +63,7 @@ Jedes Backup enthält folgende Daten:
   - Address-Pins (A, B, C, D, E)
   - Control-Pins (CLK, LAT, OE)
 
-#### 3. Modul-Daten (`modules`)
-Persistierte Daten von Modulen, die die `backup()`-Methode implementieren:
-
-- **TankerkoenigModule**:
-  - Preisverlaufsstatistiken (`price_statistics`)
-  - Letzter Preis-Cache (`last_price_cache`)
-
-#### 4. Zertifikate (`certificates`)
+#### 3. Zertifikate (`certificates`)
 Alle PEM/CRT/CER-Dateien aus dem Root-Verzeichnis:
 ```json
 {
@@ -79,7 +72,7 @@ Alle PEM/CRT/CER-Dateien aus dem Root-Verzeichnis:
 }
 ```
 
-#### 5. JSON-Dateien (`json_files`)
+#### 4. JSON-Dateien (`json_files`)
 Andere persistierte JSON-Daten:
 - `station_cache.json` - Cache der Tankstellen
 - `station_price_stats.json` - Preisstatistiken
@@ -277,105 +270,70 @@ Ein besonderes Feature des Backup-Systems ist die Verfügbarkeit im Access Point
 
 ## Erweiterung für neue Module
 
-Um Backup-Support für ein neues Modul hinzuzufügen:
+Um Backup-Support für ein neues Modul hinzuzufügen, speichere die Modul-Daten einfach in einer JSON-Datei und füge den Dateipfad zur Liste in `BackupManager::collectJsonFiles()` hinzu.
 
-### 1. Backup-Methode implementieren
+### Beispiel: Neues Modul mit Backup
 
-In der Modul-Header-Datei (`YourModule.hpp`):
+1. **Modul speichert Daten in JSON-Datei:**
 
-```cpp
-class YourModule : public DrawableModule {
-public:
-    // ... existing methods ...
-    
-    JsonObject backup(JsonDocument& doc) override;
-    void restore(JsonObject& obj) override;
-};
-```
-
-In der Modul-Implementation (`YourModule.cpp`):
+In `YourModule.cpp`:
 
 ```cpp
-JsonObject YourModule::backup(JsonDocument& doc) {
-    JsonObject root = doc.to<JsonObject>();
+void YourModule::saveData() {
+    DynamicJsonDocument doc(4096);
     
-    // Add your module data
-    root["someData"] = _someData;
-    root["moreData"] = _moreData.c_str();
+    // Füge deine Daten hinzu
+    doc["someData"] = _someData;
+    doc["moreData"] = _moreData.c_str();
     
-    // For arrays/vectors
-    JsonArray array = root["items"].to<JsonArray>();
+    JsonArray array = doc.createNestedArray("items");
     for (const auto& item : _items) {
         array.add(item);
     }
     
-    return root;
+    // Speichere in LittleFS
+    File file = LittleFS.open("/your_module_data.json", "w");
+    if (file) {
+        serializeJson(doc, file);
+        file.close();
+    }
 }
 
-void YourModule::restore(JsonObject& obj) {
-    if (obj["someData"].is<int>()) {
-        _someData = obj["someData"];
-    }
+void YourModule::loadData() {
+    if (!LittleFS.exists("/your_module_data.json")) return;
     
-    if (obj["moreData"].is<const char*>()) {
-        _moreData = obj["moreData"].as<const char*>();
-    }
-    
-    // Restore arrays
-    if (obj["items"].is<JsonArray>()) {
-        _items.clear();
-        JsonArray array = obj["items"];
-        for (JsonVariant v : array) {
-            _items.push_back(v.as<YourType>());
-        }
-    }
-    
-    // Typically save to LittleFS
-    saveYourDataToFile();
-}
-```
-
-### 2. BackupManager erweitern
-
-In `BackupManager::collectModuleData()`:
-
-```cpp
-void BackupManager::collectModuleData(JsonDocument& doc) {
-    Log.println("[BackupManager] Collecting module data...");
-    
-    JsonObject modules = doc["modules"].to<JsonObject>();
-    
-    // ... existing modules ...
-    
-    // Add your module
-    if (yourModule) {
-        DynamicJsonDocument moduleDoc(64 * 1024);
-        JsonObject moduleData = yourModule->backup(moduleDoc);
-        if (!moduleData.isNull()) {
-            modules["yourmodule"] = moduleData;
+    File file = LittleFS.open("/your_module_data.json", "r");
+    if (file) {
+        DynamicJsonDocument doc(4096);
+        DeserializationError error = deserializeJson(doc, file);
+        file.close();
+        
+        if (!error) {
+            _someData = doc["someData"] | 0;
+            _moreData = doc["moreData"] | "";
+            // ... restore other data
         }
     }
 }
 ```
 
-In `BackupManager::restoreFromBackup()`:
+2. **Füge Datei zur Backup-Liste hinzu:**
+
+In `BackupManager.cpp`, erweitere die `jsonFileList` in `collectJsonFiles()`:
 
 ```cpp
-// Restore your module data
-if (modules["yourmodule"].is<JsonObject>() && yourModule) {
-    JsonObject yourData = modules["yourmodule"];
-    yourModule->restore(yourData);
-    Log.println("[BackupManager] YourModule data restored");
-}
+const char* jsonFileList[] = {
+    "/station_cache.json",
+    "/station_price_stats.json",
+    "/price_cache.json",
+    "/calendar_cache.json",
+    "/weather_cache.json",
+    "/your_module_data.json",  // <-- Deine neue Datei
+    nullptr
+};
 ```
 
-### 3. Externes Module-Objekt
-
-Füge eine externe Deklaration in `BackupManager.cpp` hinzu:
-
-```cpp
-extern YourModule* yourModule;
-```
+Das war's! Dein Modul wird jetzt automatisch ins Backup eingeschlossen und bei der Wiederherstellung korrekt restauriert.
 
 ## Sicherheit & Best Practices
 

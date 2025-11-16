@@ -12,9 +12,8 @@
  * 
  * This manager creates unified backup files containing:
  * - Device configuration (config.json, hardware.json)
- * - Module persistent data (using DrawableModule::backup())
  * - PEM certificates
- * - Other JSON data files
+ * - Module JSON data files (station_price_stats.json, price_cache.json, etc.)
  * 
  * Features:
  * - Creates timestamped backup files in /backups/ directory
@@ -107,7 +106,7 @@ private:
     PsramString generateBackupFilename(bool manualBackup);
     
     /**
-     * @brief Collect all module data using their backup() methods
+     * @brief Collect module data (no longer used - kept for compatibility)
      * @param doc JsonDocument to store module data
      */
     void collectModuleData(JsonDocument& doc);

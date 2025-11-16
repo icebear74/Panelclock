@@ -61,9 +61,9 @@ This implementation adds a complete backup and restore system to the Panelclock 
 
 **Backup Collection:**
 - `collectConfiguration()` - Device and hardware config
-- `collectModuleData()` - Module persistent data using `backup()` method
+- `collectModuleData()` - (No longer used - modules save to JSON files directly)
 - `collectCertificates()` - All PEM certificates
-- `collectJsonFiles()` - Cache files (station_cache.json, etc.)
+- `collectJsonFiles()` - Cache files (station_cache.json, price_cache.json, etc.)
 
 ### Backup File Format
 
@@ -76,15 +76,13 @@ This implementation adds a complete backup and restore system to the Panelclock 
     "device": { /* all device config */ },
     "hardware": { /* pin mappings */ }
   },
-  "modules": {
-    "tankerkoenig": { /* price stats, cache */ }
-  },
   "certificates": {
     "tankerkoenig.pem": "-----BEGIN CERTIFICATE-----\n..."
   },
   "json_files": {
     "station_cache.json": { /* cached data */ },
-    "station_price_stats.json": { /* statistics */ }
+    "station_price_stats.json": { /* statistics */ },
+    "price_cache.json": { /* price cache */ }
   }
 }
 ```
@@ -121,15 +119,13 @@ This implementation adds a complete backup and restore system to the Panelclock 
 
 ## Integration Points
 
-### DrawableModule Interface
-Modules can implement `backup()` and `restore()` methods:
-```cpp
-virtual JsonObject backup(JsonDocument& doc);
-virtual void restore(JsonObject& obj);
-```
+### Module Data Storage
+Modules store their persistent data directly in JSON files on LittleFS:
+- TankerkoenigModule: `/station_price_stats.json`, `/price_cache.json`
+- CalendarModule: `/calendar_cache.json`
+- WeatherModule: `/weather_cache.json`
 
-Currently implemented by:
-- `TankerkoenigModule` (price statistics and cache)
+These files are automatically included in backups via `collectJsonFiles()`.
 
 ### Application Lifecycle
 1. **Initialization:** BackupManager created in `Application::begin()`
@@ -271,14 +267,9 @@ Routes registered in `WebServerManager::setupWebServer()`:
 4. **Scheduled Backups:** More flexible scheduling options
 5. **Differential Backups:** Only save changes
 6. **Backup Verification:** Checksum/hash validation
-7. **Module Extension:** More modules implement backup()
 
 ### Module Backup Support
-To add backup support to new modules:
-1. Implement `backup(JsonDocument&)` method
-2. Implement `restore(JsonObject&)` method
-3. Add module to `BackupManager::collectModuleData()`
-4. Add module to `BackupManager::restoreFromBackup()`
+To add backup support to new modules, simply save module data to a JSON file and add the filepath to the `jsonFileList` in `BackupManager::collectJsonFiles()`. See the updated documentation in BACKUP_SYSTEM.md for details.
 
 ## Conclusion
 
