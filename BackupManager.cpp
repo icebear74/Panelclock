@@ -316,7 +316,9 @@ void BackupManager::collectJsonFiles(JsonDocument& doc) {
                     jsonFile.close();
                     
                     if (!error) {
-                        jsonFiles[filename.c_str()] = fileDoc.as<JsonObject>();
+                        // Copy the entire JSON structure (object, array, or primitive)
+                        // This preserves the original structure of the file
+                        jsonFiles[filename.c_str()] = fileDoc.as<JsonVariant>();
                     } else {
                         Log.printf("[BackupManager] Error parsing JSON file %s: %s\n", 
                                    filename.c_str(), error.c_str());
