@@ -29,7 +29,7 @@ void ClockModule::tick() {
 
 void ClockModule::draw() {
   canvas.fillScreen(0);
-  canvas.drawRect(0, 0, canvas.width() - 1, canvas.height(), rgb565(128,128,128));
+  canvas.drawRect(0, 0, canvas.width() , canvas.height(), rgb565(128,128,128));
   drawWifiStrengthBar();
   u8g2.begin(canvas);
   u8g2.setFontMode(0);
