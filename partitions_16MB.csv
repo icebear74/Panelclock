@@ -1,19 +1,15 @@
-# Partitions for ESP32 — 16 MB flash (0x1000000)
-# - Gesamtflash: 0x1000000 (16 777 216 bytes)
-# - App-Partitionen: jeweils 2 MB (0x200000) — identisch zur 8MB-Schema
-# - NVS und otadata an Standardadressen (0x9000 / 0xE000)
-# - SPIFFS füllt den verbleibenden Platz bis zum coredump
-# - coredump: 0x10000 am Flash-Ende
-# Hinweis: Kommentare vor jeder Datenzeile (keine Inline-Kommentare in CSV-Zeilen)
-# NVS (non-volatile storage) für WiFi- und Konfigurationsdaten
+ url=https://github.com/icebear74/Panelclock/blob/069fc161e81718d9a668a8a0e810c997be3cfd31/partitions_16MB.csv
+# Partitions for ESP32 — 16 MB flash (0x1000000 = 16,777,216 bytes)
+# - NVS: start 0x9000, size 0x5000 = 20,480 bytes (0.01953 MiB)
+# - otadata: start 0xE000, size 0x2000 = 8,192 bytes (0.0078125 MiB)
+# - app0 (OTA slot 0): start 0x10000, size 0x2A0000 = 2,752,512 bytes (2.625 MiB)
+# - app1 (OTA slot 1): start 0x2B0000, size 0x2A0000 = 2,752,512 bytes (2.625 MiB)
+# - spiffs: start 0x550000, size 0xAA0000 = 11,141,120 bytes (10.625 MiB)
+# - coredump: start 0xFF0000, size 0x10000 = 65,536 bytes (0.0625 MiB)
+# NOTE: addresses chosen so app0 @0x10000, app1 @0x2B0000, spiffs @0x550000, coredump @0xFF0000
 nvs,data,nvs,0x9000,0x5000,
-# OTA Metadaten (welcher Slot aktiv ist)
 otadata,data,ota,0xE000,0x2000,
-# App Partition 0 (OTA slot 0), 2 MB
-app0,app,ota_0,0x10000,0x200000,
-# App Partition 1 (OTA slot 1), 2 MB
-app1,app,ota_1,0x210000,0x200000,
-# SPIFFS Dateisystem, füllt den verbleibenden Platz bis zum coredump
-spiffs,data,spiffs,0x410000,0xBE0000,
-# Coredump-Bereich am Flash-Ende (0x1000000 - 0x10000)
+app0,app,ota_0,0x10000,0x2A0000,
+app1,app,ota_1,0x2B0000,0x2A0000,
+spiffs,data,spiffs,0x550000,0xAA0000,
 coredump,data,coredump,0xFF0000,0x10000,
