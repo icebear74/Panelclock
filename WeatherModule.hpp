@@ -42,9 +42,10 @@ enum class WeatherPageType {
     CURRENT_WEATHER,      // Page 1: NOW weather with icon, temp, feels, humidity, clouds, rain forecast
     TODAY_PART1,          // Page 2: Today min/max temp, sunrise, sunset
     TODAY_PART2,          // Page 3: Today cloud coverage, precipitation, wind, mean temp
-    PRECIPITATION_CHART,  // Page 4: Area chart for rain/snow
-    HOURLY_FORECAST,      // Page 5+: Hourly forecasts
-    DAILY_FORECAST,       // Page 6+: Daily forecasts
+    PRECIPITATION_CHART,  // Page 4: Area chart for rain/snow (next 24 hours)
+    TEMPERATURE_CHART,    // Page 5: Area chart for temperature (next 24 hours)
+    HOURLY_FORECAST,      // Page 6+: Hourly forecasts
+    DAILY_FORECAST,       // Page 7+: Daily forecasts
     ALERT                 // Alert page
 };
 
@@ -136,9 +137,10 @@ private:
     void drawCurrentWeatherPage();        // Page 1: NOW weather
     void drawTodayPart1Page();           // Page 2: Today summary part 1
     void drawTodayPart2Page();           // Page 3: Today summary part 2
-    void drawPrecipitationChartPage();   // Page 4: Area chart
-    void drawHourlyForecastPage(int pageIndex);  // Page 5+: Hourly forecasts (multiple pages)
-    void drawDailyForecastPage(int pageIndex);   // Page 6+: Daily forecasts (multiple pages)
+    void drawPrecipitationChartPage();   // Page 4: Area chart for next 24h precipitation
+    void drawTemperatureChartPage();     // Page 5: Area chart for next 24h temperature
+    void drawHourlyForecastPage(int pageIndex);  // Page 6+: Hourly forecasts (multiple pages)
+    void drawDailyForecastPage(int pageIndex);   // Page 7+: Daily forecasts (multiple pages)
     void drawAlertPage(int index);       // Alert page
     void drawNoDataPage();
 };
