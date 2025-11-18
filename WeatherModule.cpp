@@ -64,6 +64,33 @@ namespace {
             default: return 0x8410; // Grau
         }
     }
+    
+    // RGB565-Konvertierung: 8-Bit RGB → 16-Bit RGB565
+    // (übernommen aus TankerkoenigModule zur fließenden Farbdarstellung)
+    uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b) { 
+        return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3); 
+    }
+    
+    // Fließende Farbberechnung von Grün → Gelb → Rot basierend auf Wert im Bereich [low..high]
+    // (übernommen aus TankerkoenigModule für POP-basierte Niederschlagsfärbung)
+    uint16_t calcColor(float value, float low, float high) {
+        if (low >= high || value <= 0) return rgb565(255, 255, 0);
+
+        float val = (value < low) ? low : (value > high ? high : value);
+        
+        int diff = (int)roundf(((high - val) / (high - low)) * 100.0f);
+
+        uint8_t rval, gval;
+
+        if (diff <= 50) { 
+            rval = 255;
+            gval = map(diff, 0, 50, 0, 255);
+        } else { 
+            gval = 255;
+            rval = map(diff, 50, 100, 255, 0);
+        }
+        return rgb565(rval, gval, 0);
+    }
 }
 
 WeatherModule::WeatherModule(U8G2_FOR_ADAFRUIT_GFX& u8g2, GFXcanvas16& canvas, const GeneralTimeConverter& timeConverter, WebClientModule* webClient)
@@ -843,8 +870,9 @@ void WeatherModule::drawPrecipitationChartPage() {
             
             // Fill area under the line
             if (rain1 > 0 || rain2 > 0) {
-                // Use different color for probability vs actual rain
-                uint16_t rain_color = (hour1->rain_1h > 0 || hour2->rain_1h > 0) ? 0x001F : 0x4210;  // Blue or lighter blue
+                // Berechne Farbe basierend auf mittlerer Regenwahrscheinlichkeit (POP)
+                float avg_pop = (hour1->pop + hour2->pop) * 0.5f;  // POP liegt in 0..1
+                uint16_t rain_color = calcColor(avg_pop, 0.0f, 1.0f);
                 // Draw filled polygon (trapezoid) from baseline to line
                 for (int x = x1; x <= x2; x++) {
                     float t = (float)(x - x1) / (float)(x2 - x1);
