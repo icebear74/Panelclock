@@ -160,6 +160,9 @@ void TankerkoenigModule::setConfig(const PsramString& apiKey, const PsramString&
         _lastPriceCache.erase(std::remove_if(_lastPriceCache.begin(), _lastPriceCache.end(), remove_by_id), _lastPriceCache.end());
         if(_lastPriceCache.size() < original_cache_size) savePriceCache();
         
+        // Reload station cache to pick up any new stations from web search
+        loadStationCache();
+        
         xSemaphoreGive(dataMutex);
     }
 }
