@@ -1,4 +1,3 @@
- url=https://github.com/icebear74/Panelclock/blob/069fc161e81718d9a668a8a0e810c997be3cfd31/partitions_16MB.csv
 # Partitions for ESP32 — 16 MB flash (0x1000000 = 16,777,216 bytes)
 # - NVS: start 0x9000, size 0x5000 = 20,480 bytes (0.01953 MiB)
 # - otadata: start 0xE000, size 0x2000 = 8,192 bytes (0.0078125 MiB)
