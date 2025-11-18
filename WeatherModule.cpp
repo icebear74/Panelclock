@@ -251,6 +251,7 @@ void WeatherModule::draw() {
             case WeatherPageType::TODAY_PART1:         drawTodayPart1Page();               break;
             case WeatherPageType::TODAY_PART2:         drawTodayPart2Page();               break;
             case WeatherPageType::PRECIPITATION_CHART: drawPrecipitationChartPage();       break;
+            case WeatherPageType::TEMPERATURE_CHART:   drawTemperatureChartPage();         break;
             case WeatherPageType::HOURLY_FORECAST:     drawHourlyForecastPage(page.index); break;
             case WeatherPageType::DAILY_FORECAST:      drawDailyForecastPage(page.index);  break;
             case WeatherPageType::ALERT:               drawAlertPage(page.index);          break;
@@ -520,34 +521,34 @@ void WeatherModule::buildPages() {
         // Page 3: Today Part 2 (cloud coverage, precipitation, wind, mean temp)
         _pages.push_back({WeatherPageType::TODAY_PART2, 0}); 
         
-        // Page 4: Precipitation chart (if rain/snow expected or likely today)
+        // Page 4: Precipitation chart for next 24 hours (if rain/snow expected or likely)
         bool precipitationExpected = false;
         time_t now_utc = time(nullptr);
-        struct tm tm_now;
-        gmtime_r(&now_utc, &tm_now);
+        time_t end_time = now_utc + (24 * 60 * 60);  // 24 hours from now
         
         for (const auto& hour : _hourlyForecast) {
-            if (hour.dt < now_utc) continue;
-            struct tm tm_hour;
-            gmtime_r(&hour.dt, &tm_hour);
-            if (tm_hour.tm_yday != tm_now.tm_yday) break;
-            // Show chart if there's actual precipitation or significant probability (>20%)
-            if (hour.rain_1h > 0 || hour.snow_1h > 0 || hour.pop > 0.2f) {
-                precipitationExpected = true;
-                break;
+            if (hour.dt >= now_utc && hour.dt <= end_time) {
+                // Show chart if there's actual precipitation or significant probability (>20%)
+                if (hour.rain_1h > 0 || hour.snow_1h > 0 || hour.pop > 0.2f) {
+                    precipitationExpected = true;
+                    break;
+                }
             }
         }
         
         if (precipitationExpected) {
             _pages.push_back({WeatherPageType::PRECIPITATION_CHART, 0});
         }
+        
+        // Page 5: Temperature chart for next 24 hours (always show)
+        _pages.push_back({WeatherPageType::TEMPERATURE_CHART, 0});
     }
     
-    // Page 5+: Hourly forecast (2 columns per page, multiple pages for 4+ forecasts)
+    // Page 6+: Hourly forecast for next 24 hours (divided by 8 = 3 hour intervals)
     if (_config->weatherShowHourly && _hourlyForecast.size() > 1) {
-        // Show 2 forecasts per page, create multiple pages if needed
-        // If interval is 3h and we want to show 4 forecasts: 2 pages (0-2, 3-5 hours from now)
-        int forecasts_to_show = 4;  // Show 4 hourly forecasts
+        // Show next 24 hours, divided by 8 = 8 forecasts (every ~3 hours)
+        // 2 forecasts per page = 4 pages total
+        int forecasts_to_show = 8;  // Show 8 hourly forecasts (24h / 8 = 3h intervals)
         int forecasts_per_page = 2;
         int pages_needed = (forecasts_to_show + forecasts_per_page - 1) / forecasts_per_page;
         
@@ -556,7 +557,7 @@ void WeatherModule::buildPages() {
         }
     }
     
-    // Page 6+: Daily forecast (3 days per page, starting from tomorrow)
+    // Page 7+: Daily forecast (3 days per page, starting from tomorrow)
     if (_config->weatherShowDaily && _dailyForecast.size() > 1) {
         // Skip first day (today) and show 3 days per page
         int days_available = (int)_dailyForecast.size() - 1;  // Minus today
@@ -762,30 +763,27 @@ void WeatherModule::drawTodayPart2Page() {
     }
 }
 
-// Page 4: Precipitation Chart (Area graph for rain/snow)
+// Page 4: Precipitation Chart (Area graph for rain/snow - next 24 hours)
 void WeatherModule::drawPrecipitationChartPage() {
     _u8g2.begin(_canvas);
     
     // Title
     _u8g2.setFont(u8g2_font_helvB08_tr);
     _u8g2.setForegroundColor(0xFFFF);
-    drawCenteredString(_u8g2, 0, 10, _canvas.width(), "NIEDERSCHLAG HEUTE");
+    drawCenteredString(_u8g2, 0, 10, _canvas.width(), "NIEDERSCHLAG 24h");
     
-    // Find hourly data for today
+    // Find hourly data for next 24 hours from now
     time_t now_utc = time(nullptr);
-    struct tm tm_now;
-    gmtime_r(&now_utc, &tm_now);
+    time_t end_time = now_utc + (24 * 60 * 60);  // 24 hours from now
     
-    PsramVector<const WeatherHourlyData*> today_hours;
+    PsramVector<const WeatherHourlyData*> next_24h_hours;
     for (const auto& hour : _hourlyForecast) {
-        struct tm tm_hour;
-        gmtime_r(&hour.dt, &tm_hour);
-        if (tm_hour.tm_yday == tm_now.tm_yday && tm_hour.tm_year == tm_now.tm_year) {
-            today_hours.push_back(&hour);
+        if (hour.dt >= now_utc && hour.dt <= end_time) {
+            next_24h_hours.push_back(&hour);
         }
     }
     
-    if (today_hours.empty()) {
+    if (next_24h_hours.empty()) {
         drawNoDataPage();
         return;
     }
@@ -798,7 +796,7 @@ void WeatherModule::drawPrecipitationChartPage() {
     
     // Find max precipitation for scaling
     float max_precip = 0.1f;  // Minimum scale
-    for (const auto* hour : today_hours) {
+    for (const auto* hour : next_24h_hours) {
         float total = hour->rain_1h + hour->snow_1h;
         if (total > max_precip) max_precip = total;
     }
@@ -824,14 +822,14 @@ void WeatherModule::drawPrecipitationChartPage() {
     _u8g2.print("0");
     
     // Draw precipitation as area chart (not bars)
-    int num_hours = today_hours.size();
+    int num_hours = next_24h_hours.size();
     if (num_hours > 1) {
         float step_width = (float)chart_w / (num_hours - 1);
         
         // Draw rain area (blue) or probability area (lighter blue if no actual rain)
         for (int i = 0; i < num_hours - 1; i++) {
-            const auto* hour1 = today_hours[i];
-            const auto* hour2 = today_hours[i + 1];
+            const auto* hour1 = next_24h_hours[i];
+            const auto* hour2 = next_24h_hours[i + 1];
             
             int x1 = chart_x + (int)(i * step_width);
             int x2 = chart_x + (int)((i + 1) * step_width);
@@ -858,8 +856,8 @@ void WeatherModule::drawPrecipitationChartPage() {
         
         // Draw snow area (cyan) on top
         for (int i = 0; i < num_hours - 1; i++) {
-            const auto* hour1 = today_hours[i];
-            const auto* hour2 = today_hours[i + 1];
+            const auto* hour1 = next_24h_hours[i];
+            const auto* hour2 = next_24h_hours[i + 1];
             
             int x1 = chart_x + (int)(i * step_width);
             int x2 = chart_x + (int)((i + 1) * step_width);
@@ -887,7 +885,7 @@ void WeatherModule::drawPrecipitationChartPage() {
     int label_interval = max(1, num_hours / label_count);
     
     for (int i = 0; i < num_hours; i += label_interval) {
-        const auto* hour = today_hours[i];
+        const auto* hour = next_24h_hours[i];
         char timeBuf[6];
         formatTime(timeBuf, sizeof(timeBuf), hour->dt);
         // Only show hour part (HH:MM -> HH)
@@ -900,7 +898,7 @@ void WeatherModule::drawPrecipitationChartPage() {
     }
     // Always show last hour label
     if ((num_hours - 1) % label_interval != 0) {
-        const auto* hour = today_hours[num_hours - 1];
+        const auto* hour = next_24h_hours[num_hours - 1];
         char timeBuf[6];
         formatTime(timeBuf, sizeof(timeBuf), hour->dt);
         timeBuf[2] = '\0';
@@ -910,7 +908,157 @@ void WeatherModule::drawPrecipitationChartPage() {
     }
 }
 
-// Page 5+: Hourly Forecast (2 columns per page, multiple pages)
+// Page 5: Temperature Chart (Area graph for temperature - next 24 hours)
+void WeatherModule::drawTemperatureChartPage() {
+    _u8g2.begin(_canvas);
+    
+    // Title
+    _u8g2.setFont(u8g2_font_helvB08_tr);
+    _u8g2.setForegroundColor(0xFFFF);
+    drawCenteredString(_u8g2, 0, 10, _canvas.width(), "TEMPERATUR 24h");
+    
+    // Find hourly data for next 24 hours from now
+    time_t now_utc = time(nullptr);
+    time_t end_time = now_utc + (24 * 60 * 60);  // 24 hours from now
+    
+    PsramVector<const WeatherHourlyData*> next_24h_hours;
+    for (const auto& hour : _hourlyForecast) {
+        if (hour.dt >= now_utc && hour.dt <= end_time) {
+            next_24h_hours.push_back(&hour);
+        }
+    }
+    
+    if (next_24h_hours.empty()) {
+        drawNoDataPage();
+        return;
+    }
+    
+    // Chart dimensions - adjusted to make room for axis labels
+    const int chart_x = 20;  // More space for Y-axis labels
+    const int chart_y = 15;
+    const int chart_w = _canvas.width() - 30;
+    const int chart_h = 38;  // Slightly smaller to make room for X-axis labels
+    
+    // Find min/max temperatures for scaling (both actual and feels like)
+    float min_temp = next_24h_hours[0]->temp;
+    float max_temp = next_24h_hours[0]->temp;
+    
+    for (const auto* hour : next_24h_hours) {
+        if (hour->temp < min_temp) min_temp = hour->temp;
+        if (hour->temp > max_temp) max_temp = hour->temp;
+        if (hour->feels_like < min_temp) min_temp = hour->feels_like;
+        if (hour->feels_like > max_temp) max_temp = hour->feels_like;
+    }
+    
+    // Add some padding to the scale
+    float temp_range = max_temp - min_temp;
+    if (temp_range < 5.0f) temp_range = 5.0f;  // Minimum range of 5 degrees
+    min_temp -= temp_range * 0.1f;
+    max_temp += temp_range * 0.1f;
+    
+    // Draw axes
+    _canvas.drawLine(chart_x, chart_y + chart_h, chart_x + chart_w, chart_y + chart_h, 0x7BEF);
+    _canvas.drawLine(chart_x, chart_y, chart_x, chart_y + chart_h, 0x7BEF);
+    
+    // Draw Y-axis labels
+    _u8g2.setFont(u8g2_font_4x6_tf);
+    _u8g2.setForegroundColor(0xAAAA);
+    char labelBuf[8];
+    // Top label
+    snprintf(labelBuf, sizeof(labelBuf), "%.0f", max_temp);
+    _u8g2.setCursor(2, chart_y + 4);
+    _u8g2.print(labelBuf);
+    // Middle label
+    snprintf(labelBuf, sizeof(labelBuf), "%.0f", (max_temp + min_temp) / 2);
+    _u8g2.setCursor(2, chart_y + chart_h / 2 + 2);
+    _u8g2.print(labelBuf);
+    // Bottom label
+    snprintf(labelBuf, sizeof(labelBuf), "%.0f", min_temp);
+    _u8g2.setCursor(2, chart_y + chart_h);
+    _u8g2.print(labelBuf);
+    
+    // Draw temperature as area chart (filled)
+    int num_hours = next_24h_hours.size();
+    if (num_hours > 1) {
+        float step_width = (float)chart_w / (num_hours - 1);
+        
+        // Draw actual temperature area (colored based on temperature)
+        for (int i = 0; i < num_hours - 1; i++) {
+            const auto* hour1 = next_24h_hours[i];
+            const auto* hour2 = next_24h_hours[i + 1];
+            
+            int x1 = chart_x + (int)(i * step_width);
+            int x2 = chart_x + (int)((i + 1) * step_width);
+            
+            float norm_temp1 = (hour1->temp - min_temp) / (max_temp - min_temp);
+            float norm_temp2 = (hour2->temp - min_temp) / (max_temp - min_temp);
+            
+            int temp_y1 = chart_y + chart_h - (int)(norm_temp1 * chart_h);
+            int temp_y2 = chart_y + chart_h - (int)(norm_temp2 * chart_h);
+            
+            // Get color based on average temperature for this segment
+            float avg_temp = (hour1->temp + hour2->temp) / 2.0f;
+            uint16_t temp_color = getClimateColorSmooth(avg_temp);
+            
+            // Draw filled polygon (trapezoid) from baseline to line
+            for (int x = x1; x <= x2; x++) {
+                float t = (float)(x - x1) / (float)(x2 - x1);
+                int y = temp_y1 + (int)(t * (temp_y2 - temp_y1));
+                _canvas.drawLine(x, y, x, chart_y + chart_h, temp_color);
+            }
+        }
+        
+        // Draw feels like temperature line (yellow line on top)
+        for (int i = 0; i < num_hours - 1; i++) {
+            const auto* hour1 = next_24h_hours[i];
+            const auto* hour2 = next_24h_hours[i + 1];
+            
+            int x1 = chart_x + (int)(i * step_width);
+            int x2 = chart_x + (int)((i + 1) * step_width);
+            
+            float norm_feels1 = (hour1->feels_like - min_temp) / (max_temp - min_temp);
+            float norm_feels2 = (hour2->feels_like - min_temp) / (max_temp - min_temp);
+            
+            int feels_y1 = chart_y + chart_h - (int)(norm_feels1 * chart_h);
+            int feels_y2 = chart_y + chart_h - (int)(norm_feels2 * chart_h);
+            
+            // Draw yellow line for feels like temperature
+            _canvas.drawLine(x1, feels_y1, x2, feels_y2, 0xFFE0);  // Yellow
+        }
+    }
+    
+    // Draw time labels with better distribution and positioning
+    _u8g2.setFont(u8g2_font_4x6_tf);
+    _u8g2.setForegroundColor(0xAAAA);
+    // Show labels at better intervals
+    int label_count = min(8, num_hours);  // Show max 8 labels
+    int label_interval = max(1, num_hours / label_count);
+    
+    for (int i = 0; i < num_hours; i += label_interval) {
+        const auto* hour = next_24h_hours[i];
+        char timeBuf[6];
+        formatTime(timeBuf, sizeof(timeBuf), hour->dt);
+        // Only show hour part (HH:MM -> HH)
+        timeBuf[2] = '\0';  // Truncate after HH
+        
+        int x = chart_x + (int)(i * ((float)chart_w / (num_hours - 1)));
+        // Position labels higher up
+        _u8g2.setCursor(x - 4, chart_y + chart_h + 6);
+        _u8g2.print(timeBuf);
+    }
+    // Always show last hour label
+    if ((num_hours - 1) % label_interval != 0) {
+        const auto* hour = next_24h_hours[num_hours - 1];
+        char timeBuf[6];
+        formatTime(timeBuf, sizeof(timeBuf), hour->dt);
+        timeBuf[2] = '\0';
+        int x = chart_x + chart_w;
+        _u8g2.setCursor(x - 8, chart_y + chart_h + 6);
+        _u8g2.print(timeBuf);
+    }
+}
+
+// Page 6+: Hourly Forecast (2 columns per page, multiple pages - next 24 hours)
 void WeatherModule::drawHourlyForecastPage(int pageIndex) {
     if (!_config || _hourlyForecast.empty()) { drawNoDataPage(); return; }
     _u8g2.begin(_canvas);
@@ -919,65 +1067,74 @@ void WeatherModule::drawHourlyForecastPage(int pageIndex) {
     const int num_cols = 2;
     const int col_width = _canvas.width() / num_cols;
     
-    // Get current hour index
+    // Get current time and end time (24 hours from now)
     time_t now_utc = time(nullptr);
-    size_t current_hour_index = 0;
-    for(size_t i=0; i<_hourlyForecast.size(); ++i){ 
-        if(_hourlyForecast[i].dt >= now_utc){ 
-            current_hour_index = i; 
-            break; 
-        } 
+    time_t end_time = now_utc + (24 * 60 * 60);
+    
+    // Collect hourly forecasts for next 24 hours
+    PsramVector<const WeatherHourlyData*> next_24h_hours;
+    for (const auto& hour : _hourlyForecast) {
+        if (hour.dt >= now_utc && hour.dt <= end_time) {
+            next_24h_hours.push_back(&hour);
+        }
     }
     
-    int interval = _config->weatherHourlyInterval > 0 ? _config->weatherHourlyInterval : 1;
+    if (next_24h_hours.empty()) { drawNoDataPage(); return; }
     
-    // Calculate starting position for this page
-    // Page 0: shows forecasts 0-1, Page 1: shows forecasts 2-3
+    // We want to show 8 forecasts total (24h / 8 = 3h intervals approximately)
+    // Calculate interval based on available data
+    int total_forecasts_to_show = 8;
+    int interval = max(1, (int)next_24h_hours.size() / total_forecasts_to_show);
+    
+    // Calculate starting position for this page (2 forecasts per page)
     int start_forecast = pageIndex * num_cols;
     
     for (int i = 0; i < num_cols; ++i) {
-        size_t hour_index = current_hour_index + (interval * (start_forecast + i)); 
-        if (hour_index >= _hourlyForecast.size()) break;
-        const auto& hour = _hourlyForecast[hour_index]; 
+        int hour_index = start_forecast + i;
+        int actual_index = hour_index * interval;
+        
+        if (actual_index >= next_24h_hours.size()) break;
+        
+        const auto* hour = next_24h_hours[actual_index]; 
         int x = i * col_width;
         
         // Weather icon (24x24)
-        drawWeatherIcon(x + (col_width - 24) / 2, 2, 24, hour.icon_name, isNightTime(hour.dt));
+        drawWeatherIcon(x + (col_width - 24) / 2, 2, 24, hour->icon_name, isNightTime(hour->dt));
         
         _u8g2.setForegroundColor(0xFFFF);
         
         // Time
         char time_buf[6]; 
-        formatTime(time_buf, sizeof(time_buf), hour.dt); 
+        formatTime(time_buf, sizeof(time_buf), hour->dt); 
         drawCenteredString(_u8g2, x, 30, col_width, time_buf);
         
         // Temperature (colored) with consistent unit
         char temp_buf[14]; 
-        snprintf(temp_buf, sizeof(temp_buf), "%.1f°C", hour.temp);
-        _u8g2.setForegroundColor(getClimateColorSmooth(hour.temp)); 
+        snprintf(temp_buf, sizeof(temp_buf), "%.1f°C", hour->temp);
+        _u8g2.setForegroundColor(getClimateColorSmooth(hour->temp)); 
         drawCenteredString(_u8g2, x, 40, col_width, temp_buf);
         
         // Feels like (colored)
-        snprintf(temp_buf, sizeof(temp_buf), "Gefuehlt %.1f°C", hour.feels_like);
-        _u8g2.setForegroundColor(getClimateColorSmooth(hour.feels_like)); 
+        snprintf(temp_buf, sizeof(temp_buf), "Gefuehlt %.1f°C", hour->feels_like);
+        _u8g2.setForegroundColor(getClimateColorSmooth(hour->feels_like)); 
         drawCenteredString(_u8g2, x, 50, col_width, temp_buf);
         
         // Rain probability and amount with unit
-        if (hour.rain_1h > 0) {
+        if (hour->rain_1h > 0) {
             char rain_buf[16];
-            snprintf(rain_buf, sizeof(rain_buf), "%.0f%% %.1fmm", hour.pop * 100, hour.rain_1h);
+            snprintf(rain_buf, sizeof(rain_buf), "%.0f%% %.1fmm", hour->pop * 100, hour->rain_1h);
             _u8g2.setForegroundColor(0x001F);
             drawCenteredString(_u8g2, x, 60, col_width, rain_buf);
         } else {
             char pop_buf[10]; 
-            snprintf(pop_buf, sizeof(pop_buf), "%.0f%%", hour.pop * 100); 
+            snprintf(pop_buf, sizeof(pop_buf), "%.0f%%", hour->pop * 100); 
             _u8g2.setForegroundColor(0x7BEF);
             drawCenteredString(_u8g2, x, 60, col_width, pop_buf);
         }
     }
 }
 
-// Page 6+: Daily Forecast (3 days per page, starting from tomorrow)
+// Page 7+: Daily Forecast (3 days per page, starting from tomorrow)
 void WeatherModule::drawDailyForecastPage(int pageIndex) {
     if (_dailyForecast.size() < 2) { drawNoDataPage(); return; }
     
