@@ -274,15 +274,17 @@ void WeatherModule::draw() {
     } else if (_dataAvailable && !_pages.empty() && _currentPageIndex < _pages.size()) {
         const auto& page = _pages[_currentPageIndex];
         switch (page.type) {
-            case WeatherPageType::CURRENT_WEATHER:     drawCurrentWeatherPage();           break;
-            case WeatherPageType::TODAY_PART1:         drawTodayPart1Page();               break;
-            case WeatherPageType::TODAY_PART2:         drawTodayPart2Page();               break;
-            case WeatherPageType::PRECIPITATION_CHART: drawPrecipitationChartPage();       break;
-            case WeatherPageType::TEMPERATURE_CHART:   drawTemperatureChartPage();         break;
-            case WeatherPageType::HOURLY_FORECAST:     drawHourlyForecastPage(page.index); break;
-            case WeatherPageType::DAILY_FORECAST:      drawDailyForecastPage(page.index);  break;
-            case WeatherPageType::ALERT:               drawAlertPage(page.index);          break;
-            default:                                   drawNoDataPage();                   break;
+            case WeatherPageType::CURRENT_WEATHER:            drawCurrentWeatherPage();              break;
+            case WeatherPageType::TODAY_PART1:                drawTodayPart1Page();                  break;
+            case WeatherPageType::TODAY_PART2:                drawTodayPart2Page();                  break;
+            case WeatherPageType::PRECIPITATION_CHART:        drawPrecipitationChartPage();          break;
+            case WeatherPageType::TEMPERATURE_CHART:          drawTemperatureChartPage();            break;
+            case WeatherPageType::HOURLY_FORECAST:            drawHourlyForecastPage(page.index);    break;
+            case WeatherPageType::DAILY_FORECAST:             drawDailyForecastPage(page.index);     break;
+            case WeatherPageType::DAILY_TEMPERATURE_CHART:    drawDailyTemperatureChartPage();       break;
+            case WeatherPageType::DAILY_PRECIPITATION_CHART:  drawDailyPrecipitationChartPage();     break;
+            case WeatherPageType::ALERT:                      drawAlertPage(page.index);             break;
+            default:                                          drawNoDataPage();                      break;
         }
     } else {
         drawNoDataPage();
@@ -592,6 +594,22 @@ void WeatherModule::buildPages() {
         
         for (int page = 0; page < pages_needed; page++) {
             _pages.push_back({WeatherPageType::DAILY_FORECAST, page});
+        }
+        
+        // Add daily charts after daily forecast pages
+        // Daily temperature chart (7 days)
+        _pages.push_back({WeatherPageType::DAILY_TEMPERATURE_CHART, 0});
+        
+        // Daily precipitation chart (7 days, if precipitation expected)
+        bool dailyPrecipitationExpected = false;
+        for (const auto& day : _dailyForecast) {
+            if (day.rain > 0 || day.snow > 0 || day.pop > 0.2f) {
+                dailyPrecipitationExpected = true;
+                break;
+            }
+        }
+        if (dailyPrecipitationExpected) {
+            _pages.push_back({WeatherPageType::DAILY_PRECIPITATION_CHART, 0});
         }
     }
 }
@@ -1208,6 +1226,247 @@ void WeatherModule::drawDailyForecastPage(int pageIndex) {
         _u8g2.setForegroundColor(0x7BEF);
         snprintf(temp_buf, sizeof(temp_buf), "%.0f%%", day.pop * 100);
         drawCenteredString(_u8g2, x, 60, col_width, temp_buf);
+    }
+}
+
+void WeatherModule::drawDailyTemperatureChartPage() {
+    _u8g2.begin(_canvas);
+    
+    // Title
+    _u8g2.setFont(u8g2_font_helvB08_tr);
+    _u8g2.setForegroundColor(0xFFFF);
+    drawCenteredString(_u8g2, 0, 10, _canvas.width(), "TEMPERATUR 7 TAGE");
+    
+    if (_dailyForecast.empty()) {
+        drawNoDataPage();
+        return;
+    }
+    
+    // Use up to 7 days from daily forecast
+    int num_days = min(7, (int)_dailyForecast.size());
+    
+    // Chart dimensions
+    const int chart_x = 20;
+    const int chart_y = 15;
+    const int chart_w = _canvas.width() - 30;
+    const int chart_h = 38;
+    
+    // Find min/max temperatures for scaling
+    float min_temp = _dailyForecast[0].temp_min;
+    float max_temp = _dailyForecast[0].temp_max;
+    
+    for (int i = 0; i < num_days; i++) {
+        const auto& day = _dailyForecast[i];
+        if (day.temp_min < min_temp) min_temp = day.temp_min;
+        if (day.temp_max > max_temp) max_temp = day.temp_max;
+    }
+    
+    // Add some padding to the scale
+    float temp_range = max_temp - min_temp;
+    if (temp_range < 5.0f) temp_range = 5.0f;
+    min_temp -= temp_range * 0.1f;
+    max_temp += temp_range * 0.1f;
+    
+    // Draw axes
+    _canvas.drawLine(chart_x, chart_y + chart_h, chart_x + chart_w, chart_y + chart_h, 0x7BEF);
+    _canvas.drawLine(chart_x, chart_y, chart_x, chart_y + chart_h, 0x7BEF);
+    
+    // Draw Y-axis labels
+    _u8g2.setFont(u8g2_font_4x6_tf);
+    _u8g2.setForegroundColor(0xAAAA);
+    char labelBuf[8];
+    snprintf(labelBuf, sizeof(labelBuf), "%.0f", max_temp);
+    _u8g2.setCursor(2, chart_y + 4);
+    _u8g2.print(labelBuf);
+    snprintf(labelBuf, sizeof(labelBuf), "%.0f", (max_temp + min_temp) / 2);
+    _u8g2.setCursor(2, chart_y + chart_h / 2 + 2);
+    _u8g2.print(labelBuf);
+    snprintf(labelBuf, sizeof(labelBuf), "%.0f", min_temp);
+    _u8g2.setCursor(2, chart_y + chart_h);
+    _u8g2.print(labelBuf);
+    
+    // Draw temperature as area chart and line
+    if (num_days > 1) {
+        float step_width = (float)chart_w / (num_days - 1);
+        
+        // Draw max temperature area (colored based on temperature)
+        for (int i = 0; i < num_days - 1; i++) {
+            const auto& day1 = _dailyForecast[i];
+            const auto& day2 = _dailyForecast[i + 1];
+            
+            int x1 = chart_x + (int)(i * step_width);
+            int x2 = chart_x + (int)((i + 1) * step_width);
+            
+            float norm_max1 = (day1.temp_max - min_temp) / (max_temp - min_temp);
+            float norm_max2 = (day2.temp_max - min_temp) / (max_temp - min_temp);
+            
+            int max_y1 = chart_y + chart_h - (int)(norm_max1 * chart_h);
+            int max_y2 = chart_y + chart_h - (int)(norm_max2 * chart_h);
+            
+            // Get color based on average max temperature for this segment
+            float avg_temp = (day1.temp_max + day2.temp_max) / 2.0f;
+            uint16_t temp_color = getClimateColorSmooth(avg_temp);
+            
+            // Draw filled polygon (trapezoid) from baseline to line
+            for (int x = x1; x <= x2; x++) {
+                float t = (float)(x - x1) / (float)(x2 - x1);
+                int y = max_y1 + (int)(t * (max_y2 - max_y1));
+                _canvas.drawLine(x, y, x, chart_y + chart_h, temp_color);
+            }
+        }
+        
+        // Draw min temperature line (blue line on top)
+        for (int i = 0; i < num_days - 1; i++) {
+            const auto& day1 = _dailyForecast[i];
+            const auto& day2 = _dailyForecast[i + 1];
+            
+            int x1 = chart_x + (int)(i * step_width);
+            int x2 = chart_x + (int)((i + 1) * step_width);
+            
+            float norm_min1 = (day1.temp_min - min_temp) / (max_temp - min_temp);
+            float norm_min2 = (day2.temp_min - min_temp) / (max_temp - min_temp);
+            
+            int min_y1 = chart_y + chart_h - (int)(norm_min1 * chart_h);
+            int min_y2 = chart_y + chart_h - (int)(norm_min2 * chart_h);
+            
+            // Draw blue line for min temperature
+            _canvas.drawLine(x1, min_y1, x2, min_y2, 0x001F);  // Blue
+        }
+    }
+    
+    // Draw day labels
+    _u8g2.setFont(u8g2_font_4x6_tf);
+    _u8g2.setForegroundColor(0xAAAA);
+    
+    for (int i = 0; i < num_days; i++) {
+        const auto& day = _dailyForecast[i];
+        char dayBuf[4];
+        struct tm* tm_local = _timeConverter.utcToLocal(day.dt);
+        strftime(dayBuf, sizeof(dayBuf), "%a", tm_local);
+        
+        int x = chart_x + (int)(i * ((float)chart_w / (num_days - 1)));
+        _u8g2.setCursor(x - 4, chart_y + chart_h + 6);
+        _u8g2.print(dayBuf);
+    }
+}
+
+void WeatherModule::drawDailyPrecipitationChartPage() {
+    _u8g2.begin(_canvas);
+    
+    // Title
+    _u8g2.setFont(u8g2_font_helvB08_tr);
+    _u8g2.setForegroundColor(0xFFFF);
+    drawCenteredString(_u8g2, 0, 10, _canvas.width(), "NIEDERSCHLAG 7 TAGE");
+    
+    if (_dailyForecast.empty()) {
+        drawNoDataPage();
+        return;
+    }
+    
+    // Use up to 7 days from daily forecast
+    int num_days = min(7, (int)_dailyForecast.size());
+    
+    // Chart dimensions
+    const int chart_x = 20;
+    const int chart_y = 15;
+    const int chart_w = _canvas.width() - 30;
+    const int chart_h = 38;
+    
+    // Find max precipitation for scaling
+    float max_precip = 0.1f;  // Minimum scale
+    for (int i = 0; i < num_days; i++) {
+        const auto& day = _dailyForecast[i];
+        float total = day.rain + day.snow;
+        if (total > max_precip) max_precip = total;
+    }
+    
+    // Draw axes
+    _canvas.drawLine(chart_x, chart_y + chart_h, chart_x + chart_w, chart_y + chart_h, 0x7BEF);
+    _canvas.drawLine(chart_x, chart_y, chart_x, chart_y + chart_h, 0x7BEF);
+    
+    // Draw Y-axis labels
+    _u8g2.setFont(u8g2_font_4x6_tf);
+    _u8g2.setForegroundColor(0xAAAA);
+    char labelBuf[8];
+    snprintf(labelBuf, sizeof(labelBuf), "%.1f", max_precip);
+    _u8g2.setCursor(2, chart_y + 4);
+    _u8g2.print(labelBuf);
+    snprintf(labelBuf, sizeof(labelBuf), "%.1f", max_precip / 2);
+    _u8g2.setCursor(2, chart_y + chart_h / 2 + 2);
+    _u8g2.print(labelBuf);
+    _u8g2.setCursor(2, chart_y + chart_h);
+    _u8g2.print("0");
+    
+    // Draw precipitation as area chart
+    if (num_days > 1) {
+        float step_width = (float)chart_w / (num_days - 1);
+        
+        // Draw rain area with POP-based coloring
+        for (int i = 0; i < num_days - 1; i++) {
+            const auto& day1 = _dailyForecast[i];
+            const auto& day2 = _dailyForecast[i + 1];
+            
+            int x1 = chart_x + (int)(i * step_width);
+            int x2 = chart_x + (int)((i + 1) * step_width);
+            
+            // Use rain amount if available, otherwise use pop * max_precip for visual representation
+            float rain1 = (day1.rain > 0) ? day1.rain : (day1.pop * max_precip * 0.3f);
+            float rain2 = (day2.rain > 0) ? day2.rain : (day2.pop * max_precip * 0.3f);
+            
+            int rain_y1 = chart_y + chart_h - (int)((rain1 / max_precip) * chart_h);
+            int rain_y2 = chart_y + chart_h - (int)((rain2 / max_precip) * chart_h);
+            
+            // Fill area under the line
+            if (rain1 > 0 || rain2 > 0) {
+                // Berechne Farbe basierend auf mittlerer Regenwahrscheinlichkeit (POP)
+                float avg_pop = (day1.pop + day2.pop) * 0.5f;  // POP liegt in 0..1
+                uint16_t rain_color = calcColor(avg_pop, 0.0f, 1.0f);
+                
+                // Draw filled polygon (trapezoid) from baseline to line
+                for (int x = x1; x <= x2; x++) {
+                    float t = (float)(x - x1) / (float)(x2 - x1);
+                    int y = rain_y1 + (int)(t * (rain_y2 - rain_y1));
+                    _canvas.drawLine(x, y, x, chart_y + chart_h, rain_color);
+                }
+            }
+        }
+        
+        // Draw snow area (cyan) on top
+        for (int i = 0; i < num_days - 1; i++) {
+            const auto& day1 = _dailyForecast[i];
+            const auto& day2 = _dailyForecast[i + 1];
+            
+            int x1 = chart_x + (int)(i * step_width);
+            int x2 = chart_x + (int)((i + 1) * step_width);
+            
+            int snow_y1 = chart_y + chart_h - (int)((day1.snow / max_precip) * chart_h);
+            int snow_y2 = chart_y + chart_h - (int)((day2.snow / max_precip) * chart_h);
+            
+            // Fill area under the line
+            if (day1.snow > 0 || day2.snow > 0) {
+                // Draw filled polygon (trapezoid) from baseline to line
+                for (int x = x1; x <= x2; x++) {
+                    float t = (float)(x - x1) / (float)(x2 - x1);
+                    int y = snow_y1 + (int)(t * (snow_y2 - snow_y1));
+                    _canvas.drawLine(x, y, x, chart_y + chart_h, 0x07FF);  // Cyan
+                }
+            }
+        }
+    }
+    
+    // Draw day labels
+    _u8g2.setFont(u8g2_font_4x6_tf);
+    _u8g2.setForegroundColor(0xAAAA);
+    
+    for (int i = 0; i < num_days; i++) {
+        const auto& day = _dailyForecast[i];
+        char dayBuf[4];
+        struct tm* tm_local = _timeConverter.utcToLocal(day.dt);
+        strftime(dayBuf, sizeof(dayBuf), "%a", tm_local);
+        
+        int x = chart_x + (int)(i * ((float)chart_w / (num_days - 1)));
+        _u8g2.setCursor(x - 4, chart_y + chart_h + 6);
+        _u8g2.print(dayBuf);
     }
 }
 
