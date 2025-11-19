@@ -188,23 +188,11 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
         <input type="checkbox" id="weatherShowCurrent" name="weatherShowCurrent" {weatherShowCurrent_checked}><label for="weatherShowCurrent" style="display:inline;">Aktuelles Wetter anzeigen</label><br>
         <input type="checkbox" id="weatherShowHourly" name="weatherShowHourly" {weatherShowHourly_checked}><label for="weatherShowHourly" style="display:inline;">Stunden-Vorschau anzeigen</label><br>
         <input type="checkbox" id="weatherShowDaily" name="weatherShowDaily" {weatherShowDaily_checked}><label for="weatherShowDaily" style="display:inline;">Tages-Vorschau anzeigen</label><br>
-        <label for="weatherDailyForecastDays">Anzahl der Vorschau-Tage (0-8)</label><input type="number" id="weatherDailyForecastDays" name="weatherDailyForecastDays" value="{weatherDailyForecastDays}" min="0" max="8">
+        <label for="weatherDailyForecastDays">Anzahl der Vorschau-Tage (1-16)</label><input type="number" id="weatherDailyForecastDays" name="weatherDailyForecastDays" value="{weatherDailyForecastDays}" min="1" max="16">
     </div>
     <div class="group">
         <h3>Stunden-Vorschau Details</h3>
-        <label for="weatherHourlyMode">Typ der Stunden-Anzeige</label>
-        <select id="weatherHourlyMode" name="weatherHourlyMode" onchange="toggleHourlyMode()">
-            <option value="0" {weatherHourlyMode_0_selected}>Definierte Zeitfenster</option>
-            <option value="1" {weatherHourlyMode_1_selected}>Festes Intervall</option>
-        </select>
-        <div id="hourlyModeSlots">
-            <label for="weatherHourlySlotMorning">'Morgen' endet um (Stunde)</label><input type="number" id="weatherHourlySlotMorning" name="weatherHourlySlotMorning" value="{weatherHourlySlotMorning}" min="0" max="23">
-            <label for="weatherHourlySlotNoon">'Mittag' endet um (Stunde)</label><input type="number" id="weatherHourlySlotNoon" name="weatherHourlySlotNoon" value="{weatherHourlySlotNoon}" min="0" max="23">
-            <label for="weatherHourlySlotEvening">'Abend' endet um (Stunde)</label><input type="number" id="weatherHourlySlotEvening" name="weatherHourlySlotEvening" value="{weatherHourlySlotEvening}" min="0" max="23">
-        </div>
-        <div id="hourlyModeInterval" style="display:none;">
-            <label for="weatherHourlyInterval">Alle X Stunden anzeigen</label><input type="number" id="weatherHourlyInterval" name="weatherHourlyInterval" value="{weatherHourlyInterval}" min="1" max="12">
-        </div>
+        <label for="weatherHourlyHours">Anzahl der Vorschau-Stunden (1-48)</label><input type="number" id="weatherHourlyHours" name="weatherHourlyHours" value="{weatherHourlyHours}" min="1" max="48">
     </div>
     <div class="group">
         <h3>Offizielle Wetter-Warnungen</h3>
@@ -330,15 +318,8 @@ function openTab(evt, tabName) {
   }
 }
 
-function toggleHourlyMode() {
-    var mode = document.getElementById('weatherHourlyMode').value;
-    document.getElementById('hourlyModeSlots').style.display = (mode == 0) ? 'block' : 'none';
-    document.getElementById('hourlyModeInterval').style.display = (mode == 1) ? 'block' : 'none';
-}
-
 document.addEventListener('DOMContentLoaded', function() {
     openTab(null, 'Darts');
-    toggleHourlyMode();
 });
 
 
