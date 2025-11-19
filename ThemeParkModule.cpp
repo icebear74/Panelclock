@@ -5,6 +5,7 @@
 #include <ArduinoJson.h>
 #include <algorithm>
 #include <LittleFS.h>
+#include <strings.h>  // For strcasecmp
 
 // Allocator for PSRAM
 struct SpiRamAllocator : ArduinoJson::Allocator {
@@ -328,7 +329,11 @@ void ThemeParkModule::parseWaitTimes(const char* jsonBuffer, size_t size, const 
                 Attraction attraction;
                 attraction.name = name;
                 attraction.waitTime = waitTime;
-                attraction.isOpen = (strcmp(status, "opened") == 0);  // "opened" means open
+                // Check for various forms of "open" status (case-insensitive)
+                // Accept: "opened", "open", or anything that's NOT "closed"
+                bool isClosed = (strcasecmp(status, "closed") == 0);
+                bool isUnknown = (strcasecmp(status, "unknown") == 0 || strlen(status) == 0);
+                attraction.isOpen = !isClosed && !isUnknown;
                 parkData->attractions.push_back(attraction);
                 
                 if (attraction.isOpen) {
