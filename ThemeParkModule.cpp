@@ -329,11 +329,12 @@ void ThemeParkModule::parseWaitTimes(const char* jsonBuffer, size_t size, const 
                 Attraction attraction;
                 attraction.name = name;
                 attraction.waitTime = waitTime;
-                // Check for various forms of "open" status (case-insensitive)
-                // Accept: "opened", "open", or anything that's NOT "closed"
-                bool isClosed = (strcasecmp(status, "closed") == 0);
-                bool isUnknown = (strcasecmp(status, "unknown") == 0 || strlen(status) == 0);
-                attraction.isOpen = !isClosed && !isUnknown;
+                // Check attraction status (case-insensitive)
+                // Mark as open if status is explicitly "open" or "opened"
+                // This is more conservative and avoids marking maintenance/refurbishment as open
+                attraction.isOpen = (strcasecmp(status, "opened") == 0 || 
+                                    strcasecmp(status, "open") == 0 ||
+                                    strcasecmp(status, "operating") == 0);
                 parkData->attractions.push_back(attraction);
                 
                 if (attraction.isOpen) {
