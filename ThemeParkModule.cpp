@@ -565,51 +565,6 @@ int ThemeParkModule::calculateTotalPages() const {
     return totalPages;
 }
 
-PsramVector<int> ThemeParkModule::getSortedDisplayableIndices() const {
-    // NOTE: This function expects _dataMutex to already be held by the caller
-    // Filter displayable parks
-    PsramVector<int> displayableIndices;
-    for (size_t i = 0; i < _parkData.size(); i++) {
-        if (shouldDisplayPark(_parkData[i])) {
-            displayableIndices.push_back(i);
-        }
-    }
-    
-    // Sort displayable parks:
-    // 1. Open parks first (those with at least one open attraction)
-    // 2. Then closed parks with opening times
-    // 3. Alphabetically by name within each group (case-insensitive)
-    std::sort(displayableIndices.begin(), displayableIndices.end(),
-              [this](int idxA, int idxB) {
-                  const auto& parkA = _parkData[idxA];
-                  const auto& parkB = _parkData[idxB];
-                  
-                  // Check if parks have open attractions
-                  bool aHasOpen = false;
-                  bool bHasOpen = false;
-                  for (const auto& attr : parkA.attractions) {
-                      if (attr.isOpen) { aHasOpen = true; break; }
-                  }
-                  for (const auto& attr : parkB.attractions) {
-                      if (attr.isOpen) { bHasOpen = true; break; }
-                  }
-                  
-                  // Criterion 1: Open parks first
-                  if (aHasOpen != bHasOpen) {
-                      return aHasOpen > bHasOpen;  // Open parks first
-                  }
-                  
-                  // Criterion 2: Alphabetically by name (case-insensitive)
-                  PsramString aLower = parkA.name;
-                  PsramString bLower = parkB.name;
-                  std::transform(aLower.begin(), aLower.end(), aLower.begin(), ::tolower);
-                  std::transform(bLower.begin(), bLower.end(), bLower.begin(), ::tolower);
-                  return aLower < bLower;
-              });
-    
-    return displayableIndices;
-}
-
 void ThemeParkModule::tick() {
     // Handle scrolling with global scroll speed from config
     if (!_config || _parkNameMaxScroll == 0) return;
@@ -634,8 +589,45 @@ void ThemeParkModule::logicTick() {
     
     if (_logicTicksSincePageSwitch >= ticksPerPage) {
         if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-            // Get sorted displayable parks using shared helper method
-            PsramVector<int> displayableIndices = getSortedDisplayableIndices();
+            // Filter displayable parks
+            PsramVector<int> displayableIndices;
+            for (size_t i = 0; i < _parkData.size(); i++) {
+                if (shouldDisplayPark(_parkData[i])) {
+                    displayableIndices.push_back(i);
+                }
+            }
+            
+            // Sort displayable parks:
+            // 1. Open parks first (those with at least one open attraction)
+            // 2. Then closed parks with opening times
+            // 3. Alphabetically by name within each group (case-insensitive)
+            std::sort(displayableIndices.begin(), displayableIndices.end(),
+                      [this](int idxA, int idxB) {
+                          const auto& parkA = _parkData[idxA];
+                          const auto& parkB = _parkData[idxB];
+                          
+                          // Check if parks have open attractions
+                          bool aHasOpen = false;
+                          bool bHasOpen = false;
+                          for (const auto& attr : parkA.attractions) {
+                              if (attr.isOpen) { aHasOpen = true; break; }
+                          }
+                          for (const auto& attr : parkB.attractions) {
+                              if (attr.isOpen) { bHasOpen = true; break; }
+                          }
+                          
+                          // Criterion 1: Open parks first
+                          if (aHasOpen != bHasOpen) {
+                              return aHasOpen > bHasOpen;  // Open parks first
+                          }
+                          
+                          // Criterion 2: Alphabetically by name (case-insensitive)
+                          PsramString aLower = parkA.name;
+                          PsramString bLower = parkB.name;
+                          std::transform(aLower.begin(), aLower.end(), aLower.begin(), ::tolower);
+                          std::transform(bLower.begin(), bLower.end(), bLower.begin(), ::tolower);
+                          return aLower < bLower;
+                      });
             
             if (displayableIndices.empty()) {
                 _currentPage = 0;
@@ -698,9 +690,13 @@ void ThemeParkModule::draw() {
     _u8g2.begin(_canvas);  // Initialize u8g2 with canvas - required for proper rendering
     
     if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-        // Get sorted displayable parks using shared helper method
-        // This ensures draw() and logicTick() use the same park ordering
-        PsramVector<int> displayableIndices = getSortedDisplayableIndices();
+        // Filter displayable parks
+        PsramVector<int> displayableIndices;
+        for (size_t i = 0; i < _parkData.size(); i++) {
+            if (shouldDisplayPark(_parkData[i])) {
+                displayableIndices.push_back(i);
+            }
+        }
         
         if (displayableIndices.empty()) {
             drawNoDataPage();
