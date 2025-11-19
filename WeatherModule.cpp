@@ -850,6 +850,11 @@ void WeatherModule::drawPrecipitationChartPage() {
     _canvas.drawLine(chart_x, chart_y + chart_h, chart_x + chart_w, chart_y + chart_h, 0x7BEF);
     _canvas.drawLine(chart_x, chart_y, chart_x, chart_y + chart_h, 0x7BEF);
     
+    // Draw horizontal grid lines (light gray)
+    _canvas.drawLine(chart_x, chart_y + chart_h / 2, chart_x + chart_w, chart_y + chart_h / 2, 0x4208);  // Mid line
+    _canvas.drawLine(chart_x, chart_y + chart_h / 4, chart_x + chart_w, chart_y + chart_h / 4, 0x2104);  // Upper quarter
+    _canvas.drawLine(chart_x, chart_y + 3 * chart_h / 4, chart_x + chart_w, chart_y + 3 * chart_h / 4, 0x2104);  // Lower quarter
+    
     // Draw Y-axis labels
     _u8g2.setFont(u8g2_font_4x6_tf);
     _u8g2.setForegroundColor(0xAAAA);
@@ -996,15 +1001,18 @@ void WeatherModule::drawTemperatureChartPage() {
         if (hour->feels_like > max_temp) max_temp = hour->feels_like;
     }
     
-    // Add some padding to the scale
-    float temp_range = max_temp - min_temp;
-    if (temp_range < 5.0f) temp_range = 5.0f;  // Minimum range of 5 degrees
-    min_temp -= temp_range * 0.1f;
-    max_temp += temp_range * 0.1f;
+    // Add padding to the scale (1-2 degrees above/below)
+    min_temp -= 2.0f;
+    max_temp += 2.0f;
     
     // Draw axes
     _canvas.drawLine(chart_x, chart_y + chart_h, chart_x + chart_w, chart_y + chart_h, 0x7BEF);
     _canvas.drawLine(chart_x, chart_y, chart_x, chart_y + chart_h, 0x7BEF);
+    
+    // Draw horizontal grid lines (light gray)
+    _canvas.drawLine(chart_x, chart_y + chart_h / 2, chart_x + chart_w, chart_y + chart_h / 2, 0x4208);  // Mid line
+    _canvas.drawLine(chart_x, chart_y + chart_h / 4, chart_x + chart_w, chart_y + chart_h / 4, 0x2104);  // Upper quarter
+    _canvas.drawLine(chart_x, chart_y + 3 * chart_h / 4, chart_x + chart_w, chart_y + 3 * chart_h / 4, 0x2104);  // Lower quarter
     
     // Draw Y-axis labels
     _u8g2.setFont(u8g2_font_4x6_tf);
@@ -1261,15 +1269,18 @@ void WeatherModule::drawDailyTemperatureChartPage() {
         if (day.temp_max > max_temp) max_temp = day.temp_max;
     }
     
-    // Add some padding to the scale
-    float temp_range = max_temp - min_temp;
-    if (temp_range < 5.0f) temp_range = 5.0f;
-    min_temp -= temp_range * 0.1f;
-    max_temp += temp_range * 0.1f;
+    // Add padding to the scale (1-2 degrees above/below)
+    min_temp -= 2.0f;
+    max_temp += 2.0f;
     
     // Draw axes
     _canvas.drawLine(chart_x, chart_y + chart_h, chart_x + chart_w, chart_y + chart_h, 0x7BEF);
     _canvas.drawLine(chart_x, chart_y, chart_x, chart_y + chart_h, 0x7BEF);
+    
+    // Draw horizontal grid lines (light gray)
+    _canvas.drawLine(chart_x, chart_y + chart_h / 2, chart_x + chart_w, chart_y + chart_h / 2, 0x4208);  // Mid line
+    _canvas.drawLine(chart_x, chart_y + chart_h / 4, chart_x + chart_w, chart_y + chart_h / 4, 0x2104);  // Upper quarter
+    _canvas.drawLine(chart_x, chart_y + 3 * chart_h / 4, chart_x + chart_w, chart_y + 3 * chart_h / 4, 0x2104);  // Lower quarter
     
     // Draw Y-axis labels
     _u8g2.setFont(u8g2_font_4x6_tf);
@@ -1385,6 +1396,11 @@ void WeatherModule::drawDailyPrecipitationChartPage() {
     // Draw axes
     _canvas.drawLine(chart_x, chart_y + chart_h, chart_x + chart_w, chart_y + chart_h, 0x7BEF);
     _canvas.drawLine(chart_x, chart_y, chart_x, chart_y + chart_h, 0x7BEF);
+    
+    // Draw horizontal grid lines (light gray)
+    _canvas.drawLine(chart_x, chart_y + chart_h / 2, chart_x + chart_w, chart_y + chart_h / 2, 0x4208);  // Mid line
+    _canvas.drawLine(chart_x, chart_y + chart_h / 4, chart_x + chart_w, chart_y + chart_h / 4, 0x2104);  // Upper quarter
+    _canvas.drawLine(chart_x, chart_y + 3 * chart_h / 4, chart_x + chart_w, chart_y + 3 * chart_h / 4, 0x2104);  // Lower quarter
     
     // Draw Y-axis labels
     _u8g2.setFont(u8g2_font_4x6_tf);
