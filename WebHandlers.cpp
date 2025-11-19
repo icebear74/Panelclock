@@ -154,8 +154,6 @@ void handleConfigModules() {
     replaceAll(content, "{weatherShowHourly_checked}", deviceConfig->weatherShowHourly ? "checked" : "");
     replaceAll(content, "{weatherShowDaily_checked}", deviceConfig->weatherShowDaily ? "checked" : "");
     replaceAll(content, "{weatherAlertsEnabled_checked}", deviceConfig->weatherAlertsEnabled ? "checked" : "");
-    replaceAll(content, "{weatherHourlyMode_0_selected}", deviceConfig->weatherHourlyMode == 0 ? "selected" : "");
-    replaceAll(content, "{weatherHourlyMode_1_selected}", deviceConfig->weatherHourlyMode == 1 ? "selected" : "");
 
 
     replaceAll(content, "{tankerApiKey}", deviceConfig->tankerApiKey.c_str());
@@ -165,10 +163,7 @@ void handleConfigModules() {
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->weatherFetchIntervalMin); replaceAll(content, "{weatherFetchIntervalMin}", num_buf);
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->weatherDisplaySec); replaceAll(content, "{weatherDisplaySec}", num_buf);
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->weatherDailyForecastDays); replaceAll(content, "{weatherDailyForecastDays}", num_buf);
-    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->weatherHourlySlotMorning); replaceAll(content, "{weatherHourlySlotMorning}", num_buf);
-    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->weatherHourlySlotNoon); replaceAll(content, "{weatherHourlySlotNoon}", num_buf);
-    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->weatherHourlySlotEvening); replaceAll(content, "{weatherHourlySlotEvening}", num_buf);
-    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->weatherHourlyInterval); replaceAll(content, "{weatherHourlyInterval}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->weatherHourlyHours); replaceAll(content, "{weatherHourlyHours}", num_buf);
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->weatherAlertsDisplaySec); replaceAll(content, "{weatherAlertsDisplaySec}", num_buf);
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->weatherAlertsRepeatMin); replaceAll(content, "{weatherAlertsRepeatMin}", num_buf);
 
@@ -230,11 +225,7 @@ void handleSaveModules() {
     deviceConfig->weatherShowHourly = server->hasArg("weatherShowHourly");
     deviceConfig->weatherShowDaily = server->hasArg("weatherShowDaily");
     deviceConfig->weatherDailyForecastDays = server->arg("weatherDailyForecastDays").toInt();
-    deviceConfig->weatherHourlyMode = server->arg("weatherHourlyMode").toInt();
-    deviceConfig->weatherHourlySlotMorning = server->arg("weatherHourlySlotMorning").toInt();
-    deviceConfig->weatherHourlySlotNoon = server->arg("weatherHourlySlotNoon").toInt();
-    deviceConfig->weatherHourlySlotEvening = server->arg("weatherHourlySlotEvening").toInt();
-    deviceConfig->weatherHourlyInterval = server->arg("weatherHourlyInterval").toInt();
+    deviceConfig->weatherHourlyHours = server->arg("weatherHourlyHours").toInt();
     deviceConfig->weatherAlertsEnabled = server->hasArg("weatherAlertsEnabled");
     deviceConfig->weatherAlertsDisplaySec = server->arg("weatherAlertsDisplaySec").toInt();
     deviceConfig->weatherAlertsRepeatMin = server->arg("weatherAlertsRepeatMin").toInt();

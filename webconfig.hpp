@@ -93,17 +93,19 @@ struct DeviceConfig {
     bool weatherShowHourly = true;
     /// @brief Zeigt die Seiten der "Tages-Vorschau" an.
     bool weatherShowDaily = true;
-    /// @brief Die Anzahl der anzuzeigenden Vorschau-Tage (0-8).
+    /// @brief Die Anzahl der anzuzeigenden Vorschau-Tage (1-16).
     int weatherDailyForecastDays = 3;
-    /// @brief Der Modus für die Stunden-Vorschau (0=Zeitfenster, 1=Intervall).
+    /// @brief Die Anzahl der anzuzeigenden Vorschau-Stunden (1-48).
+    int weatherHourlyHours = 24;
+    /// @brief Der Modus für die Stunden-Vorschau (0=Zeitfenster, 1=Intervall). DEPRECATED
     int weatherHourlyMode = 0;
-    /// @brief Die Stunde, an der das "Morgen"-Zeitfenster endet.
+    /// @brief Die Stunde, an der das "Morgen"-Zeitfenster endet. DEPRECATED
     int weatherHourlySlotMorning = 11;
-    /// @brief Die Stunde, an der das "Mittag"-Zeitfenster endet.
+    /// @brief Die Stunde, an der das "Mittag"-Zeitfenster endet. DEPRECATED
     int weatherHourlySlotNoon = 17;
-    /// @brief Die Stunde, an der das "Abend"-Zeitfenster endet.
+    /// @brief Die Stunde, an der das "Abend"-Zeitfenster endet. DEPRECATED
     int weatherHourlySlotEvening = 22;
-    /// @brief Das Intervall in Stunden für die Stunden-Vorschau.
+    /// @brief Das Intervall in Stunden für die Stunden-Vorschau. DEPRECATED
     int weatherHourlyInterval = 3;
     /// @brief Aktiviert die Anzeige von offiziellen Wetter-Warnungen.
     bool weatherAlertsEnabled = true;
