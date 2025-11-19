@@ -1341,8 +1341,10 @@ void WeatherModule::drawDailyTemperatureChartPage() {
     for (int i = 0; i < num_days; i++) {
         const auto& day = _dailyForecast[i];
         char dayBuf[4];
-        struct tm* tm_local = _timeConverter.utcToLocal(day.dt);
-        strftime(dayBuf, sizeof(dayBuf), "%a", tm_local);
+        time_t local_time = _timeConverter.toLocal(day.dt);
+        struct tm tm_local;
+        gmtime_r(&local_time, &tm_local);
+        strftime(dayBuf, sizeof(dayBuf), "%a", &tm_local);
         
         int x = chart_x + (int)(i * ((float)chart_w / (num_days - 1)));
         _u8g2.setCursor(x - 4, chart_y + chart_h + 6);
@@ -1461,8 +1463,10 @@ void WeatherModule::drawDailyPrecipitationChartPage() {
     for (int i = 0; i < num_days; i++) {
         const auto& day = _dailyForecast[i];
         char dayBuf[4];
-        struct tm* tm_local = _timeConverter.utcToLocal(day.dt);
-        strftime(dayBuf, sizeof(dayBuf), "%a", tm_local);
+        time_t local_time = _timeConverter.toLocal(day.dt);
+        struct tm tm_local;
+        gmtime_r(&local_time, &tm_local);
+        strftime(dayBuf, sizeof(dayBuf), "%a", &tm_local);
         
         int x = chart_x + (int)(i * ((float)chart_w / (num_days - 1)));
         _u8g2.setCursor(x - 4, chart_y + chart_h + 6);
