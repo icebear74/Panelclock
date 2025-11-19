@@ -1240,18 +1240,21 @@ void WeatherModule::drawDailyForecastPage(int pageIndex) {
 void WeatherModule::drawDailyTemperatureChartPage() {
     _u8g2.begin(_canvas);
     
-    // Title
+    // Title - use configured number of days
     _u8g2.setFont(u8g2_font_helvB08_tr);
     _u8g2.setForegroundColor(0xFFFF);
-    drawCenteredString(_u8g2, 0, 10, _canvas.width(), "TEMPERATUR 7 TAGE");
+    int configured_days = _config ? _config->weatherDailyForecastDays : 7;
+    char title[32];
+    snprintf(title, sizeof(title), "TEMPERATUR %d TAGE", configured_days);
+    drawCenteredString(_u8g2, 0, 10, _canvas.width(), title);
     
     if (_dailyForecast.empty()) {
         drawNoDataPage();
         return;
     }
     
-    // Use up to 7 days from daily forecast
-    int num_days = min(7, (int)_dailyForecast.size());
+    // Use configured number of days from daily forecast
+    int num_days = min(configured_days, (int)_dailyForecast.size());
     
     // Chart dimensions
     const int chart_x = 20;
@@ -1296,37 +1299,11 @@ void WeatherModule::drawDailyTemperatureChartPage() {
     _u8g2.setCursor(2, chart_y + chart_h);
     _u8g2.print(labelBuf);
     
-    // Draw temperature as area chart and line
+    // Draw temperature as stacked area chart
     if (num_days > 1) {
         float step_width = (float)chart_w / (num_days - 1);
         
-        // Draw max temperature area (colored based on temperature)
-        for (int i = 0; i < num_days - 1; i++) {
-            const auto& day1 = _dailyForecast[i];
-            const auto& day2 = _dailyForecast[i + 1];
-            
-            int x1 = chart_x + (int)(i * step_width);
-            int x2 = chart_x + (int)((i + 1) * step_width);
-            
-            float norm_max1 = (day1.temp_max - min_temp) / (max_temp - min_temp);
-            float norm_max2 = (day2.temp_max - min_temp) / (max_temp - min_temp);
-            
-            int max_y1 = chart_y + chart_h - (int)(norm_max1 * chart_h);
-            int max_y2 = chart_y + chart_h - (int)(norm_max2 * chart_h);
-            
-            // Get color based on average max temperature for this segment
-            float avg_temp = (day1.temp_max + day2.temp_max) / 2.0f;
-            uint16_t temp_color = getClimateColorSmooth(avg_temp);
-            
-            // Draw filled polygon (trapezoid) from baseline to line
-            for (int x = x1; x <= x2; x++) {
-                float t = (float)(x - x1) / (float)(x2 - x1);
-                int y = max_y1 + (int)(t * (max_y2 - max_y1));
-                _canvas.drawLine(x, y, x, chart_y + chart_h, temp_color);
-            }
-        }
-        
-        // Draw min temperature line (blue line on top)
+        // Draw min temperature area (cyan - bottom layer)
         for (int i = 0; i < num_days - 1; i++) {
             const auto& day1 = _dailyForecast[i];
             const auto& day2 = _dailyForecast[i + 1];
@@ -1340,8 +1317,39 @@ void WeatherModule::drawDailyTemperatureChartPage() {
             int min_y1 = chart_y + chart_h - (int)(norm_min1 * chart_h);
             int min_y2 = chart_y + chart_h - (int)(norm_min2 * chart_h);
             
-            // Draw blue line for min temperature
-            _canvas.drawLine(x1, min_y1, x2, min_y2, 0x001F);  // Blue
+            // Draw filled polygon (trapezoid) from baseline to min line in cyan
+            for (int x = x1; x <= x2; x++) {
+                float t = (float)(x - x1) / (float)(x2 - x1);
+                int y = min_y1 + (int)(t * (min_y2 - min_y1));
+                _canvas.drawLine(x, y, x, chart_y + chart_h, 0x07FF);  // Cyan
+            }
+        }
+        
+        // Draw max temperature area (blue - top layer, stacked on min)
+        for (int i = 0; i < num_days - 1; i++) {
+            const auto& day1 = _dailyForecast[i];
+            const auto& day2 = _dailyForecast[i + 1];
+            
+            int x1 = chart_x + (int)(i * step_width);
+            int x2 = chart_x + (int)((i + 1) * step_width);
+            
+            float norm_min1 = (day1.temp_min - min_temp) / (max_temp - min_temp);
+            float norm_min2 = (day2.temp_min - min_temp) / (max_temp - min_temp);
+            float norm_max1 = (day1.temp_max - min_temp) / (max_temp - min_temp);
+            float norm_max2 = (day2.temp_max - min_temp) / (max_temp - min_temp);
+            
+            int min_y1 = chart_y + chart_h - (int)(norm_min1 * chart_h);
+            int min_y2 = chart_y + chart_h - (int)(norm_min2 * chart_h);
+            int max_y1 = chart_y + chart_h - (int)(norm_max1 * chart_h);
+            int max_y2 = chart_y + chart_h - (int)(norm_max2 * chart_h);
+            
+            // Draw filled polygon (trapezoid) from min line to max line in blue
+            for (int x = x1; x <= x2; x++) {
+                float t = (float)(x - x1) / (float)(x2 - x1);
+                int y_min = min_y1 + (int)(t * (min_y2 - min_y1));
+                int y_max = max_y1 + (int)(t * (max_y2 - max_y1));
+                _canvas.drawLine(x, y_max, x, y_min, 0x001F);  // Blue
+            }
         }
     }
     
@@ -1366,18 +1374,21 @@ void WeatherModule::drawDailyTemperatureChartPage() {
 void WeatherModule::drawDailyPrecipitationChartPage() {
     _u8g2.begin(_canvas);
     
-    // Title
+    // Title - use configured number of days
     _u8g2.setFont(u8g2_font_helvB08_tr);
     _u8g2.setForegroundColor(0xFFFF);
-    drawCenteredString(_u8g2, 0, 10, _canvas.width(), "NIEDERSCHLAG 7 TAGE");
+    int configured_days = _config ? _config->weatherDailyForecastDays : 7;
+    char title[32];
+    snprintf(title, sizeof(title), "NIEDERSCHLAG %d TAGE", configured_days);
+    drawCenteredString(_u8g2, 0, 10, _canvas.width(), title);
     
     if (_dailyForecast.empty()) {
         drawNoDataPage();
         return;
     }
     
-    // Use up to 7 days from daily forecast
-    int num_days = min(7, (int)_dailyForecast.size());
+    // Use configured number of days from daily forecast
+    int num_days = min(configured_days, (int)_dailyForecast.size());
     
     // Chart dimensions
     const int chart_x = 20;

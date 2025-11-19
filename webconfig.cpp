@@ -77,6 +77,7 @@ void loadDeviceConfig() {
                 deviceConfig->weatherShowHourly = doc["weatherShowHourly"] | true;
                 deviceConfig->weatherShowDaily = doc["weatherShowDaily"] | true;
                 deviceConfig->weatherDailyForecastDays = doc["weatherDailyForecastDays"] | 3;
+                deviceConfig->weatherHourlyHours = doc["weatherHourlyHours"] | 24;
                 deviceConfig->weatherHourlyMode = doc["weatherHourlyMode"] | 0;
                 deviceConfig->weatherHourlySlotMorning = doc["weatherHourlySlotMorning"] | 11;
                 deviceConfig->weatherHourlySlotNoon = doc["weatherHourlySlotNoon"] | 17;
@@ -178,6 +179,7 @@ void saveDeviceConfig() {
     doc["weatherShowHourly"] = deviceConfig->weatherShowHourly;
     doc["weatherShowDaily"] = deviceConfig->weatherShowDaily;
     doc["weatherDailyForecastDays"] = deviceConfig->weatherDailyForecastDays;
+    doc["weatherHourlyHours"] = deviceConfig->weatherHourlyHours;
     doc["weatherHourlyMode"] = deviceConfig->weatherHourlyMode;
     doc["weatherHourlySlotMorning"] = deviceConfig->weatherHourlySlotMorning;
     doc["weatherHourlySlotNoon"] = deviceConfig->weatherHourlySlotNoon;
