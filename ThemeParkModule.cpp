@@ -354,15 +354,14 @@ void ThemeParkModule::parseWaitTimes(const char* jsonBuffer, size_t size, const 
         Log.printf("[ThemePark] Park %s is closed (all attractions closed)\n", parkName.c_str());
     }
     
-    // Sort attractions by multiple criteria:
-    // 1. Open status (open attractions first)
-    // 2. Wait time (higher wait time first) - even 0 min counts if open
-    // 3. Name (alphabetical as tiebreaker, case-insensitive)
+    // Sort attractions:
+    // 1. Open attractions first, then closed attractions
+    // 2. Within each group: Sort by wait time (descending), then by name (ascending, case-insensitive)
     std::sort(parkData->attractions.begin(), parkData->attractions.end(),
               [](const Attraction& a, const Attraction& b) {
-                  // Criterion 1: Open status (open first)
+                  // Criterion 1: Open status (open first, closed last)
                   if (a.isOpen != b.isOpen) {
-                      return a.isOpen > b.isOpen;  // true > false, so open attractions come first
+                      return a.isOpen > b.isOpen;  // true > false, so open comes first
                   }
                   
                   // Criterion 2: Wait time (higher first)
@@ -371,7 +370,6 @@ void ThemeParkModule::parseWaitTimes(const char* jsonBuffer, size_t size, const 
                   }
                   
                   // Criterion 3: Name (alphabetical, case-insensitive)
-                  // Convert to lowercase for comparison
                   PsramString aLower = a.name;
                   PsramString bLower = b.name;
                   std::transform(aLower.begin(), aLower.end(), aLower.begin(), ::tolower);
@@ -516,7 +514,8 @@ void ThemeParkModule::onActivate() {
 }
 
 bool ThemeParkModule::shouldDisplayPark(const ThemeParkData& park) const {
-    // Always display parks with open attractions
+    // A park is OPEN if at least ONE attraction is open
+    // A park is CLOSED if ALL attractions are closed
     bool hasOpenAttractions = false;
     for (const auto& attr : park.attractions) {
         if (attr.isOpen) {
@@ -525,24 +524,27 @@ bool ThemeParkModule::shouldDisplayPark(const ThemeParkData& park) const {
         }
     }
     
+    // Display open parks (at least one attraction open)
     if (hasOpenAttractions) {
         return true;
     }
     
-    // If all attractions are closed, display if we have opening OR closing time information
-    // This allows users to see when the park will reopen
+    // Display closed parks ONLY if they have opening time information
+    // Skip closed parks without opening times entirely
     return !park.openingTime.empty() || !park.closingTime.empty();
 }
 
 int ThemeParkModule::calculateTotalPages() const {
     // NOTE: This function expects _dataMutex to already be held by the caller
-    // Calculate total pages across all displayable parks
-    // Closed parks count as 1 page (showing "Geschlossen" message with opening times)
-    // Open parks: use their attractionPages (ALL attractions, 6 per page)
+    // 
+    // Page calculation logic:
+    // - OPEN park (at least one attraction open): Show all attractions (6 per page)
+    // - CLOSED park with opening times: Show 1 page with "Geschlossen" message and opening hours
+    // - CLOSED park without opening times: Skip entirely (not counted)
     int totalPages = 0;
     for (const auto& park : _parkData) {
         if (shouldDisplayPark(park)) {
-            // Check if park has any open attractions
+            // Check if park is open (has at least one open attraction)
             bool hasOpenAttractions = false;
             for (const auto& attr : park.attractions) {
                 if (attr.isOpen) {
@@ -552,10 +554,10 @@ int ThemeParkModule::calculateTotalPages() const {
             }
             
             if (hasOpenAttractions) {
-                // Open park: use attractionPages (already calculated based on ALL attractions)
+                // OPEN park: use attractionPages (all attractions, 6 per page)
                 totalPages += park.attractionPages;
             } else {
-                // Closed park: count as 1 page (showing closed message with opening times)
+                // CLOSED park with opening times: count as 1 page
                 totalPages += 1;
             }
         }
@@ -598,15 +600,15 @@ void ThemeParkModule::logicTick() {
             }
             
             // Sort displayable parks:
-            // 1. Open parks first (those with at least one open attraction)
-            // 2. Then closed parks with opening times
+            // 1. OPEN parks first (at least one attraction open)
+            // 2. Then CLOSED parks (with opening times)
             // 3. Alphabetically by name within each group (case-insensitive)
             std::sort(displayableIndices.begin(), displayableIndices.end(),
                       [this](int idxA, int idxB) {
                           const auto& parkA = _parkData[idxA];
                           const auto& parkB = _parkData[idxB];
                           
-                          // Check if parks have open attractions
+                          // Check if parks are open (at least one open attraction)
                           bool aHasOpen = false;
                           bool bHasOpen = false;
                           for (const auto& attr : parkA.attractions) {
@@ -618,7 +620,7 @@ void ThemeParkModule::logicTick() {
                           
                           // Criterion 1: Open parks first
                           if (aHasOpen != bHasOpen) {
-                              return aHasOpen > bHasOpen;  // Open parks first
+                              return aHasOpen > bHasOpen;
                           }
                           
                           // Criterion 2: Alphabetically by name (case-insensitive)
