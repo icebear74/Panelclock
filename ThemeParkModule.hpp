@@ -114,6 +114,7 @@ private:
     void parseCrowdLevel(const char* jsonBuffer, size_t size, const PsramString& parkId);
     void parseOpeningTimes(const char* jsonBuffer, size_t size, const PsramString& parkId);
     bool shouldDisplayPark(const ThemeParkData& park) const;
+    bool parkHasOpenAttractions(const ThemeParkData& park) const;  // Check if park has at least one open attraction
     int calculateTotalPages() const;  // Calculate total pages considering closed/open parks
     void drawParkPage(int parkIndex, int attractionPage);
     void drawNoDataPage();

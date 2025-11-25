@@ -516,22 +516,24 @@ void ThemeParkModule::onActivate() {
 bool ThemeParkModule::shouldDisplayPark(const ThemeParkData& park) const {
     // A park is OPEN if at least ONE attraction is open
     // A park is CLOSED if ALL attractions are closed
-    bool hasOpenAttractions = false;
-    for (const auto& attr : park.attractions) {
-        if (attr.isOpen) {
-            hasOpenAttractions = true;
-            break;
-        }
-    }
     
     // Display open parks (at least one attraction open)
-    if (hasOpenAttractions) {
+    if (parkHasOpenAttractions(park)) {
         return true;
     }
     
     // Display closed parks ONLY if they have opening time information
     // Skip closed parks without opening times entirely
     return !park.openingTime.empty() || !park.closingTime.empty();
+}
+
+bool ThemeParkModule::parkHasOpenAttractions(const ThemeParkData& park) const {
+    for (const auto& attr : park.attractions) {
+        if (attr.isOpen) {
+            return true;
+        }
+    }
+    return false;
 }
 
 int ThemeParkModule::calculateTotalPages() const {
@@ -544,16 +546,7 @@ int ThemeParkModule::calculateTotalPages() const {
     int totalPages = 0;
     for (const auto& park : _parkData) {
         if (shouldDisplayPark(park)) {
-            // Check if park is open (has at least one open attraction)
-            bool hasOpenAttractions = false;
-            for (const auto& attr : park.attractions) {
-                if (attr.isOpen) {
-                    hasOpenAttractions = true;
-                    break;
-                }
-            }
-            
-            if (hasOpenAttractions) {
+            if (parkHasOpenAttractions(park)) {
                 // OPEN park: use attractionPages (all attractions, 6 per page)
                 totalPages += park.attractionPages;
             } else {
@@ -608,17 +601,9 @@ void ThemeParkModule::logicTick() {
                           const auto& parkA = _parkData[idxA];
                           const auto& parkB = _parkData[idxB];
                           
-                          // Check if parks are open (at least one open attraction)
-                          bool aHasOpen = false;
-                          bool bHasOpen = false;
-                          for (const auto& attr : parkA.attractions) {
-                              if (attr.isOpen) { aHasOpen = true; break; }
-                          }
-                          for (const auto& attr : parkB.attractions) {
-                              if (attr.isOpen) { bHasOpen = true; break; }
-                          }
-                          
                           // Criterion 1: Open parks first
+                          bool aHasOpen = parkHasOpenAttractions(parkA);
+                          bool bHasOpen = parkHasOpenAttractions(parkB);
                           if (aHasOpen != bHasOpen) {
                               return aHasOpen > bHasOpen;
                           }
@@ -647,14 +632,7 @@ void ThemeParkModule::logicTick() {
             int computedTotalPages = 0;
             for (int idx : displayableIndices) {
                 const auto& park = _parkData[idx];
-                bool hasOpenAttractions = false;
-                for (const auto& attr : park.attractions) {
-                    if (attr.isOpen) {
-                        hasOpenAttractions = true;
-                        break;
-                    }
-                }
-                int pages = hasOpenAttractions ? park.attractionPages : 1;
+                int pages = parkHasOpenAttractions(park) ? park.attractionPages : 1;
                 if (pages < 1) pages = 1;
                 pagesPerPark.push_back(pages);
                 computedTotalPages += pages;
@@ -672,8 +650,9 @@ void ThemeParkModule::logicTick() {
             _currentAttractionPage++;
             _parkNameScrollOffset = 0;  // Reset scroll when changing page
             
-            // Determine pages for current park
-            int pagesForThisPark = pagesPerPark[_currentParkIndex];
+            // Determine pages for current park (with bounds check)
+            int pagesForThisPark = (_currentParkIndex >= 0 && _currentParkIndex < (int)pagesPerPark.size()) 
+                                   ? pagesPerPark[_currentParkIndex] : 1;
             
             // If we've shown all pages for current park, move to next park
             if (_currentAttractionPage >= pagesForThisPark) {
@@ -691,7 +670,7 @@ void ThemeParkModule::logicTick() {
             
             // Compute _currentPage as cumulative pages before current park + current attraction page
             int cumulativePages = 0;
-            for (int i = 0; i < _currentParkIndex; i++) {
+            for (int i = 0; i < _currentParkIndex && i < (int)pagesPerPark.size(); i++) {
                 cumulativePages += pagesPerPark[i];
             }
             _currentPage = cumulativePages + _currentAttractionPage;
@@ -726,17 +705,9 @@ void ThemeParkModule::draw() {
                       const auto& parkA = _parkData[idxA];
                       const auto& parkB = _parkData[idxB];
                       
-                      // Check if parks are open (at least one open attraction)
-                      bool aHasOpen = false;
-                      bool bHasOpen = false;
-                      for (const auto& attr : parkA.attractions) {
-                          if (attr.isOpen) { aHasOpen = true; break; }
-                      }
-                      for (const auto& attr : parkB.attractions) {
-                          if (attr.isOpen) { bHasOpen = true; break; }
-                      }
-                      
                       // Criterion 1: Open parks first
+                      bool aHasOpen = parkHasOpenAttractions(parkA);
+                      bool bHasOpen = parkHasOpenAttractions(parkB);
                       if (aHasOpen != bHasOpen) {
                           return aHasOpen > bHasOpen;
                       }
@@ -779,13 +750,7 @@ void ThemeParkModule::drawParkPage(int parkIndex, int attractionPage) {
     }
     
     // Check if park has any open attractions
-    bool hasOpenAttractions = false;
-    for (const auto& attr : park.attractions) {
-        if (attr.isOpen) {
-            hasOpenAttractions = true;
-            break;
-        }
-    }
+    bool hasOpenAttractions = parkHasOpenAttractions(park);
     
     // Draw park name with country as headline - scrolling text
     // Use smaller font (6x13 like CalendarModule uses) and scrolling
