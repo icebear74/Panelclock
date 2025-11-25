@@ -600,42 +600,45 @@ void ThemeParkModule::tick() {
     // Handle scrolling with global scroll speed from config
     if (!_config) return;
     
-    // Check if any scrolling is needed (park name or attraction names)
+    unsigned long scrollInterval = _config->globalScrollSpeedMs > 0 ? _config->globalScrollSpeedMs : 50;
+    unsigned long now = millis();
+    
+    // Only process if enough time has passed since last scroll step
+    if (now - _lastScrollStep < scrollInterval) return;
+    
+    // Check if any scrolling is actually needed (park name or attraction names)
     bool hasScrolling = (_parkNameMaxScroll > 0);
-    for (const auto& scrollState : _attractionScrollStates) {
-        if (scrollState.maxScroll > 0) {
-            hasScrolling = true;
-            break;
+    if (!hasScrolling) {
+        for (const auto& scrollState : _attractionScrollStates) {
+            if (scrollState.maxScroll > 0) {
+                hasScrolling = true;
+                break;
+            }
         }
     }
     if (!hasScrolling) return;
     
-    unsigned long scrollInterval = _config->globalScrollSpeedMs > 0 ? _config->globalScrollSpeedMs : 50;
-    unsigned long now = millis();
+    _lastScrollStep = now;
     
-    if (now - _lastScrollStep >= scrollInterval) {
-        _lastScrollStep = now;
-        
-        // Scroll park name
-        if (_parkNameMaxScroll > 0) {
-            _parkNameScrollOffset++;
-            if (_parkNameScrollOffset >= _parkNameMaxScroll) {
-                _parkNameScrollOffset = 0;
-            }
+    // Scroll park name
+    if (_parkNameMaxScroll > 0) {
+        _parkNameScrollOffset++;
+        if (_parkNameScrollOffset >= _parkNameMaxScroll) {
+            _parkNameScrollOffset = 0;
         }
-        
-        // Scroll attraction names
-        for (auto& scrollState : _attractionScrollStates) {
-            if (scrollState.maxScroll > 0) {
-                scrollState.offset++;
-                if (scrollState.offset >= scrollState.maxScroll) {
-                    scrollState.offset = 0;
-                }
-            }
-        }
-        
-        if (_updateCallback) _updateCallback();
     }
+    
+    // Scroll attraction names
+    for (auto& scrollState : _attractionScrollStates) {
+        if (scrollState.maxScroll > 0) {
+            scrollState.offset++;
+            if (scrollState.offset >= scrollState.maxScroll) {
+                scrollState.offset = 0;
+            }
+        }
+    }
+    
+    if (_updateCallback) _updateCallback();
 }
 
 void ThemeParkModule::logicTick() {
