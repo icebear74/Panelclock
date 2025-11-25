@@ -516,22 +516,24 @@ void ThemeParkModule::onActivate() {
 bool ThemeParkModule::shouldDisplayPark(const ThemeParkData& park) const {
     // A park is OPEN if at least ONE attraction is open
     // A park is CLOSED if ALL attractions are closed
-    bool hasOpenAttractions = false;
-    for (const auto& attr : park.attractions) {
-        if (attr.isOpen) {
-            hasOpenAttractions = true;
-            break;
-        }
-    }
     
     // Display open parks (at least one attraction open)
-    if (hasOpenAttractions) {
+    if (parkHasOpenAttractions(park)) {
         return true;
     }
     
     // Display closed parks ONLY if they have opening time information
     // Skip closed parks without opening times entirely
     return !park.openingTime.empty() || !park.closingTime.empty();
+}
+
+bool ThemeParkModule::parkHasOpenAttractions(const ThemeParkData& park) const {
+    for (const auto& attr : park.attractions) {
+        if (attr.isOpen) {
+            return true;
+        }
+    }
+    return false;
 }
 
 int ThemeParkModule::calculateTotalPages() const {
@@ -544,16 +546,7 @@ int ThemeParkModule::calculateTotalPages() const {
     int totalPages = 0;
     for (const auto& park : _parkData) {
         if (shouldDisplayPark(park)) {
-            // Check if park is open (has at least one open attraction)
-            bool hasOpenAttractions = false;
-            for (const auto& attr : park.attractions) {
-                if (attr.isOpen) {
-                    hasOpenAttractions = true;
-                    break;
-                }
-            }
-            
-            if (hasOpenAttractions) {
+            if (parkHasOpenAttractions(park)) {
                 // OPEN park: use attractionPages (all attractions, 6 per page)
                 totalPages += park.attractionPages;
             } else {
@@ -608,17 +601,9 @@ void ThemeParkModule::logicTick() {
                           const auto& parkA = _parkData[idxA];
                           const auto& parkB = _parkData[idxB];
                           
-                          // Check if parks are open (at least one open attraction)
-                          bool aHasOpen = false;
-                          bool bHasOpen = false;
-                          for (const auto& attr : parkA.attractions) {
-                              if (attr.isOpen) { aHasOpen = true; break; }
-                          }
-                          for (const auto& attr : parkB.attractions) {
-                              if (attr.isOpen) { bHasOpen = true; break; }
-                          }
-                          
                           // Criterion 1: Open parks first
+                          bool aHasOpen = parkHasOpenAttractions(parkA);
+                          bool bHasOpen = parkHasOpenAttractions(parkB);
                           if (aHasOpen != bHasOpen) {
                               return aHasOpen > bHasOpen;
                           }
@@ -635,31 +620,39 @@ void ThemeParkModule::logicTick() {
                 _currentPage = 0;
                 _currentParkIndex = 0;
                 _currentAttractionPage = 0;
+                _totalPages = 1;
                 _isFinished = true;
                 xSemaphoreGive(_dataMutex);
                 _logicTicksSincePageSwitch = 0;
                 return;
             }
             
-            // Get the actual park index we're currently on
-            int displayIndex = _currentParkIndex % displayableIndices.size();
-            int actualParkIndex = displayableIndices[displayIndex];
-            
-            // Check if current park is closed (for paging logic)
-            bool parkIsClosed = true;
-            for (const auto& attr : _parkData[actualParkIndex].attractions) {
-                if (attr.isOpen) {
-                    parkIsClosed = false;
-                    break;
-                }
+            // Compute pages per park for the sorted displayable list
+            PsramVector<int> pagesPerPark;
+            int computedTotalPages = 0;
+            for (int idx : displayableIndices) {
+                const auto& park = _parkData[idx];
+                int pages = parkHasOpenAttractions(park) ? park.attractionPages : 1;
+                if (pages < 1) pages = 1;
+                pagesPerPark.push_back(pages);
+                computedTotalPages += pages;
             }
+            if (computedTotalPages < 1) computedTotalPages = 1;
+            _totalPages = computedTotalPages;
             
-            // Determine pages for current park
-            int pagesForThisPark = parkIsClosed ? 1 : _parkData[actualParkIndex].attractionPages;
+            // Bounds check current park index
+            if (_currentParkIndex < 0 || _currentParkIndex >= (int)displayableIndices.size()) {
+                _currentParkIndex = 0;
+                _currentAttractionPage = 0;
+            }
             
             // Move to next attraction page within current park
             _currentAttractionPage++;
             _parkNameScrollOffset = 0;  // Reset scroll when changing page
+            
+            // Determine pages for current park (with bounds check)
+            int pagesForThisPark = (_currentParkIndex >= 0 && _currentParkIndex < (int)pagesPerPark.size()) 
+                                   ? pagesPerPark[_currentParkIndex] : 1;
             
             // If we've shown all pages for current park, move to next park
             if (_currentAttractionPage >= pagesForThisPark) {
@@ -669,17 +662,20 @@ void ThemeParkModule::logicTick() {
                 // If we've shown all displayable parks, we're done
                 if (_currentParkIndex >= (int)displayableIndices.size()) {
                     _currentParkIndex = 0;
-                    _currentPage = 0;
+                    _currentAttractionPage = 0;
                     _isFinished = true;
                     Log.printf("[ThemePark] All %d displayable parks shown -> Module finished\n", (int)displayableIndices.size());
-                } else {
-                    _currentPage++;
-                    if (_updateCallback) _updateCallback();
                 }
-            } else {
-                _currentPage++;
-                if (_updateCallback) _updateCallback();
             }
+            
+            // Compute _currentPage as cumulative pages before current park + current attraction page
+            int cumulativePages = 0;
+            for (int i = 0; i < _currentParkIndex && i < (int)pagesPerPark.size(); i++) {
+                cumulativePages += pagesPerPark[i];
+            }
+            _currentPage = cumulativePages + _currentAttractionPage;
+            
+            if (_updateCallback) _updateCallback();
             
             xSemaphoreGive(_dataMutex);
         }
@@ -700,11 +696,37 @@ void ThemeParkModule::draw() {
             }
         }
         
+        // Sort displayable parks consistently with logicTick():
+        // 1. OPEN parks first (at least one attraction open)
+        // 2. Then CLOSED parks (with opening times)
+        // 3. Alphabetically by name within each group (case-insensitive)
+        std::sort(displayableIndices.begin(), displayableIndices.end(),
+                  [this](int idxA, int idxB) {
+                      const auto& parkA = _parkData[idxA];
+                      const auto& parkB = _parkData[idxB];
+                      
+                      // Criterion 1: Open parks first
+                      bool aHasOpen = parkHasOpenAttractions(parkA);
+                      bool bHasOpen = parkHasOpenAttractions(parkB);
+                      if (aHasOpen != bHasOpen) {
+                          return aHasOpen > bHasOpen;
+                      }
+                      
+                      // Criterion 2: Alphabetically by name (case-insensitive)
+                      PsramString aLower = parkA.name;
+                      PsramString bLower = parkB.name;
+                      std::transform(aLower.begin(), aLower.end(), aLower.begin(), ::tolower);
+                      std::transform(bLower.begin(), bLower.end(), bLower.begin(), ::tolower);
+                      return aLower < bLower;
+                  });
+        
         if (displayableIndices.empty()) {
             drawNoDataPage();
         } else {
             // Find which displayable park we should show based on current index
-            int displayIndex = _currentParkIndex % displayableIndices.size();
+            // Bounds check to prevent invalid access
+            int displayIndex = (_currentParkIndex >= 0 && _currentParkIndex < (int)displayableIndices.size()) 
+                               ? _currentParkIndex : 0;
             drawParkPage(displayableIndices[displayIndex], _currentAttractionPage);
         }
         xSemaphoreGive(_dataMutex);
@@ -728,13 +750,7 @@ void ThemeParkModule::drawParkPage(int parkIndex, int attractionPage) {
     }
     
     // Check if park has any open attractions
-    bool hasOpenAttractions = false;
-    for (const auto& attr : park.attractions) {
-        if (attr.isOpen) {
-            hasOpenAttractions = true;
-            break;
-        }
-    }
+    bool hasOpenAttractions = parkHasOpenAttractions(park);
     
     // Draw park name with country as headline - scrolling text
     // Use smaller font (6x13 like CalendarModule uses) and scrolling
