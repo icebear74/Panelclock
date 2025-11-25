@@ -134,6 +134,17 @@ void DartsRankingModule::logicTick() {
 
     if (_logicTicksSincePageSwitch >= _currentTicksPerPage) {
         if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            // Recalculate totalPages under mutex to avoid race condition with data updates
+            auto& players_list = (_currentInternalMode == DartsRankingType::ORDER_OF_MERIT) ? oom_players : protour_players;
+            int calculatedTotalPages = (players_list.size() > 0) ? (players_list.size() + PLAYERS_PER_PAGE - 1) / PLAYERS_PER_PAGE : 1;
+            
+            // Safety check: if data was updated and currentPage is now out of bounds, clamp it
+            if (currentPage >= calculatedTotalPages) {
+                currentPage = 0;
+            }
+            
+            totalPages = calculatedTotalPages;
+            
             if (totalPages > 1) {
                 currentPage++;
                 if (currentPage >= totalPages) {

@@ -5,7 +5,6 @@
 #include <U8g2_for_Adafruit_GFX.h>
 #include "PsramUtils.hpp"
 #include <functional>
-#include <map>
 
 class WebClientModule;
 struct DeviceConfig;
@@ -89,9 +88,16 @@ private:
     PsramVector<PsramString> _parkIds;  // Configured park IDs
     
     // Track last processed update time for each park to avoid reprocessing same data
-    std::map<PsramString, time_t> _lastProcessedWaitTimes;
-    std::map<PsramString, time_t> _lastProcessedOpeningTimes;
-    std::map<PsramString, time_t> _lastProcessedCrowdLevel;
+    // Using PsramVector of pairs instead of std::map for PSRAM allocation
+    struct ProcessedTimeEntry {
+        PsramString parkId;
+        time_t timestamp;
+        ProcessedTimeEntry() : timestamp(0) {}
+        ProcessedTimeEntry(const PsramString& id, time_t ts) : parkId(id), timestamp(ts) {}
+    };
+    PsramVector<ProcessedTimeEntry> _lastProcessedWaitTimes;
+    PsramVector<ProcessedTimeEntry> _lastProcessedOpeningTimes;
+    PsramVector<ProcessedTimeEntry> _lastProcessedCrowdLevel;
     
     int _currentPage;
     int _currentParkIndex;  // Index of current park being displayed
@@ -110,6 +116,13 @@ private:
     int _parkNameMaxScroll;
     unsigned long _lastScrollStep;  // Track last scroll update time
     
+    // Scrolling support for attraction names
+    struct AttractionScrollState {
+        int offset = 0;
+        int maxScroll = 0;
+    };
+    PsramVector<AttractionScrollState> _attractionScrollStates;
+    
     void parseWaitTimes(const char* jsonBuffer, size_t size, const PsramString& parkId);
     void parseCrowdLevel(const char* jsonBuffer, size_t size, const PsramString& parkId);
     void parseOpeningTimes(const char* jsonBuffer, size_t size, const PsramString& parkId);
@@ -123,6 +136,7 @@ private:
     uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b);  // Convert RGB to RGB565
     PsramString truncateString(const PsramString& text, int maxWidth);
     void drawScrollingText(const PsramString& text, int x, int y, int maxWidth);
+    void drawScrollingAttractionName(const PsramString& text, int x, int y, int maxWidth, int scrollIndex);
     PsramString fitTextToPixelWidth(const PsramString& text, int maxPixel);
     
     // Cache management
