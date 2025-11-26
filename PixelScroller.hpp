@@ -262,6 +262,17 @@ private:
      */
     void drawClippedText(GFXcanvas16& canvas, const char* text, int x, int y,
                          int maxWidth, int pixelOffset, uint16_t color);
+    
+    /**
+     * @brief Zeichnet Text mit Clipping an der linken Kante
+     * @param text Der zu zeichnende Text
+     * @param clipX Linke Clipping-Grenze
+     * @param y Y-Position der Baseline
+     * @param clipWidth Breite des sichtbaren Bereichs
+     * @param pixelOffset Pixel-Offset (wie weit nach links verschoben)
+     */
+    void drawTextWithLeftClip(const char* text, int clipX, int y, 
+                              int clipWidth, int pixelOffset);
 };
 
 #endif // PIXELSCROLLER_HPP

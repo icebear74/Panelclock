@@ -241,50 +241,112 @@ uint16_t PixelScroller::dimColor(uint16_t color, float brightness) {
 
 void PixelScroller::drawClippedText(GFXcanvas16& canvas, const char* text, int x, int y,
                                     int maxWidth, int pixelOffset, uint16_t color) {
-    // Bei kontinuierlichem Scrolling zeichnen wir den Text zweimal:
-    // 1. Normaler Text mit Offset
-    // 2. Text am Ende für nahtlosen Übergang
+    // Pixelweises Clipping: Wir zeichnen zeichenweise und überspringen Zeichen/Pixel
+    // die links außerhalb des sichtbaren Bereichs liegen
+    
+    if (!text || text[0] == '\0' || maxWidth <= 0) return;
     
     _u8g2.setForegroundColor(color);
     
     int textWidth = calculateTextWidth(text);
+    int padding = _config.paddingPixels;
+    int totalWidth = textWidth + padding;  // Für kontinuierliches Scrolling
     
+    // Für PingPong: einfach nach rechts einrücken, Text bleibt im Bereich
+    if (_config.mode == ScrollMode::PINGPONG) {
+        // Bei PingPong startet der Text links und scrollt nach rechts aus
+        // pixelOffset gibt an, wie weit der Text nach links verschoben wird
+        // Wir zeichnen zeichenweise und clippen an der linken Kante
+        drawTextWithLeftClip(text, x, y, maxWidth, pixelOffset);
+        return;
+    }
+    
+    // Kontinuierliches Scrolling: Text läuft durch, erscheint wieder von rechts
     if (_config.mode == ScrollMode::CONTINUOUS) {
-        // Kontinuierliches Scrolling - Text + Padding + Text (nahtlos)
-        int padding = _config.paddingPixels;
-        int totalWidth = textWidth + padding;
+        // Berechne Position des Textes
+        // pixelOffset ist wie weit der Text nach links gescrollt wurde
         
         // Erster Text
-        int textX = x - pixelOffset;
-        if (textX + textWidth > x) {
-            // Clipping durch Canvas-Grenzen - wir zeichnen den Text und lassen die Canvas clippen
-            // Für pixelgenaues Clipping müssten wir zeichenweise arbeiten, 
-            // aber das wäre sehr langsam. Stattdessen zeichnen wir einfach und 
-            // überschreiben den überlaufenden Bereich später mit dem Hintergrund
-            // ODER wir nutzen einen temporären Bereich
-            
-            // Einfache Methode: Text zeichnen, ist leicht außerhalb sichtbar
-            // Das ist OK für LED-Panels
-            _u8g2.setCursor(textX, y);
-            _u8g2.print(text);
+        drawTextWithLeftClip(text, x, y, maxWidth, pixelOffset);
+        
+        // Zweiter Text für nahtlosen Übergang (erscheint von rechts)
+        if (pixelOffset > 0) {
+            int secondOffset = pixelOffset - totalWidth;
+            if (secondOffset < 0 && -secondOffset < maxWidth + textWidth) {
+                // Zweiter Text ist sichtbar
+                drawTextWithLeftClip(text, x, y, maxWidth, secondOffset);
+            }
+        }
+        return;
+    }
+    
+    // Kein Scrolling - einfach zeichnen
+    _u8g2.setCursor(x, y);
+    _u8g2.print(text);
+}
+
+void PixelScroller::drawTextWithLeftClip(const char* text, int clipX, int y, 
+                                         int clipWidth, int pixelOffset) {
+    // Zeichnet Text mit Clipping an der linken Kante
+    // pixelOffset: wie weit der Text nach links verschoben ist (positive Werte = nach links)
+    // Der Text wird an clipX geclippt (links) und bei clipX + clipWidth (rechts)
+    
+    if (!text || text[0] == '\0') return;
+    
+    // Berechne wo der Text im virtuellen Raum startet
+    int virtualTextX = clipX - pixelOffset;  // Ohne Clipping wäre Text hier
+    
+    // Wenn der gesamte Text rechts außerhalb des sichtbaren Bereichs ist, nichts zeichnen
+    int textWidth = calculateTextWidth(text);
+    if (virtualTextX >= clipX + clipWidth) return;
+    
+    // Wenn der gesamte Text links außerhalb ist, nichts zeichnen
+    if (virtualTextX + textWidth <= clipX) return;
+    
+    // Zeichenweises Rendering mit Clipping
+    int currentX = virtualTextX;
+    const char* ptr = text;
+    
+    while (*ptr != '\0') {
+        // UTF-8: Ermittle die Länge des aktuellen Zeichens
+        int charLen = 1;
+        unsigned char c = (unsigned char)*ptr;
+        if (c >= 0xC0 && c < 0xE0) charLen = 2;
+        else if (c >= 0xE0 && c < 0xF0) charLen = 3;
+        else if (c >= 0xF0) charLen = 4;
+        
+        // Temporären String für dieses Zeichen erstellen
+        char charBuf[5] = {0};
+        for (int i = 0; i < charLen && ptr[i] != '\0'; i++) {
+            charBuf[i] = ptr[i];
         }
         
-        // Zweiter Text für nahtlosen Übergang
-        int secondTextX = textX + totalWidth;
-        if (secondTextX < x + maxWidth && secondTextX + textWidth > x) {
-            _u8g2.setCursor(secondTextX, y);
-            _u8g2.print(text);
+        int charWidth = _u8g2.getUTF8Width(charBuf);
+        
+        // Prüfen ob das Zeichen (teilweise) sichtbar ist
+        int charEndX = currentX + charWidth;
+        
+        // Zeichen ist komplett links vom sichtbaren Bereich
+        if (charEndX <= clipX) {
+            currentX = charEndX;
+            ptr += charLen;
+            continue;
         }
         
-    } else if (_config.mode == ScrollMode::PINGPONG) {
-        // PingPong - einfach verschieben
-        _u8g2.setCursor(x - pixelOffset, y);
-        _u8g2.print(text);
+        // Zeichen ist komplett rechts vom sichtbaren Bereich - fertig
+        if (currentX >= clipX + clipWidth) {
+            break;
+        }
         
-    } else {
-        // Kein Scrolling
-        _u8g2.setCursor(x, y);
-        _u8g2.print(text);
+        // Zeichen ist (mindestens teilweise) sichtbar - zeichnen
+        // Für teilweise sichtbare Zeichen: Wir zeichnen das gesamte Zeichen,
+        // auch wenn es links oder rechts etwas übersteht.
+        // Das ist ein Kompromiss zwischen Performance und Präzision.
+        _u8g2.setCursor(currentX, y);
+        _u8g2.print(charBuf);
+        
+        currentX = charEndX;
+        ptr += charLen;
     }
 }
 
