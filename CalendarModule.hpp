@@ -17,6 +17,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "DrawableModule.hpp"
+#include "PixelScroller.hpp"
 
 // Konstanten für dringende Termine (Fallbacks)
 #define URGENT_EVENT_INTERVAL (2 * 60 * 1000UL) // 2 Minuten zwischen Anzeigen (Fallback)
@@ -82,11 +83,8 @@ private:
     PsramCalendarEventVector events;
     PsramCalendarEventVector raw_events;
     
-    struct ScrollState { 
-        int offset = 0; 
-        int maxScroll = 0; 
-    };
-    std::vector<ScrollState, PsramAllocator<ScrollState>> scrollPos;
+    // PixelScroller für pixelweises Scrolling
+    PixelScroller* _pixelScroller = nullptr;
     unsigned long lastScrollStep = 0;
     uint32_t scrollStepInterval = 250;
 
@@ -123,7 +121,6 @@ private:
     PsramCalendarEventVector getUpcomingEvents(int maxCount);
     PsramString fitTextToPixelWidth(const char* text, int maxPixel);
     void resetScroll();
-    void ensureScrollPos(const PsramCalendarEventVector& upcomming, int maxTextPixel);
     
     void drawUrgentView();
 };

@@ -167,6 +167,10 @@ struct DeviceConfig {
     // --- Globale Scrolling-Einstellungen ---
     /// @brief Globale Scroll-Geschwindigkeit in Millisekunden für alle Module.
     int globalScrollSpeedMs = 50;
+    /// @brief Scroll-Modus: 0 = Kontinuierlich, 1 = PingPong
+    int scrollMode = 0;
+    /// @brief Pause zwischen Scroll-Zyklen in Sekunden (0 = keine Pause)
+    int scrollPauseSec = 0;
 };
 
 // Deklarationen für globale Variablen und Funktionen
