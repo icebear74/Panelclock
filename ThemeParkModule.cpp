@@ -141,10 +141,21 @@ void ThemeParkModule::queueData() {
                     // Only process if this is new data (not already processed)
                     bool shouldProcess = false;
                     if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                        auto it = _lastProcessedWaitTimes.find(parkId);
-                        if (it == _lastProcessedWaitTimes.end() || it->second < last_update) {
+                        // Find existing entry in vector
+                        time_t* existingTime = nullptr;
+                        for (auto& entry : _lastProcessedWaitTimes) {
+                            if (entry.parkId == parkId) {
+                                existingTime = &entry.timestamp;
+                                break;
+                            }
+                        }
+                        if (!existingTime || *existingTime < last_update) {
                             shouldProcess = true;
-                            _lastProcessedWaitTimes[parkId] = last_update;
+                            if (existingTime) {
+                                *existingTime = last_update;
+                            } else {
+                                _lastProcessedWaitTimes.push_back(ProcessedTimeEntry(parkId, last_update));
+                            }
                         }
                         xSemaphoreGive(_dataMutex);
                     }
@@ -174,10 +185,21 @@ void ThemeParkModule::queueData() {
                     // Only process if this is new data (not already processed)
                     bool shouldProcess = false;
                     if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                        auto it = _lastProcessedOpeningTimes.find(parkId);
-                        if (it == _lastProcessedOpeningTimes.end() || it->second < last_update) {
+                        // Find existing entry in vector
+                        time_t* existingTime = nullptr;
+                        for (auto& entry : _lastProcessedOpeningTimes) {
+                            if (entry.parkId == parkId) {
+                                existingTime = &entry.timestamp;
+                                break;
+                            }
+                        }
+                        if (!existingTime || *existingTime < last_update) {
                             shouldProcess = true;
-                            _lastProcessedOpeningTimes[parkId] = last_update;
+                            if (existingTime) {
+                                *existingTime = last_update;
+                            } else {
+                                _lastProcessedOpeningTimes.push_back(ProcessedTimeEntry(parkId, last_update));
+                            }
                         }
                         xSemaphoreGive(_dataMutex);
                     }
@@ -206,10 +228,21 @@ void ThemeParkModule::queueData() {
                     // Only process if this is new data (not already processed)
                     bool shouldProcess = false;
                     if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-                        auto it = _lastProcessedCrowdLevel.find(parkId);
-                        if (it == _lastProcessedCrowdLevel.end() || it->second < last_update) {
+                        // Find existing entry in vector
+                        time_t* existingTime = nullptr;
+                        for (auto& entry : _lastProcessedCrowdLevel) {
+                            if (entry.parkId == parkId) {
+                                existingTime = &entry.timestamp;
+                                break;
+                            }
+                        }
+                        if (!existingTime || *existingTime < last_update) {
                             shouldProcess = true;
-                            _lastProcessedCrowdLevel[parkId] = last_update;
+                            if (existingTime) {
+                                *existingTime = last_update;
+                            } else {
+                                _lastProcessedCrowdLevel.push_back(ProcessedTimeEntry(parkId, last_update));
+                            }
                         }
                         xSemaphoreGive(_dataMutex);
                     }
@@ -498,6 +531,9 @@ void ThemeParkModule::resetPaging() {
         _currentAttractionPage = 0;
         _logicTicksSincePageSwitch = 0;
         _isFinished = false;
+        _parkNameScrollOffset = 0;
+        _parkNameMaxScroll = 0;
+        _attractionScrollStates.clear();
         xSemaphoreGive(_dataMutex);
     }
 }
@@ -562,19 +598,47 @@ int ThemeParkModule::calculateTotalPages() const {
 
 void ThemeParkModule::tick() {
     // Handle scrolling with global scroll speed from config
-    if (!_config || _parkNameMaxScroll == 0) return;
+    if (!_config) return;
     
     unsigned long scrollInterval = _config->globalScrollSpeedMs > 0 ? _config->globalScrollSpeedMs : 50;
     unsigned long now = millis();
     
-    if (now - _lastScrollStep >= scrollInterval) {
-        _lastScrollStep = now;
+    // Only process if enough time has passed since last scroll step
+    if (now - _lastScrollStep < scrollInterval) return;
+    
+    // Check if any scrolling is actually needed (park name or attraction names)
+    bool hasScrolling = (_parkNameMaxScroll > 0);
+    if (!hasScrolling) {
+        for (const auto& scrollState : _attractionScrollStates) {
+            if (scrollState.maxScroll > 0) {
+                hasScrolling = true;
+                break;
+            }
+        }
+    }
+    if (!hasScrolling) return;
+    
+    _lastScrollStep = now;
+    
+    // Scroll park name
+    if (_parkNameMaxScroll > 0) {
         _parkNameScrollOffset++;
         if (_parkNameScrollOffset >= _parkNameMaxScroll) {
             _parkNameScrollOffset = 0;
         }
-        if (_updateCallback) _updateCallback();
     }
+    
+    // Scroll attraction names
+    for (auto& scrollState : _attractionScrollStates) {
+        if (scrollState.maxScroll > 0) {
+            scrollState.offset++;
+            if (scrollState.offset >= scrollState.maxScroll) {
+                scrollState.offset = 0;
+            }
+        }
+    }
+    
+    if (_updateCallback) _updateCallback();
 }
 
 void ThemeParkModule::logicTick() {
@@ -649,6 +713,7 @@ void ThemeParkModule::logicTick() {
             // Move to next attraction page within current park
             _currentAttractionPage++;
             _parkNameScrollOffset = 0;  // Reset scroll when changing page
+            _attractionScrollStates.clear();  // Reset attraction scrolling when changing page
             
             // Determine pages for current park (with bounds check)
             int pagesForThisPark = (_currentParkIndex >= 0 && _currentParkIndex < (int)pagesPerPark.size()) 
@@ -854,16 +919,24 @@ void ThemeParkModule::drawParkPage(int parkIndex, int attractionPage) {
     int startIdx = attractionPage * maxLines;
     int endIdx = min(startIdx + maxLines, (int)park.attractions.size());
     
+    // Ensure scroll state vector has enough entries
+    int attractionsToShow = endIdx - startIdx;
+    if ((int)_attractionScrollStates.size() < attractionsToShow) {
+        _attractionScrollStates.resize(attractionsToShow);
+    }
+    
+    // Calculate max width for attraction names (leave space for wait time)
+    int maxAttrNameWidth = _canvas.width() - 45;
+    
     for (int i = startIdx; i < endIdx; i++) {
         const Attraction& attr = park.attractions[i];
-        
-        // Truncate name to fit (leave space for wait time)
-        PsramString attrName = truncateString(attr.name, _canvas.width() - 45);
+        int scrollIndex = i - startIdx;
         
         // Draw attraction name - use WHITE if open, RED if closed
         _u8g2.setForegroundColor(attr.isOpen ? 0xFFFF : 0xF800);
-        _u8g2.setCursor(2, yPos);
-        _u8g2.print(attrName.c_str());
+        
+        // Use scrolling for attraction names instead of truncation
+        drawScrollingAttractionName(attr.name, 2, yPos, maxAttrNameWidth, scrollIndex);
         
         // Draw wait time or "Geschlossen" for closed attractions
         if (attr.isOpen) {
@@ -976,6 +1049,38 @@ void ThemeParkModule::drawScrollingText(const PsramString& text, int x, int y, i
         // Text fits, no scrolling needed
         _parkNameMaxScroll = 0;
         _parkNameScrollOffset = 0;
+        _u8g2.setCursor(x, y);
+        _u8g2.print(text.c_str());
+    }
+}
+
+void ThemeParkModule::drawScrollingAttractionName(const PsramString& text, int x, int y, int maxWidth, int scrollIndex) {
+    PsramString visiblePart = fitTextToPixelWidth(text, maxWidth);
+    
+    // Ensure scroll state vector is large enough
+    if (scrollIndex >= (int)_attractionScrollStates.size()) {
+        _attractionScrollStates.resize(scrollIndex + 1);
+    }
+    
+    AttractionScrollState& scrollState = _attractionScrollStates[scrollIndex];
+    
+    if (text.length() > visiblePart.length()) {
+        // Text needs scrolling
+        PsramString pad("     ");  // 5 spaces for smoother scrolling
+        PsramString scrollText = text + pad + text.substr(0, visiblePart.length());
+        scrollState.maxScroll = scrollText.length() - visiblePart.length();
+        
+        if (scrollState.offset >= scrollState.maxScroll) {
+            scrollState.offset = 0;
+        }
+        
+        PsramString part = scrollText.substr(scrollState.offset, visiblePart.length());
+        _u8g2.setCursor(x, y);
+        _u8g2.print(part.c_str());
+    } else {
+        // Text fits, no scrolling needed
+        scrollState.maxScroll = 0;
+        scrollState.offset = 0;
         _u8g2.setCursor(x, y);
         _u8g2.print(text.c_str());
     }
