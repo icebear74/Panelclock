@@ -284,9 +284,11 @@ void CalendarModule::draw() {
             
             if (usePulsing) {
                 // Verwende PixelScroller's statische Pulsing-Funktion für konsistente Farben
+                // pulsingMinBrightness aus Config verwenden
+                float minBrightness = _pixelScroller ? _pixelScroller->getConfig().pulsingMinBrightness : 0.25f;
                 float periodMs = fastPulse ? 1000.0f : 2000.0f;
-                currentTextColor = PixelScroller::calculatePulsedColor(textColor, 0.25f, periodMs);
-                currentDateColor = PixelScroller::calculatePulsedColor(dateColor, 0.25f, periodMs);
+                currentTextColor = PixelScroller::calculatePulsedColor(textColor, minBrightness, periodMs);
+                currentDateColor = PixelScroller::calculatePulsedColor(dateColor, minBrightness, periodMs);
             }
             
             u8g2.setForegroundColor(currentDateColor);
@@ -446,18 +448,6 @@ void CalendarModule::resetPaging() {
 
 uint32_t CalendarModule::getScrollStepInterval() const { 
     return scrollStepInterval; 
-}
-
-uint16_t CalendarModule::dimColor(uint16_t color, float brightness) {
-    uint8_t r = (color >> 11) & 0x1F;
-    uint8_t g = (color >> 5) & 0x3F;
-    uint8_t b = color & 0x1F;
-    
-    r = (uint8_t)(r * brightness);
-    g = (uint8_t)(g * brightness);
-    b = (uint8_t)(b * brightness);
-    
-    return (r << 11) | (g << 5) | b;
 }
 
 void CalendarModule::parseICS(char* icsBuffer, size_t size) {

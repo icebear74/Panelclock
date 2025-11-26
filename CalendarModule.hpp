@@ -114,7 +114,6 @@ private:
     unsigned long _urgentDurationMs = URGENT_EVENT_DURATION; // wie lange die Urgent-View angezeigt wird
     unsigned long _urgentRepeatMs = URGENT_EVENT_INTERVAL; // Pause bis zur nächsten Anzeige (wiederholung)
 
-    uint16_t dimColor(uint16_t color, float brightness);
     void parseICS(char* icsBuffer, size_t size);
     void onSuccessfulUpdate();
     void addSingleEvent(const Event& ev);

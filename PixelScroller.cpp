@@ -16,7 +16,8 @@ void PixelScroller::setConfig(const PixelScrollerConfig& config) {
 }
 
 void PixelScroller::setConfiguredScrollSpeed(uint32_t ms) {
-    _configuredScrollSpeedMs = ms;
+    // Mindestens 1ms um Division durch Null zu vermeiden
+    _configuredScrollSpeedMs = (ms > 0) ? ms : 1;
 }
 
 uint32_t PixelScroller::getEffectiveScrollSpeed() const {
