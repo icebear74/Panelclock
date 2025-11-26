@@ -264,14 +264,14 @@ private:
                          int maxWidth, int pixelOffset, uint16_t color);
     
     /**
-     * @brief Zeichnet Text mit Clipping an der linken Kante
+     * @brief Zeichnet Text mit Clipping an beiden Kanten (links und rechts)
      * @param text Der zu zeichnende Text
      * @param clipX Linke Clipping-Grenze
      * @param y Y-Position der Baseline
      * @param clipWidth Breite des sichtbaren Bereichs
      * @param pixelOffset Pixel-Offset (wie weit nach links verschoben)
      */
-    void drawTextWithLeftClip(const char* text, int clipX, int y, 
+    void drawTextWithClipping(const char* text, int clipX, int y, 
                               int clipWidth, int pixelOffset);
 };
 

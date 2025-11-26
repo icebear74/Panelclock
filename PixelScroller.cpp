@@ -242,7 +242,7 @@ uint16_t PixelScroller::dimColor(uint16_t color, float brightness) {
 void PixelScroller::drawClippedText(GFXcanvas16& canvas, const char* text, int x, int y,
                                     int maxWidth, int pixelOffset, uint16_t color) {
     // Pixelweises Clipping: Wir zeichnen zeichenweise und überspringen Zeichen/Pixel
-    // die links außerhalb des sichtbaren Bereichs liegen
+    // die außerhalb des sichtbaren Bereichs (x bis x+maxWidth) liegen
     
     if (!text || text[0] == '\0' || maxWidth <= 0) return;
     
@@ -252,44 +252,42 @@ void PixelScroller::drawClippedText(GFXcanvas16& canvas, const char* text, int x
     int padding = _config.paddingPixels;
     int totalWidth = textWidth + padding;  // Für kontinuierliches Scrolling
     
-    // Für PingPong: einfach nach rechts einrücken, Text bleibt im Bereich
+    // Für PingPong: Text scrollt hin und her innerhalb des Bereichs
     if (_config.mode == ScrollMode::PINGPONG) {
-        // Bei PingPong startet der Text links und scrollt nach rechts aus
         // pixelOffset gibt an, wie weit der Text nach links verschoben wird
-        // Wir zeichnen zeichenweise und clippen an der linken Kante
-        drawTextWithLeftClip(text, x, y, maxWidth, pixelOffset);
+        drawTextWithClipping(text, x, y, maxWidth, pixelOffset);
         return;
     }
     
-    // Kontinuierliches Scrolling: Text läuft durch, erscheint wieder von rechts
+    // Kontinuierliches Scrolling: Text läuft durch, erscheint sofort wieder von rechts
+    // Der Text ist NIE komplett verschwunden - sobald er links verschwindet,
+    // erscheint er bereits wieder von rechts
     if (_config.mode == ScrollMode::CONTINUOUS) {
-        // Berechne Position des Textes
-        // pixelOffset ist wie weit der Text nach links gescrollt wurde
+        // Erster Text (wird nach links gescrollt)
+        drawTextWithClipping(text, x, y, maxWidth, pixelOffset);
         
-        // Erster Text
-        drawTextWithLeftClip(text, x, y, maxWidth, pixelOffset);
-        
-        // Zweiter Text für nahtlosen Übergang (erscheint von rechts)
-        if (pixelOffset > 0) {
-            int secondOffset = pixelOffset - totalWidth;
-            if (secondOffset < 0 && -secondOffset < maxWidth + textWidth) {
-                // Zweiter Text ist sichtbar
-                drawTextWithLeftClip(text, x, y, maxWidth, secondOffset);
-            }
+        // Zweiter Text für nahtlosen Übergang
+        // Er startet direkt nach dem ersten Text + Padding
+        // Bei pixelOffset = 0: zweiter Text ist rechts außerhalb bei x + textWidth + padding
+        // Bei pixelOffset = textWidth + padding: zweiter Text ist bei x (komplett sichtbar)
+        int secondOffset = pixelOffset - totalWidth;
+        // secondOffset < 0 bedeutet: zweiter Text startet rechts vom sichtbaren Bereich
+        // Wir zeichnen ihn, wenn er teilweise sichtbar sein könnte
+        if (secondOffset < 0 && secondOffset > -(maxWidth + textWidth)) {
+            drawTextWithClipping(text, x, y, maxWidth, secondOffset);
         }
         return;
     }
     
-    // Kein Scrolling - einfach zeichnen
-    _u8g2.setCursor(x, y);
-    _u8g2.print(text);
+    // Kein Scrolling - einfach zeichnen (mit Clipping)
+    drawTextWithClipping(text, x, y, maxWidth, 0);
 }
 
-void PixelScroller::drawTextWithLeftClip(const char* text, int clipX, int y, 
+void PixelScroller::drawTextWithClipping(const char* text, int clipX, int y, 
                                          int clipWidth, int pixelOffset) {
-    // Zeichnet Text mit Clipping an der linken Kante
+    // Zeichnet Text mit Clipping an beiden Kanten (links UND rechts)
     // pixelOffset: wie weit der Text nach links verschoben ist (positive Werte = nach links)
-    // Der Text wird an clipX geclippt (links) und bei clipX + clipWidth (rechts)
+    // Der Text wird geclippt zwischen clipX (links) und clipX + clipWidth (rechts)
     
     if (!text || text[0] == '\0') return;
     
@@ -303,9 +301,10 @@ void PixelScroller::drawTextWithLeftClip(const char* text, int clipX, int y,
     // Wenn der gesamte Text links außerhalb ist, nichts zeichnen
     if (virtualTextX + textWidth <= clipX) return;
     
-    // Zeichenweises Rendering mit Clipping
+    // Zeichenweises Rendering mit Clipping an BEIDEN Kanten
     int currentX = virtualTextX;
     const char* ptr = text;
+    int rightClipX = clipX + clipWidth;  // Rechte Clipping-Grenze
     
     while (*ptr != '\0') {
         // UTF-8: Ermittle die Länge des aktuellen Zeichens
@@ -322,11 +321,9 @@ void PixelScroller::drawTextWithLeftClip(const char* text, int clipX, int y,
         }
         
         int charWidth = _u8g2.getUTF8Width(charBuf);
-        
-        // Prüfen ob das Zeichen (teilweise) sichtbar ist
         int charEndX = currentX + charWidth;
         
-        // Zeichen ist komplett links vom sichtbaren Bereich
+        // Zeichen ist komplett links vom sichtbaren Bereich - überspringen
         if (charEndX <= clipX) {
             currentX = charEndX;
             ptr += charLen;
@@ -334,16 +331,18 @@ void PixelScroller::drawTextWithLeftClip(const char* text, int clipX, int y,
         }
         
         // Zeichen ist komplett rechts vom sichtbaren Bereich - fertig
-        if (currentX >= clipX + clipWidth) {
+        if (currentX >= rightClipX) {
             break;
         }
         
         // Zeichen ist (mindestens teilweise) sichtbar - zeichnen
-        // Für teilweise sichtbare Zeichen: Wir zeichnen das gesamte Zeichen,
-        // auch wenn es links oder rechts etwas übersteht.
-        // Das ist ein Kompromiss zwischen Performance und Präzision.
-        _u8g2.setCursor(currentX, y);
-        _u8g2.print(charBuf);
+        // Wir zeichnen nur wenn das Zeichen mindestens teilweise im Bereich ist
+        // Für Zeichen am Rand: Sie werden gezeichnet auch wenn sie leicht überstehen
+        // (Kompromiss zwischen Performance und pixel-perfektem Clipping)
+        if (currentX < rightClipX && charEndX > clipX) {
+            _u8g2.setCursor(currentX, y);
+            _u8g2.print(charBuf);
+        }
         
         currentX = charEndX;
         ptr += charLen;
