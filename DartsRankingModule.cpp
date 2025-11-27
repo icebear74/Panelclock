@@ -146,7 +146,7 @@ void DartsRankingModule::resetPaging() {
     _logicTicksSincePageSwitch = 0;
     _logicTicksSinceRankingSwitch = 0;
     _isFinished = false;
-    resetScroll();
+    resetAllScrollers();  // Bei komplettem Reset beide Scroller zurücksetzen
 }
 
 void DartsRankingModule::tick() {
@@ -218,7 +218,7 @@ void DartsRankingModule::logicTick() {
             currentPage = 0;
             _logicTicksSincePageSwitch = 0;
             _logicTicksSinceRankingSwitch = 0;
-            resetScroll();
+            resetAllScrollers();  // Bei Ranking-Typ-Wechsel beide Scroller zurücksetzen
             needsRedraw = true;
         } else {
             _isFinished = true;
@@ -766,6 +766,15 @@ bool DartsRankingModule::parseTable(const char* html, std::vector<DartsPlayer, P
 }
 
 void DartsRankingModule::resetScroll() {
+    // Nur Spielernamen-Scroller zurücksetzen, NICHT den Untertitel
+    // Der Untertitel soll kontinuierlich weiterscrollen
+    if (_pixelScroller) {
+        _pixelScroller->reset();
+    }
+}
+
+void DartsRankingModule::resetAllScrollers() {
+    // Beide Scroller zurücksetzen (bei Ranking-Typ-Wechsel)
     if (_pixelScroller) {
         _pixelScroller->reset();
     }

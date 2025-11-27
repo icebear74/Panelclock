@@ -722,8 +722,8 @@ void ThemeParkModule::logicTick() {
             
             // Move to next attraction page within current park
             _currentAttractionPage++;
-            // Reset PixelScroller when changing page
-            if (_parkNameScroller) _parkNameScroller->reset();
+            // NUR Attraktions-Scroller zurücksetzen, NICHT den Parknamen-Scroller
+            // Der Parkname soll kontinuierlich weiterscrollen
             if (_attractionScroller) _attractionScroller->reset();
             
             // Determine pages for current park (with bounds check)
@@ -734,6 +734,8 @@ void ThemeParkModule::logicTick() {
             if (_currentAttractionPage >= pagesForThisPark) {
                 _currentAttractionPage = 0;
                 _currentParkIndex++;
+                // Bei Park-Wechsel: Parkname-Scroller zurücksetzen (neuer Park = neuer Name)
+                if (_parkNameScroller) _parkNameScroller->reset();
                 
                 // If we've shown all displayable parks, we're done
                 if (_currentParkIndex >= (int)displayableIndices.size()) {
@@ -1014,7 +1016,11 @@ uint16_t ThemeParkModule::getCrowdLevelColor(float level) {
 uint16_t ThemeParkModule::calcColor(float value, float low, float high) {
     // Calculate smooth color gradient from green (low) to red (high)
     // Adapted from TankerkoenigModule
-    if (low >= high || value <= 0) return rgb565(255, 255, 0);
+    
+    // 0 oder niedrige Werte = Grün (gut!)
+    if (value <= 0) return rgb565(0, 255, 0);
+    
+    if (low >= high) return rgb565(255, 255, 0);
 
     float val = (value < low) ? low : (value > high ? high : value);
     

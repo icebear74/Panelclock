@@ -127,6 +127,7 @@ private:
     void parseHtml(const char* html, size_t len, DartsRankingType type);
     bool parseTable(const char* html, std::vector<DartsPlayer, PsramAllocator<DartsPlayer>>& players_ref);
     void resetScroll();
+    void resetAllScrollers();  // Reset beider Scroller (bei Ranking-Typ-Wechsel)
     void ensureScrollPos(size_t requiredSize);
 };
 #endif // DARTS_RANKING_MODULE_HPP
