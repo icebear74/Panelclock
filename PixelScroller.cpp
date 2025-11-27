@@ -329,14 +329,15 @@ void PixelScroller::drawTextWithClipping(const char* text, int clipX, int y,
     // pixelOffset: wie weit der Text nach links verschoben ist (positive Werte = nach links)
     // Der Text wird geclippt zwischen clipX (links) und clipX + clipWidth (rechts)
     
-    if (!text || text[0] == '\0') return;
+    if (!text || text[0] == '\0' || clipWidth <= 0) return;
     
     // Berechne wo der Text im virtuellen Raum startet
     int virtualTextX = clipX - pixelOffset;  // Ohne Clipping wäre Text hier
+    int rightClipX = clipX + clipWidth;  // Rechte Clipping-Grenze
     
     // Wenn der gesamte Text rechts außerhalb des sichtbaren Bereichs ist, nichts zeichnen
     int textWidth = calculateTextWidth(text);
-    if (virtualTextX >= clipX + clipWidth) return;
+    if (virtualTextX >= rightClipX) return;
     
     // Wenn der gesamte Text links außerhalb ist, nichts zeichnen
     if (virtualTextX + textWidth <= clipX) return;
@@ -344,7 +345,6 @@ void PixelScroller::drawTextWithClipping(const char* text, int clipX, int y,
     // Zeichenweises Rendering mit Clipping an BEIDEN Kanten
     int currentX = virtualTextX;
     const char* ptr = text;
-    int rightClipX = clipX + clipWidth;  // Rechte Clipping-Grenze
     
     while (*ptr != '\0') {
         // UTF-8: Ermittle die Länge des aktuellen Zeichens
@@ -370,19 +370,18 @@ void PixelScroller::drawTextWithClipping(const char* text, int clipX, int y,
             continue;
         }
         
-        // Zeichen ist komplett rechts vom sichtbaren Bereich - fertig
+        // Zeichen beginnt komplett rechts vom sichtbaren Bereich - fertig
+        // Da wir von links nach rechts durch den Text gehen, sind alle weiteren
+        // Zeichen ebenfalls rechts außerhalb
         if (currentX >= rightClipX) {
             break;
         }
         
-        // Zeichen ist (mindestens teilweise) sichtbar - zeichnen
-        // Wir zeichnen nur wenn das Zeichen mindestens teilweise im Bereich ist
-        // Für Zeichen am Rand: Sie werden gezeichnet auch wenn sie leicht überstehen
-        // (Kompromiss zwischen Performance und pixel-perfektem Clipping)
-        if (currentX < rightClipX && charEndX > clipX) {
-            _u8g2.setCursor(currentX, y);
-            _u8g2.print(charBuf);
-        }
+        // Zeichen ist (mindestens teilweise) im sichtbaren Bereich - zeichnen
+        // Die GFX-Bibliothek clippt automatisch am Canvas-Rand, 
+        // also können wir Zeichen auch zeichnen wenn sie teilweise überstehen
+        _u8g2.setCursor(currentX, y);
+        _u8g2.print(charBuf);
         
         currentX = charEndX;
         ptr += charLen;
