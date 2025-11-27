@@ -377,11 +377,13 @@ void PixelScroller::drawTextWithClipping(const char* text, int clipX, int y,
             break;
         }
         
-        // Zeichen ist (mindestens teilweise) im sichtbaren Bereich - zeichnen
-        // Die GFX-Bibliothek clippt automatisch am Canvas-Rand, 
-        // also können wir Zeichen auch zeichnen wenn sie teilweise überstehen
-        _u8g2.setCursor(currentX, y);
-        _u8g2.print(charBuf);
+        // Zeichen ist im sichtbaren Bereich - aber NUR zeichnen wenn es KOMPLETT 
+        // im Bereich passt (sowohl links als auch rechts)
+        // Das verhindert, dass Zeichen den Bereich rechts davon überschreiben
+        if (currentX >= clipX && charEndX <= rightClipX) {
+            _u8g2.setCursor(currentX, y);
+            _u8g2.print(charBuf);
+        }
         
         currentX = charEndX;
         ptr += charLen;
