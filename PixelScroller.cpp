@@ -328,6 +328,9 @@ void PixelScroller::drawTextWithClipping(const char* text, int clipX, int y,
     // Zeichnet Text mit Clipping an beiden Kanten (links UND rechts)
     // pixelOffset: wie weit der Text nach links verschoben ist (positive Werte = nach links)
     // Der Text wird geclippt zwischen clipX (links) und clipX + clipWidth (rechts)
+    // 
+    // WICHTIG: Der Text rechts vom Scroll-Bereich (z.B. Crowd-Level, Punktzahl) muss 
+    // NACH dem scrollenden Text gezeichnet werden, damit er überlappende Zeichen überschreibt!
     
     if (!text || text[0] == '\0' || clipWidth <= 0) return;
     
@@ -377,13 +380,11 @@ void PixelScroller::drawTextWithClipping(const char* text, int clipX, int y,
             break;
         }
         
-        // Zeichen ist im sichtbaren Bereich - aber NUR zeichnen wenn es KOMPLETT 
-        // im Bereich passt (sowohl links als auch rechts)
-        // Das verhindert, dass Zeichen den Bereich rechts davon überschreiben
-        if (currentX >= clipX && charEndX <= rightClipX) {
-            _u8g2.setCursor(currentX, y);
-            _u8g2.print(charBuf);
-        }
+        // Zeichen ist (mindestens teilweise) im sichtbaren Bereich - zeichnen
+        // Das Zeichen kann teilweise über den rechten Rand hinausragen, aber das
+        // wird vom nachfolgend gezeichneten Text (z.B. Crowd-Level) überschrieben
+        _u8g2.setCursor(currentX, y);
+        _u8g2.print(charBuf);
         
         currentX = charEndX;
         ptr += charLen;

@@ -846,7 +846,11 @@ void ThemeParkModule::drawParkPage(int parkIndex, int attractionPage) {
         displayName = displayName + " : Geöffnet von " + park.openingTime + " - " + park.closingTime + " Uhr";
     }
     
-    int maxNameWidth = _canvas.width() - 50;  // Leave space for crowd level
+    // Determine if crowd level will be shown
+    bool showCrowdLevel = hasOpenAttractions && park.crowdLevel > 0.0f;
+    
+    // Calculate max name width - leave space for crowd level only if it will be shown
+    int maxNameWidth = showCrowdLevel ? (_canvas.width() - 50) : (_canvas.width() - 4);
     
     // Pixelweises Scrolling für Parknamen
     if (_parkNameScroller) {
@@ -860,7 +864,7 @@ void ThemeParkModule::drawParkPage(int parkIndex, int attractionPage) {
     // Only show for OPEN parks (not closed parks)
     // Use same font as park name (u8g2_font_6x13_tf)
     // Color: green <= 40%, yellow 41-60%, red > 60%
-    if (hasOpenAttractions && park.crowdLevel > 0.0f) {
+    if (showCrowdLevel) {
         uint16_t crowdColor;
         if (park.crowdLevel <= 40.0f) {
             crowdColor = 0x07E0;  // Green
