@@ -566,9 +566,9 @@ void ThemeParkModule::resetPaging() {
         _currentAttractionPage = 0;
         _logicTicksSincePageSwitch = 0;
         _isFinished = false;
-        _parkNameScrollOffset = 0;
-        _parkNameMaxScroll = 0;
-        _attractionScrollStates.clear();
+        // Reset PixelScroller
+        if (_parkNameScroller) _parkNameScroller->reset();
+        if (_attractionScroller) _attractionScroller->reset();
         xSemaphoreGive(_dataMutex);
     }
 }
@@ -722,8 +722,9 @@ void ThemeParkModule::logicTick() {
             
             // Move to next attraction page within current park
             _currentAttractionPage++;
-            _parkNameScrollOffset = 0;  // Reset scroll when changing page
-            _attractionScrollStates.clear();  // Reset attraction scrolling when changing page
+            // Reset PixelScroller when changing page
+            if (_parkNameScroller) _parkNameScroller->reset();
+            if (_attractionScroller) _attractionScroller->reset();
             
             // Determine pages for current park (with bounds check)
             int pagesForThisPark = (_currentParkIndex >= 0 && _currentParkIndex < (int)pagesPerPark.size()) 
