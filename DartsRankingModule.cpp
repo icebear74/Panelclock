@@ -151,14 +151,22 @@ void DartsRankingModule::resetPaging() {
 
 void DartsRankingModule::tick() {
     // PixelScroller tick für pixelweises Scrolling
+    bool anyScrolled = false;
+    
     if (_pixelScroller) {
-        bool scrolled = _pixelScroller->tick();
-        if (scrolled && updateCallback) {
-            updateCallback(_currentInternalMode);
+        if (_pixelScroller->tick()) {
+            anyScrolled = true;
         }
     }
     if (_subtitleScroller) {
-        _subtitleScroller->tick();
+        if (_subtitleScroller->tick()) {
+            anyScrolled = true;
+        }
+    }
+    
+    // Redraw anfordern wenn irgendein Scroller aktiv war
+    if (anyScrolled && updateCallback) {
+        updateCallback(_currentInternalMode);
     }
 }
 
