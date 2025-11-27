@@ -204,6 +204,11 @@ void handleConfigModules() {
     
     // Global scrolling configuration
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->globalScrollSpeedMs); replaceAll(content, "{globalScrollSpeedMs}", num_buf);
+    replaceAll(content, "{scrollMode0_selected}", deviceConfig->scrollMode == 0 ? "selected" : "");
+    replaceAll(content, "{scrollMode1_selected}", deviceConfig->scrollMode == 1 ? "selected" : "");
+    replaceAll(content, "{scrollReverse0_selected}", deviceConfig->scrollReverse == 0 ? "selected" : "");
+    replaceAll(content, "{scrollReverse1_selected}", deviceConfig->scrollReverse == 1 ? "selected" : "");
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->scrollPauseSec); replaceAll(content, "{scrollPauseSec}", num_buf);
 
     page += content;
     page += (const char*)FPSTR(HTML_PAGE_FOOTER);
@@ -313,6 +318,9 @@ void handleSaveModules() {
     
     // Global scrolling configuration
     if (server->hasArg("globalScrollSpeedMs")) deviceConfig->globalScrollSpeedMs = server->arg("globalScrollSpeedMs").toInt();
+    if (server->hasArg("scrollMode")) deviceConfig->scrollMode = server->arg("scrollMode").toInt();
+    if (server->hasArg("scrollPauseSec")) deviceConfig->scrollPauseSec = server->arg("scrollPauseSec").toInt();
+    if (server->hasArg("scrollReverse")) deviceConfig->scrollReverse = server->arg("scrollReverse").toInt();
 
     deviceConfig->dartsOomEnabled = server->hasArg("dartsOomEnabled");
     deviceConfig->dartsProTourEnabled = server->hasArg("dartsProTourEnabled");

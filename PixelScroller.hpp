@@ -30,7 +30,7 @@ enum class ScrollerStatus {
 struct PixelScrollerConfig {
     ScrollMode mode = ScrollMode::CONTINUOUS;   ///< Scroll-Modus
     uint32_t pauseBetweenCyclesMs = 0;          ///< Pause zwischen Scroll-Zyklen in ms (0 = keine Pause)
-    uint32_t scrollSpeedDivider = 5;            ///< Teiler für die Scroll-Geschwindigkeit (configuredMs / divider)
+    bool scrollReverse = false;                 ///< true = rückwärts scrollen (Text erscheint von links)
     uint16_t textColor = 0xFFFF;                ///< Textfarbe (RGB565)
     bool enablePulsing = false;                 ///< Pulsing/Blinken aktivieren
     float pulsingMinBrightness = 0.25f;         ///< Minimale Helligkeit beim Pulsing (0.0 - 1.0)

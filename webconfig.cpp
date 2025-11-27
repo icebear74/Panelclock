@@ -117,6 +117,7 @@ void loadDeviceConfig() {
                 deviceConfig->globalScrollSpeedMs = doc["globalScrollSpeedMs"] | 50;
                 deviceConfig->scrollMode = doc["scrollMode"] | 0;
                 deviceConfig->scrollPauseSec = doc["scrollPauseSec"] | 0;
+                deviceConfig->scrollReverse = doc["scrollReverse"] | 0;
 
                 Serial.println("Geräte-Konfiguration geladen.");
             } else {
@@ -221,6 +222,7 @@ void saveDeviceConfig() {
     doc["globalScrollSpeedMs"] = deviceConfig->globalScrollSpeedMs;
     doc["scrollMode"] = deviceConfig->scrollMode;
     doc["scrollPauseSec"] = deviceConfig->scrollPauseSec;
+    doc["scrollReverse"] = deviceConfig->scrollReverse;
 
     File configFile = LittleFS.open("/config.json", "w");
     if (configFile) {

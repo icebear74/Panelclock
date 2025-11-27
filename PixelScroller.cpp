@@ -21,9 +21,8 @@ void PixelScroller::setConfiguredScrollSpeed(uint32_t ms) {
 }
 
 uint32_t PixelScroller::getEffectiveScrollSpeed() const {
-    // Effektive Geschwindigkeit = konfigurierte Geschwindigkeit / Teiler
-    if (_config.scrollSpeedDivider == 0) return _configuredScrollSpeedMs;
-    return _configuredScrollSpeedMs / _config.scrollSpeedDivider;
+    // Konfigurierte Geschwindigkeit direkt verwenden (kein Teiler mehr)
+    return (_configuredScrollSpeedMs > 0) ? _configuredScrollSpeedMs : 1;
 }
 
 bool PixelScroller::tick() {
@@ -86,17 +85,26 @@ bool PixelScroller::updateScrollState(PixelScrollState& state) {
     // Scrolling-Logik je nach Modus
     switch (_config.mode) {
         case ScrollMode::CONTINUOUS:
-            // Kontinuierliches Scrollen - Text läuft von rechts nach links durch
-            state.pixelOffset++;
-            if (state.pixelOffset >= state.maxPixelOffset) {
-                // Zyklus beendet
-                if (_config.pauseBetweenCyclesMs > 0) {
-                    // Pause starten
-                    state.status = ScrollerStatus::PAUSING;
-                    state.pauseStartTime = now;
+            if (_config.scrollReverse) {
+                // Rückwärts-Scrolling: Text erscheint von links, scrollt nach rechts
+                state.pixelOffset--;
+                if (state.pixelOffset <= -state.maxPixelOffset) {
+                    // Zyklus beendet - Text ist wieder am Anfang
+                    if (_config.pauseBetweenCyclesMs > 0) {
+                        state.status = ScrollerStatus::PAUSING;
+                        state.pauseStartTime = now;
+                    }
                     state.pixelOffset = 0;
-                } else {
-                    // Sofort von vorne
+                }
+            } else {
+                // Vorwärts-Scrolling: Text läuft von rechts nach links durch
+                state.pixelOffset++;
+                if (state.pixelOffset >= state.maxPixelOffset) {
+                    // Zyklus beendet - Text ist wieder am Anfang
+                    if (_config.pauseBetweenCyclesMs > 0) {
+                        state.status = ScrollerStatus::PAUSING;
+                        state.pauseStartTime = now;
+                    }
                     state.pixelOffset = 0;
                 }
             }
@@ -104,24 +112,44 @@ bool PixelScroller::updateScrollState(PixelScrollState& state) {
             
         case ScrollMode::PINGPONG:
             // PingPong - Text scrollt hin und her
+            // Bei PingPong ist die Pause am Ende eines Hin-und-Her-Zyklus
+            // (also wenn der Text wieder am Anfang steht)
             if (state.pingPongDirection) {
-                // Vorwärts
-                state.pixelOffset++;
-                if (state.pixelOffset >= state.maxPixelOffset) {
-                    state.pingPongDirection = false;
-                    if (_config.pauseBetweenCyclesMs > 0) {
-                        state.status = ScrollerStatus::PAUSING;
-                        state.pauseStartTime = now;
+                // Vorwärts (oder Rückwärts bei scrollReverse)
+                if (_config.scrollReverse) {
+                    state.pixelOffset--;
+                    if (state.pixelOffset <= -state.maxPixelOffset) {
+                        state.pingPongDirection = false;
+                    }
+                } else {
+                    state.pixelOffset++;
+                    if (state.pixelOffset >= state.maxPixelOffset) {
+                        state.pingPongDirection = false;
                     }
                 }
             } else {
-                // Rückwärts
-                state.pixelOffset--;
-                if (state.pixelOffset <= 0) {
-                    state.pingPongDirection = true;
-                    if (_config.pauseBetweenCyclesMs > 0) {
-                        state.status = ScrollerStatus::PAUSING;
-                        state.pauseStartTime = now;
+                // Zurück zum Anfang
+                if (_config.scrollReverse) {
+                    state.pixelOffset++;
+                    if (state.pixelOffset >= 0) {
+                        state.pingPongDirection = true;
+                        state.pixelOffset = 0;
+                        // Pause nach komplettem Hin-und-Her-Zyklus
+                        if (_config.pauseBetweenCyclesMs > 0) {
+                            state.status = ScrollerStatus::PAUSING;
+                            state.pauseStartTime = now;
+                        }
+                    }
+                } else {
+                    state.pixelOffset--;
+                    if (state.pixelOffset <= 0) {
+                        state.pingPongDirection = true;
+                        state.pixelOffset = 0;
+                        // Pause nach komplettem Hin-und-Her-Zyklus
+                        if (_config.pauseBetweenCyclesMs > 0) {
+                            state.status = ScrollerStatus::PAUSING;
+                            state.pauseStartTime = now;
+                        }
                     }
                 }
             }
@@ -254,27 +282,39 @@ void PixelScroller::drawClippedText(GFXcanvas16& canvas, const char* text, int x
     
     // Für PingPong: Text scrollt hin und her innerhalb des Bereichs
     if (_config.mode == ScrollMode::PINGPONG) {
-        // pixelOffset gibt an, wie weit der Text nach links verschoben wird
+        // pixelOffset gibt an, wie weit der Text nach links/rechts verschoben wird
         drawTextWithClipping(text, x, y, maxWidth, pixelOffset);
         return;
     }
     
-    // Kontinuierliches Scrolling: Text läuft durch, erscheint sofort wieder von rechts
-    // Der Text ist NIE komplett verschwunden - sobald er links verschwindet,
-    // erscheint er bereits wieder von rechts
+    // Kontinuierliches Scrolling: Text läuft durch, erscheint sofort wieder
     if (_config.mode == ScrollMode::CONTINUOUS) {
-        // Erster Text (wird nach links gescrollt)
-        drawTextWithClipping(text, x, y, maxWidth, pixelOffset);
-        
-        // Zweiter Text für nahtlosen Übergang
-        // Er startet direkt nach dem ersten Text + Padding
-        // Bei pixelOffset = 0: zweiter Text ist rechts außerhalb bei x + textWidth + padding
-        // Bei pixelOffset = textWidth + padding: zweiter Text ist bei x (komplett sichtbar)
-        int secondOffset = pixelOffset - totalWidth;
-        // secondOffset < 0 bedeutet: zweiter Text startet rechts vom sichtbaren Bereich
-        // Wir zeichnen ihn, wenn er teilweise sichtbar sein könnte
-        if (secondOffset < 0 && secondOffset > -(maxWidth + textWidth)) {
-            drawTextWithClipping(text, x, y, maxWidth, secondOffset);
+        if (_config.scrollReverse) {
+            // Rückwärts-Scrolling: Text kommt von links
+            // pixelOffset ist negativ oder 0
+            // Bei pixelOffset = 0: Text ist am Anfang (links ausgerichtet)
+            // Bei pixelOffset = -totalWidth: Text ist einmal durchgescrollt
+            
+            // Erster Text
+            drawTextWithClipping(text, x, y, maxWidth, pixelOffset);
+            
+            // Zweiter Text für nahtlosen Übergang (kommt von links)
+            int secondOffset = pixelOffset + totalWidth;
+            if (secondOffset > 0 && secondOffset < maxWidth + textWidth) {
+                drawTextWithClipping(text, x, y, maxWidth, secondOffset);
+            }
+        } else {
+            // Vorwärts-Scrolling: Text geht nach links
+            // pixelOffset ist positiv oder 0
+            
+            // Erster Text (wird nach links gescrollt)
+            drawTextWithClipping(text, x, y, maxWidth, pixelOffset);
+            
+            // Zweiter Text für nahtlosen Übergang (kommt von rechts)
+            int secondOffset = pixelOffset - totalWidth;
+            if (secondOffset < 0 && secondOffset > -(maxWidth + textWidth)) {
+                drawTextWithClipping(text, x, y, maxWidth, secondOffset);
+            }
         }
         return;
     }

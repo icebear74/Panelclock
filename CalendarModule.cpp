@@ -15,13 +15,13 @@ CalendarModule::CalendarModule(U8G2_FOR_ADAFRUIT_GFX &u8g2, GFXcanvas16 &canvas,
     dataMutex = xSemaphoreCreateMutex();
     
     // PixelScroller in PSRAM erstellen
-    _pixelScroller = new (ps_malloc(sizeof(PixelScroller))) PixelScroller(u8g2, 250);
+    _pixelScroller = new (ps_malloc(sizeof(PixelScroller))) PixelScroller(u8g2, 50);
     
     // Konfiguration für pixelweises Scrolling
     PixelScrollerConfig scrollConfig;
     scrollConfig.mode = ScrollMode::CONTINUOUS;
-    scrollConfig.pauseBetweenCyclesMs = 0;  // Default: keine Pause
-    scrollConfig.scrollSpeedDivider = 5;    // scrollMs / 5
+    scrollConfig.pauseBetweenCyclesMs = 0;
+    scrollConfig.scrollReverse = false;
     scrollConfig.paddingPixels = 20;
     _pixelScroller->setConfig(scrollConfig);
 }
@@ -45,7 +45,7 @@ void CalendarModule::setConfig(const PsramString& url, unsigned long fetchMinute
     
     this->fetchIntervalMinutes = fetchMinutes > 0 ? fetchMinutes : 60;
     this->_displayDuration = displaySec > 0 ? displaySec * 1000UL : 30000;
-    this->scrollStepInterval = scrollMs > 0 ? scrollMs : 250;
+    this->scrollStepInterval = scrollMs > 0 ? scrollMs : 50;
     
     this->dateColor = hexColorTo565(dateColorHex);
     this->textColor = hexColorTo565(textColorHex);
@@ -61,6 +61,7 @@ void CalendarModule::setConfig(const PsramString& url, unsigned long fetchMinute
         if (_deviceConfig) {
             scrollConfig.mode = (_deviceConfig->scrollMode == 1) ? ScrollMode::PINGPONG : ScrollMode::CONTINUOUS;
             scrollConfig.pauseBetweenCyclesMs = (uint32_t)_deviceConfig->scrollPauseSec * 1000;
+            scrollConfig.scrollReverse = (_deviceConfig->scrollReverse == 1);
         }
         
         _pixelScroller->setConfig(scrollConfig);

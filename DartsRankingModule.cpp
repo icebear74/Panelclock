@@ -62,12 +62,35 @@ DartsPlayer::~DartsPlayer() {
 DartsRankingModule::DartsRankingModule(U8G2_FOR_ADAFRUIT_GFX& u8g2_ref, GFXcanvas16& canvas_ref, WebClientModule* webClient_ptr, DeviceConfig* config)
     : u8g2(u8g2_ref), canvas(canvas_ref), webClient(webClient_ptr), config(config) {
     dataMutex = xSemaphoreCreateMutex();
+    
+    // PixelScroller für Spielernamen
+    _pixelScroller = new (ps_malloc(sizeof(PixelScroller))) PixelScroller(u8g2, 50);
+    
+    // Separater PixelScroller für Untertitel
+    _subtitleScroller = new (ps_malloc(sizeof(PixelScroller))) PixelScroller(u8g2, 50);
+    
+    // Default-Konfiguration
+    PixelScrollerConfig scrollConfig;
+    scrollConfig.mode = ScrollMode::CONTINUOUS;
+    scrollConfig.pauseBetweenCyclesMs = 0;
+    scrollConfig.scrollReverse = false;
+    scrollConfig.paddingPixels = 20;
+    _pixelScroller->setConfig(scrollConfig);
+    _subtitleScroller->setConfig(scrollConfig);
 }
 
 DartsRankingModule::~DartsRankingModule() {
     if (dataMutex) vSemaphoreDelete(dataMutex);
     if (oom_pending_buffer) free(oom_pending_buffer);
     if (protour_pending_buffer) free(protour_pending_buffer);
+    if (_pixelScroller) {
+        _pixelScroller->~PixelScroller();
+        free(_pixelScroller);
+    }
+    if (_subtitleScroller) {
+        _subtitleScroller->~PixelScroller();
+        free(_subtitleScroller);
+    }
     clearAllData(); 
 }
 
@@ -88,6 +111,22 @@ void DartsRankingModule::setConfig(bool oomEnabled, bool proTourEnabled, uint32_
     if (proTourEnabled) webClient->registerResource("https://www.dartsrankings.com/protour", fetchIntervalMinutes, nullptr);
     
     setTrackedPlayers(trackedPlayers);
+    
+    // PixelScroller Konfiguration aktualisieren
+    if (config && _pixelScroller && _subtitleScroller) {
+        scrollStepInterval = config->globalScrollSpeedMs;
+        _pixelScroller->setConfiguredScrollSpeed(scrollStepInterval);
+        _subtitleScroller->setConfiguredScrollSpeed(scrollStepInterval);
+        
+        PixelScrollerConfig scrollConfig;
+        scrollConfig.mode = (config->scrollMode == 1) ? ScrollMode::PINGPONG : ScrollMode::CONTINUOUS;
+        scrollConfig.pauseBetweenCyclesMs = (uint32_t)config->scrollPauseSec * 1000;
+        scrollConfig.scrollReverse = (config->scrollReverse == 1);
+        scrollConfig.paddingPixels = 20;
+        
+        _pixelScroller->setConfig(scrollConfig);
+        _subtitleScroller->setConfig(scrollConfig);
+    }
 }
 
 bool DartsRankingModule::isEnabled() {
@@ -111,18 +150,15 @@ void DartsRankingModule::resetPaging() {
 }
 
 void DartsRankingModule::tick() {
-    // Use global scroll speed from config
-    if (config && config->globalScrollSpeedMs > 0) {
-        scrollStepInterval = config->globalScrollSpeedMs;
-    }
-    
-    unsigned long now = millis();
-    if (now - lastScrollStepTime > scrollStepInterval) {
-        tickScroll();
-        lastScrollStepTime = now;
-        if (updateCallback) {
+    // PixelScroller tick für pixelweises Scrolling
+    if (_pixelScroller) {
+        bool scrolled = _pixelScroller->tick();
+        if (scrolled && updateCallback) {
             updateCallback(_currentInternalMode);
         }
+    }
+    if (_subtitleScroller) {
+        _subtitleScroller->tick();
     }
 }
 
@@ -215,10 +251,11 @@ void DartsRankingModule::draw() {
     u8g2.setCursor((canvas.width() - titleWidth) / 2, 10);
     u8g2.print(titleToDraw);
 
-    if (subTitle) {
+    if (subTitle && _subtitleScroller) {
         u8g2.setFont(u8g2_font_profont10_tf); 
-        u8g2.setForegroundColor(colors.subtitleColor);
-        drawScrollingText(subTitle, (canvas.width() - u8g2.getUTF8Width(" ") * 40) / 2, 18, u8g2.getUTF8Width(" ") * 40, -1);
+        int subtitleWidth = u8g2.getUTF8Width(" ") * 40;
+        int subtitleX = (canvas.width() - subtitleWidth) / 2;
+        _subtitleScroller->drawScrollingText(canvas, subTitle, subtitleX, 18, subtitleWidth, 0, colors.subtitleColor);
     }
     
     // Page info using stack buffer instead of String
@@ -249,7 +286,7 @@ void DartsRankingModule::draw() {
 
     for (int i = 0; i < PLAYERS_PER_PAGE; ++i) {
         int player_index = start_index + i;
-        if (player_index >= players_list.size()) break;
+        if (player_index >= (int)players_list.size()) break;
 
         const DartsPlayer& player = players_list[player_index];
 
@@ -279,7 +316,6 @@ void DartsRankingModule::draw() {
         } else {
             name_color = rank_color;
         }
-        u8g2.setForegroundColor(name_color); 
         
         // Build round and right text using stack buffers to avoid heap allocations
         char roundPart[64] = "";
@@ -312,7 +348,15 @@ void DartsRankingModule::draw() {
         int x_right = canvas.width() - u8g2.getUTF8Width(rightText) - 2;
         int nameX = 45;
         int maxNameWidth = x_right - nameX - 4;
-        drawScrollingText(player.name, nameX, y, maxNameWidth, i);
+        
+        // Pixelweises Scrolling für Spielernamen
+        if (_pixelScroller && player.name) {
+            _pixelScroller->drawScrollingText(canvas, player.name, nameX, y, maxNameWidth, i, name_color);
+        } else if (player.name) {
+            u8g2.setForegroundColor(name_color);
+            u8g2.setCursor(nameX, y);
+            u8g2.print(player.name);
+        }
         
         uint16_t prize_money_color = player.isActive ? colors.prizeMoneyColor : dimColor(colors.prizeMoneyColor);
         u8g2.setForegroundColor(prize_money_color);
@@ -721,71 +765,17 @@ bool DartsRankingModule::parseTable(const char* html, std::vector<DartsPlayer, P
     return true;
 }
 
-void DartsRankingModule::tickScroll() {
-    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-        for (auto& s : scrollPos) {
-            if (s.maxScroll > 0) {
-                s.offset = (s.offset + 1) % s.maxScroll;
-            }
-        }
-        if (subtitleScrollState.maxScroll > 0) {
-            subtitleScrollState.offset = (subtitleScrollState.offset + 1) % subtitleScrollState.maxScroll;
-        }
-        xSemaphoreGive(dataMutex);
-    }
-}
-
-void DartsRankingModule::drawScrollingText(const char* text, int x, int y, int maxWidth, int scrollIndex) {
-    if (!text) return;
-    
-    PsramString p_text(text);
-    PsramString visiblePart = fitTextToPixelWidth(p_text, maxWidth);
-    
-    ScrollState& currentScrollState = (scrollIndex == -1) ? subtitleScrollState : scrollPos[scrollIndex];
-
-    if (p_text.length() > visiblePart.length()) {
-        PsramString pad("     ");  // 5 spaces for smoother scrolling
-        PsramString scrollText = p_text + pad + p_text.substr(0, visiblePart.length());
-        int maxScroll = scrollText.length() - visiblePart.length();
-        
-        currentScrollState.maxScroll = maxScroll;
-        int offset = currentScrollState.offset;
-        if (offset >= maxScroll) offset = 0;
-        currentScrollState.offset = offset;
-        
-        PsramString part = scrollText.substr(offset, visiblePart.length());
-        u8g2.setCursor(x, y);
-        u8g2.print(part.c_str());
-    } else {
-        currentScrollState.maxScroll = 0;
-        currentScrollState.offset = 0;
-        u8g2.setCursor(x, y);
-        u8g2.print(text);
-    }
-}
-
-PsramString DartsRankingModule::fitTextToPixelWidth(const PsramString& text, int maxPixel) {
-    int lastOk = 0;
-    for (int i = 1; i <= text.length(); ++i) {
-        if (u8g2.getUTF8Width(text.substr(0, i).c_str()) <= maxPixel) {
-            lastOk = i;
-        } else {
-            break;
-        }
-    }
-    return text.substr(0, lastOk);
-}
-
 void DartsRankingModule::resetScroll() {
-    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-        scrollPos.clear();
-        subtitleScrollState = ScrollState();
-        xSemaphoreGive(dataMutex);
+    if (_pixelScroller) {
+        _pixelScroller->reset();
+    }
+    if (_subtitleScroller) {
+        _subtitleScroller->reset();
     }
 }
 
 void DartsRankingModule::ensureScrollPos(size_t requiredSize) {
-    if (scrollPos.size() != requiredSize) {
-        scrollPos.assign(requiredSize, ScrollState());
+    if (_pixelScroller) {
+        _pixelScroller->ensureSlots(requiredSize);
     }
 }

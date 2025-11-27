@@ -18,13 +18,33 @@ ThemeParkModule::ThemeParkModule(U8G2_FOR_ADAFRUIT_GFX& u8g2, GFXcanvas16& canva
     : _u8g2(u8g2), _canvas(canvas), _webClient(webClient), _config(nullptr),
       _currentPage(0), _currentParkIndex(0), _currentAttractionPage(0), _totalPages(1), 
       _logicTicksSincePageSwitch(0), _pageDisplayDuration(15000), _lastUpdate(0), 
-      _lastParksListUpdate(0), _lastParkDetailsUpdate(0),
-      _parkNameScrollOffset(0), _parkNameMaxScroll(0), _lastScrollStep(0) {
+      _lastParksListUpdate(0), _lastParkDetailsUpdate(0) {
     _dataMutex = xSemaphoreCreateMutex();
+    
+    // PixelScroller für Parknamen und Attraktionen erstellen
+    _parkNameScroller = new (ps_malloc(sizeof(PixelScroller))) PixelScroller(u8g2, 50);
+    _attractionScroller = new (ps_malloc(sizeof(PixelScroller))) PixelScroller(u8g2, 50);
+    
+    // Default-Konfiguration
+    PixelScrollerConfig scrollConfig;
+    scrollConfig.mode = ScrollMode::CONTINUOUS;
+    scrollConfig.pauseBetweenCyclesMs = 0;
+    scrollConfig.scrollReverse = false;
+    scrollConfig.paddingPixels = 20;
+    _parkNameScroller->setConfig(scrollConfig);
+    _attractionScroller->setConfig(scrollConfig);
 }
 
 ThemeParkModule::~ThemeParkModule() {
     if (_dataMutex) vSemaphoreDelete(_dataMutex);
+    if (_parkNameScroller) {
+        _parkNameScroller->~PixelScroller();
+        free(_parkNameScroller);
+    }
+    if (_attractionScroller) {
+        _attractionScroller->~PixelScroller();
+        free(_attractionScroller);
+    }
 }
 
 void ThemeParkModule::begin() {
@@ -111,6 +131,21 @@ void ThemeParkModule::setConfig(const DeviceConfig* config) {
             Log.printf("[ThemePark] Registered resources for park %s\n", parkId.c_str());
         }
         xSemaphoreGive(_dataMutex);
+    }
+    
+    // PixelScroller Konfiguration aktualisieren
+    if (_config && _parkNameScroller && _attractionScroller) {
+        _parkNameScroller->setConfiguredScrollSpeed(_config->globalScrollSpeedMs);
+        _attractionScroller->setConfiguredScrollSpeed(_config->globalScrollSpeedMs);
+        
+        PixelScrollerConfig scrollConfig;
+        scrollConfig.mode = (_config->scrollMode == 1) ? ScrollMode::PINGPONG : ScrollMode::CONTINUOUS;
+        scrollConfig.pauseBetweenCyclesMs = (uint32_t)_config->scrollPauseSec * 1000;
+        scrollConfig.scrollReverse = (_config->scrollReverse == 1);
+        scrollConfig.paddingPixels = 20;
+        
+        _parkNameScroller->setConfig(scrollConfig);
+        _attractionScroller->setConfig(scrollConfig);
     }
 }
 
@@ -597,48 +632,23 @@ int ThemeParkModule::calculateTotalPages() const {
 }
 
 void ThemeParkModule::tick() {
-    // Handle scrolling with global scroll speed from config
-    if (!_config) return;
+    // PixelScroller tick für pixelweises Scrolling
+    bool scrolled = false;
     
-    unsigned long scrollInterval = _config->globalScrollSpeedMs > 0 ? _config->globalScrollSpeedMs : 50;
-    unsigned long now = millis();
-    
-    // Only process if enough time has passed since last scroll step
-    if (now - _lastScrollStep < scrollInterval) return;
-    
-    // Check if any scrolling is actually needed (park name or attraction names)
-    bool hasScrolling = (_parkNameMaxScroll > 0);
-    if (!hasScrolling) {
-        for (const auto& scrollState : _attractionScrollStates) {
-            if (scrollState.maxScroll > 0) {
-                hasScrolling = true;
-                break;
-            }
+    if (_parkNameScroller) {
+        if (_parkNameScroller->tick()) {
+            scrolled = true;
         }
     }
-    if (!hasScrolling) return;
-    
-    _lastScrollStep = now;
-    
-    // Scroll park name
-    if (_parkNameMaxScroll > 0) {
-        _parkNameScrollOffset++;
-        if (_parkNameScrollOffset >= _parkNameMaxScroll) {
-            _parkNameScrollOffset = 0;
+    if (_attractionScroller) {
+        if (_attractionScroller->tick()) {
+            scrolled = true;
         }
     }
     
-    // Scroll attraction names
-    for (auto& scrollState : _attractionScrollStates) {
-        if (scrollState.maxScroll > 0) {
-            scrollState.offset++;
-            if (scrollState.offset >= scrollState.maxScroll) {
-                scrollState.offset = 0;
-            }
-        }
+    if (scrolled && _updateCallback) {
+        _updateCallback();
     }
-    
-    if (_updateCallback) _updateCallback();
 }
 
 void ThemeParkModule::logicTick() {
@@ -834,7 +844,14 @@ void ThemeParkModule::drawParkPage(int parkIndex, int attractionPage) {
     }
     
     int maxNameWidth = _canvas.width() - 50;  // Leave space for crowd level
-    drawScrollingText(displayName, 2, 11, maxNameWidth);
+    
+    // Pixelweises Scrolling für Parknamen
+    if (_parkNameScroller) {
+        _parkNameScroller->drawScrollingText(_canvas, displayName.c_str(), 2, 11, maxNameWidth, 0, 0xFFFF);
+    } else {
+        _u8g2.setCursor(2, 11);
+        _u8g2.print(displayName.c_str());
+    }
     
     // Draw crowd level as percentage text (no box)
     // Only show for OPEN parks (not closed parks)
@@ -919,10 +936,10 @@ void ThemeParkModule::drawParkPage(int parkIndex, int attractionPage) {
     int startIdx = attractionPage * maxLines;
     int endIdx = min(startIdx + maxLines, (int)park.attractions.size());
     
-    // Ensure scroll state vector has enough entries
+    // Ensure PixelScroller slots for attractions
     int attractionsToShow = endIdx - startIdx;
-    if ((int)_attractionScrollStates.size() < attractionsToShow) {
-        _attractionScrollStates.resize(attractionsToShow);
+    if (_attractionScroller) {
+        _attractionScroller->ensureSlots(attractionsToShow);
     }
     
     // Calculate max width for attraction names (leave space for wait time)
@@ -933,10 +950,16 @@ void ThemeParkModule::drawParkPage(int parkIndex, int attractionPage) {
         int scrollIndex = i - startIdx;
         
         // Draw attraction name - use WHITE if open, RED if closed
-        _u8g2.setForegroundColor(attr.isOpen ? 0xFFFF : 0xF800);
+        uint16_t attrColor = attr.isOpen ? 0xFFFF : 0xF800;
         
-        // Use scrolling for attraction names instead of truncation
-        drawScrollingAttractionName(attr.name, 2, yPos, maxAttrNameWidth, scrollIndex);
+        // Pixelweises Scrolling für Attraktionsnamen
+        if (_attractionScroller) {
+            _attractionScroller->drawScrollingText(_canvas, attr.name.c_str(), 2, yPos, maxAttrNameWidth, scrollIndex, attrColor);
+        } else {
+            _u8g2.setForegroundColor(attrColor);
+            _u8g2.setCursor(2, yPos);
+            _u8g2.print(attr.name.c_str());
+        }
         
         // Draw wait time or "Geschlossen" for closed attractions
         if (attr.isOpen) {
@@ -1027,75 +1050,6 @@ PsramString ThemeParkModule::truncateString(const PsramString& text, int maxWidt
     }
     
     return truncated + "...";
-}
-
-void ThemeParkModule::drawScrollingText(const PsramString& text, int x, int y, int maxWidth) {
-    PsramString visiblePart = fitTextToPixelWidth(text, maxWidth);
-    
-    if (text.length() > visiblePart.length()) {
-        // Text needs scrolling
-        PsramString pad("     ");  // 5 spaces for smoother scrolling
-        PsramString scrollText = text + pad + text.substr(0, visiblePart.length());
-        _parkNameMaxScroll = scrollText.length() - visiblePart.length();
-        
-        if (_parkNameScrollOffset >= _parkNameMaxScroll) {
-            _parkNameScrollOffset = 0;
-        }
-        
-        PsramString part = scrollText.substr(_parkNameScrollOffset, visiblePart.length());
-        _u8g2.setCursor(x, y);
-        _u8g2.print(part.c_str());
-    } else {
-        // Text fits, no scrolling needed
-        _parkNameMaxScroll = 0;
-        _parkNameScrollOffset = 0;
-        _u8g2.setCursor(x, y);
-        _u8g2.print(text.c_str());
-    }
-}
-
-void ThemeParkModule::drawScrollingAttractionName(const PsramString& text, int x, int y, int maxWidth, int scrollIndex) {
-    PsramString visiblePart = fitTextToPixelWidth(text, maxWidth);
-    
-    // Ensure scroll state vector is large enough
-    if (scrollIndex >= (int)_attractionScrollStates.size()) {
-        _attractionScrollStates.resize(scrollIndex + 1);
-    }
-    
-    AttractionScrollState& scrollState = _attractionScrollStates[scrollIndex];
-    
-    if (text.length() > visiblePart.length()) {
-        // Text needs scrolling
-        PsramString pad("     ");  // 5 spaces for smoother scrolling
-        PsramString scrollText = text + pad + text.substr(0, visiblePart.length());
-        scrollState.maxScroll = scrollText.length() - visiblePart.length();
-        
-        if (scrollState.offset >= scrollState.maxScroll) {
-            scrollState.offset = 0;
-        }
-        
-        PsramString part = scrollText.substr(scrollState.offset, visiblePart.length());
-        _u8g2.setCursor(x, y);
-        _u8g2.print(part.c_str());
-    } else {
-        // Text fits, no scrolling needed
-        scrollState.maxScroll = 0;
-        scrollState.offset = 0;
-        _u8g2.setCursor(x, y);
-        _u8g2.print(text.c_str());
-    }
-}
-
-PsramString ThemeParkModule::fitTextToPixelWidth(const PsramString& text, int maxPixel) {
-    int lastOk = 0;
-    for (int i = 1; i <= (int)text.length(); ++i) {
-        if (_u8g2.getUTF8Width(text.substr(0, i).c_str()) <= maxPixel) {
-            lastOk = i;
-        } else {
-            break;
-        }
-    }
-    return text.substr(0, lastOk);
 }
 
 PsramVector<AvailablePark> ThemeParkModule::getAvailableParks() {

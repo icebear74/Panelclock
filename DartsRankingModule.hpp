@@ -8,6 +8,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "DrawableModule.hpp"
+#include "PixelScroller.hpp"
 
 class WebClientModule;
 
@@ -92,11 +93,10 @@ private:
     uint32_t _currentTicksPerPage = 50; // 50 * 100ms = 5 Sekunden
     uint32_t _logicTicksSinceRankingSwitch = 0;
 
-    struct ScrollState { int offset = 0; int maxScroll = 0; };
-    std::vector<ScrollState, PsramAllocator<ScrollState>> scrollPos;
-    ScrollState subtitleScrollState;
-    unsigned long lastScrollStepTime = 0;
-    uint32_t scrollStepInterval = 150;  // Will be overridden by globalScrollSpeedMs from config
+    // PixelScroller für pixelweises Scrolling
+    PixelScroller* _pixelScroller = nullptr;
+    PixelScroller* _subtitleScroller = nullptr;  // Separater Scroller für Untertitel
+    uint32_t scrollStepInterval = 50;  // Will be overridden by globalScrollSpeedMs from config
 
     time_t oom_last_processed_update = 0;
     char* oom_mainTitleText = nullptr;
@@ -126,9 +126,6 @@ private:
     void parsePlayerRow(const char* tr_start, const char* tr_end, const PsramVector<PsramString>& headers, DartsPlayer& player, bool isLiveFormat);
     void parseHtml(const char* html, size_t len, DartsRankingType type);
     bool parseTable(const char* html, std::vector<DartsPlayer, PsramAllocator<DartsPlayer>>& players_ref);
-    void tickScroll();
-    void drawScrollingText(const char* text, int x, int y, int maxWidth, int scrollIndex);
-    PsramString fitTextToPixelWidth(const PsramString& text, int maxPixel);
     void resetScroll();
     void ensureScrollPos(size_t requiredSize);
 };
