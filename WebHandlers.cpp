@@ -206,7 +206,28 @@ void handleConfigModules() {
     replaceAll(content, "{adventWreathEnabled_checked}", deviceConfig->adventWreathEnabled ? "checked" : "");
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->adventWreathDisplaySec); replaceAll(content, "{adventWreathDisplaySec}", num_buf);
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->adventWreathRepeatMin); replaceAll(content, "{adventWreathRepeatMin}", num_buf);
-    replaceAll(content, "{adventWreathColorful_checked}", deviceConfig->adventWreathColorful ? "checked" : "");
+    replaceAll(content, "{adventWreathColorMode0_selected}", deviceConfig->adventWreathColorMode == 0 ? "selected" : "");
+    replaceAll(content, "{adventWreathColorMode1_selected}", deviceConfig->adventWreathColorMode == 1 ? "selected" : "");
+    replaceAll(content, "{adventWreathColorMode2_selected}", deviceConfig->adventWreathColorMode == 2 ? "selected" : "");
+    replaceAll(content, "{adventWreathCustomColors}", deviceConfig->adventWreathCustomColors.c_str());
+    replaceAll(content, "{adventWreathInterrupt_checked}", deviceConfig->adventWreathInterrupt ? "checked" : "");
+    
+    // Parse custom colors for individual color pickers
+    PsramString colors = deviceConfig->adventWreathCustomColors;
+    PsramString candleColors[4] = {"#FF0000", "#FFD700", "#008000", "#FFFFFF"};
+    int colorIdx = 0;
+    size_t pos = 0;
+    while (colorIdx < 4 && pos < colors.length()) {
+        size_t commaPos = colors.find(',', pos);
+        if (commaPos == PsramString::npos) commaPos = colors.length();
+        candleColors[colorIdx] = colors.substr(pos, commaPos - pos);
+        pos = commaPos + 1;
+        colorIdx++;
+    }
+    replaceAll(content, "{candleColor1}", candleColors[0].c_str());
+    replaceAll(content, "{candleColor2}", candleColors[1].c_str());
+    replaceAll(content, "{candleColor3}", candleColors[2].c_str());
+    replaceAll(content, "{candleColor4}", candleColors[3].c_str());
     
     // Global scrolling configuration
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->globalScrollSpeedMs); replaceAll(content, "{globalScrollSpeedMs}", num_buf);
@@ -326,7 +347,9 @@ void handleSaveModules() {
     deviceConfig->adventWreathEnabled = server->hasArg("adventWreathEnabled");
     if (server->hasArg("adventWreathDisplaySec")) deviceConfig->adventWreathDisplaySec = server->arg("adventWreathDisplaySec").toInt();
     if (server->hasArg("adventWreathRepeatMin")) deviceConfig->adventWreathRepeatMin = server->arg("adventWreathRepeatMin").toInt();
-    deviceConfig->adventWreathColorful = server->hasArg("adventWreathColorful");
+    if (server->hasArg("adventWreathColorMode")) deviceConfig->adventWreathColorMode = server->arg("adventWreathColorMode").toInt();
+    if (server->hasArg("adventWreathCustomColors")) deviceConfig->adventWreathCustomColors = server->arg("adventWreathCustomColors").c_str();
+    deviceConfig->adventWreathInterrupt = server->hasArg("adventWreathInterrupt");
     
     // Global scrolling configuration
     if (server->hasArg("globalScrollSpeedMs")) deviceConfig->globalScrollSpeedMs = server->arg("globalScrollSpeedMs").toInt();

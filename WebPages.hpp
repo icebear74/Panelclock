@@ -289,10 +289,48 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
         <input type="checkbox" id="adventWreathEnabled" name="adventWreathEnabled" {adventWreathEnabled_checked}><label for="adventWreathEnabled" style="display:inline;">Adventskranz aktivieren</label><br>
         <label for="adventWreathDisplaySec">Anzeigedauer (Sekunden)</label><input type="number" id="adventWreathDisplaySec" name="adventWreathDisplaySec" value="{adventWreathDisplaySec}" min="5">
         <label for="adventWreathRepeatMin">Wiederholungsintervall (Minuten)</label><input type="number" id="adventWreathRepeatMin" name="adventWreathRepeatMin" value="{adventWreathRepeatMin}" min="1">
-        <input type="checkbox" id="adventWreathColorful" name="adventWreathColorful" {adventWreathColorful_checked}><label for="adventWreathColorful" style="display:inline;">Verschiedenfarbige Kerzen (statt traditionell violett/rosa)</label><br>
-        <p style="color:#bbb; margin-top:10px;">Zeigt w&auml;hrend der Adventszeit einen animierten Adventskranz mit brennenden Kerzen. Je nach aktuellem Advent brennen 1-4 Kerzen. Die Anzeige erscheint regelm&auml;&szlig;ig als Unterbrechung der normalen Anzeige.</p>
+        
+        <label for="adventWreathColorMode">Kerzenfarben</label>
+        <select id="adventWreathColorMode" name="adventWreathColorMode" onchange="toggleCustomColors()">
+            <option value="0" {adventWreathColorMode0_selected}>Traditionell (violett/rosa)</option>
+            <option value="1" {adventWreathColorMode1_selected}>Bunt (rot/gold/gr&uuml;n/wei&szlig;)</option>
+            <option value="2" {adventWreathColorMode2_selected}>Eigene Farben</option>
+        </select>
+        
+        <div id="customColorsDiv" style="display:none;">
+            <label>Eigene Kerzenfarben (4 Hex-Farben)</label>
+            <div style="display:flex;gap:10px;margin-top:5px;">
+                <div><label style="font-size:12px;">Kerze 1</label><input type="color" id="candleColor1" value="{candleColor1}"></div>
+                <div><label style="font-size:12px;">Kerze 2</label><input type="color" id="candleColor2" value="{candleColor2}"></div>
+                <div><label style="font-size:12px;">Kerze 3</label><input type="color" id="candleColor3" value="{candleColor3}"></div>
+                <div><label style="font-size:12px;">Kerze 4</label><input type="color" id="candleColor4" value="{candleColor4}"></div>
+            </div>
+            <input type="hidden" id="adventWreathCustomColors" name="adventWreathCustomColors" value="{adventWreathCustomColors}">
+        </div>
+        
+        <br><input type="checkbox" id="adventWreathInterrupt" name="adventWreathInterrupt" {adventWreathInterrupt_checked}><label for="adventWreathInterrupt" style="display:inline;">Unterbrechend anzeigen (unterbricht laufende Anzeige sofort)</label><br>
+        <p style="color:#bbb; margin-top:10px;">Zeigt w&auml;hrend der Adventszeit einen animierten Adventskranz mit brennenden Kerzen. Je nach aktuellem Advent brennen 1-4 Kerzen. Wenn "Unterbrechend" aktiviert ist, wird die aktuelle Anzeige sofort unterbrochen. Sonst erscheint der Kranz als n&auml;chstes nach dem aktuellen Modul.</p>
     </div>
 </div>
+<script>
+function toggleCustomColors() {
+    var mode = document.getElementById('adventWreathColorMode').value;
+    document.getElementById('customColorsDiv').style.display = (mode == '2') ? 'block' : 'none';
+}
+function updateCustomColors() {
+    var c1 = document.getElementById('candleColor1').value;
+    var c2 = document.getElementById('candleColor2').value;
+    var c3 = document.getElementById('candleColor3').value;
+    var c4 = document.getElementById('candleColor4').value;
+    document.getElementById('adventWreathCustomColors').value = c1 + ',' + c2 + ',' + c3 + ',' + c4;
+}
+document.addEventListener('DOMContentLoaded', function() {
+    toggleCustomColors();
+    ['candleColor1','candleColor2','candleColor3','candleColor4'].forEach(function(id) {
+        document.getElementById(id).addEventListener('change', updateCustomColors);
+    });
+});
+</script>
 
 <div id="Diverses" class="tabcontent">
     <div class="group">

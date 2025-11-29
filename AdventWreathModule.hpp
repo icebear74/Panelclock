@@ -133,6 +133,11 @@ private:
      * @brief Konvertiert RGB zu RGB565.
      */
     static uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b);
+
+    /**
+     * @brief Konvertiert Hex-Farbstring zu RGB565.
+     */
+    static uint16_t hexToRgb565(const char* hex);
 };
 
 #endif // ADVENTWREATHMODULE_HPP

@@ -119,7 +119,9 @@ void loadDeviceConfig() {
                 deviceConfig->adventWreathEnabled = doc["adventWreathEnabled"] | true;
                 deviceConfig->adventWreathDisplaySec = doc["adventWreathDisplaySec"] | 15;
                 deviceConfig->adventWreathRepeatMin = doc["adventWreathRepeatMin"] | 30;
-                deviceConfig->adventWreathColorful = doc["adventWreathColorful"] | true;
+                deviceConfig->adventWreathColorMode = doc["adventWreathColorMode"] | 1;
+                deviceConfig->adventWreathCustomColors = doc["adventWreathCustomColors"] | "#FF0000,#FFD700,#008000,#FFFFFF";
+                deviceConfig->adventWreathInterrupt = doc["adventWreathInterrupt"] | false;
                 
                 deviceConfig->globalScrollSpeedMs = doc["globalScrollSpeedMs"] | 50;
                 deviceConfig->scrollMode = doc["scrollMode"] | 0;
@@ -231,7 +233,9 @@ void saveDeviceConfig() {
     doc["adventWreathEnabled"] = deviceConfig->adventWreathEnabled;
     doc["adventWreathDisplaySec"] = deviceConfig->adventWreathDisplaySec;
     doc["adventWreathRepeatMin"] = deviceConfig->adventWreathRepeatMin;
-    doc["adventWreathColorful"] = deviceConfig->adventWreathColorful;
+    doc["adventWreathColorMode"] = deviceConfig->adventWreathColorMode;
+    doc["adventWreathCustomColors"] = deviceConfig->adventWreathCustomColors.c_str();
+    doc["adventWreathInterrupt"] = deviceConfig->adventWreathInterrupt;
     
     doc["globalScrollSpeedMs"] = deviceConfig->globalScrollSpeedMs;
     doc["scrollMode"] = deviceConfig->scrollMode;

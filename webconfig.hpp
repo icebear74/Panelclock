@@ -171,8 +171,12 @@ struct DeviceConfig {
     int adventWreathDisplaySec = 15;
     /// @brief Das Wiederholungsintervall für den Adventskranz in Minuten.
     int adventWreathRepeatMin = 30;
-    /// @brief Verwendet verschiedenfarbige Kerzen (true) oder traditionelle violett/rosa (false).
-    bool adventWreathColorful = true;
+    /// @brief Kerzenfarben-Modus: 0=Traditionell (violett/rosa), 1=Bunt, 2=Eigene Farben
+    int adventWreathColorMode = 1;
+    /// @brief Eigene Kerzenfarben als Hex-String (z.B. "#FF0000,#00FF00,#0000FF,#FFFF00")
+    PsramString adventWreathCustomColors = "#FF0000,#FFD700,#008000,#FFFFFF";
+    /// @brief Unterbrechend (true = PlayNext) oder nicht-unterbrechend (false = Low Priority Interrupt)
+    bool adventWreathInterrupt = false;
 
     // --- Globale Scrolling-Einstellungen ---
     /// @brief Globale Scroll-Geschwindigkeit in Millisekunden pro Pixel für alle Module.
