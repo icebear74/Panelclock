@@ -177,6 +177,8 @@ struct DeviceConfig {
     PsramString adventWreathCustomColors = "#FF0000,#FFD700,#008000,#FFFFFF";
     /// @brief Unterbrechend (true = Low Priority Interrupt, unterbricht sofort) oder nicht-unterbrechend (false = PlayNext, wartet auf aktuelles Modul)
     bool adventWreathInterrupt = false;
+    /// @brief Flammen-Animation Geschwindigkeit in Millisekunden (niedriger = schneller)
+    int adventWreathFlameSpeedMs = 50;
 
     // --- Globale Scrolling-Einstellungen ---
     /// @brief Globale Scroll-Geschwindigkeit in Millisekunden pro Pixel für alle Module.

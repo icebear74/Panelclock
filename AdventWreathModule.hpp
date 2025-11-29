@@ -6,6 +6,7 @@
 #include "PsramUtils.hpp"
 #include <U8g2_for_Adafruit_GFX.h>
 #include <Adafruit_GFX.h>
+#include <functional>
 
 struct DeviceConfig;
 
@@ -37,6 +38,12 @@ public:
      * @brief Wendet die Konfiguration aus DeviceConfig an.
      */
     void setConfig();
+
+    /**
+     * @brief Registriert einen Callback, der bei Animation-Updates aufgerufen wird.
+     * @param callback Die Callback-Funktion für Redraw-Anforderungen
+     */
+    void onUpdate(std::function<void()> callback);
 
     // --- DrawableModule Interface ---
     const char* getModuleName() const override { return "AdventWreathModule"; }
@@ -77,6 +84,10 @@ private:
     // Konfigurierbare Parameter (Defaults)
     unsigned long _displayDurationMs = 15000;  // 15 Sekunden
     unsigned long _repeatIntervalMs = 30 * 60 * 1000;  // 30 Minuten
+    unsigned long _flameAnimationMs = 50;  // 50ms = 20 FPS für Flammen-Animation
+    
+    // Callback für Redraw
+    std::function<void()> _updateCallback = nullptr;
 
     /**
      * @brief Berechnet den aktuellen Advent (1-4) oder 0 wenn nicht Adventszeit.

@@ -194,6 +194,7 @@ void Application::begin() {
     _curiousMod->onUpdate(redrawCb);
     _weatherMod->onUpdate(redrawCb);
     _themeParkMod->onUpdate(redrawCb);
+    _adventWreathMod->onUpdate(redrawCb);
 
     _panelManager->displayStatus("Startvorgang\nabgeschlossen.");
     delay(2000);

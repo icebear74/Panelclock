@@ -41,7 +41,12 @@ void AdventWreathModule::setConfig() {
     if (config) {
         _displayDurationMs = config->adventWreathDisplaySec * 1000UL;
         _repeatIntervalMs = config->adventWreathRepeatMin * 60UL * 1000UL;
+        _flameAnimationMs = config->adventWreathFlameSpeedMs;
     }
+}
+
+void AdventWreathModule::onUpdate(std::function<void()> callback) {
+    _updateCallback = callback;
 }
 
 int AdventWreathModule::calculateCurrentAdvent() {
@@ -170,12 +175,17 @@ void AdventWreathModule::periodicTick() {
 }
 
 void AdventWreathModule::tick() {
-    // Flammen-Animation aktualisieren - häufiger für flüssigeres Flackern
+    // Flammen-Animation aktualisieren - konfigurierbare Geschwindigkeit
     // tick() wird vom PanelManager so oft wie möglich aufgerufen
     unsigned long now = millis();
-    if (now - _lastFlameUpdate > 50) {  // Alle 50ms = 20 Updates/Sekunde
+    if (now - _lastFlameUpdate > _flameAnimationMs) {
         _lastFlameUpdate = now;
         _flamePhase = (_flamePhase + 1) % 16;  // Mehr Phasen für mehr Variation
+        
+        // Redraw anfordern, damit die Animation sichtbar wird
+        if (_updateCallback) {
+            _updateCallback();
+        }
     }
 }
 

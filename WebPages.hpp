@@ -309,6 +309,10 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
         </div>
         
         <br><input type="checkbox" id="adventWreathInterrupt" name="adventWreathInterrupt" {adventWreathInterrupt_checked}><label for="adventWreathInterrupt" style="display:inline;">Unterbrechend anzeigen (unterbricht laufende Anzeige sofort)</label><br>
+        
+        <label for="adventWreathFlameSpeedMs">Flammen-Animation Geschwindigkeit (ms)</label><input type="number" id="adventWreathFlameSpeedMs" name="adventWreathFlameSpeedMs" value="{adventWreathFlameSpeedMs}" min="20" max="500">
+        <p style="color:#bbb; font-size:12px;">Niedriger = schnellere Animation. Standard: 50ms (20 FPS)</p>
+        
         <p style="color:#bbb; margin-top:10px;">Zeigt w&auml;hrend der Adventszeit einen animierten Adventskranz mit brennenden Kerzen. Je nach aktuellem Advent brennen 1-4 Kerzen. Wenn "Unterbrechend" aktiviert ist, wird die aktuelle Anzeige sofort unterbrochen. Sonst erscheint der Kranz als n&auml;chstes nach dem aktuellen Modul.</p>
     </div>
 </div>

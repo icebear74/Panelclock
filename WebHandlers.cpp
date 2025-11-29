@@ -211,6 +211,7 @@ void handleConfigModules() {
     replaceAll(content, "{adventWreathColorMode2_selected}", deviceConfig->adventWreathColorMode == 2 ? "selected" : "");
     replaceAll(content, "{adventWreathCustomColors}", deviceConfig->adventWreathCustomColors.c_str());
     replaceAll(content, "{adventWreathInterrupt_checked}", deviceConfig->adventWreathInterrupt ? "checked" : "");
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->adventWreathFlameSpeedMs); replaceAll(content, "{adventWreathFlameSpeedMs}", num_buf);
     
     // Parse custom colors for individual color pickers
     PsramString colors = deviceConfig->adventWreathCustomColors;
@@ -350,6 +351,7 @@ void handleSaveModules() {
     if (server->hasArg("adventWreathColorMode")) deviceConfig->adventWreathColorMode = server->arg("adventWreathColorMode").toInt();
     if (server->hasArg("adventWreathCustomColors")) deviceConfig->adventWreathCustomColors = server->arg("adventWreathCustomColors").c_str();
     deviceConfig->adventWreathInterrupt = server->hasArg("adventWreathInterrupt");
+    if (server->hasArg("adventWreathFlameSpeedMs")) deviceConfig->adventWreathFlameSpeedMs = server->arg("adventWreathFlameSpeedMs").toInt();
     
     // Global scrolling configuration
     if (server->hasArg("globalScrollSpeedMs")) deviceConfig->globalScrollSpeedMs = server->arg("globalScrollSpeedMs").toInt();
