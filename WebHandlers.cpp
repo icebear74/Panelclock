@@ -28,6 +28,7 @@ extern GeneralTimeConverter* timeConverter;
 extern TankerkoenigModule* tankerkoenigModule;
 extern BackupManager* backupManager;
 extern ThemeParkModule* themeParkModule;
+extern BirthdayModule* birthdayModule;
 extern bool portalRunning;
 
 // Forward declarations of global functions (declared in WebServerManager.hpp)
@@ -994,11 +995,42 @@ void handleBirthdayDebug() {
     PsramString html = (const char*)FPSTR(HTML_PAGE_HEADER);
     html += "<h2>Geburtstags-Modul Debug</h2>";
     
-    // Get birthday module from Application
-    BirthdayModule* birthdayMod = nullptr;
-    if (Application::_instance && Application::_instance->getPanelManager()) {
-        // We need to get it from Application - look at how we can access it
+    // Module status
+    html += "<div class='group'>";
+    html += "<h3>Modul-Status</h3>";
+    html += "<table>";
+    html += "<tr><th>Status</th><th>Wert</th></tr>";
+    
+    if (birthdayModule) {
+        html += "<tr><td>Modul initialisiert</td><td style='color:lightgreen;'>Ja</td></tr>";
+        
+        html += "<tr><td>isEnabled()</td><td>";
+        html += birthdayModule->isEnabled() ? "<span style='color:lightgreen;'>Ja</span>" : "<span style='color:orange;'>Nein</span>";
+        html += "</td></tr>";
+        
+        html += "<tr><td>canBeInPlaylist()</td><td>";
+        html += birthdayModule->canBeInPlaylist() ? "Ja" : "Nein";
+        html += "</td></tr>";
+        
+        html += "<tr><td>isFinished()</td><td>";
+        html += birthdayModule->isFinished() ? "Ja" : "Nein";
+        html += "</td></tr>";
+        
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%d / %d", birthdayModule->getCurrentPage() + 1, birthdayModule->getTotalPages());
+        html += "<tr><td>Aktuelle Seite</td><td>";
+        html += buf;
+        html += "</td></tr>";
+        
+        snprintf(buf, sizeof(buf), "%lu", birthdayModule->getDisplayDuration());
+        html += "<tr><td>Gesamt-Anzeigedauer</td><td>";
+        html += buf;
+        html += " ms</td></tr>";
+    } else {
+        html += "<tr><td colspan='2' style='color:red;'>BirthdayModule nicht initialisiert!</td></tr>";
     }
+    
+    html += "</table></div>";
     
     html += "<div class='group'>";
     html += "<h3>Konfiguration</h3>";

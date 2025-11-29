@@ -321,8 +321,8 @@ void BirthdayModule::parseICS(char* icsBuffer, size_t size) {
         parseVEventForBirthday(veventBlock.c_str(), veventBlock.length(), event);
         
         eventCount++;
-        Log.printf("[BirthdayModule] Event #%d geparst: Name='%s', Datum=%04d-%02d-%02d, Year=%d\n",
-                   eventCount, event.name.c_str(), event.birthYear, event.birthMonth, event.birthDay, event.birthYear);
+        Log.printf("[BirthdayModule] Event #%d geparst: Name='%s', Datum=%04d-%02d-%02d\n",
+                   eventCount, event.name.c_str(), event.birthYear, event.birthMonth, event.birthDay);
         
         if (event.birthYear > 0 && !event.name.empty()) {
             _rawEvents.push_back(std::move(event));

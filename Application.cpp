@@ -30,6 +30,7 @@ bool portalRunning = false;
 
 TankerkoenigModule* tankerkoenigModule = nullptr;
 ThemeParkModule* themeParkModule = nullptr;
+BirthdayModule* birthdayModule = nullptr;
 
 // Forward-Deklaration, da in WebServerManager.cpp definiert
 void setupWebServer(bool portalMode);
@@ -120,6 +121,7 @@ void Application::begin() {
     _themeParkMod = new ThemeParkModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), webClient);
     themeParkModule = _themeParkMod;
     _birthdayMod = new BirthdayModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, webClient, deviceConfig);
+    birthdayModule = _birthdayMod;
     
     _panelManager->registerClockModule(_clockMod);
     _panelManager->registerSensorModule(mwaveSensorModule);
