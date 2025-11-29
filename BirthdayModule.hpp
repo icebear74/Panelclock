@@ -86,8 +86,8 @@ public:
     bool isFinished() const override { return _isFinished; }
     
     /**
-     * @brief Indicates this module should NOT be in the normal playlist rotation.
-     * It only shows via interrupts when there's a birthday today.
+     * @brief Indicates this module should be in the normal playlist rotation.
+     * The module will show when isEnabled() returns true (i.e., when there's a birthday today).
      */
     bool canBeInPlaylist() const override { return true; }
 
