@@ -21,18 +21,37 @@ time_t timegm(struct tm *tm) {
         {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31},
         {31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}
     };
+    
+    int target_year = tm->tm_year + 1900;
     time_t res = 0;
-    for (int i = 1970; i < tm->tm_year + 1900; i++) {
-        res += is_leap(i) ? 366 : 365;
+    
+    // Handle years relative to 1970 epoch
+    if (target_year >= 1970) {
+        // Original logic for post-1970 dates
+        for (int i = 1970; i < target_year; i++) {
+            res += is_leap(i) ? 366 : 365;
+        }
+    } else {
+        // Handle pre-1970 dates by counting backwards
+        for (int i = 1969; i >= target_year; i--) {
+            res -= is_leap(i) ? 366 : 365;
+        }
     }
+    
+    // Add months
     for (int i = 0; i < tm->tm_mon; i++) {
-        res += ndays[is_leap(tm->tm_year + 1900)][i];
+        res += ndays[is_leap(target_year)][i];
     }
+    
+    // Add days
     res += tm->tm_mday - 1;
+    // Convert to hours
     res *= 24;
     res += tm->tm_hour;
+    // Convert to minutes
     res *= 60;
     res += tm->tm_min;
+    // Convert to seconds
     res *= 60;
     res += tm->tm_sec;
     return res;

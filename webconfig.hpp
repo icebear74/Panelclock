@@ -164,6 +164,18 @@ struct DeviceConfig {
     /// @brief Die Anzeigedauer pro Feiertag in Sekunden.
     int curiousHolidaysDisplaySec = 10;
 
+    // --- Geburtstags-Modul ---
+    /// @brief Die URL zur ICS-Datei mit Geburtstagen (YEARLY recurring events).
+    PsramString birthdayIcsUrl;
+    /// @brief Das Abrufintervall für Geburtstagsdaten in Minuten.
+    int birthdayFetchIntervalMin = 60;
+    /// @brief Die Anzeigedauer pro Geburtstag in Sekunden.
+    int birthdayDisplaySec = 30;
+    /// @brief Die Farbe für den Namen/Header im Geburtstags-Modul als Hex-String.
+    PsramString birthdayHeaderColor = "#FBE000";
+    /// @brief Die Farbe für den Text im Geburtstags-Modul als Hex-String.
+    PsramString birthdayTextColor = "#FFFFFF";
+
     // --- Globale Scrolling-Einstellungen ---
     /// @brief Globale Scroll-Geschwindigkeit in Millisekunden pro Pixel für alle Module.
     int globalScrollSpeedMs = 50;

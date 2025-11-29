@@ -75,6 +75,7 @@ Application::~Application() {
     delete _weatherMod;
     delete _themeParkMod;
     delete _panelStreamer;
+    delete _birthdayMod;
 }
 
 void Application::begin() {
@@ -118,6 +119,7 @@ void Application::begin() {
     _weatherMod = new WeatherModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, webClient);
     _themeParkMod = new ThemeParkModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), webClient);
     themeParkModule = _themeParkMod;
+    _birthdayMod = new BirthdayModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, webClient, deviceConfig);
     
     _panelManager->registerClockModule(_clockMod);
     _panelManager->registerSensorModule(mwaveSensorModule);
@@ -128,6 +130,7 @@ void Application::begin() {
     _panelManager->registerModule(_curiousMod);
     _panelManager->registerModule(_weatherMod);
     _panelManager->registerModule(_themeParkMod);
+    _panelManager->registerModule(_birthdayMod);
 
     if (connectionManager->begin()) {
         portalRunning = false;
@@ -142,6 +145,7 @@ void Application::begin() {
         _curiousMod->begin();
         _weatherMod->begin();
         _themeParkMod->begin();
+        _birthdayMod->begin();
 
         WiFi.setHostname(deviceConfig->hostname.c_str());
         if (!deviceConfig->otaPassword.empty()) ArduinoOTA.setPassword(deviceConfig->otaPassword.c_str());
@@ -189,6 +193,7 @@ void Application::begin() {
     _curiousMod->onUpdate(redrawCb);
     _weatherMod->onUpdate(redrawCb);
     _themeParkMod->onUpdate(redrawCb);
+    _birthdayMod->onUpdate(redrawCb);
 
     _panelManager->displayStatus("Startvorgang\nabgeschlossen.");
     delay(2000);
@@ -237,6 +242,7 @@ void Application::update() {
     if(_curiousMod) _curiousMod->queueData();
     if(_weatherMod) _weatherMod->queueData(); // HINZUGEFÜGT
     if(_themeParkMod) _themeParkMod->queueData(); // HINZUGEFÜGT
+    if(_birthdayMod) _birthdayMod->queueData(); // HINZUGEFÜGT
     
     // KORREKTUR: Aufrufe für das Wetter-Modul hinzugefügt
     if(_tankerkoenigMod) _tankerkoenigMod->processData();
@@ -245,6 +251,7 @@ void Application::update() {
     if(_curiousMod) _curiousMod->processData();
     if(_weatherMod) _weatherMod->processData(); // HINZUGEFÜGT
     if(_themeParkMod) _themeParkMod->processData(); // HINZUGEFÜGT
+    if(_birthdayMod) _birthdayMod->processData(); // HINZUGEFÜGT
 
     if (_panelManager) _panelManager->tick();
 
@@ -265,7 +272,7 @@ void Application::update() {
 
 void Application::executeApplyLiveConfig() {
     LOG_MEMORY_DETAILED("Vor executeApplyLiveConfig");
-    if (!_tankerkoenigMod || !_calendarMod || !_dartsMod || !_fritzMod || !_curiousMod || !_weatherMod || !_themeParkMod || !timeConverter || !deviceConfig) return;
+    if (!_tankerkoenigMod || !_calendarMod || !_dartsMod || !_fritzMod || !_curiousMod || !_weatherMod || !_themeParkMod || !_birthdayMod || !timeConverter || !deviceConfig) return;
     Log.println("[Config] Wende Live-Konfiguration an...");
     
     if (!timeConverter->setTimezone(deviceConfig->timezone.c_str())) {
@@ -280,6 +287,7 @@ void Application::executeApplyLiveConfig() {
     _curiousMod->setConfig();
     _weatherMod->setConfig(deviceConfig);
     _themeParkMod->setConfig(deviceConfig);
+    _birthdayMod->setConfig(deviceConfig->birthdayIcsUrl, deviceConfig->birthdayFetchIntervalMin, deviceConfig->birthdayDisplaySec, deviceConfig->birthdayHeaderColor, deviceConfig->birthdayTextColor);
 
     Log.println("[Config] Live-Konfiguration angewendet.");
     LOG_MEMORY_DETAILED("Nach executeApplyLiveConfig");
