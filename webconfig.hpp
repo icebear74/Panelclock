@@ -175,7 +175,7 @@ struct DeviceConfig {
     int adventWreathColorMode = 1;
     /// @brief Eigene Kerzenfarben als Hex-String (z.B. "#FF0000,#00FF00,#0000FF,#FFFF00")
     PsramString adventWreathCustomColors = "#FF0000,#FFD700,#008000,#FFFFFF";
-    /// @brief Unterbrechend (true = PlayNext) oder nicht-unterbrechend (false = Low Priority Interrupt)
+    /// @brief Unterbrechend (true = Low Priority Interrupt, unterbricht sofort) oder nicht-unterbrechend (false = PlayNext, wartet auf aktuelles Modul)
     bool adventWreathInterrupt = false;
 
     // --- Globale Scrolling-Einstellungen ---
