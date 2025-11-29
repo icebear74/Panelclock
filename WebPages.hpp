@@ -156,6 +156,7 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
   <button class="tablinks" onclick="openTab(event, 'Fritzbox')">Fritz!Box</button>
   <button class="tablinks" onclick="openTab(event, 'Kalender')">Kalender</button>
   <button class="tablinks" onclick="openTab(event, 'KurioseFeiertage')">Kuriose Feiertage</button>
+  <button class="tablinks" onclick="openTab(event, 'Adventskranz')">Adventskranz</button>
   <button class="tablinks" onclick="openTab(event, 'Tankstellen')">Tankstellen</button>
   <button class="tablinks" onclick="openTab(event, 'Wetter')">Wetter</button>
   <button class="tablinks" onclick="openTab(event, 'Diverses')">Diverses</button>
@@ -279,6 +280,17 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
         <input type="checkbox" id="curiousHolidaysEnabled" name="curiousHolidaysEnabled" {curiousHolidaysEnabled_checked}><label for="curiousHolidaysEnabled" style="display:inline;">Kuriose Feiertage aktivieren</label><br>
         <label for="curiousHolidaysDisplaySec">Anzeigedauer pro Feiertag (Sekunden)</label><input type="number" id="curiousHolidaysDisplaySec" name="curiousHolidaysDisplaySec" value="{curiousHolidaysDisplaySec}" min="1">
         <p style="color:#bbb; margin-top:10px;">Zeigt t&auml;glich verschiedene kuriose Feiertage aus Deutschland an.</p>
+    </div>
+</div>
+
+<div id="Adventskranz" class="tabcontent">
+    <div class="group">
+        <h3>Adventskranz</h3>
+        <input type="checkbox" id="adventWreathEnabled" name="adventWreathEnabled" {adventWreathEnabled_checked}><label for="adventWreathEnabled" style="display:inline;">Adventskranz aktivieren</label><br>
+        <label for="adventWreathDisplaySec">Anzeigedauer (Sekunden)</label><input type="number" id="adventWreathDisplaySec" name="adventWreathDisplaySec" value="{adventWreathDisplaySec}" min="5">
+        <label for="adventWreathRepeatMin">Wiederholungsintervall (Minuten)</label><input type="number" id="adventWreathRepeatMin" name="adventWreathRepeatMin" value="{adventWreathRepeatMin}" min="1">
+        <input type="checkbox" id="adventWreathColorful" name="adventWreathColorful" {adventWreathColorful_checked}><label for="adventWreathColorful" style="display:inline;">Verschiedenfarbige Kerzen (statt traditionell violett/rosa)</label><br>
+        <p style="color:#bbb; margin-top:10px;">Zeigt w&auml;hrend der Adventszeit einen animierten Adventskranz mit brennenden Kerzen. Je nach aktuellem Advent brennen 1-4 Kerzen. Die Anzeige erscheint regelm&auml;&szlig;ig als Unterbrechung der normalen Anzeige.</p>
     </div>
 </div>
 

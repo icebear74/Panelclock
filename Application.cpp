@@ -13,6 +13,7 @@
 #include "MemoryLogger.hpp"
 #include "MultiLogger.hpp"
 #include "PanelStreamer.hpp"
+#include "AdventWreathModule.hpp"
 
 // --- Globale Variablen ---
 Application* Application::_instance = nullptr;
@@ -75,6 +76,7 @@ Application::~Application() {
     delete _weatherMod;
     delete _themeParkMod;
     delete _panelStreamer;
+    delete _adventWreathMod;
 }
 
 void Application::begin() {
@@ -118,6 +120,7 @@ void Application::begin() {
     _weatherMod = new WeatherModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, webClient);
     _themeParkMod = new ThemeParkModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), webClient);
     themeParkModule = _themeParkMod;
+    _adventWreathMod = new AdventWreathModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, deviceConfig);
     
     _panelManager->registerClockModule(_clockMod);
     _panelManager->registerSensorModule(mwaveSensorModule);
@@ -128,6 +131,7 @@ void Application::begin() {
     _panelManager->registerModule(_curiousMod);
     _panelManager->registerModule(_weatherMod);
     _panelManager->registerModule(_themeParkMod);
+    _panelManager->registerModule(_adventWreathMod);
 
     if (connectionManager->begin()) {
         portalRunning = false;
@@ -142,6 +146,7 @@ void Application::begin() {
         _curiousMod->begin();
         _weatherMod->begin();
         _themeParkMod->begin();
+        _adventWreathMod->begin();
 
         WiFi.setHostname(deviceConfig->hostname.c_str());
         if (!deviceConfig->otaPassword.empty()) ArduinoOTA.setPassword(deviceConfig->otaPassword.c_str());
@@ -265,7 +270,7 @@ void Application::update() {
 
 void Application::executeApplyLiveConfig() {
     LOG_MEMORY_DETAILED("Vor executeApplyLiveConfig");
-    if (!_tankerkoenigMod || !_calendarMod || !_dartsMod || !_fritzMod || !_curiousMod || !_weatherMod || !_themeParkMod || !timeConverter || !deviceConfig) return;
+    if (!_tankerkoenigMod || !_calendarMod || !_dartsMod || !_fritzMod || !_curiousMod || !_weatherMod || !_themeParkMod || !_adventWreathMod || !timeConverter || !deviceConfig) return;
     Log.println("[Config] Wende Live-Konfiguration an...");
     
     if (!timeConverter->setTimezone(deviceConfig->timezone.c_str())) {
@@ -280,6 +285,7 @@ void Application::executeApplyLiveConfig() {
     _curiousMod->setConfig();
     _weatherMod->setConfig(deviceConfig);
     _themeParkMod->setConfig(deviceConfig);
+    _adventWreathMod->setConfig();
 
     Log.println("[Config] Live-Konfiguration angewendet.");
     LOG_MEMORY_DETAILED("Nach executeApplyLiveConfig");

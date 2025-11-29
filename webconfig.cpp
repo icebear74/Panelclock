@@ -114,6 +114,13 @@ void loadDeviceConfig() {
 
                 deviceConfig->curiousHolidaysEnabled = doc["curiousHolidaysEnabled"] | true;
                 deviceConfig->curiousHolidaysDisplaySec = doc["curiousHolidaysDisplaySec"] | 10;
+                
+                // Adventskranz
+                deviceConfig->adventWreathEnabled = doc["adventWreathEnabled"] | true;
+                deviceConfig->adventWreathDisplaySec = doc["adventWreathDisplaySec"] | 15;
+                deviceConfig->adventWreathRepeatMin = doc["adventWreathRepeatMin"] | 30;
+                deviceConfig->adventWreathColorful = doc["adventWreathColorful"] | true;
+                
                 deviceConfig->globalScrollSpeedMs = doc["globalScrollSpeedMs"] | 50;
                 deviceConfig->scrollMode = doc["scrollMode"] | 0;
                 deviceConfig->scrollPauseSec = doc["scrollPauseSec"] | 0;
@@ -219,6 +226,13 @@ void saveDeviceConfig() {
 
     doc["curiousHolidaysEnabled"] = deviceConfig->curiousHolidaysEnabled;
     doc["curiousHolidaysDisplaySec"] = deviceConfig->curiousHolidaysDisplaySec;
+    
+    // Adventskranz
+    doc["adventWreathEnabled"] = deviceConfig->adventWreathEnabled;
+    doc["adventWreathDisplaySec"] = deviceConfig->adventWreathDisplaySec;
+    doc["adventWreathRepeatMin"] = deviceConfig->adventWreathRepeatMin;
+    doc["adventWreathColorful"] = deviceConfig->adventWreathColorful;
+    
     doc["globalScrollSpeedMs"] = deviceConfig->globalScrollSpeedMs;
     doc["scrollMode"] = deviceConfig->scrollMode;
     doc["scrollPauseSec"] = deviceConfig->scrollPauseSec;

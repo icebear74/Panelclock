@@ -202,6 +202,12 @@ void handleConfigModules() {
     replaceAll(content, "{curiousHolidaysEnabled_checked}", deviceConfig->curiousHolidaysEnabled ? "checked" : "");
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->curiousHolidaysDisplaySec); replaceAll(content, "{curiousHolidaysDisplaySec}", num_buf);
     
+    // Advent Wreath configuration
+    replaceAll(content, "{adventWreathEnabled_checked}", deviceConfig->adventWreathEnabled ? "checked" : "");
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->adventWreathDisplaySec); replaceAll(content, "{adventWreathDisplaySec}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->adventWreathRepeatMin); replaceAll(content, "{adventWreathRepeatMin}", num_buf);
+    replaceAll(content, "{adventWreathColorful_checked}", deviceConfig->adventWreathColorful ? "checked" : "");
+    
     // Global scrolling configuration
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->globalScrollSpeedMs); replaceAll(content, "{globalScrollSpeedMs}", num_buf);
     replaceAll(content, "{scrollMode0_selected}", deviceConfig->scrollMode == 0 ? "selected" : "");
@@ -315,6 +321,12 @@ void handleSaveModules() {
     // Curious Holidays configuration
     deviceConfig->curiousHolidaysEnabled = server->hasArg("curiousHolidaysEnabled");
     if (server->hasArg("curiousHolidaysDisplaySec")) deviceConfig->curiousHolidaysDisplaySec = server->arg("curiousHolidaysDisplaySec").toInt();
+    
+    // Advent Wreath configuration
+    deviceConfig->adventWreathEnabled = server->hasArg("adventWreathEnabled");
+    if (server->hasArg("adventWreathDisplaySec")) deviceConfig->adventWreathDisplaySec = server->arg("adventWreathDisplaySec").toInt();
+    if (server->hasArg("adventWreathRepeatMin")) deviceConfig->adventWreathRepeatMin = server->arg("adventWreathRepeatMin").toInt();
+    deviceConfig->adventWreathColorful = server->hasArg("adventWreathColorful");
     
     // Global scrolling configuration
     if (server->hasArg("globalScrollSpeedMs")) deviceConfig->globalScrollSpeedMs = server->arg("globalScrollSpeedMs").toInt();

@@ -164,6 +164,16 @@ struct DeviceConfig {
     /// @brief Die Anzeigedauer pro Feiertag in Sekunden.
     int curiousHolidaysDisplaySec = 10;
 
+    // --- Adventskranz Modul ---
+    /// @brief Aktiviert die Anzeige des Adventskranzes während der Adventszeit.
+    bool adventWreathEnabled = true;
+    /// @brief Die Anzeigedauer des Adventskranzes in Sekunden.
+    int adventWreathDisplaySec = 15;
+    /// @brief Das Wiederholungsintervall für den Adventskranz in Minuten.
+    int adventWreathRepeatMin = 30;
+    /// @brief Verwendet verschiedenfarbige Kerzen (true) oder traditionelle violett/rosa (false).
+    bool adventWreathColorful = true;
+
     // --- Globale Scrolling-Einstellungen ---
     /// @brief Globale Scroll-Geschwindigkeit in Millisekunden pro Pixel für alle Module.
     int globalScrollSpeedMs = 50;
