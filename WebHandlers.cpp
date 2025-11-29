@@ -3,6 +3,8 @@
 #include "WebPages.hpp"
 #include "BackupManager.hpp"
 #include "ThemeParkModule.hpp"
+#include "Application.hpp"
+#include "BirthdayModule.hpp"
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 #include <WiFi.h>
@@ -26,6 +28,7 @@ extern GeneralTimeConverter* timeConverter;
 extern TankerkoenigModule* tankerkoenigModule;
 extern BackupManager* backupManager;
 extern ThemeParkModule* themeParkModule;
+extern BirthdayModule* birthdayModule;
 extern bool portalRunning;
 
 // Forward declarations of global functions (declared in WebServerManager.hpp)
@@ -192,6 +195,13 @@ void handleConfigModules() {
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->calendarUrgentDurationSec); replaceAll(content, "{calendarUrgentDurationSec}", num_buf);
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->calendarUrgentRepeatMin); replaceAll(content, "{calendarUrgentRepeatMin}", num_buf);
 
+    // Birthday module configuration
+    replaceAll(content, "{birthdayIcsUrl}", deviceConfig->birthdayIcsUrl.c_str());
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->birthdayFetchIntervalMin); replaceAll(content, "{birthdayFetchIntervalMin}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->birthdayDisplaySec); replaceAll(content, "{birthdayDisplaySec}", num_buf);
+    replaceAll(content, "{birthdayHeaderColor}", deviceConfig->birthdayHeaderColor.c_str());
+    replaceAll(content, "{birthdayTextColor}", deviceConfig->birthdayTextColor.c_str());
+
     // Theme Park configuration
     replaceAll(content, "{themeParkEnabled_checked}", deviceConfig->themeParkEnabled ? "checked" : "");
     replaceAll(content, "{themeParkIds}", deviceConfig->themeParkIds.c_str());
@@ -311,6 +321,13 @@ void handleSaveModules() {
     if (server->hasArg("calendarUrgentThresholdHours")) deviceConfig->calendarUrgentThresholdHours = server->arg("calendarUrgentThresholdHours").toInt();
     if (server->hasArg("calendarUrgentDurationSec")) deviceConfig->calendarUrgentDurationSec = server->arg("calendarUrgentDurationSec").toInt();
     if (server->hasArg("calendarUrgentRepeatMin")) deviceConfig->calendarUrgentRepeatMin = server->arg("calendarUrgentRepeatMin").toInt();
+
+    // Birthday module configuration
+    deviceConfig->birthdayIcsUrl = server->arg("birthdayIcsUrl").c_str();
+    if (server->hasArg("birthdayFetchIntervalMin")) deviceConfig->birthdayFetchIntervalMin = server->arg("birthdayFetchIntervalMin").toInt();
+    if (server->hasArg("birthdayDisplaySec")) deviceConfig->birthdayDisplaySec = server->arg("birthdayDisplaySec").toInt();
+    deviceConfig->birthdayHeaderColor = server->arg("birthdayHeaderColor").c_str();
+    deviceConfig->birthdayTextColor = server->arg("birthdayTextColor").c_str();
 
     // Curious Holidays configuration
     deviceConfig->curiousHolidaysEnabled = server->hasArg("curiousHolidaysEnabled");
@@ -970,5 +987,144 @@ void handleThemeParksList() {
         server->send(504, "application/json", "{\"ok\":false, \"message\":\"Timeout waiting for API response\"}");
         vSemaphoreDelete(sem);
     }
+}
+
+void handleBirthdayDebug() {
+    if (!server) return;
+    
+    PsramString html = (const char*)FPSTR(HTML_PAGE_HEADER);
+    html += "<h2>Geburtstags-Modul Debug</h2>";
+    
+    // Module status
+    html += "<div class='group'>";
+    html += "<h3>Modul-Status</h3>";
+    html += "<table>";
+    html += "<tr><th>Status</th><th>Wert</th></tr>";
+    
+    if (birthdayModule) {
+        html += "<tr><td>Modul initialisiert</td><td style='color:lightgreen;'>Ja</td></tr>";
+        
+        html += "<tr><td>isEnabled()</td><td>";
+        html += birthdayModule->isEnabled() ? "<span style='color:lightgreen;'>Ja</span>" : "<span style='color:orange;'>Nein</span>";
+        html += "</td></tr>";
+        
+        html += "<tr><td>canBeInPlaylist()</td><td>";
+        html += birthdayModule->canBeInPlaylist() ? "Ja" : "Nein";
+        html += "</td></tr>";
+        
+        html += "<tr><td>isFinished()</td><td>";
+        html += birthdayModule->isFinished() ? "Ja" : "Nein";
+        html += "</td></tr>";
+        
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%d / %d", birthdayModule->getCurrentPage() + 1, birthdayModule->getTotalPages());
+        html += "<tr><td>Aktuelle Seite</td><td>";
+        html += buf;
+        html += "</td></tr>";
+        
+        snprintf(buf, sizeof(buf), "%lu", birthdayModule->getDisplayDuration());
+        html += "<tr><td>Gesamt-Anzeigedauer</td><td>";
+        html += buf;
+        html += " ms</td></tr>";
+    } else {
+        html += "<tr><td colspan='2' style='color:red;'>BirthdayModule nicht initialisiert!</td></tr>";
+    }
+    
+    html += "</table></div>";
+    
+    html += "<div class='group'>";
+    html += "<h3>Konfiguration</h3>";
+    html += "<table>";
+    html += "<tr><th>Einstellung</th><th>Wert</th></tr>";
+    
+    if (deviceConfig) {
+        html += "<tr><td>ICS URL</td><td>";
+        html += deviceConfig->birthdayIcsUrl.empty() ? "<em>(nicht konfiguriert)</em>" : deviceConfig->birthdayIcsUrl.c_str();
+        html += "</td></tr>";
+        
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%d", deviceConfig->birthdayFetchIntervalMin);
+        html += "<tr><td>Abrufintervall</td><td>";
+        html += buf;
+        html += " Minuten</td></tr>";
+        
+        snprintf(buf, sizeof(buf), "%d", deviceConfig->birthdayDisplaySec);
+        html += "<tr><td>Anzeigedauer</td><td>";
+        html += buf;
+        html += " Sekunden</td></tr>";
+        
+        html += "<tr><td>Header-Farbe</td><td>";
+        html += deviceConfig->birthdayHeaderColor.c_str();
+        html += "</td></tr>";
+        
+        html += "<tr><td>Text-Farbe</td><td>";
+        html += deviceConfig->birthdayTextColor.c_str();
+        html += "</td></tr>";
+    } else {
+        html += "<tr><td colspan='2' style='color:red;'>DeviceConfig nicht verfügbar</td></tr>";
+    }
+    
+    html += "</table></div>";
+    
+    // Current time info
+    html += "<div class='group'>";
+    html += "<h3>Aktuelle Zeit</h3>";
+    
+    time_t now_utc;
+    time(&now_utc);
+    struct tm tm_utc, tm_local;
+    gmtime_r(&now_utc, &tm_utc);
+    
+    time_t local_now = now_utc;
+    if (timeConverter) {
+        local_now = timeConverter->toLocal(now_utc);
+    }
+    localtime_r(&local_now, &tm_local);
+    
+    char timeBuf[64];
+    html += "<table>";
+    html += "<tr><th>Zeit</th><th>Wert</th></tr>";
+    
+    snprintf(timeBuf, sizeof(timeBuf), "%04d-%02d-%02d %02d:%02d:%02d",
+             tm_utc.tm_year + 1900, tm_utc.tm_mon + 1, tm_utc.tm_mday,
+             tm_utc.tm_hour, tm_utc.tm_min, tm_utc.tm_sec);
+    html += "<tr><td>UTC</td><td>";
+    html += timeBuf;
+    html += "</td></tr>";
+    
+    snprintf(timeBuf, sizeof(timeBuf), "%04d-%02d-%02d %02d:%02d:%02d",
+             tm_local.tm_year + 1900, tm_local.tm_mon + 1, tm_local.tm_mday,
+             tm_local.tm_hour, tm_local.tm_min, tm_local.tm_sec);
+    html += "<tr><td>Lokal</td><td>";
+    html += timeBuf;
+    html += "</td></tr>";
+    
+    snprintf(timeBuf, sizeof(timeBuf), "%02d-%02d", tm_local.tm_mon + 1, tm_local.tm_mday);
+    html += "<tr><td>Heute (MM-TT)</td><td><strong>";
+    html += timeBuf;
+    html += "</strong></td></tr>";
+    
+    html += "</table></div>";
+    
+    // Hint
+    html += "<div class='group'>";
+    html += "<h3>Hinweise</h3>";
+    html += "<p>Die Debug-Logs werden in der Serial-Konsole und im Live-Stream (unter /stream) angezeigt.</p>";
+    html += "<p>Suchen Sie nach Log-Einträgen mit <code>[BirthdayModule]</code></p>";
+    html += "<p><strong>Typischer Ablauf:</strong></p>";
+    html += "<ol>";
+    html += "<li>setConfig wird aufgerufen → Ressource wird beim WebClient registriert</li>";
+    html += "<li>WebClient lädt ICS-Daten (kann einige Sekunden dauern)</li>";
+    html += "<li>queueData wird aufgerufen → prüft ob neue Daten verfügbar</li>";
+    html += "<li>processData parst die ICS-Daten</li>";
+    html += "<li>onSuccessfulUpdate filtert für heutige Geburtstage</li>";
+    html += "<li>isEnabled prüft ob Geburtstage gefunden wurden</li>";
+    html += "</ol>";
+    html += "</div>";
+    
+    html += "<div class='footer-link'><a href='/'>&laquo; Zurück zum Hauptmenü</a></div>";
+    html += (const char*)FPSTR(HTML_PAGE_FOOTER);
+    
+    server->send(200, "text/html", html.c_str());
 }
 

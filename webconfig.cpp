@@ -114,6 +114,14 @@ void loadDeviceConfig() {
 
                 deviceConfig->curiousHolidaysEnabled = doc["curiousHolidaysEnabled"] | true;
                 deviceConfig->curiousHolidaysDisplaySec = doc["curiousHolidaysDisplaySec"] | 10;
+                
+                // Birthday module configuration
+                deviceConfig->birthdayIcsUrl = doc["birthdayIcsUrl"] | "";
+                deviceConfig->birthdayFetchIntervalMin = doc["birthdayFetchIntervalMin"] | 60;
+                deviceConfig->birthdayDisplaySec = doc["birthdayDisplaySec"] | 30;
+                deviceConfig->birthdayHeaderColor = doc["birthdayHeaderColor"] | "#FBE000";
+                deviceConfig->birthdayTextColor = doc["birthdayTextColor"] | "#FFFFFF";
+                
                 deviceConfig->globalScrollSpeedMs = doc["globalScrollSpeedMs"] | 50;
                 deviceConfig->scrollMode = doc["scrollMode"] | 0;
                 deviceConfig->scrollPauseSec = doc["scrollPauseSec"] | 0;
@@ -219,6 +227,14 @@ void saveDeviceConfig() {
 
     doc["curiousHolidaysEnabled"] = deviceConfig->curiousHolidaysEnabled;
     doc["curiousHolidaysDisplaySec"] = deviceConfig->curiousHolidaysDisplaySec;
+    
+    // Birthday module configuration
+    doc["birthdayIcsUrl"] = deviceConfig->birthdayIcsUrl.c_str();
+    doc["birthdayFetchIntervalMin"] = deviceConfig->birthdayFetchIntervalMin;
+    doc["birthdayDisplaySec"] = deviceConfig->birthdayDisplaySec;
+    doc["birthdayHeaderColor"] = deviceConfig->birthdayHeaderColor.c_str();
+    doc["birthdayTextColor"] = deviceConfig->birthdayTextColor.c_str();
+    
     doc["globalScrollSpeedMs"] = deviceConfig->globalScrollSpeedMs;
     doc["scrollMode"] = deviceConfig->scrollMode;
     doc["scrollPauseSec"] = deviceConfig->scrollPauseSec;
