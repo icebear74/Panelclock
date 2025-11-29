@@ -154,6 +154,7 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
   <button class="tablinks" onclick="openTab(event, 'Darts')" id="defaultOpen">Darts</button>
   <button class="tablinks" onclick="openTab(event, 'Freizeitpark')">Freizeitparks</button>
   <button class="tablinks" onclick="openTab(event, 'Fritzbox')">Fritz!Box</button>
+  <button class="tablinks" onclick="openTab(event, 'Geburtstag')">Geburtstag</button>
   <button class="tablinks" onclick="openTab(event, 'Kalender')">Kalender</button>
   <button class="tablinks" onclick="openTab(event, 'KurioseFeiertage')">Kuriose Feiertage</button>
   <button class="tablinks" onclick="openTab(event, 'Tankstellen')">Tankstellen</button>
@@ -270,6 +271,22 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
         <p style="color:#ffc107;">Hinweis: Damit dies funktioniert, muss der "Call Monitor" auf der Fritz!Box einmalig per Telefon aktiviert werden. W&auml;hlen Sie dazu: <strong>#96*5*</strong></p>
         <input type="checkbox" id="fritzboxEnabled" name="fritzboxEnabled" {fritzboxEnabled_checked}><label for="fritzboxEnabled" style="display:inline;">Anrufanzeige aktivieren</label><br><br>
         <label for="fritzboxIp">Fritz!Box IP-Adresse (leer lassen f&uuml;r autom. Erkennung)</label><input type="text" id="fritzboxIp" name="fritzboxIp" value="{fritzboxIp}">
+    </div>
+</div>
+
+<div id="Geburtstag" class="tabcontent">
+    <div class="group">
+        <h3>Geburtstags-Anzeige</h3>
+        <p>Zeigt das Alter einer Person sekundengenau an. Die Geburtsdaten werden aus einem ICS-Kalender gelesen (YEARLY recurring events oder all-day events).</p>
+        <p style="color:#ffc107;">Hinweis: F&uuml;r Geburtstage vor 1970 wird die erweiterte Datumsberechnung verwendet.</p>
+        <label for="birthdayIcsUrl">iCal URL (.ics) mit Geburtstagen</label><input type="text" id="birthdayIcsUrl" name="birthdayIcsUrl" value="{birthdayIcsUrl}">
+        <label for="birthdayFetchIntervalMin">Abrufintervall (Minuten)</label><input type="number" id="birthdayFetchIntervalMin" name="birthdayFetchIntervalMin" value="{birthdayFetchIntervalMin}" min="1">
+        <label for="birthdayDisplaySec">Anzeigedauer pro Geburtstag (Sekunden)</label><input type="number" id="birthdayDisplaySec" name="birthdayDisplaySec" value="{birthdayDisplaySec}" min="1">
+        <label for="birthdayHeaderColor">Farbe Name/Header</label><input type="color" id="birthdayHeaderColor" name="birthdayHeaderColor" value="{birthdayHeaderColor}">
+        <label for="birthdayTextColor">Farbe Text</label><input type="color" id="birthdayTextColor" name="birthdayTextColor" value="{birthdayTextColor}">
+        <p style="color:#bbb; margin-top:15px;">Die Anzeige zeigt zwei Zeilen:<br>
+        - Zeile 1: &quot;Du bist X Jahre, Y Monate, Z Tage, hh:mm:ss alt&quot;<br>
+        - Zeile 2: Gesamtwerte (Tage, Stunden, Minuten, Sekunden)</p>
     </div>
 </div>
 

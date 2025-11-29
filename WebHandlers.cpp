@@ -192,6 +192,13 @@ void handleConfigModules() {
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->calendarUrgentDurationSec); replaceAll(content, "{calendarUrgentDurationSec}", num_buf);
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->calendarUrgentRepeatMin); replaceAll(content, "{calendarUrgentRepeatMin}", num_buf);
 
+    // Birthday module configuration
+    replaceAll(content, "{birthdayIcsUrl}", deviceConfig->birthdayIcsUrl.c_str());
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->birthdayFetchIntervalMin); replaceAll(content, "{birthdayFetchIntervalMin}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->birthdayDisplaySec); replaceAll(content, "{birthdayDisplaySec}", num_buf);
+    replaceAll(content, "{birthdayHeaderColor}", deviceConfig->birthdayHeaderColor.c_str());
+    replaceAll(content, "{birthdayTextColor}", deviceConfig->birthdayTextColor.c_str());
+
     // Theme Park configuration
     replaceAll(content, "{themeParkEnabled_checked}", deviceConfig->themeParkEnabled ? "checked" : "");
     replaceAll(content, "{themeParkIds}", deviceConfig->themeParkIds.c_str());
@@ -311,6 +318,13 @@ void handleSaveModules() {
     if (server->hasArg("calendarUrgentThresholdHours")) deviceConfig->calendarUrgentThresholdHours = server->arg("calendarUrgentThresholdHours").toInt();
     if (server->hasArg("calendarUrgentDurationSec")) deviceConfig->calendarUrgentDurationSec = server->arg("calendarUrgentDurationSec").toInt();
     if (server->hasArg("calendarUrgentRepeatMin")) deviceConfig->calendarUrgentRepeatMin = server->arg("calendarUrgentRepeatMin").toInt();
+
+    // Birthday module configuration
+    deviceConfig->birthdayIcsUrl = server->arg("birthdayIcsUrl").c_str();
+    if (server->hasArg("birthdayFetchIntervalMin")) deviceConfig->birthdayFetchIntervalMin = server->arg("birthdayFetchIntervalMin").toInt();
+    if (server->hasArg("birthdayDisplaySec")) deviceConfig->birthdayDisplaySec = server->arg("birthdayDisplaySec").toInt();
+    deviceConfig->birthdayHeaderColor = server->arg("birthdayHeaderColor").c_str();
+    deviceConfig->birthdayTextColor = server->arg("birthdayTextColor").c_str();
 
     // Curious Holidays configuration
     deviceConfig->curiousHolidaysEnabled = server->hasArg("curiousHolidaysEnabled");
