@@ -39,6 +39,7 @@ const char HTML_INDEX[] PROGMEM = R"rawliteral(
 <hr>
 <a href="/stream" class="button" style="background-color:#2196F3;">Live-Stream & Debug</a>
 <a href="/debug" class="button" style="background-color:#555;">Debug Daten</a>
+<a href="/debug/birthday" class="button" style="background-color:#555;">Geburtstag Debug</a>
 )rawliteral";
 
 const char HTML_CONFIG_BASE[] PROGMEM = R"rawliteral(

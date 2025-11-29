@@ -3,6 +3,8 @@
 #include "WebPages.hpp"
 #include "BackupManager.hpp"
 #include "ThemeParkModule.hpp"
+#include "Application.hpp"
+#include "BirthdayModule.hpp"
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 #include <WiFi.h>
@@ -984,5 +986,113 @@ void handleThemeParksList() {
         server->send(504, "application/json", "{\"ok\":false, \"message\":\"Timeout waiting for API response\"}");
         vSemaphoreDelete(sem);
     }
+}
+
+void handleBirthdayDebug() {
+    if (!server) return;
+    
+    PsramString html = (const char*)FPSTR(HTML_PAGE_HEADER);
+    html += "<h2>Geburtstags-Modul Debug</h2>";
+    
+    // Get birthday module from Application
+    BirthdayModule* birthdayMod = nullptr;
+    if (Application::_instance && Application::_instance->getPanelManager()) {
+        // We need to get it from Application - look at how we can access it
+    }
+    
+    html += "<div class='group'>";
+    html += "<h3>Konfiguration</h3>";
+    html += "<table>";
+    html += "<tr><th>Einstellung</th><th>Wert</th></tr>";
+    
+    if (deviceConfig) {
+        html += "<tr><td>ICS URL</td><td>";
+        html += deviceConfig->birthdayIcsUrl.empty() ? "<em>(nicht konfiguriert)</em>" : deviceConfig->birthdayIcsUrl.c_str();
+        html += "</td></tr>";
+        
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%d", deviceConfig->birthdayFetchIntervalMin);
+        html += "<tr><td>Abrufintervall</td><td>";
+        html += buf;
+        html += " Minuten</td></tr>";
+        
+        snprintf(buf, sizeof(buf), "%d", deviceConfig->birthdayDisplaySec);
+        html += "<tr><td>Anzeigedauer</td><td>";
+        html += buf;
+        html += " Sekunden</td></tr>";
+        
+        html += "<tr><td>Header-Farbe</td><td>";
+        html += deviceConfig->birthdayHeaderColor.c_str();
+        html += "</td></tr>";
+        
+        html += "<tr><td>Text-Farbe</td><td>";
+        html += deviceConfig->birthdayTextColor.c_str();
+        html += "</td></tr>";
+    } else {
+        html += "<tr><td colspan='2' style='color:red;'>DeviceConfig nicht verfügbar</td></tr>";
+    }
+    
+    html += "</table></div>";
+    
+    // Current time info
+    html += "<div class='group'>";
+    html += "<h3>Aktuelle Zeit</h3>";
+    
+    time_t now_utc;
+    time(&now_utc);
+    struct tm tm_utc, tm_local;
+    gmtime_r(&now_utc, &tm_utc);
+    
+    time_t local_now = now_utc;
+    if (timeConverter) {
+        local_now = timeConverter->toLocal(now_utc);
+    }
+    localtime_r(&local_now, &tm_local);
+    
+    char timeBuf[64];
+    html += "<table>";
+    html += "<tr><th>Zeit</th><th>Wert</th></tr>";
+    
+    snprintf(timeBuf, sizeof(timeBuf), "%04d-%02d-%02d %02d:%02d:%02d",
+             tm_utc.tm_year + 1900, tm_utc.tm_mon + 1, tm_utc.tm_mday,
+             tm_utc.tm_hour, tm_utc.tm_min, tm_utc.tm_sec);
+    html += "<tr><td>UTC</td><td>";
+    html += timeBuf;
+    html += "</td></tr>";
+    
+    snprintf(timeBuf, sizeof(timeBuf), "%04d-%02d-%02d %02d:%02d:%02d",
+             tm_local.tm_year + 1900, tm_local.tm_mon + 1, tm_local.tm_mday,
+             tm_local.tm_hour, tm_local.tm_min, tm_local.tm_sec);
+    html += "<tr><td>Lokal</td><td>";
+    html += timeBuf;
+    html += "</td></tr>";
+    
+    snprintf(timeBuf, sizeof(timeBuf), "%02d-%02d", tm_local.tm_mon + 1, tm_local.tm_mday);
+    html += "<tr><td>Heute (MM-TT)</td><td><strong>";
+    html += timeBuf;
+    html += "</strong></td></tr>";
+    
+    html += "</table></div>";
+    
+    // Hint
+    html += "<div class='group'>";
+    html += "<h3>Hinweise</h3>";
+    html += "<p>Die Debug-Logs werden in der Serial-Konsole und im Live-Stream (unter /stream) angezeigt.</p>";
+    html += "<p>Suchen Sie nach Log-Einträgen mit <code>[BirthdayModule]</code></p>";
+    html += "<p><strong>Typischer Ablauf:</strong></p>";
+    html += "<ol>";
+    html += "<li>setConfig wird aufgerufen → Ressource wird beim WebClient registriert</li>";
+    html += "<li>WebClient lädt ICS-Daten (kann einige Sekunden dauern)</li>";
+    html += "<li>queueData wird aufgerufen → prüft ob neue Daten verfügbar</li>";
+    html += "<li>processData parst die ICS-Daten</li>";
+    html += "<li>onSuccessfulUpdate filtert für heutige Geburtstage</li>";
+    html += "<li>isEnabled prüft ob Geburtstage gefunden wurden</li>";
+    html += "</ol>";
+    html += "</div>";
+    
+    html += "<div class='footer-link'><a href='/'>&laquo; Zurück zum Hauptmenü</a></div>";
+    html += (const char*)FPSTR(HTML_PAGE_FOOTER);
+    
+    server->send(200, "text/html", html.c_str());
 }
 

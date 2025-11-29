@@ -20,6 +20,9 @@ void handleTankerkoenigSearchLive();
 void handleThemeParksList();
 void handleStreamPage();
 
+// Birthday module debug handler
+void handleBirthdayDebug();
+
 // Backup handlers
 void handleBackupPage();
 void handleBackupCreate();

@@ -28,7 +28,7 @@ BirthdayModule::~BirthdayModule() {
 }
 
 void BirthdayModule::begin() {
-    // Nothing special needed at begin
+    Log.println("[BirthdayModule] begin() aufgerufen");
 }
 
 void BirthdayModule::setConfig(const PsramString& url, unsigned long fetchMinutes,
@@ -43,8 +43,12 @@ void BirthdayModule::setConfig(const PsramString& url, unsigned long fetchMinute
     _headerColor = hexColorTo565(headerColor);
     _textColor = hexColorTo565(textColor);
     
+    Log.printf("[BirthdayModule] setConfig: URL='%s', enabled=%d, fetchInterval=%lu min, displayDuration=%lu ms\n", 
+               _icsUrl.c_str(), _isEnabled, _fetchIntervalMinutes, _displayDuration);
+    
     if (_isEnabled && _webClient) {
         _webClient->registerResource(String(_icsUrl.c_str()), _fetchIntervalMinutes, nullptr);
+        Log.println("[BirthdayModule] Ressource beim WebClient registriert");
     }
 }
 
@@ -52,6 +56,8 @@ void BirthdayModule::queueData() {
     if (_icsUrl.empty() || !_webClient) return;
     
     _webClient->accessResource(String(_icsUrl.c_str()), [this](const char* buffer, size_t size, time_t last_update, bool is_stale) {
+        Log.printf("[BirthdayModule] accessResource callback: buffer=%p, size=%u, last_update=%ld, is_stale=%d, _lastProcessed=%ld\n",
+                   buffer, size, (long)last_update, is_stale, (long)this->_lastProcessedUpdate);
         if (buffer && size > 0 && last_update > this->_lastProcessedUpdate) {
             if (_pendingBuffer) free(_pendingBuffer);
             _pendingBuffer = (char*)ps_malloc(size + 1);
@@ -61,6 +67,7 @@ void BirthdayModule::queueData() {
                 _bufferSize = size;
                 _lastProcessedUpdate = last_update;
                 _dataPending = true;
+                Log.printf("[BirthdayModule] Neue Daten empfangen: %u Bytes\n", size);
             }
         }
     });
@@ -69,6 +76,7 @@ void BirthdayModule::queueData() {
 void BirthdayModule::processData() {
     if (_dataPending) {
         if (xSemaphoreTake(_dataMutex, portMAX_DELAY) == pdTRUE) {
+            Log.printf("[BirthdayModule] Verarbeite ICS-Daten: %u Bytes\n", _bufferSize);
             parseICS(_pendingBuffer, _bufferSize);
             onSuccessfulUpdate();
             free(_pendingBuffer);
@@ -116,13 +124,30 @@ unsigned long BirthdayModule::getDisplayDuration() {
 }
 
 bool BirthdayModule::isEnabled() {
-    if (!_isEnabled) return false;
+    if (!_isEnabled) {
+        // Log only occasionally to avoid spam
+        static unsigned long lastLog = 0;
+        if (millis() - lastLog > 30000) {
+            Log.println("[BirthdayModule] isEnabled: URL nicht konfiguriert");
+            lastLog = millis();
+        }
+        return false;
+    }
     
     bool hasEvents = false;
     if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
         hasEvents = !_birthdayEvents.empty();
         xSemaphoreGive(_dataMutex);
     }
+    
+    // Log only occasionally to avoid spam
+    static unsigned long lastLog2 = 0;
+    if (millis() - lastLog2 > 30000) {
+        Log.printf("[BirthdayModule] isEnabled: _isEnabled=%d, hasEvents=%d, _birthdayEvents.size=%d\n",
+                   _isEnabled, hasEvents, _birthdayEvents.size());
+        lastLog2 = millis();
+    }
+    
     return hasEvents;
 }
 
@@ -133,7 +158,17 @@ void BirthdayModule::resetPaging() {
 }
 
 bool BirthdayModule::parseBirthdayDateTime(const char* line, size_t len, BirthdayEvent& event) {
-    if (!line || len == 0) return false;
+    if (!line || len == 0) {
+        Log.println("[BirthdayModule] parseBirthdayDateTime: Leere Zeile");
+        return false;
+    }
+    
+    // Debug: Print the line being parsed
+    char debugLine[128];
+    size_t copyLen = len < sizeof(debugLine) - 1 ? len : sizeof(debugLine) - 1;
+    memcpy(debugLine, line, copyLen);
+    debugLine[copyLen] = '\0';
+    Log.printf("[BirthdayModule] Parsing DTSTART: '%s'\n", debugLine);
     
     // Find the value after the colon
     const char* value_ptr = line;
@@ -149,6 +184,7 @@ bool BirthdayModule::parseBirthdayDateTime(const char* line, size_t len, Birthda
         const char* value_date = strstr(semicolon, "VALUE=DATE");
         if (value_date && value_date < colon) {
             event.hasTime = false;
+            Log.println("[BirthdayModule] VALUE=DATE erkannt (all-day event)");
         }
     }
     
@@ -160,7 +196,12 @@ bool BirthdayModule::parseBirthdayDateTime(const char* line, size_t len, Birthda
         dt_len--;
     }
     
-    if (dt_len < 8) return false;
+    Log.printf("[BirthdayModule] Date string: '%.*s' (len=%u)\n", (int)dt_len, dt_str, dt_len);
+    
+    if (dt_len < 8) {
+        Log.printf("[BirthdayModule] Datum zu kurz: %u < 8\n", dt_len);
+        return false;
+    }
     
     // Parse date components
     auto parseDecimal = [](const char* p, size_t len) -> int {
@@ -180,6 +221,9 @@ bool BirthdayModule::parseBirthdayDateTime(const char* line, size_t len, Birthda
     event.birthMinute = 0;
     event.birthSecond = 0;
     
+    Log.printf("[BirthdayModule] Geparst: Jahr=%d, Monat=%d, Tag=%d\n", 
+               event.birthYear, event.birthMonth, event.birthDay);
+    
     // Parse time if present (format: YYYYMMDDTHHMMSS)
     if (dt_len > 8 && dt_str[8] == 'T') {
         if (dt_len >= 15) {
@@ -194,6 +238,8 @@ bool BirthdayModule::parseBirthdayDateTime(const char* line, size_t len, Birthda
     // Validate date
     if (event.birthYear < 1 || event.birthMonth < 1 || event.birthMonth > 12 ||
         event.birthDay < 1 || event.birthDay > 31) {
+        Log.printf("[BirthdayModule] Ungültiges Datum: %d-%d-%d\n", 
+                   event.birthYear, event.birthMonth, event.birthDay);
         return false;
     }
     
@@ -245,7 +291,10 @@ void BirthdayModule::parseVEventForBirthday(const char* veventBlock, size_t len,
 }
 
 void BirthdayModule::parseICS(char* icsBuffer, size_t size) {
-    if (!icsBuffer || size == 0) return;
+    if (!icsBuffer || size == 0) {
+        Log.println("[BirthdayModule] parseICS: Leerer Buffer!");
+        return;
+    }
     
     PsramString ics(icsBuffer, size);
     _rawEvents.clear();
@@ -254,6 +303,7 @@ void BirthdayModule::parseICS(char* icsBuffer, size_t size) {
     size_t idx = 0;
     const PsramString beginTag("BEGIN:VEVENT"), endTag("END:VEVENT");
     
+    int eventCount = 0;
     while (true) {
         size_t pos = ics.find(beginTag, idx);
         if (pos == PsramString::npos) break;
@@ -270,13 +320,24 @@ void BirthdayModule::parseICS(char* icsBuffer, size_t size) {
         
         parseVEventForBirthday(veventBlock.c_str(), veventBlock.length(), event);
         
+        eventCount++;
+        Log.printf("[BirthdayModule] Event #%d geparst: Name='%s', Datum=%04d-%02d-%02d, Year=%d\n",
+                   eventCount, event.name.c_str(), event.birthYear, event.birthMonth, event.birthDay, event.birthYear);
+        
         if (event.birthYear > 0 && !event.name.empty()) {
             _rawEvents.push_back(std::move(event));
+            Log.printf("[BirthdayModule] Event '%s' hinzugefügt\n", _rawEvents.back().name.c_str());
+        } else {
+            Log.printf("[BirthdayModule] Event verworfen: birthYear=%d, name.empty=%d\n", 
+                       event.birthYear, event.name.empty());
         }
         
         idx = endPos + endTag.length();
         if (_rawEvents.size() % 20 == 0) delay(1);
     }
+    
+    Log.printf("[BirthdayModule] parseICS abgeschlossen: %d Events gefunden, %d gültig\n", 
+               eventCount, _rawEvents.size());
 }
 
 bool BirthdayModule::isBirthdayToday(const BirthdayEvent& event) const {
@@ -287,12 +348,19 @@ bool BirthdayModule::isBirthdayToday(const BirthdayEvent& event) const {
     struct tm tm_now;
     localtime_r(&local_now, &tm_now);
     
-    return (event.birthMonth == (tm_now.tm_mon + 1)) && (event.birthDay == tm_now.tm_mday);
+    bool isToday = (event.birthMonth == (tm_now.tm_mon + 1)) && (event.birthDay == tm_now.tm_mday);
+    Log.printf("[BirthdayModule] isBirthdayToday: Event %02d-%02d vs Heute %02d-%02d => %s\n",
+               event.birthMonth, event.birthDay, tm_now.tm_mon + 1, tm_now.tm_mday,
+               isToday ? "JA" : "NEIN");
+    return isToday;
 }
 
 void BirthdayModule::onSuccessfulUpdate() {
+    Log.printf("[BirthdayModule] onSuccessfulUpdate: %d raw events\n", _rawEvents.size());
+    
     if (_rawEvents.empty()) {
         _birthdayEvents.clear();
+        Log.println("[BirthdayModule] Keine Events zum Filtern");
         return;
     }
     
@@ -303,8 +371,11 @@ void BirthdayModule::onSuccessfulUpdate() {
     for (const auto& event : _rawEvents) {
         if (isBirthdayToday(event)) {
             _birthdayEvents.push_back(event);
+            Log.printf("[BirthdayModule] Geburtstag heute: '%s'\n", event.name.c_str());
         }
     }
+    
+    Log.printf("[BirthdayModule] Gefiltert: %d Geburtstage heute\n", _birthdayEvents.size());
     
     // Sort by name
     std::sort(_birthdayEvents.begin(), _birthdayEvents.end(),
