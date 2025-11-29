@@ -5,6 +5,7 @@
 #include <U8g2_for_Adafruit_GFX.h>
 #include "PsramUtils.hpp"
 #include <functional>
+#include "PixelScroller.hpp"
 
 class WebClientModule;
 struct DeviceConfig;
@@ -111,17 +112,9 @@ private:
     time_t _lastParkDetailsUpdate;  // Track when park details (name, hours) were updated
     std::function<void()> _updateCallback;
     
-    // Scrolling support for park name
-    int _parkNameScrollOffset;
-    int _parkNameMaxScroll;
-    unsigned long _lastScrollStep;  // Track last scroll update time
-    
-    // Scrolling support for attraction names
-    struct AttractionScrollState {
-        int offset = 0;
-        int maxScroll = 0;
-    };
-    PsramVector<AttractionScrollState> _attractionScrollStates;
+    // PixelScroller für pixelweises Scrolling
+    PixelScroller* _parkNameScroller = nullptr;  // Scroller für Parknamen
+    PixelScroller* _attractionScroller = nullptr;  // Scroller für Attraktionsnamen
     
     void parseWaitTimes(const char* jsonBuffer, size_t size, const PsramString& parkId);
     void parseCrowdLevel(const char* jsonBuffer, size_t size, const PsramString& parkId);
@@ -135,9 +128,6 @@ private:
     uint16_t calcColor(float value, float low, float high);  // Calculate color gradient
     uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b);  // Convert RGB to RGB565
     PsramString truncateString(const PsramString& text, int maxWidth);
-    void drawScrollingText(const PsramString& text, int x, int y, int maxWidth);
-    void drawScrollingAttractionName(const PsramString& text, int x, int y, int maxWidth, int scrollIndex);
-    PsramString fitTextToPixelWidth(const PsramString& text, int maxPixel);
     
     // Cache management
     void loadParkCache();

@@ -165,8 +165,14 @@ struct DeviceConfig {
     int curiousHolidaysDisplaySec = 10;
 
     // --- Globale Scrolling-Einstellungen ---
-    /// @brief Globale Scroll-Geschwindigkeit in Millisekunden für alle Module.
+    /// @brief Globale Scroll-Geschwindigkeit in Millisekunden pro Pixel für alle Module.
     int globalScrollSpeedMs = 50;
+    /// @brief Scroll-Modus: 0 = Kontinuierlich, 1 = PingPong
+    int scrollMode = 0;
+    /// @brief Pause zwischen Scroll-Zyklen in Sekunden (0 = keine Pause)
+    int scrollPauseSec = 0;
+    /// @brief Scroll-Richtung: 0 = Normal (nach links), 1 = Rückwärts (nach rechts)
+    int scrollReverse = 0;
 };
 
 // Deklarationen für globale Variablen und Funktionen

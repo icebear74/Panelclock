@@ -290,8 +290,23 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
     </div>
     <div class="group">
         <h3>Globale Scrolling-Einstellungen</h3>
-        <label for="globalScrollSpeedMs">Scroll-Geschwindigkeit (Millisekunden)</label><input type="number" id="globalScrollSpeedMs" name="globalScrollSpeedMs" value="{globalScrollSpeedMs}" min="10" max="500">
-        <p style="color:#bbb; margin-top:10px;">Diese Einstellung gilt f&uuml;r alle Module mit scrollenden Texten (Kalender, Freizeitparks, etc.). Niedrigere Werte = schnelleres Scrolling.</p>
+        <label for="globalScrollSpeedMs">Scroll-Geschwindigkeit (Millisekunden pro Pixel)</label><input type="number" id="globalScrollSpeedMs" name="globalScrollSpeedMs" value="{globalScrollSpeedMs}" min="10" max="500">
+        <p style="color:#bbb; margin-top:5px;">Niedrigere Werte = schnelleres Scrolling.</p>
+        
+        <label for="scrollMode">Scroll-Modus</label>
+        <select id="scrollMode" name="scrollMode">
+            <option value="0" {scrollMode0_selected}>Kontinuierlich (Text l&auml;uft durch)</option>
+            <option value="1" {scrollMode1_selected}>PingPong (Text scrollt hin und her)</option>
+        </select>
+        
+        <label for="scrollReverse">Scroll-Richtung</label>
+        <select id="scrollReverse" name="scrollReverse">
+            <option value="0" {scrollReverse0_selected}>Normal (nach links)</option>
+            <option value="1" {scrollReverse1_selected}>R&uuml;ckw&auml;rts (nach rechts)</option>
+        </select>
+        
+        <label for="scrollPauseSec">Pause zwischen Scroll-Zyklen (Sekunden)</label><input type="number" id="scrollPauseSec" name="scrollPauseSec" value="{scrollPauseSec}" min="0" max="30">
+        <p style="color:#bbb; margin-top:5px;">Bei 0 wird kontinuierlich gescrollt. Bei einem Wert &gt; 0 pausiert der Text nach einem kompletten Durchlauf f&uuml;r die angegebene Zeit.</p>
     </div>
 </div>
 

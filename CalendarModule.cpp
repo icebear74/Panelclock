@@ -13,11 +13,26 @@ uint16_t hexColorTo565(const PsramString& hex) {
 CalendarModule::CalendarModule(U8G2_FOR_ADAFRUIT_GFX &u8g2, GFXcanvas16 &canvas, const GeneralTimeConverter& converter, WebClientModule* webClient, DeviceConfig* config)
     : u8g2(u8g2), canvas(canvas), timeConverter(converter), webClient(webClient), _deviceConfig(config), last_processed_update(0) {
     dataMutex = xSemaphoreCreateMutex();
+    
+    // PixelScroller in PSRAM erstellen
+    _pixelScroller = new (ps_malloc(sizeof(PixelScroller))) PixelScroller(u8g2, 50);
+    
+    // Konfiguration für pixelweises Scrolling
+    PixelScrollerConfig scrollConfig;
+    scrollConfig.mode = ScrollMode::CONTINUOUS;
+    scrollConfig.pauseBetweenCyclesMs = 0;
+    scrollConfig.scrollReverse = false;
+    scrollConfig.paddingPixels = 20;
+    _pixelScroller->setConfig(scrollConfig);
 }
 
 CalendarModule::~CalendarModule() {
     if (dataMutex) vSemaphoreDelete(dataMutex);
     if (pending_buffer) free(pending_buffer);
+    if (_pixelScroller) {
+        _pixelScroller->~PixelScroller();
+        free(_pixelScroller);
+    }
 }
 
 void CalendarModule::onUpdate(std::function<void()> callback) { 
@@ -30,10 +45,27 @@ void CalendarModule::setConfig(const PsramString& url, unsigned long fetchMinute
     
     this->fetchIntervalMinutes = fetchMinutes > 0 ? fetchMinutes : 60;
     this->_displayDuration = displaySec > 0 ? displaySec * 1000UL : 30000;
-    this->scrollStepInterval = scrollMs > 0 ? scrollMs : 250;
+    this->scrollStepInterval = scrollMs > 0 ? scrollMs : 50;
     
     this->dateColor = hexColorTo565(dateColorHex);
     this->textColor = hexColorTo565(textColorHex);
+
+    // PixelScroller Konfiguration aktualisieren
+    if (_pixelScroller) {
+        _pixelScroller->setConfiguredScrollSpeed(scrollStepInterval);
+        
+        PixelScrollerConfig scrollConfig = _pixelScroller->getConfig();
+        scrollConfig.textColor = textColor;
+        
+        // Scroll-Modus aus DeviceConfig laden
+        if (_deviceConfig) {
+            scrollConfig.mode = (_deviceConfig->scrollMode == 1) ? ScrollMode::PINGPONG : ScrollMode::CONTINUOUS;
+            scrollConfig.pauseBetweenCyclesMs = (uint32_t)_deviceConfig->scrollPauseSec * 1000;
+            scrollConfig.scrollReverse = (_deviceConfig->scrollReverse == 1);
+        }
+        
+        _pixelScroller->setConfig(scrollConfig);
+    }
 
     if (_isEnabled) {
         webClient->registerResource(String(icsUrl.c_str()), fetchIntervalMinutes, nullptr);
@@ -89,20 +121,9 @@ void CalendarModule::processData() {
 }
 
 void CalendarModule::tick() {
-    if (scrollStepInterval == 0) return;
-    unsigned long now = millis();
-    if (now - lastScrollStep >= scrollStepInterval) {
-        lastScrollStep = now;
-        bool scrolled = false;
-        if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-            for (auto& s : scrollPos) {
-                if (s.maxScroll > 0) {
-                    s.offset = (s.offset + 1) % s.maxScroll;
-                    scrolled = true;
-                }
-            }
-            xSemaphoreGive(dataMutex);
-        }
+    // PixelScroller tick für pixelweises Scrolling
+    if (_pixelScroller && scrollStepInterval > 0) {
+        bool scrolled = _pixelScroller->tick();
         if (scrolled && updateCallback) {
             updateCallback();
         }
@@ -239,7 +260,11 @@ void CalendarModule::draw() {
         time_t tomorrow_start_utc = today_start_utc + 86400;
 
         int maxSummaryPixel = canvas.width() - xTermin - 2;
-        ensureScrollPos(upcomming, maxSummaryPixel);
+        
+        // PixelScroller für die Termine vorbereiten
+        if (_pixelScroller) {
+            _pixelScroller->ensureSlots(upcomming.size());
+        }
 
         for (size_t i = 0; i < upcomming.size(); ++i) {
             const auto& ev = upcomming[i];
@@ -254,16 +279,17 @@ void CalendarModule::draw() {
             bool isToday = (ev.startEpoch < tomorrow_start_utc) && ((ev.startEpoch + ev.duration) > today_start_utc);
             long minutesUntilStart = (ev.startEpoch > now_utc) ? (ev.startEpoch - now_utc) / 60 : -1;
 
-            if (isToday) {
-                // Verwende konfigurierbaren fastBlink-Wert (in Stunden)
-                long fastBlinkMinutes = (long)_fastBlinkHours * 60L;
-                float pulse_period_ms = (!ev.isAllDay && minutesUntilStart >= 0 && minutesUntilStart < fastBlinkMinutes) ? 1000.0f : 2000.0f;
-                const float min_brightness = 0.25f;
-                float cos_input = (millis() % (int)pulse_period_ms) / pulse_period_ms * 2.0f * PI;
-                float pulseFactor = min_brightness + (1.0f - min_brightness) * (cos(cos_input) + 1.0f) / 2.0f;
-                
-                currentTextColor = dimColor(textColor, pulseFactor);
-                currentDateColor = dimColor(dateColor, pulseFactor);
+            // Pulsing für heutige Termine berechnen
+            bool usePulsing = isToday;
+            bool fastPulse = (!ev.isAllDay && minutesUntilStart >= 0 && minutesUntilStart < (long)_fastBlinkHours * 60L);
+            
+            if (usePulsing) {
+                // Verwende PixelScroller's statische Pulsing-Funktion für konsistente Farben
+                // pulsingMinBrightness aus Config verwenden
+                float minBrightness = _pixelScroller ? _pixelScroller->getConfig().pulsingMinBrightness : 0.25f;
+                float periodMs = fastPulse ? 1000.0f : 2000.0f;
+                currentTextColor = PixelScroller::calculatePulsedColor(textColor, minBrightness, periodMs);
+                currentDateColor = PixelScroller::calculatePulsedColor(dateColor, minBrightness, periodMs);
             }
             
             u8g2.setForegroundColor(currentDateColor);
@@ -284,8 +310,6 @@ void CalendarModule::draw() {
                 strftime(buf, sizeof(buf), "%H:%M", &tStart);
                 u8g2.setCursor(xEndZeit, y); u8g2.print(buf);
             }
-
-            u8g2.setForegroundColor(currentTextColor);
             
             // Datenmocking: Verwende gemockte Beschreibung wenn aktiviert
             PsramString displaySummary = ev.summary;
@@ -295,31 +319,24 @@ void CalendarModule::draw() {
                 displaySummary = mockText;
             }
             
-            const char* src_cstr = displaySummary.c_str();
-            int src_len = strlen(src_cstr);
-            PsramString visiblePart = fitTextToPixelWidth(src_cstr, maxSummaryPixel);
-            int visibleChars = visiblePart.length();
-            
-            size_t idx = i < scrollPos.size() ? i : 0;
-            
-            if (src_len > visibleChars) {
-                PsramString scrollText = PsramString(src_cstr) + "     ";
-                scrollPos[idx].maxScroll = scrollText.length();
-                int offset = scrollPos[idx].offset;
-                
-                PsramString part_to_display = "";
-                for(int k=0; k < visibleChars; ++k) {
-                    part_to_display += scrollText[(offset + k) % scrollText.length()];
+            // Pixelweises Scrolling mit PixelScroller
+            if (_pixelScroller) {
+                if (usePulsing) {
+                    _pixelScroller->drawScrollingTextWithPulse(canvas, displaySummary.c_str(), 
+                                                               xTermin, y, maxSummaryPixel, 
+                                                               i, textColor, fastPulse);
+                } else {
+                    _pixelScroller->drawScrollingText(canvas, displaySummary.c_str(), 
+                                                      xTermin, y, maxSummaryPixel, 
+                                                      i, currentTextColor);
                 }
-                u8g2.setCursor(xTermin, y);
-                u8g2.print(part_to_display.c_str());
-
             } else {
-                scrollPos[idx].maxScroll = 0;
-                scrollPos[idx].offset = 0;
+                // Fallback: Einfacher Text ohne Scrolling
+                u8g2.setForegroundColor(currentTextColor);
                 u8g2.setCursor(xTermin, y);
-                u8g2.print(src_cstr);
+                u8g2.print(displaySummary.c_str());
             }
+            
             y += fontH;
         }
     }
@@ -432,18 +449,6 @@ void CalendarModule::resetPaging() {
 
 uint32_t CalendarModule::getScrollStepInterval() const { 
     return scrollStepInterval; 
-}
-
-uint16_t CalendarModule::dimColor(uint16_t color, float brightness) {
-    uint8_t r = (color >> 11) & 0x1F;
-    uint8_t g = (color >> 5) & 0x3F;
-    uint8_t b = color & 0x1F;
-    
-    r = (uint8_t)(r * brightness);
-    g = (uint8_t)(g * brightness);
-    b = (uint8_t)(b * brightness);
-    
-    return (r << 11) | (g << 5) | b;
 }
 
 void CalendarModule::parseICS(char* icsBuffer, size_t size) {
@@ -581,11 +586,7 @@ PsramString CalendarModule::fitTextToPixelWidth(const char* text, int maxPixel) 
 }
 
 void CalendarModule::resetScroll() { 
-    scrollPos.clear(); 
-}
-
-void CalendarModule::ensureScrollPos(const PsramCalendarEventVector& upcomming, int maxTextPixel) {
-    if (scrollPos.size() != upcomming.size()) {
-        scrollPos.assign(upcomming.size(), ScrollState());
+    if (_pixelScroller) {
+        _pixelScroller->reset();
     }
 }
