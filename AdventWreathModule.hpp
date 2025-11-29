@@ -19,8 +19,9 @@ struct DeviceConfig;
  * Je nach aktuellem Advent (1-4) brennen die entsprechenden Kerzen
  * mit animierten Flammen. Der Kranz ist mit Tannengrün dekoriert.
  * 
- * Das Modul verwendet das Priority-System als UrgentRequest,
- * um während der Adventszeit regelmäßig angezeigt zu werden.
+ * Das Modul verwendet Priority::PlayNext (OneShot),
+ * um während der Adventszeit regelmäßig als nächstes nach dem
+ * aktuellen Modul angezeigt zu werden.
  */
 class AdventWreathModule : public DrawableModule {
 public:
@@ -48,7 +49,7 @@ public:
     bool isEnabled() override;
     void resetPaging() override;
     bool isFinished() const override { return _isFinished; }
-    bool canBeInPlaylist() const override { return false; } // Nur als UrgentRequest
+    bool canBeInPlaylist() const override { return false; } // Nur als PlayNext OneShot
     void timeIsUp() override;
 
 protected:

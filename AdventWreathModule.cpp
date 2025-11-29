@@ -242,12 +242,11 @@ void AdventWreathModule::drawCandle(int x, int y, uint16_t color, bool isLit, in
     // Kerze zeichnen
     canvas.fillRect(x - candleWidth/2, candleTop, candleWidth, candleHeight, color);
     
-    // Kerzenrand (dunkler)
-    uint16_t darkColor = rgb565(
-        ((color >> 11) & 0x1F) * 4,  // R (5 bit -> 8 bit, dann verdunkeln)
-        ((color >> 5) & 0x3F) * 2,   // G (6 bit -> 8 bit, dann verdunkeln)
-        (color & 0x1F) * 4           // B (5 bit -> 8 bit, dann verdunkeln)
-    );
+    // Kerzenrand (dunkler) - extrahiere RGB und verdunkle durch Division
+    uint8_t r = ((color >> 11) & 0x1F) * 8;  // 5-bit to 8-bit
+    uint8_t g = ((color >> 5) & 0x3F) * 4;   // 6-bit to 8-bit
+    uint8_t b = (color & 0x1F) * 8;          // 5-bit to 8-bit
+    uint16_t darkColor = rgb565(r / 2, g / 2, b / 2);  // Verdunkle um 50%
     canvas.drawRect(x - candleWidth/2, candleTop, candleWidth, candleHeight, darkColor);
     
     // Docht
@@ -317,13 +316,16 @@ void AdventWreathModule::drawGreenery() {
         // Kleine Tannenzweige
         int direction = (angle < 180) ? 1 : -1;
         
-        // Nadeln
+        // Nadeln - deterministisch basierend auf Position statt rand()
         for (int n = 0; n < 5; n++) {
             int nx = bx + (n - 2) * 2;
-            int ny = by + (rand() % 3 - 1);
+            // Deterministisches "Zufalls"-Muster basierend auf Position
+            int nyOffset = ((angle + n * 17) % 3) - 1;
+            int ny = by + nyOffset;
             
             uint16_t needleColor = (n % 2 == 0) ? darkGreen : lightGreen;
-            canvas.drawLine(nx, ny, nx + (rand() % 3 - 1), ny - 3, needleColor);
+            int lineOffset = ((angle + n * 23) % 3) - 1;
+            canvas.drawLine(nx, ny, nx + lineOffset, ny - 3, needleColor);
         }
     }
     
