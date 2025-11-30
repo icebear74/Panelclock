@@ -190,7 +190,7 @@ struct DeviceConfig {
     /// @brief Weihnachtsbaum: Hintergrundfarbe als Hex-String
     PsramString christmasTreeBgColor = "#000000";
     /// @brief Kamin: Hintergrundfarbe/Wandfarbe als Hex-String
-    PsramString fireplaceBgColor = "#3C3228";
+    PsramString fireplaceBgColor = "#000000";
     /// @brief Weihnachtsbaum: Tage vor dem 24.12. starten (0-30, Standard: 23 = ab 1. Dezember)
     int christmasTreeDaysBefore24 = 23;
     /// @brief Weihnachtsbaum: Tage nach dem 24.12. anzeigen (0-30, Standard: 7 = bis 31. Dezember)

@@ -503,9 +503,8 @@ void HolidayAnimationsModule::drawChristmasTree() {
     int centerX = canvasW / 2;
     
     // Dynamische Skalierung basierend auf Canvas-Höhe
-    float scaleY = canvasH / 66.0f;  // 66 ist die Referenz-Höhe
-    float scaleX = canvasW / 192.0f;  // 192 ist die Referenz-Breite
-    float scale = min(scaleX, scaleY);
+    // Nutze scaleY um den gesamten verfügbaren Platz in der Höhe zu nutzen
+    float scale = canvasH / 66.0f;  // 66 ist die Referenz-Höhe
     
     int baseY = canvasH - 4;  // Basis immer am unteren Rand
     
@@ -678,13 +677,13 @@ void HolidayAnimationsModule::drawTreeLights() {
     int canvasH = _currentCanvas->height();
     int centerX = canvasW / 2;
     
-    // Dynamische Skalierung wie im Baum
-    float scaleY = canvasH / 66.0f;
-    float scale = scaleY;
+    // Dynamische Skalierung - GLEICH wie im Baum
+    float scale = canvasH / 66.0f;
     
-    // baseY muss mit dem Baum übereinstimmen
+    // baseY MUSS exakt mit drawChristmasTree übereinstimmen
+    int baseY = canvasH - 4;  // Basis am unteren Rand
     int trunkHeight = (int)(10 * scale);
-    int baseY = canvasH - 4 - trunkHeight + 2;  // Gleiche Berechnung wie in drawChristmasTree
+    int treeBaseY = baseY - trunkHeight + 2;  // Basis des Baumes (Grüns)
     
     // Konfigurierbare Anzahl und Geschwindigkeit
     int lightCount = config ? config->christmasTreeLightCount : 18;
@@ -718,10 +717,10 @@ void HolidayAnimationsModule::drawTreeLights() {
         
         // Y-Position: verteilt innerhalb des Baumes (skaliert)
         int yRange = (int)(treeHeight * 0.85);  // Skalierte Y-Range
-        int lightY = baseY - (int)(8 * scale) - (seed % yRange);
+        int lightY = treeBaseY - (int)(8 * scale) - (seed % yRange);
         
         // X-Position abhängig von Y (breiter unten, schmaler oben)
-        int progress = baseY - (int)(8 * scale) - lightY;
+        int progress = treeBaseY - (int)(8 * scale) - lightY;
         int maxXBase = (int)(28 * scale);  // Skalierte Baumbreite unten
         float progressRatio = (float)progress / yRange;
         int maxX = (int)(maxXBase * (1.0f - progressRatio * 0.7f));  // Breite nimmt nach oben ab
@@ -1251,10 +1250,8 @@ void HolidayAnimationsModule::drawFireplace() {
     int canvasH = _currentCanvas->height();
     int centerX = canvasW / 2;
     
-    // Dynamische Skalierung
-    float scaleY = canvasH / 66.0f;
-    float scaleX = canvasW / 192.0f;
-    float scale = min(scaleX, scaleY);
+    // Dynamische Skalierung - nutze Höhe für Skalierung
+    float scale = canvasH / 66.0f;
     
     // Kaminfarbe aus Config oder Standard
     uint16_t brickColor = rgb565(139, 69, 19);  // Standard: Braun
@@ -1269,13 +1266,13 @@ void HolidayAnimationsModule::drawFireplace() {
     uint16_t brickDark = rgb565(br, bg, bb);
     uint16_t brickLight = rgb565(min(255, br + 60), min(255, bg + 40), min(255, bb + 40));
     
-    // Kamin-Dimensionen (skaliert)
-    int fireplaceWidth = (int)(100 * scale);
-    int fireplaceHeight = (int)(50 * scale);
-    int simsHeight = (int)(8 * scale);
-    int simsOverhang = (int)(10 * scale);
-    int openingWidth = (int)(60 * scale);
-    int openingHeight = (int)(35 * scale);
+    // Kamin-Dimensionen (skaliert) - größer um mehr vom Bildschirm zu füllen
+    int fireplaceWidth = (int)(120 * scale);  // breiter
+    int fireplaceHeight = (int)(55 * scale);  // höher
+    int simsHeight = (int)(10 * scale);
+    int simsOverhang = (int)(15 * scale);
+    int openingWidth = (int)(70 * scale);
+    int openingHeight = (int)(40 * scale);
     
     int baseY = canvasH - 2;
     int fireX = centerX - fireplaceWidth / 2;

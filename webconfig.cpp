@@ -128,7 +128,7 @@ void loadDeviceConfig() {
                 deviceConfig->adventWreathOnlyFromFirstAdvent = doc["adventWreathOnlyFromFirstAdvent"] | false;
                 deviceConfig->adventWreathBgColor = doc["adventWreathBgColor"] | "#000000";
                 deviceConfig->christmasTreeBgColor = doc["christmasTreeBgColor"] | "#000000";
-                deviceConfig->fireplaceBgColor = doc["fireplaceBgColor"] | "#3C3228";
+                deviceConfig->fireplaceBgColor = doc["fireplaceBgColor"] | "#000000";
                 deviceConfig->christmasTreeDaysBefore24 = doc["christmasTreeDaysBefore24"] | 23;
                 deviceConfig->christmasTreeDaysAfter24 = doc["christmasTreeDaysAfter24"] | 7;
                 deviceConfig->christmasTreeEnabled = doc["christmasTreeEnabled"] | true;
