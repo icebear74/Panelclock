@@ -181,6 +181,8 @@ struct DeviceConfig {
     int adventWreathFlameSpeedMs = 50;
     /// @brief Adventskranz: Tage vor dem 24.12. starten (0-30, Standard: 30 = ab ca. 24. November)
     int adventWreathDaysBefore24 = 30;
+    /// @brief Adventskranz: Anzahl der Kugeln/Beeren (4-20)
+    int adventWreathBerryCount = 12;
     /// @brief Weihnachtsbaum: Tage vor dem 24.12. starten (0-30, Standard: 23 = ab 1. Dezember)
     int christmasTreeDaysBefore24 = 23;
     /// @brief Weihnachtsbaum: Tage nach dem 24.12. anzeigen (0-30, Standard: 7 = bis 31. Dezember)

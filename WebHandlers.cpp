@@ -213,6 +213,7 @@ void handleConfigModules() {
     replaceAll(content, "{adventWreathInterrupt_checked}", deviceConfig->adventWreathInterrupt ? "checked" : "");
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->adventWreathFlameSpeedMs); replaceAll(content, "{adventWreathFlameSpeedMs}", num_buf);
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->adventWreathDaysBefore24); replaceAll(content, "{adventWreathDaysBefore24}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->adventWreathBerryCount); replaceAll(content, "{adventWreathBerryCount}", num_buf);
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->christmasTreeDaysBefore24); replaceAll(content, "{christmasTreeDaysBefore24}", num_buf);
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->christmasTreeDaysAfter24); replaceAll(content, "{christmasTreeDaysAfter24}", num_buf);
     replaceAll(content, "{christmasTreeEnabled_checked}", deviceConfig->christmasTreeEnabled ? "checked" : "");
@@ -362,6 +363,7 @@ void handleSaveModules() {
     deviceConfig->adventWreathInterrupt = server->hasArg("adventWreathInterrupt");
     if (server->hasArg("adventWreathFlameSpeedMs")) deviceConfig->adventWreathFlameSpeedMs = server->arg("adventWreathFlameSpeedMs").toInt();
     if (server->hasArg("adventWreathDaysBefore24")) deviceConfig->adventWreathDaysBefore24 = server->arg("adventWreathDaysBefore24").toInt();
+    if (server->hasArg("adventWreathBerryCount")) deviceConfig->adventWreathBerryCount = server->arg("adventWreathBerryCount").toInt();
     if (server->hasArg("christmasTreeDaysBefore24")) deviceConfig->christmasTreeDaysBefore24 = server->arg("christmasTreeDaysBefore24").toInt();
     if (server->hasArg("christmasTreeDaysAfter24")) deviceConfig->christmasTreeDaysAfter24 = server->arg("christmasTreeDaysAfter24").toInt();
     deviceConfig->christmasTreeEnabled = server->hasArg("christmasTreeEnabled");

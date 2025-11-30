@@ -856,7 +856,12 @@ void AdventWreathModule::drawBerries() {
     int baseY = 58;
     int centerX = canvas.width() / 2;
     
-    // Kerzenpositionen für Kollisionsvermeidung (±5 Pixel Sicherheitsabstand)
+    // Konfigurierbare Anzahl der Kugeln (4-20)
+    int totalBerries = config ? config->adventWreathBerryCount : 12;
+    if (totalBerries < 4) totalBerries = 4;
+    if (totalBerries > 20) totalBerries = 20;
+    
+    // Kerzenpositionen für Kollisionsvermeidung
     int candleSpacing = 38;
     int candleX[4] = {
         centerX - candleSpacing - candleSpacing/2,
@@ -865,24 +870,29 @@ void AdventWreathModule::drawBerries() {
         centerX + candleSpacing + candleSpacing/2
     };
     int candleWidth = 8;
-    int safeDistance = candleWidth / 2 + 5; // Mindestabstand von Kerzenkante
+    int safeDistance = candleWidth / 2 + 6;
     
-    // Hintergrund-Kugeln (höher positioniert für 3D-Effekt)
-    // Positionen sorgfältig gewählt um Kerzen zu vermeiden
-    int bgBerries[][3] = {
-        {centerX - 88, baseY - 8, 1},
-        {centerX - 68, baseY - 7, 1},
-        {centerX + 68, baseY - 7, 1},
-        {centerX + 88, baseY - 8, 1},
-        {centerX - 48, baseY - 9, 1},
-        {centerX + 48, baseY - 9, 1}
+    // Hälfte Hintergrund-Kugeln, Hälfte Vordergrund-Kugeln
+    int numBgBerries = totalBerries / 2;
+    int numFgBerries = totalBerries - numBgBerries;
+    
+    // Sichere X-Positionen die keine Kerze treffen (zwischen und außerhalb der Kerzen)
+    // Bereich links außen, zwischen Kerzen, rechts außen
+    int safeXPositions[] = {
+        centerX - 88, centerX - 80, centerX - 72,  // Links außen
+        centerX - 50, centerX - 45,                // Zwischen Kerze 1 und 2
+        centerX + 45, centerX + 50,                // Zwischen Kerze 3 und 4
+        centerX + 72, centerX + 80, centerX + 88   // Rechts außen
     };
-    int numBgBerries = 6;
+    int numSafePositions = 10;
     
+    // Hintergrund-Kugeln (kleiner, höher = 3D-Effekt)
     for (int i = 0; i < numBgBerries; i++) {
-        int bx = bgBerries[i][0];
-        int by = bgBerries[i][1];
-        int br = bgBerries[i][2];
+        uint32_t seed = simpleRandom(i * 37 + 123);
+        int posIdx = seed % numSafePositions;
+        int bx = safeXPositions[posIdx] + ((seed / 7) % 5) - 2;
+        int by = baseY - 6 - ((seed / 11) % 4);  // Höher positioniert
+        int br = 1;  // Klein für Hintergrund
         
         // Prüfe Kollision mit Kerzen
         bool collision = false;
@@ -894,8 +904,9 @@ void AdventWreathModule::drawBerries() {
         }
         
         if (!collision && by >= 2 && by < canvas.height() - 2) {
-            uint32_t seed = simpleRandom(bx * 31 + by * 17);
-            uint16_t color = berryColors[seed % numColors];
+            uint32_t colorSeed = simpleRandom(bx * 31 + by * 17 + i);
+            uint16_t color = berryColors[colorSeed % numColors];
+            // Gedimmt für Hintergrund-Effekt
             uint8_t r = ((color >> 11) & 0x1F) * 6;
             uint8_t g = ((color >> 5) & 0x3F) * 3;
             uint8_t b = (color & 0x1F) * 6;
@@ -903,21 +914,13 @@ void AdventWreathModule::drawBerries() {
         }
     }
     
-    // Vordergrund-Kugeln - nur außerhalb der Kerzenbereiche
-    int fgBerries[][3] = {
-        {centerX - 85, baseY + 5, 2},
-        {centerX - 68, baseY + 4, 3},
-        {centerX + 68, baseY + 4, 3},
-        {centerX + 85, baseY + 5, 2},
-        {centerX - 50, baseY + 6, 2},
-        {centerX + 50, baseY + 6, 2}
-    };
-    int numFgBerries = 6;
-    
+    // Vordergrund-Kugeln (größer, tiefer)
     for (int i = 0; i < numFgBerries; i++) {
-        int bx = fgBerries[i][0];
-        int by = fgBerries[i][1];
-        int br = fgBerries[i][2];
+        uint32_t seed = simpleRandom(i * 47 + 456);
+        int posIdx = seed % numSafePositions;
+        int bx = safeXPositions[posIdx] + ((seed / 13) % 7) - 3;
+        int by = baseY + 3 + ((seed / 17) % 4);  // Tiefer positioniert
+        int br = 2 + ((seed / 23) % 2);  // Größer für Vordergrund (2-3)
         
         // Prüfe Kollision mit Kerzen
         bool collision = false;
@@ -929,8 +932,8 @@ void AdventWreathModule::drawBerries() {
         }
         
         if (!collision && by >= 2 && by < canvas.height() - 2) {
-            uint32_t seed = simpleRandom(bx * 47 + by * 23);
-            uint16_t color = berryColors[seed % numColors];
+            uint32_t colorSeed = simpleRandom(bx * 47 + by * 23 + i);
+            uint16_t color = berryColors[colorSeed % numColors];
             drawOrnament(bx, by, br, color);
         }
     }

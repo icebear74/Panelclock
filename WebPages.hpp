@@ -313,6 +313,7 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
         <label for="adventWreathFlameSpeedMs">Flammen-Animation (ms)</label><input type="number" id="adventWreathFlameSpeedMs" name="adventWreathFlameSpeedMs" value="{adventWreathFlameSpeedMs}" min="20" max="500">
         
         <label for="adventWreathDaysBefore24">Adventskranz: Tage vor dem 24.12.</label><input type="number" id="adventWreathDaysBefore24" name="adventWreathDaysBefore24" value="{adventWreathDaysBefore24}" min="0" max="30">
+        <label for="adventWreathBerryCount">Anzahl Kugeln/Beeren (4-20)</label><input type="number" id="adventWreathBerryCount" name="adventWreathBerryCount" value="{adventWreathBerryCount}" min="4" max="20">
         
         <h3 style="margin-top:15px;">Weihnachtsbaum</h3>
         <input type="checkbox" id="christmasTreeEnabled" name="christmasTreeEnabled" {christmasTreeEnabled_checked}><label for="christmasTreeEnabled" style="display:inline;">Weihnachtsbaum aktivieren</label><br>

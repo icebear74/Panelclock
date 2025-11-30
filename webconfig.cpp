@@ -124,6 +124,7 @@ void loadDeviceConfig() {
                 deviceConfig->adventWreathInterrupt = doc["adventWreathInterrupt"] | false;
                 deviceConfig->adventWreathFlameSpeedMs = doc["adventWreathFlameSpeedMs"] | 50;
                 deviceConfig->adventWreathDaysBefore24 = doc["adventWreathDaysBefore24"] | 30;
+                deviceConfig->adventWreathBerryCount = doc["adventWreathBerryCount"] | 12;
                 deviceConfig->christmasTreeDaysBefore24 = doc["christmasTreeDaysBefore24"] | 23;
                 deviceConfig->christmasTreeDaysAfter24 = doc["christmasTreeDaysAfter24"] | 7;
                 deviceConfig->christmasTreeEnabled = doc["christmasTreeEnabled"] | true;
@@ -247,6 +248,7 @@ void saveDeviceConfig() {
     doc["adventWreathInterrupt"] = deviceConfig->adventWreathInterrupt;
     doc["adventWreathFlameSpeedMs"] = deviceConfig->adventWreathFlameSpeedMs;
     doc["adventWreathDaysBefore24"] = deviceConfig->adventWreathDaysBefore24;
+    doc["adventWreathBerryCount"] = deviceConfig->adventWreathBerryCount;
     doc["christmasTreeDaysBefore24"] = deviceConfig->christmasTreeDaysBefore24;
     doc["christmasTreeDaysAfter24"] = deviceConfig->christmasTreeDaysAfter24;
     doc["christmasTreeEnabled"] = deviceConfig->christmasTreeEnabled;
