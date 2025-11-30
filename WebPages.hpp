@@ -156,6 +156,7 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
   <button class="tablinks" onclick="openTab(event, 'Fritzbox')">Fritz!Box</button>
   <button class="tablinks" onclick="openTab(event, 'Kalender')">Kalender</button>
   <button class="tablinks" onclick="openTab(event, 'KurioseFeiertage')">Kuriose Feiertage</button>
+  <button class="tablinks" onclick="openTab(event, 'Adventskranz')">Adventskranz</button>
   <button class="tablinks" onclick="openTab(event, 'Tankstellen')">Tankstellen</button>
   <button class="tablinks" onclick="openTab(event, 'Wetter')">Wetter</button>
   <button class="tablinks" onclick="openTab(event, 'Diverses')">Diverses</button>
@@ -281,6 +282,81 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
         <p style="color:#bbb; margin-top:10px;">Zeigt t&auml;glich verschiedene kuriose Feiertage aus Deutschland an.</p>
     </div>
 </div>
+
+<div id="Adventskranz" class="tabcontent">
+    <div class="group">
+        <h3>Adventskranz</h3>
+        <input type="checkbox" id="adventWreathEnabled" name="adventWreathEnabled" {adventWreathEnabled_checked}><label for="adventWreathEnabled" style="display:inline;">Adventskranz aktivieren</label><br>
+        <label for="adventWreathDisplaySec">Anzeigedauer (Sekunden)</label><input type="number" id="adventWreathDisplaySec" name="adventWreathDisplaySec" value="{adventWreathDisplaySec}" min="5">
+        <label for="adventWreathRepeatMin">Wiederholungsintervall (Minuten)</label><input type="number" id="adventWreathRepeatMin" name="adventWreathRepeatMin" value="{adventWreathRepeatMin}" min="1">
+        
+        <label for="adventWreathColorMode">Kerzenfarben</label>
+        <select id="adventWreathColorMode" name="adventWreathColorMode" onchange="toggleCustomColors()">
+            <option value="0" {adventWreathColorMode0_selected}>Traditionell (violett/rosa)</option>
+            <option value="1" {adventWreathColorMode1_selected}>Bunt (rot/gold/gr&uuml;n/wei&szlig;)</option>
+            <option value="2" {adventWreathColorMode2_selected}>Eigene Farben</option>
+        </select>
+        
+        <div id="customColorsDiv" style="display:none;">
+            <label>Eigene Kerzenfarben (4 Hex-Farben)</label>
+            <div style="display:flex;gap:10px;margin-top:5px;">
+                <div><label style="font-size:12px;">Kerze 1</label><input type="color" id="candleColor1" value="{candleColor1}"></div>
+                <div><label style="font-size:12px;">Kerze 2</label><input type="color" id="candleColor2" value="{candleColor2}"></div>
+                <div><label style="font-size:12px;">Kerze 3</label><input type="color" id="candleColor3" value="{candleColor3}"></div>
+                <div><label style="font-size:12px;">Kerze 4</label><input type="color" id="candleColor4" value="{candleColor4}"></div>
+            </div>
+            <input type="hidden" id="adventWreathCustomColors" name="adventWreathCustomColors" value="{adventWreathCustomColors}">
+        </div>
+        
+        <br><input type="checkbox" id="adventWreathInterrupt" name="adventWreathInterrupt" {adventWreathInterrupt_checked}><label for="adventWreathInterrupt" style="display:inline;">Unterbrechend anzeigen</label><br>
+        
+        <label for="adventWreathFlameSpeedMs">Flammen-Animation (ms)</label><input type="number" id="adventWreathFlameSpeedMs" name="adventWreathFlameSpeedMs" value="{adventWreathFlameSpeedMs}" min="20" max="500">
+        
+        <label for="adventWreathDaysBefore24">Adventskranz: Tage vor dem 24.12.</label><input type="number" id="adventWreathDaysBefore24" name="adventWreathDaysBefore24" value="{adventWreathDaysBefore24}" min="0" max="30">
+        
+        <h3 style="margin-top:15px;">Weihnachtsbaum</h3>
+        <input type="checkbox" id="christmasTreeEnabled" name="christmasTreeEnabled" {christmasTreeEnabled_checked}><label for="christmasTreeEnabled" style="display:inline;">Weihnachtsbaum aktivieren</label><br>
+        <label for="christmasTreeDaysBefore24">Weihnachtsbaum: Tage vor dem 24.12.</label><input type="number" id="christmasTreeDaysBefore24" name="christmasTreeDaysBefore24" value="{christmasTreeDaysBefore24}" min="0" max="30">
+        <label for="christmasTreeDaysAfter24">Weihnachtsbaum: Tage nach dem 24.12.</label><input type="number" id="christmasTreeDaysAfter24" name="christmasTreeDaysAfter24" value="{christmasTreeDaysAfter24}" min="0" max="30">
+        
+        <label for="christmasTreeLightSpeedMs">Lichterketten-Blinkgeschwindigkeit (ms)</label><input type="number" id="christmasTreeLightSpeedMs" name="christmasTreeLightSpeedMs" value="{christmasTreeLightSpeedMs}" min="30" max="500">
+        <label for="christmasTreeLightCount">Anzahl der Lichter (5-30)</label><input type="number" id="christmasTreeLightCount" name="christmasTreeLightCount" value="{christmasTreeLightCount}" min="5" max="30">
+        <label for="christmasTreeLightMode">Lichterketten-Farbe</label>
+        <select id="christmasTreeLightMode" name="christmasTreeLightMode" onchange="toggleTreeLightColor()">
+            <option value="0" {christmasTreeLightMode0_selected}>Zuf&auml;llige Farben</option>
+            <option value="1" {christmasTreeLightMode1_selected}>Feste Farbe</option>
+        </select>
+        <div id="treeLightColorDiv" style="display:none;">
+            <label for="christmasTreeLightColor">Feste Lichterfarbe</label><input type="color" id="christmasTreeLightColor" name="christmasTreeLightColor" value="{christmasTreeLightColor}">
+        </div>
+        
+        <p style="color:#bbb; margin-top:10px;">Der Adventskranz zeigt 1-4 brennende Kerzen je nach aktuellem Advent mit zuf&auml;llig flackernden Flammen. Der Weihnachtsbaum hat blinkende Lichter und Kugeln. Wenn beide aktiviert sind, wechseln sie ab. Nach dem 24.12. wird nur noch der Baum gezeigt.</p>
+    </div>
+</div>
+<script>
+function toggleCustomColors() {
+    var mode = document.getElementById('adventWreathColorMode').value;
+    document.getElementById('customColorsDiv').style.display = (mode == '2') ? 'block' : 'none';
+}
+function toggleTreeLightColor() {
+    var mode = document.getElementById('christmasTreeLightMode').value;
+    document.getElementById('treeLightColorDiv').style.display = (mode == '1') ? 'block' : 'none';
+}
+function updateCustomColors() {
+    var c1 = document.getElementById('candleColor1').value;
+    var c2 = document.getElementById('candleColor2').value;
+    var c3 = document.getElementById('candleColor3').value;
+    var c4 = document.getElementById('candleColor4').value;
+    document.getElementById('adventWreathCustomColors').value = c1 + ',' + c2 + ',' + c3 + ',' + c4;
+}
+document.addEventListener('DOMContentLoaded', function() {
+    toggleCustomColors();
+    toggleTreeLightColor();
+    ['candleColor1','candleColor2','candleColor3','candleColor4'].forEach(function(id) {
+        document.getElementById(id).addEventListener('change', updateCustomColors);
+    });
+});
+</script>
 
 <div id="Diverses" class="tabcontent">
     <div class="group">

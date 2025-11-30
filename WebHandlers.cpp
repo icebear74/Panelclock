@@ -202,6 +202,43 @@ void handleConfigModules() {
     replaceAll(content, "{curiousHolidaysEnabled_checked}", deviceConfig->curiousHolidaysEnabled ? "checked" : "");
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->curiousHolidaysDisplaySec); replaceAll(content, "{curiousHolidaysDisplaySec}", num_buf);
     
+    // Advent Wreath configuration
+    replaceAll(content, "{adventWreathEnabled_checked}", deviceConfig->adventWreathEnabled ? "checked" : "");
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->adventWreathDisplaySec); replaceAll(content, "{adventWreathDisplaySec}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->adventWreathRepeatMin); replaceAll(content, "{adventWreathRepeatMin}", num_buf);
+    replaceAll(content, "{adventWreathColorMode0_selected}", deviceConfig->adventWreathColorMode == 0 ? "selected" : "");
+    replaceAll(content, "{adventWreathColorMode1_selected}", deviceConfig->adventWreathColorMode == 1 ? "selected" : "");
+    replaceAll(content, "{adventWreathColorMode2_selected}", deviceConfig->adventWreathColorMode == 2 ? "selected" : "");
+    replaceAll(content, "{adventWreathCustomColors}", deviceConfig->adventWreathCustomColors.c_str());
+    replaceAll(content, "{adventWreathInterrupt_checked}", deviceConfig->adventWreathInterrupt ? "checked" : "");
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->adventWreathFlameSpeedMs); replaceAll(content, "{adventWreathFlameSpeedMs}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->adventWreathDaysBefore24); replaceAll(content, "{adventWreathDaysBefore24}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->christmasTreeDaysBefore24); replaceAll(content, "{christmasTreeDaysBefore24}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->christmasTreeDaysAfter24); replaceAll(content, "{christmasTreeDaysAfter24}", num_buf);
+    replaceAll(content, "{christmasTreeEnabled_checked}", deviceConfig->christmasTreeEnabled ? "checked" : "");
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->christmasTreeLightSpeedMs); replaceAll(content, "{christmasTreeLightSpeedMs}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->christmasTreeLightCount); replaceAll(content, "{christmasTreeLightCount}", num_buf);
+    replaceAll(content, "{christmasTreeLightMode0_selected}", deviceConfig->christmasTreeLightMode == 0 ? "selected" : "");
+    replaceAll(content, "{christmasTreeLightMode1_selected}", deviceConfig->christmasTreeLightMode == 1 ? "selected" : "");
+    replaceAll(content, "{christmasTreeLightColor}", deviceConfig->christmasTreeLightColor.c_str());
+    
+    // Parse custom colors for individual color pickers
+    PsramString colors = deviceConfig->adventWreathCustomColors;
+    PsramString candleColors[4] = {"#FF0000", "#FFD700", "#008000", "#FFFFFF"};
+    int colorIdx = 0;
+    size_t pos = 0;
+    while (colorIdx < 4 && pos < colors.length()) {
+        size_t commaPos = colors.find(',', pos);
+        if (commaPos == PsramString::npos) commaPos = colors.length();
+        candleColors[colorIdx] = colors.substr(pos, commaPos - pos);
+        pos = commaPos + 1;
+        colorIdx++;
+    }
+    replaceAll(content, "{candleColor1}", candleColors[0].c_str());
+    replaceAll(content, "{candleColor2}", candleColors[1].c_str());
+    replaceAll(content, "{candleColor3}", candleColors[2].c_str());
+    replaceAll(content, "{candleColor4}", candleColors[3].c_str());
+    
     // Global scrolling configuration
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->globalScrollSpeedMs); replaceAll(content, "{globalScrollSpeedMs}", num_buf);
     replaceAll(content, "{scrollMode0_selected}", deviceConfig->scrollMode == 0 ? "selected" : "");
@@ -315,6 +352,23 @@ void handleSaveModules() {
     // Curious Holidays configuration
     deviceConfig->curiousHolidaysEnabled = server->hasArg("curiousHolidaysEnabled");
     if (server->hasArg("curiousHolidaysDisplaySec")) deviceConfig->curiousHolidaysDisplaySec = server->arg("curiousHolidaysDisplaySec").toInt();
+    
+    // Advent Wreath configuration
+    deviceConfig->adventWreathEnabled = server->hasArg("adventWreathEnabled");
+    if (server->hasArg("adventWreathDisplaySec")) deviceConfig->adventWreathDisplaySec = server->arg("adventWreathDisplaySec").toInt();
+    if (server->hasArg("adventWreathRepeatMin")) deviceConfig->adventWreathRepeatMin = server->arg("adventWreathRepeatMin").toInt();
+    if (server->hasArg("adventWreathColorMode")) deviceConfig->adventWreathColorMode = server->arg("adventWreathColorMode").toInt();
+    if (server->hasArg("adventWreathCustomColors")) deviceConfig->adventWreathCustomColors = server->arg("adventWreathCustomColors").c_str();
+    deviceConfig->adventWreathInterrupt = server->hasArg("adventWreathInterrupt");
+    if (server->hasArg("adventWreathFlameSpeedMs")) deviceConfig->adventWreathFlameSpeedMs = server->arg("adventWreathFlameSpeedMs").toInt();
+    if (server->hasArg("adventWreathDaysBefore24")) deviceConfig->adventWreathDaysBefore24 = server->arg("adventWreathDaysBefore24").toInt();
+    if (server->hasArg("christmasTreeDaysBefore24")) deviceConfig->christmasTreeDaysBefore24 = server->arg("christmasTreeDaysBefore24").toInt();
+    if (server->hasArg("christmasTreeDaysAfter24")) deviceConfig->christmasTreeDaysAfter24 = server->arg("christmasTreeDaysAfter24").toInt();
+    deviceConfig->christmasTreeEnabled = server->hasArg("christmasTreeEnabled");
+    if (server->hasArg("christmasTreeLightSpeedMs")) deviceConfig->christmasTreeLightSpeedMs = server->arg("christmasTreeLightSpeedMs").toInt();
+    if (server->hasArg("christmasTreeLightCount")) deviceConfig->christmasTreeLightCount = server->arg("christmasTreeLightCount").toInt();
+    if (server->hasArg("christmasTreeLightMode")) deviceConfig->christmasTreeLightMode = server->arg("christmasTreeLightMode").toInt();
+    if (server->hasArg("christmasTreeLightColor")) deviceConfig->christmasTreeLightColor = server->arg("christmasTreeLightColor").c_str();
     
     // Global scrolling configuration
     if (server->hasArg("globalScrollSpeedMs")) deviceConfig->globalScrollSpeedMs = server->arg("globalScrollSpeedMs").toInt();
