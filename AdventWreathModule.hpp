@@ -97,6 +97,7 @@ private:
 
     // Animation
     unsigned long _lastFlameUpdate = 0;
+    unsigned long _lastTreeLightUpdate = 0;
     int _flamePhase = 0;
     int _treeLightPhase = 0;
     
@@ -104,6 +105,7 @@ private:
     unsigned long _displayDurationMs = 15000;  // 15 Sekunden
     unsigned long _repeatIntervalMs = 30 * 60 * 1000;  // 30 Minuten
     unsigned long _flameAnimationMs = 50;  // 50ms = 20 FPS für Flammen-Animation
+    unsigned long _treeLightAnimationMs = 80;  // 80ms für Baumlicht-Animation
     
     // Callback für Redraw
     std::function<void()> _updateCallback = nullptr;
@@ -155,6 +157,21 @@ private:
      * @brief Zeichnet den Weihnachtsbaum
      */
     void drawChristmasTree();
+
+    /**
+     * @brief Zeichnet den natürlichen Baum mit Grünvariationen
+     */
+    void drawNaturalTree(int centerX, int baseY);
+
+    /**
+     * @brief Zeichnet Kugeln am Weihnachtsbaum
+     */
+    void drawTreeOrnaments(int centerX, int baseY);
+
+    /**
+     * @brief Zeichnet Geschenke unter dem Baum
+     */
+    void drawGifts(int centerX, int baseY);
 
     /**
      * @brief Zeichnet eine einzelne Kerze.

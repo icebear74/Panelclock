@@ -319,6 +319,17 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
         <label for="christmasTreeDaysBefore24">Weihnachtsbaum: Tage vor dem 24.12.</label><input type="number" id="christmasTreeDaysBefore24" name="christmasTreeDaysBefore24" value="{christmasTreeDaysBefore24}" min="0" max="30">
         <label for="christmasTreeDaysAfter24">Weihnachtsbaum: Tage nach dem 24.12.</label><input type="number" id="christmasTreeDaysAfter24" name="christmasTreeDaysAfter24" value="{christmasTreeDaysAfter24}" min="0" max="30">
         
+        <label for="christmasTreeLightSpeedMs">Lichterketten-Blinkgeschwindigkeit (ms)</label><input type="number" id="christmasTreeLightSpeedMs" name="christmasTreeLightSpeedMs" value="{christmasTreeLightSpeedMs}" min="30" max="500">
+        <label for="christmasTreeLightCount">Anzahl der Lichter (5-30)</label><input type="number" id="christmasTreeLightCount" name="christmasTreeLightCount" value="{christmasTreeLightCount}" min="5" max="30">
+        <label for="christmasTreeLightMode">Lichterketten-Farbe</label>
+        <select id="christmasTreeLightMode" name="christmasTreeLightMode" onchange="toggleTreeLightColor()">
+            <option value="0" {christmasTreeLightMode0_selected}>Zuf&auml;llige Farben</option>
+            <option value="1" {christmasTreeLightMode1_selected}>Feste Farbe</option>
+        </select>
+        <div id="treeLightColorDiv" style="display:none;">
+            <label for="christmasTreeLightColor">Feste Lichterfarbe</label><input type="color" id="christmasTreeLightColor" name="christmasTreeLightColor" value="{christmasTreeLightColor}">
+        </div>
+        
         <p style="color:#bbb; margin-top:10px;">Der Adventskranz zeigt 1-4 brennende Kerzen je nach aktuellem Advent mit zuf&auml;llig flackernden Flammen. Der Weihnachtsbaum hat blinkende Lichter und Kugeln. Wenn beide aktiviert sind, wechseln sie ab. Nach dem 24.12. wird nur noch der Baum gezeigt.</p>
     </div>
 </div>
@@ -326,6 +337,10 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
 function toggleCustomColors() {
     var mode = document.getElementById('adventWreathColorMode').value;
     document.getElementById('customColorsDiv').style.display = (mode == '2') ? 'block' : 'none';
+}
+function toggleTreeLightColor() {
+    var mode = document.getElementById('christmasTreeLightMode').value;
+    document.getElementById('treeLightColorDiv').style.display = (mode == '1') ? 'block' : 'none';
 }
 function updateCustomColors() {
     var c1 = document.getElementById('candleColor1').value;
@@ -336,6 +351,7 @@ function updateCustomColors() {
 }
 document.addEventListener('DOMContentLoaded', function() {
     toggleCustomColors();
+    toggleTreeLightColor();
     ['candleColor1','candleColor2','candleColor3','candleColor4'].forEach(function(id) {
         document.getElementById(id).addEventListener('change', updateCustomColors);
     });

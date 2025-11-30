@@ -309,14 +309,25 @@ void AdventWreathModule::periodicTick() {
 
 void AdventWreathModule::tick() {
     unsigned long now = millis();
+    bool needsUpdate = false;
+    
+    // Flammen-Animation
     if (now - _lastFlameUpdate > _flameAnimationMs) {
         _lastFlameUpdate = now;
         _flamePhase = (_flamePhase + 1) % 32;
+        needsUpdate = true;
+    }
+    
+    // Baum-Lichter-Animation (konfigurierbare Geschwindigkeit)
+    unsigned long treeLightSpeed = config ? (unsigned long)config->christmasTreeLightSpeedMs : 80;
+    if (now - _lastTreeLightUpdate > treeLightSpeed) {
+        _lastTreeLightUpdate = now;
         _treeLightPhase = (_treeLightPhase + 1) % 24;
-        
-        if (_updateCallback) {
-            _updateCallback();
-        }
+        needsUpdate = true;
+    }
+    
+    if (needsUpdate && _updateCallback) {
+        _updateCallback();
     }
 }
 
@@ -330,17 +341,7 @@ void AdventWreathModule::draw() {
     if (_showTree) {
         drawChristmasTree();
     } else {
-        int currentAdvent = calculateCurrentAdvent();
-        
-        u8g2.setFont(u8g2_font_helvB10_tf);
-        u8g2.setForegroundColor(rgb565(255, 215, 0));
-        
-        char title[32];
-        snprintf(title, sizeof(title), "%d. Advent", currentAdvent);
-        int titleWidth = u8g2.getUTF8Width(title);
-        u8g2.setCursor((canvas.width() - titleWidth) / 2, 11);
-        u8g2.print(title);
-        
+        // Adventskranz ohne Beschriftung - mehr Platz für die Grafik
         drawGreenery();
         drawWreath();
         drawBerries();
@@ -349,71 +350,130 @@ void AdventWreathModule::draw() {
 
 void AdventWreathModule::drawChristmasTree() {
     int centerX = canvas.width() / 2;
+    int baseY = 62; // Basis des Baums
     
-    u8g2.setFont(u8g2_font_helvB10_tf);
-    u8g2.setForegroundColor(rgb565(255, 215, 0));
-    const char* title = "Frohe Weihnachten!";
-    int titleWidth = u8g2.getUTF8Width(title);
-    u8g2.setCursor((canvas.width() - titleWidth) / 2, 11);
-    u8g2.print(title);
-    
+    // Zeichne zuerst den Baumstamm
     uint16_t trunkColor = rgb565(139, 69, 19);
-    canvas.fillRect(centerX - 4, 56, 8, 10, trunkColor);
+    uint16_t trunkDark = rgb565(100, 50, 15);
+    canvas.fillRect(centerX - 4, baseY - 8, 8, 10, trunkColor);
+    canvas.drawLine(centerX - 4, baseY - 8, centerX - 4, baseY + 2, trunkDark);
     
-    uint16_t treeGreen = rgb565(0, 100, 0);
-    uint16_t lightGreen = rgb565(34, 139, 34);
+    // Natürlicherer Baum mit mehreren Grüntönen und organischer Form
+    drawNaturalTree(centerX, baseY);
     
-    for (int y = 55; y >= 38; y--) {
-        int width = (55 - y) * 2 + 4;
-        uint16_t color = ((55 - y) % 2 == 0) ? treeGreen : lightGreen;
-        canvas.drawFastHLine(centerX - width/2, y, width, color);
-    }
-    
-    for (int y = 42; y >= 28; y--) {
-        int width = (42 - y) * 2 + 4;
-        uint16_t color = ((42 - y) % 2 == 0) ? treeGreen : lightGreen;
-        canvas.drawFastHLine(centerX - width/2, y, width, color);
-    }
-    
-    for (int y = 32; y >= 18; y--) {
-        int width = (32 - y) * 2 + 2;
-        uint16_t color = ((32 - y) % 2 == 0) ? treeGreen : lightGreen;
-        canvas.drawFastHLine(centerX - width/2, y, width, color);
-    }
-    
+    // Stern an der Spitze
     uint16_t starColor = rgb565(255, 255, 0);
-    canvas.fillCircle(centerX, 16, 3, starColor);
-    canvas.drawLine(centerX, 12, centerX, 20, starColor);
-    canvas.drawLine(centerX - 4, 16, centerX + 4, 16, starColor);
+    uint16_t starGlow = rgb565(255, 230, 100);
+    int starY = 6;
+    canvas.fillCircle(centerX, starY, 3, starColor);
+    // Strahlen
+    canvas.drawLine(centerX, starY - 5, centerX, starY + 5, starGlow);
+    canvas.drawLine(centerX - 5, starY, centerX + 5, starY, starGlow);
+    canvas.drawLine(centerX - 3, starY - 3, centerX + 3, starY + 3, starGlow);
+    canvas.drawLine(centerX - 3, starY + 3, centerX + 3, starY - 3, starGlow);
     
+    // Kugeln am Baum
+    drawTreeOrnaments(centerX, baseY);
+    
+    // Blinkende Lichter
     drawTreeLights();
+    
+    // Geschenke unter dem Baum
+    drawGifts(centerX, baseY);
 }
 
-void AdventWreathModule::drawTreeLights() {
-    int centerX = canvas.width() / 2;
-    
-    uint16_t ornamentColors[] = {
-        rgb565(255, 0, 0),
-        rgb565(255, 215, 0),
-        rgb565(0, 100, 200),
-        rgb565(255, 0, 255),
-        rgb565(0, 200, 100),
-        rgb565(255, 140, 0)
+void AdventWreathModule::drawNaturalTree(int centerX, int baseY) {
+    // Grüntöne für natürlicheren Look
+    uint16_t greens[] = {
+        rgb565(0, 80, 0),     // Dunkelgrün
+        rgb565(0, 100, 20),   // Mittelgrün
+        rgb565(20, 120, 30),  // Hellgrün
+        rgb565(0, 90, 10),    // Dunkel-Mittel
+        rgb565(34, 100, 34)   // Forest Green
     };
-    int numColors = 6;
+    int numGreens = sizeof(greens) / sizeof(greens[0]);
     
+    // Baum in drei Schichten mit natürlicherer Form
+    // Unterste Schicht (breiteste)
+    int layer1Top = baseY - 8;
+    int layer1Bottom = baseY - 26;
+    for (int y = layer1Top; y >= layer1Bottom; y--) {
+        int progress = layer1Top - y;
+        int maxWidth = 28 - progress * 0.8;
+        
+        // Unregelmäßige Kante durch Variation
+        for (int x = -maxWidth; x <= maxWidth; x++) {
+            uint32_t seed = simpleRandom((y * 47 + x * 13) ^ 0xDEAD);
+            int edgeVar = (seed % 3) - 1;
+            if (abs(x) <= maxWidth + edgeVar) {
+                int colorIdx = seed % numGreens;
+                canvas.drawPixel(centerX + x, y, greens[colorIdx]);
+            }
+        }
+    }
+    
+    // Mittlere Schicht
+    int layer2Top = baseY - 22;
+    int layer2Bottom = baseY - 40;
+    for (int y = layer2Top; y >= layer2Bottom; y--) {
+        int progress = layer2Top - y;
+        int maxWidth = 22 - progress * 0.9;
+        
+        for (int x = -maxWidth; x <= maxWidth; x++) {
+            uint32_t seed = simpleRandom((y * 53 + x * 17) ^ 0xBEEF);
+            int edgeVar = (seed % 3) - 1;
+            if (abs(x) <= maxWidth + edgeVar) {
+                int colorIdx = seed % numGreens;
+                canvas.drawPixel(centerX + x, y, greens[colorIdx]);
+            }
+        }
+    }
+    
+    // Oberste Schicht (Spitze)
+    int layer3Top = baseY - 36;
+    int layer3Bottom = baseY - 54;
+    for (int y = layer3Top; y >= layer3Bottom; y--) {
+        int progress = layer3Top - y;
+        int maxWidth = 16 - progress * 0.85;
+        if (maxWidth < 1) maxWidth = 1;
+        
+        for (int x = -maxWidth; x <= maxWidth; x++) {
+            uint32_t seed = simpleRandom((y * 59 + x * 19) ^ 0xCAFE);
+            int edgeVar = (seed % 2);
+            if (abs(x) <= maxWidth + edgeVar) {
+                int colorIdx = seed % numGreens;
+                canvas.drawPixel(centerX + x, y, greens[colorIdx]);
+            }
+        }
+    }
+}
+
+void AdventWreathModule::drawTreeOrnaments(int centerX, int baseY) {
+    uint16_t ornamentColors[] = {
+        rgb565(255, 0, 0),      // Rot
+        rgb565(255, 215, 0),    // Gold
+        rgb565(0, 100, 200),    // Blau
+        rgb565(255, 0, 255),    // Magenta
+        rgb565(200, 50, 50),    // Dunkelrot
+        rgb565(255, 140, 0),    // Orange
+        rgb565(100, 200, 255),  // Hellblau
+        rgb565(220, 220, 220)   // Silber
+    };
+    int numColors = 8;
+    
+    // Kugeln verteilt über den Baum
     int ornaments[][3] = {
-        {centerX - 12, 45, 3},
-        {centerX + 10, 48, 3},
-        {centerX - 8, 35, 2},
-        {centerX + 12, 38, 3},
-        {centerX - 15, 52, 2},
-        {centerX + 8, 28, 2},
-        {centerX - 5, 42, 2},
-        {centerX + 15, 45, 2},
-        {centerX, 50, 3},
-        {centerX - 10, 30, 2},
-        {centerX + 5, 33, 2}
+        {centerX - 15, baseY - 15, 3},
+        {centerX + 12, baseY - 18, 3},
+        {centerX - 8, baseY - 30, 2},
+        {centerX + 16, baseY - 22, 2},
+        {centerX - 20, baseY - 12, 2},
+        {centerX + 6, baseY - 35, 3},
+        {centerX - 10, baseY - 42, 2},
+        {centerX + 10, baseY - 25, 2},
+        {centerX, baseY - 20, 3},
+        {centerX - 5, baseY - 48, 2},
+        {centerX + 8, baseY - 45, 2}
     };
     int numOrnaments = 11;
     
@@ -422,37 +482,120 @@ void AdventWreathModule::drawTreeLights() {
         uint16_t color = ornamentColors[seed % numColors];
         drawOrnament(ornaments[i][0], ornaments[i][1], ornaments[i][2], color);
     }
+}
+
+void AdventWreathModule::drawTreeLights() {
+    int centerX = canvas.width() / 2;
+    int baseY = 62;
+    
+    // Konfigurierbare Anzahl und Geschwindigkeit
+    int lightCount = config ? config->christmasTreeLightCount : 18;
+    if (lightCount < 5) lightCount = 5;
+    if (lightCount > 30) lightCount = 30;
+    
+    int lightMode = config ? config->christmasTreeLightMode : 0;
+    uint16_t fixedColor = rgb565(255, 215, 0);
+    
+    if (lightMode == 1 && config) {
+        fixedColor = hexToRgb565(config->christmasTreeLightColor.c_str());
+    }
     
     uint16_t lightColors[] = {
-        rgb565(255, 255, 100),
-        rgb565(255, 100, 100),
-        rgb565(100, 255, 100),
-        rgb565(100, 100, 255)
+        rgb565(255, 255, 100),  // Gelb
+        rgb565(255, 100, 100),  // Rot
+        rgb565(100, 255, 100),  // Grün
+        rgb565(100, 100, 255),  // Blau
+        rgb565(255, 150, 255),  // Rosa
+        rgb565(255, 200, 100)   // Warmweiß
     };
+    int numColors = 6;
     
-    int lights[][2] = {
-        {centerX - 18, 50},
-        {centerX + 18, 50},
-        {centerX - 14, 40},
-        {centerX + 14, 40},
-        {centerX - 10, 32},
-        {centerX + 10, 32},
-        {centerX - 6, 24},
-        {centerX + 6, 24},
-        {centerX - 20, 54},
-        {centerX + 20, 54},
-        {centerX, 22}
-    };
-    int numLights = 11;
-    
-    for (int i = 0; i < numLights; i++) {
-        bool isOn = ((i + _treeLightPhase) % 4) < 2;
+    // Lichter über den Baum verteilt (pseudo-zufällig basierend auf lightCount)
+    for (int i = 0; i < lightCount; i++) {
+        // Berechne Position basierend auf Index
+        uint32_t seed = simpleRandom(i * 37 + 789);
+        
+        // Y-Position: verteilt zwischen baseY-12 und baseY-52
+        int yRange = 40;
+        int lightY = baseY - 12 - (seed % yRange);
+        
+        // X-Position abhängig von Y (breiter unten, schmaler oben)
+        int progress = (baseY - 12 - lightY);
+        int maxX = 24 - (progress * 0.5);
+        if (maxX < 3) maxX = 3;
+        
+        seed = simpleRandom(seed);
+        int lightX = centerX - maxX + (seed % (maxX * 2));
+        
+        // Blinken basierend auf Phase
+        seed = simpleRandom(seed + i * 11);
+        bool isOn = ((i + _treeLightPhase + (seed % 3)) % 4) < 2;
+        
         if (isOn) {
-            uint16_t color = lightColors[(i + _treeLightPhase / 3) % 4];
-            canvas.fillCircle(lights[i][0], lights[i][1], 1, color);
-            canvas.drawPixel(lights[i][0], lights[i][1] - 1, color);
+            uint16_t color;
+            if (lightMode == 1) {
+                // Feste Farbe mit leichter Variation
+                color = fixedColor;
+            } else {
+                // Zufällige Farbe
+                color = lightColors[(seed / 7) % numColors];
+            }
+            
+            canvas.fillCircle(lightX, lightY, 1, color);
+            // Kleiner Glow-Effekt
+            canvas.drawPixel(lightX, lightY - 1, color);
         }
     }
+}
+
+void AdventWreathModule::drawGifts(int centerX, int baseY) {
+    // Geschenkfarben
+    uint16_t giftColors[][2] = {
+        {rgb565(200, 0, 0), rgb565(255, 215, 0)},      // Rot mit Gold
+        {rgb565(0, 100, 200), rgb565(255, 255, 255)},  // Blau mit Weiß
+        {rgb565(0, 150, 0), rgb565(255, 0, 0)},        // Grün mit Rot
+        {rgb565(150, 0, 150), rgb565(255, 215, 0)},    // Lila mit Gold
+        {rgb565(255, 140, 0), rgb565(200, 0, 0)}       // Orange mit Rot
+    };
+    
+    // Geschenke links und rechts vom Baum
+    // Geschenk 1 (links)
+    int g1x = centerX - 35;
+    int g1y = baseY - 2;
+    canvas.fillRect(g1x, g1y - 8, 12, 8, giftColors[0][0]);
+    canvas.drawRect(g1x, g1y - 8, 12, 8, rgb565(150, 0, 0));
+    canvas.drawLine(g1x + 6, g1y - 8, g1x + 6, g1y, giftColors[0][1]);
+    canvas.drawLine(g1x, g1y - 4, g1x + 12, g1y - 4, giftColors[0][1]);
+    // Schleife
+    canvas.fillCircle(g1x + 4, g1y - 10, 2, giftColors[0][1]);
+    canvas.fillCircle(g1x + 8, g1y - 10, 2, giftColors[0][1]);
+    
+    // Geschenk 2 (rechts)
+    int g2x = centerX + 25;
+    int g2y = baseY - 2;
+    canvas.fillRect(g2x, g2y - 6, 10, 6, giftColors[1][0]);
+    canvas.drawRect(g2x, g2y - 6, 10, 6, rgb565(0, 70, 150));
+    canvas.drawLine(g2x + 5, g2y - 6, g2x + 5, g2y, giftColors[1][1]);
+    canvas.drawLine(g2x, g2y - 3, g2x + 10, g2y - 3, giftColors[1][1]);
+    
+    // Geschenk 3 (links hinten/kleiner)
+    int g3x = centerX - 48;
+    int g3y = baseY - 2;
+    canvas.fillRect(g3x, g3y - 5, 8, 5, giftColors[2][0]);
+    canvas.drawLine(g3x + 4, g3y - 5, g3x + 4, g3y, giftColors[2][1]);
+    
+    // Geschenk 4 (rechts hinten)
+    int g4x = centerX + 38;
+    int g4y = baseY - 2;
+    canvas.fillRect(g4x, g4y - 7, 9, 7, giftColors[3][0]);
+    canvas.drawLine(g4x, g4y - 3, g4x + 9, g4y - 3, giftColors[3][1]);
+    canvas.drawLine(g4x + 4, g4y - 7, g4x + 4, g4y, giftColors[3][1]);
+    
+    // Geschenk 5 (klein, zwischen anderen)
+    int g5x = centerX - 25;
+    int g5y = baseY - 2;
+    canvas.fillRect(g5x, g5y - 5, 7, 5, giftColors[4][0]);
+    canvas.drawLine(g5x + 3, g5y - 5, g5x + 3, g5y, giftColors[4][1]);
 }
 
 void AdventWreathModule::drawOrnament(int x, int y, int radius, uint16_t color) {
@@ -480,7 +623,7 @@ void AdventWreathModule::drawWreath() {
     int currentAdvent = calculateCurrentAdvent();
     
     int centerX = canvas.width() / 2;
-    int baseY = 52;
+    int baseY = 56; // Angepasst für mehr Platz ohne Titel
     
     int candleSpacing = 38;
     int candlePositions[4] = {
@@ -614,29 +757,49 @@ void AdventWreathModule::drawFlame(int x, int y, int phase) {
 }
 
 void AdventWreathModule::drawGreenery() {
-    uint16_t darkGreen = rgb565(0, 80, 0);
-    uint16_t lightGreen = rgb565(0, 140, 40);
+    // Mehrere Grüntöne für natürlicheres Aussehen
+    uint16_t greens[] = {
+        rgb565(0, 70, 0),     // Sehr dunkelgrün
+        rgb565(0, 90, 10),    // Dunkelgrün
+        rgb565(0, 110, 20),   // Mittelgrün
+        rgb565(20, 130, 30),  // Hellgrün
+        rgb565(0, 80, 5),     // Tiefgrün
+        rgb565(10, 100, 15)   // Waldgrün
+    };
+    int numGreens = sizeof(greens) / sizeof(greens[0]);
     
-    int baseY = 54;
+    int baseY = 58; // Tiefer positioniert ohne Titel
     int centerX = canvas.width() / 2;
     
-    for (int angle = 0; angle < 360; angle += 20) {
+    // Kerzenpositionen für Kollisionsvermeidung
+    int candleSpacing = 38;
+    int candlePositions[4] = {
+        centerX - candleSpacing - candleSpacing/2,
+        centerX - candleSpacing/2,
+        centerX + candleSpacing/2,
+        centerX + candleSpacing + candleSpacing/2
+    };
+    
+    // Mehr und dichteres Tannengrün
+    for (int angle = 0; angle < 360; angle += 12) {
         float rad = angle * 3.14159f / 180.0f;
-        int rx = 80;
-        int ry = 8;
+        int rx = 85;
+        int ry = 10;
         
         int bx = centerX + (int)(rx * cos(rad));
         int by = baseY + (int)(ry * sin(rad));
         
-        for (int n = 0; n < 4; n++) {
-            int nx = bx + (n - 2) * 2;
-            int nyOffset = ((angle + n * 17) % 3) - 1;
+        // Mehr Nadeln pro Position
+        for (int n = 0; n < 6; n++) {
+            int nx = bx + (n - 3) * 2;
+            int nyOffset = ((angle + n * 17) % 5) - 2;
             int ny = by + nyOffset;
             
             if (ny >= 0 && ny < canvas.height()) {
-                uint16_t needleColor = (n % 2 == 0) ? darkGreen : lightGreen;
-                int lineOffset = ((angle + n * 23) % 3) - 1;
-                int endY = ny - 2;
+                uint32_t seed = simpleRandom(angle * 13 + n * 7);
+                uint16_t needleColor = greens[seed % numGreens];
+                int lineOffset = ((angle + n * 23) % 4) - 2;
+                int endY = ny - 3 - (seed % 2);
                 if (endY >= 0) {
                     canvas.drawLine(nx, ny, nx + lineOffset, endY, needleColor);
                 }
@@ -644,26 +807,35 @@ void AdventWreathModule::drawGreenery() {
         }
     }
     
+    // Mehr Äste zwischen den Kerzen
+    drawBranch(centerX - 70, baseY - 2, 1);
     drawBranch(centerX - 55, baseY - 3, 1);
-    drawBranch(centerX - 18, baseY - 2, -1);
-    drawBranch(centerX + 18, baseY - 2, 1);
+    drawBranch(centerX - 30, baseY - 2, -1);
+    drawBranch(centerX - 8, baseY - 1, -1);
+    drawBranch(centerX + 8, baseY - 1, 1);
+    drawBranch(centerX + 30, baseY - 2, 1);
     drawBranch(centerX + 55, baseY - 3, -1);
+    drawBranch(centerX + 70, baseY - 2, -1);
 }
 
 void AdventWreathModule::drawBranch(int x, int y, int direction) {
-    uint16_t darkGreen = rgb565(0, 100, 20);
-    uint16_t lightGreen = rgb565(34, 139, 34);
+    uint16_t greens[] = {
+        rgb565(0, 90, 15),
+        rgb565(0, 110, 25),
+        rgb565(20, 130, 35),
+        rgb565(0, 100, 20)
+    };
     
-    canvas.drawLine(x, y, x + direction * 6, y - 3, darkGreen);
+    canvas.drawLine(x, y, x + direction * 7, y - 4, greens[0]);
     
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
         int nx = x + direction * i;
         int ny = y - i / 2;
         
         if (ny >= 2 && ny < canvas.height()) {
-            uint16_t color = (i % 2 == 0) ? darkGreen : lightGreen;
-            canvas.drawLine(nx, ny, nx - direction * 1, ny - 2, color);
-            canvas.drawLine(nx, ny, nx + direction * 1, ny - 2, color);
+            uint16_t color = greens[i % 4];
+            canvas.drawLine(nx, ny, nx - direction * 2, ny - 3, color);
+            canvas.drawLine(nx, ny, nx + direction * 2, ny - 3, color);
         }
     }
 }
@@ -681,29 +853,47 @@ void AdventWreathModule::drawBerries() {
     };
     int numColors = 8;
     
-    int baseY = 54;
+    int baseY = 58;
     int centerX = canvas.width() / 2;
     
-    // Hintergrund-Kugeln: höher positioniert (kleinere Y-Werte) für 3D-Effekt
-    // Sie liegen "hinter" den Kerzen, also weiter oben auf dem Bildschirm
-    int bgBerries[][3] = {
-        {centerX - 80, baseY - 8, 1},
-        {centerX - 60, baseY - 6, 1},
-        {centerX - 35, baseY - 7, 1},
-        {centerX + 35, baseY - 7, 1},
-        {centerX + 60, baseY - 6, 1},
-        {centerX + 80, baseY - 8, 1},
-        {centerX - 55, baseY - 9, 1},
-        {centerX + 55, baseY - 9, 1}
+    // Kerzenpositionen für Kollisionsvermeidung (±5 Pixel Sicherheitsabstand)
+    int candleSpacing = 38;
+    int candleX[4] = {
+        centerX - candleSpacing - candleSpacing/2,
+        centerX - candleSpacing/2,
+        centerX + candleSpacing/2,
+        centerX + candleSpacing + candleSpacing/2
     };
-    int numBgBerries = 8;
+    int candleWidth = 8;
+    int safeDistance = candleWidth / 2 + 5; // Mindestabstand von Kerzenkante
+    
+    // Hintergrund-Kugeln (höher positioniert für 3D-Effekt)
+    // Positionen sorgfältig gewählt um Kerzen zu vermeiden
+    int bgBerries[][3] = {
+        {centerX - 88, baseY - 8, 1},
+        {centerX - 68, baseY - 7, 1},
+        {centerX + 68, baseY - 7, 1},
+        {centerX + 88, baseY - 8, 1},
+        {centerX - 48, baseY - 9, 1},
+        {centerX + 48, baseY - 9, 1}
+    };
+    int numBgBerries = 6;
     
     for (int i = 0; i < numBgBerries; i++) {
         int bx = bgBerries[i][0];
         int by = bgBerries[i][1];
         int br = bgBerries[i][2];
         
-        if (by >= 2 && by < canvas.height() - 2) {
+        // Prüfe Kollision mit Kerzen
+        bool collision = false;
+        for (int c = 0; c < 4; c++) {
+            if (abs(bx - candleX[c]) < safeDistance) {
+                collision = true;
+                break;
+            }
+        }
+        
+        if (!collision && by >= 2 && by < canvas.height() - 2) {
             uint32_t seed = simpleRandom(bx * 31 + by * 17);
             uint16_t color = berryColors[seed % numColors];
             uint8_t r = ((color >> 11) & 0x1F) * 6;
@@ -713,26 +903,32 @@ void AdventWreathModule::drawBerries() {
         }
     }
     
+    // Vordergrund-Kugeln - nur außerhalb der Kerzenbereiche
     int fgBerries[][3] = {
-        {centerX - 70, baseY + 3, 2},
-        {centerX - 45, baseY + 5, 3},
-        {centerX + 45, baseY + 5, 3},
-        {centerX + 70, baseY + 3, 2},
-        {centerX - 25, baseY + 4, 2},
-        {centerX + 25, baseY + 4, 2},
-        {centerX - 85, baseY + 4, 2},
-        {centerX + 85, baseY + 4, 2},
-        {centerX - 10, baseY + 6, 2},
-        {centerX + 10, baseY + 6, 2}
+        {centerX - 85, baseY + 5, 2},
+        {centerX - 68, baseY + 4, 3},
+        {centerX + 68, baseY + 4, 3},
+        {centerX + 85, baseY + 5, 2},
+        {centerX - 50, baseY + 6, 2},
+        {centerX + 50, baseY + 6, 2}
     };
-    int numFgBerries = 10;
+    int numFgBerries = 6;
     
     for (int i = 0; i < numFgBerries; i++) {
         int bx = fgBerries[i][0];
         int by = fgBerries[i][1];
         int br = fgBerries[i][2];
         
-        if (by >= 2 && by < canvas.height() - 2) {
+        // Prüfe Kollision mit Kerzen
+        bool collision = false;
+        for (int c = 0; c < 4; c++) {
+            if (abs(bx - candleX[c]) < safeDistance + br) {
+                collision = true;
+                break;
+            }
+        }
+        
+        if (!collision && by >= 2 && by < canvas.height() - 2) {
             uint32_t seed = simpleRandom(bx * 47 + by * 23);
             uint16_t color = berryColors[seed % numColors];
             drawOrnament(bx, by, br, color);
@@ -761,6 +957,7 @@ void AdventWreathModule::resetPaging() {
 void AdventWreathModule::onActivate() {
     _isFinished = false;
     _lastFlameUpdate = millis();
+    _lastTreeLightUpdate = millis();
     _flamePhase = 0;
     _treeLightPhase = 0;
 }

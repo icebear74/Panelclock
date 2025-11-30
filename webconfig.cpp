@@ -127,6 +127,10 @@ void loadDeviceConfig() {
                 deviceConfig->christmasTreeDaysBefore24 = doc["christmasTreeDaysBefore24"] | 23;
                 deviceConfig->christmasTreeDaysAfter24 = doc["christmasTreeDaysAfter24"] | 7;
                 deviceConfig->christmasTreeEnabled = doc["christmasTreeEnabled"] | true;
+                deviceConfig->christmasTreeLightSpeedMs = doc["christmasTreeLightSpeedMs"] | 80;
+                deviceConfig->christmasTreeLightMode = doc["christmasTreeLightMode"] | 0;
+                deviceConfig->christmasTreeLightColor = doc["christmasTreeLightColor"] | "#FFD700";
+                deviceConfig->christmasTreeLightCount = doc["christmasTreeLightCount"] | 18;
                 
                 deviceConfig->globalScrollSpeedMs = doc["globalScrollSpeedMs"] | 50;
                 deviceConfig->scrollMode = doc["scrollMode"] | 0;
@@ -246,6 +250,10 @@ void saveDeviceConfig() {
     doc["christmasTreeDaysBefore24"] = deviceConfig->christmasTreeDaysBefore24;
     doc["christmasTreeDaysAfter24"] = deviceConfig->christmasTreeDaysAfter24;
     doc["christmasTreeEnabled"] = deviceConfig->christmasTreeEnabled;
+    doc["christmasTreeLightSpeedMs"] = deviceConfig->christmasTreeLightSpeedMs;
+    doc["christmasTreeLightMode"] = deviceConfig->christmasTreeLightMode;
+    doc["christmasTreeLightColor"] = deviceConfig->christmasTreeLightColor.c_str();
+    doc["christmasTreeLightCount"] = deviceConfig->christmasTreeLightCount;
     
     doc["globalScrollSpeedMs"] = deviceConfig->globalScrollSpeedMs;
     doc["scrollMode"] = deviceConfig->scrollMode;

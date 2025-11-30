@@ -187,6 +187,14 @@ struct DeviceConfig {
     int christmasTreeDaysAfter24 = 7;
     /// @brief Weihnachtsbaum aktivieren
     bool christmasTreeEnabled = true;
+    /// @brief Weihnachtsbaum: Blinkgeschwindigkeit der Lichter in ms (niedriger = schneller)
+    int christmasTreeLightSpeedMs = 80;
+    /// @brief Weihnachtsbaum: Lichterketten-Farbmodus (0=Zufällig bunt, 1=Feste Farbe)
+    int christmasTreeLightMode = 0;
+    /// @brief Weihnachtsbaum: Feste Lichterfarbe als Hex-String (wenn christmasTreeLightMode=1)
+    PsramString christmasTreeLightColor = "#FFD700";
+    /// @brief Weihnachtsbaum: Anzahl der Lichter (5-30)
+    int christmasTreeLightCount = 18;
 
     // --- Globale Scrolling-Einstellungen ---
     /// @brief Globale Scroll-Geschwindigkeit in Millisekunden pro Pixel für alle Module.
