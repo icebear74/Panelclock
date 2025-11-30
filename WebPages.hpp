@@ -313,7 +313,9 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
         <label for="adventWreathFlameSpeedMs">Flammen-Animation (ms)</label><input type="number" id="adventWreathFlameSpeedMs" name="adventWreathFlameSpeedMs" value="{adventWreathFlameSpeedMs}" min="20" max="500">
         
         <label for="adventWreathDaysBefore24">Adventskranz: Tage vor dem 24.12.</label><input type="number" id="adventWreathDaysBefore24" name="adventWreathDaysBefore24" value="{adventWreathDaysBefore24}" min="0" max="30">
+        <label style="display: inline-block; margin: 10px 0;"><input type="checkbox" name="adventWreathOnlyFromFirstAdvent" id="adventWreathOnlyFromFirstAdvent" {adventWreathOnlyFromFirstAdvent_checked}> Erst ab dem 1. Advent zeigen</label><br>
         <label for="adventWreathBerryCount">Anzahl Kugeln/Beeren (4-20)</label><input type="number" id="adventWreathBerryCount" name="adventWreathBerryCount" value="{adventWreathBerryCount}" min="4" max="20">
+        <label for="adventWreathBgColor">Hintergrundfarbe</label><input type="color" id="adventWreathBgColor" name="adventWreathBgColor" value="{adventWreathBgColor}">
         
         <h3 style="margin-top:15px;">Weihnachtsbaum</h3>
         <input type="checkbox" id="christmasTreeEnabled" name="christmasTreeEnabled" {christmasTreeEnabled_checked}><label for="christmasTreeEnabled" style="display:inline;">Weihnachtsbaum aktivieren</label><br>
@@ -323,6 +325,7 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
         <label for="christmasTreeLightSpeedMs">Lichterketten-Blinkgeschwindigkeit (ms)</label><input type="number" id="christmasTreeLightSpeedMs" name="christmasTreeLightSpeedMs" value="{christmasTreeLightSpeedMs}" min="30" max="500">
         <label for="christmasTreeLightCount">Anzahl der Lichter (5-30)</label><input type="number" id="christmasTreeLightCount" name="christmasTreeLightCount" value="{christmasTreeLightCount}" min="5" max="30">
         <label for="christmasTreeGiftCount">Anzahl der Geschenke (0-10)</label><input type="number" id="christmasTreeGiftCount" name="christmasTreeGiftCount" value="{christmasTreeGiftCount}" min="0" max="10">
+        <label for="christmasTreeBgColor">Hintergrundfarbe</label><input type="color" id="christmasTreeBgColor" name="christmasTreeBgColor" value="{christmasTreeBgColor}">
         <label for="christmasTreeLightMode">Lichterketten-Farbe</label>
         <select id="christmasTreeLightMode" name="christmasTreeLightMode" onchange="toggleTreeLightColor()">
             <option value="0" {christmasTreeLightMode0_selected}>Zuf&auml;llige Farben</option>

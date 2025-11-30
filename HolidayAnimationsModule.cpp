@@ -833,20 +833,26 @@ void HolidayAnimationsModule::drawWreath() {
     int centerX = canvasW / 2;
     
     // Dynamische Skalierung - nutze den GESAMTEN verfügbaren Platz
-    float scaleY = canvasH / 66.0f;
-    float scaleX = canvasW / 192.0f;
-    float scale = min(scaleX, scaleY);
+    float scale = canvasH / 66.0f;  // Bei 96px Höhe ist scale = 1.45
     
-    // BaseY am unteren Rand mit kleinem Abstand
-    int baseY = canvasH - (int)(14 * scale);
+    // BaseY so setzen, dass der Kranz den gesamten Bereich nutzt
+    // Kerzen sollen ca. 35% der Höhe einnehmen, Flammen nochmal 15%
+    int candleHeight = (int)(28 * scale);  // Größere Kerzen
+    int flameHeight = (int)(14 * scale);
+    int bottomMargin = (int)(8 * scale);
     
-    // Kerzenabstand skaliert
-    int candleSpacing = (int)(36 * scale);
+    int baseY = canvasH - bottomMargin;  // Basis am unteren Rand
+    
+    // Kerzenabstand - breiter verteilen über die gesamte Breite
+    int totalWidth = canvasW - 40;  // 20px Rand links und rechts
+    int candleSpacing = totalWidth / 4;
+    int startX = 20 + candleSpacing / 2;
+    
     int candlePositions[4] = {
-        centerX - candleSpacing - candleSpacing/2,
-        centerX - candleSpacing/2,
-        centerX + candleSpacing/2,
-        centerX + candleSpacing + candleSpacing/2
+        startX,
+        startX + candleSpacing,
+        startX + candleSpacing * 2,
+        startX + candleSpacing * 3
     };
     
     uint16_t candleColors[4];
@@ -894,23 +900,27 @@ void HolidayAnimationsModule::drawWreath() {
 }
 
 void HolidayAnimationsModule::drawCandle(int x, int y, uint16_t color, bool isLit, int candleIndex) {
-    // Dynamische Skalierung
-    float scaleY = _currentCanvas->height() / 66.0f;
-    float scale = scaleY;
+    // Dynamische Skalierung - Kerzen werden DEUTLICH größer bei Fullscreen
+    int canvasH = _currentCanvas->height();
+    float scale = canvasH / 66.0f;
     
-    int candleWidth = (int)(8 * scale);
-    int candleHeight = (int)(22 * scale);
+    // Größere Kerzen die mehr Platz einnehmen
+    int candleWidth = (int)(10 * scale);   // Breiter
+    int candleHeight = (int)(28 * scale);  // Höher
     int candleTop = y - candleHeight;
     
+    // Kerze zeichnen
     _currentCanvas->fillRect(x - candleWidth/2, candleTop, candleWidth, candleHeight, color);
     
+    // Dunklerer Rand
     uint8_t r = ((color >> 11) & 0x1F) * 8;
     uint8_t g = ((color >> 5) & 0x3F) * 4;
     uint8_t b = (color & 0x1F) * 8;
     uint16_t darkColor = rgb565(r / 2, g / 2, b / 2);
     _currentCanvas->drawRect(x - candleWidth/2, candleTop, candleWidth, candleHeight, darkColor);
     
-    int dochtHeight = (int)(4 * scale);
+    // Docht
+    int dochtHeight = (int)(5 * scale);
     _currentCanvas->drawLine(x, candleTop - 1, x, candleTop - dochtHeight, rgb565(60, 60, 60));
     
     if (isLit) {
@@ -919,13 +929,19 @@ void HolidayAnimationsModule::drawCandle(int x, int y, uint16_t color, bool isLi
 }
 
 void HolidayAnimationsModule::drawFlame(int x, int y, int phase) {
+    // Dynamische Skalierung für größere Flammen
+    int canvasH = _currentCanvas->height();
+    float scale = canvasH / 66.0f;
+    
     // Mehr Zufälligkeit durch Kombination von Phase und Position
     uint32_t randSeed = simpleRandom(x * 127 + phase * 31);
     int flicker = ((phase / 3) % 5) - 2 + ((randSeed % 3) - 1);
     int heightVar = (phase % 6) + ((randSeed / 3) % 2);
     int widthVar = ((phase / 2) % 3) + ((randSeed / 7) % 2);
     
-    int flameHeight = 8 + heightVar;
+    // Größere Flammen bei größerem Canvas
+    int baseFlameHeight = (int)(12 * scale);
+    int flameHeight = baseFlameHeight + heightVar;
     
     for (int i = 0; i < flameHeight; i++) {
         int baseWidth = (flameHeight - i) / 2 + widthVar;
@@ -993,24 +1009,27 @@ void HolidayAnimationsModule::drawGreenery() {
     int canvasH = _currentCanvas->height();
     float scale = canvasH / 66.0f;
     
-    int baseY = canvasH - (int)(12 * scale);
+    int bottomMargin = (int)(8 * scale);
+    int baseY = canvasH - bottomMargin;
     int centerX = canvasW / 2;
     
-    // Skalierte Werte - breiter für bessere Abdeckung
-    int rx = (int)(80 * scale);  // Horizontaler Radius
-    int ry = (int)(12 * scale);  // Vertikaler Radius
+    // Kranz-Ellipse fast so breit wie der Canvas
+    int rx = (canvasW / 2) - 10;  // Horizontaler Radius - fast volle Breite
+    int ry = (int)(14 * scale);   // Vertikaler Radius
     
     // Mehr und dichteres Tannengrün
-    for (int angle = 0; angle < 360; angle += 10) {
+    for (int angle = 0; angle < 360; angle += 8) {
         float rad = angle * 3.14159f / 180.0f;
         
         int bx = centerX + (int)(rx * cos(rad));
         int by = baseY + (int)(ry * sin(rad));
         
-        // Mehr Nadeln pro Position
-        int needleCount = scale > 1.2 ? 10 : 7;
+        // Mehr Nadeln pro Position bei größerem Scale
+        int needleCount = (int)(8 * scale);
+        if (needleCount < 6) needleCount = 6;
+        
         for (int n = 0; n < needleCount; n++) {
-            int nx = bx + (int)((n - needleCount/2) * 2 * scale);
+            int nx = bx + (int)((n - needleCount/2) * 2);
             int nyOffset = ((angle + n * 17) % 5) - 2;
             int ny = by + nyOffset;
             
@@ -1018,7 +1037,7 @@ void HolidayAnimationsModule::drawGreenery() {
                 uint32_t seed = simpleRandom(angle * 13 + n * 7);
                 uint16_t needleColor = greens[seed % numGreens];
                 int lineOffset = ((angle + n * 23) % 4) - 2;
-                int nadelLaenge = (int)(4 * scale) + (seed % 2);
+                int nadelLaenge = (int)(5 * scale) + (seed % 3);
                 int endY = ny - nadelLaenge;
                 if (endY >= 0) {
                     _currentCanvas->drawLine(nx, ny, nx + lineOffset, endY, needleColor);
@@ -1027,11 +1046,13 @@ void HolidayAnimationsModule::drawGreenery() {
         }
     }
     
-    // Mehr Äste zwischen den Kerzen (skaliert)
-    int branchOffsets[] = {-65, -50, -28, -8, 8, 28, 50, 65};
-    int branchDirs[] = {1, 1, -1, -1, 1, 1, -1, -1};
-    for (int i = 0; i < 8; i++) {
-        drawBranch(centerX + (int)(branchOffsets[i] * scale), baseY - (int)(4 * scale), branchDirs[i]);
+    // Äste über die gesamte Breite verteilen
+    int numBranches = (int)(10 * scale);
+    for (int i = 0; i < numBranches; i++) {
+        int branchX = 15 + (canvasW - 30) * i / numBranches;
+        int branchDir = (i % 2 == 0) ? 1 : -1;
+        drawBranch(branchX, baseY - (int)(5 * scale), branchDir);
+    }
     }
 }
 
@@ -1075,8 +1096,8 @@ void HolidayAnimationsModule::drawBerries() {
     int canvasH = _currentCanvas->height();
     float scale = canvasH / 66.0f;
     
-    int baseY = canvasH - (int)(12 * scale);
-    int centerX = canvasW / 2;
+    int bottomMargin = (int)(8 * scale);
+    int baseY = canvasH - bottomMargin;
     
     // Konfigurierbare Anzahl der Kugeln (4-20)
     int totalBerries = config ? config->adventWreathBerryCount : 12;
@@ -1086,32 +1107,31 @@ void HolidayAnimationsModule::drawBerries() {
     // Bei Fullscreen mehr Kugeln
     if (scale > 1.2) totalBerries = (int)(totalBerries * 1.5);
     
-    // Skalierte Kerzenpositionen für Kollisionsvermeidung
-    int candleSpacing = (int)(36 * scale);
+    // Kerzenpositionen für Kollisionsvermeidung (müssen mit drawWreath übereinstimmen)
+    int totalWidth = canvasW - 40;
+    int candleSpacing = totalWidth / 4;
+    int startX = 20 + candleSpacing / 2;
     int candleX[4] = {
-        centerX - candleSpacing - candleSpacing/2,
-        centerX - candleSpacing/2,
-        centerX + candleSpacing/2,
-        centerX + candleSpacing + candleSpacing/2
+        startX,
+        startX + candleSpacing,
+        startX + candleSpacing * 2,
+        startX + candleSpacing * 3
     };
-    int candleWidth = (int)(8 * scale);
-    int safeDistance = candleWidth / 2 + (int)(6 * scale);
+    int candleWidth = (int)(10 * scale);
+    int safeDistance = candleWidth / 2 + (int)(8 * scale);
     
     // Hälfte Hintergrund-Kugeln, Hälfte Vordergrund-Kugeln
     int numBgBerries = totalBerries / 2;
     int numFgBerries = totalBerries - numBgBerries;
     
-    // Sichere X-Positionen die keine Kerze treffen (skaliert) - enger für bessere Verteilung
-    int safeXOffsets[] = {-75, -65, -55, -42, -35, 35, 42, 55, 65, 75};
-    int numSafePositions = 10;
-    
     // Hintergrund-Kugeln (kleiner, höher = 3D-Effekt)
     for (int i = 0; i < numBgBerries; i++) {
         uint32_t seed = simpleRandom(i * 37 + 123);
-        int posIdx = seed % numSafePositions;
-        int bx = centerX + (int)(safeXOffsets[posIdx] * scale) + ((seed / 7) % 5) - 2;
-        int by = baseY - (int)(8 * scale) - ((seed / 11) % (int)(5 * scale));
-        int br = max(1, (int)(1.5 * scale));
+        
+        // Position über die gesamte Breite verteilen
+        int bx = 15 + (seed % (canvasW - 30));
+        int by = baseY - (int)(10 * scale) - ((seed / 11) % (int)(8 * scale));
+        int br = max(2, (int)(2 * scale));
         
         // Prüfe Kollision mit Kerzen
         bool collision = false;
@@ -1136,11 +1156,12 @@ void HolidayAnimationsModule::drawBerries() {
     // Vordergrund-Kugeln (größer, tiefer)
     for (int i = 0; i < numFgBerries; i++) {
         uint32_t seed = simpleRandom(i * 47 + 456);
-        int posIdx = seed % numSafePositions;
-        int bx = centerX + (int)(safeXOffsets[posIdx] * scale) + ((seed / 13) % 7) - 3;
-        int by = baseY + (int)(2 * scale) + ((seed / 17) % (int)(4 * scale));
-        int br = (int)((2 + ((seed / 23) % 2)) * scale);
-        if (br < 2) br = 2;
+        
+        // Position über die gesamte Breite verteilen
+        int bx = 15 + (seed % (canvasW - 30));
+        int by = baseY + (int)(4 * scale) + ((seed / 17) % (int)(6 * scale));
+        int br = (int)((3 + ((seed / 23) % 2)) * scale);
+        if (br < 3) br = 3;
         
         // Prüfe Kollision mit Kerzen
         bool collision = false;
@@ -1237,12 +1258,28 @@ void HolidayAnimationsModule::drawFireplace() {
     
     // Hintergrund wird bereits in draw() mit fireplaceBgColor gesetzt
     
-    // Kaminsims (oben)
+    // ===== KAMINSIMS (oben) - schöner mit Profil =====
     int simsY = fireY - simsHeight;
     int simsWidth = fireplaceWidth + simsOverhang * 2;
     int simsX = centerX - simsWidth / 2;
-    _currentCanvas->fillRect(simsX, simsY, simsWidth, simsHeight, brickLight);
-    _currentCanvas->drawRect(simsX, simsY, simsWidth, simsHeight, brickDark);
+    
+    // Sims-Profil: Unterteil (dicker)
+    int simsLower = (int)(simsHeight * 0.6);
+    int simsUpper = simsHeight - simsLower;
+    
+    // Obere schmale Leiste
+    _currentCanvas->fillRect(simsX + 2, simsY, simsWidth - 4, simsUpper, brickLight);
+    // Untere breitere Basis
+    _currentCanvas->fillRect(simsX, simsY + simsUpper, simsWidth, simsLower, brickLight);
+    
+    // Schatten und Kanten für 3D-Effekt
+    _currentCanvas->drawLine(simsX, simsY + simsUpper, simsX + simsWidth, simsY + simsUpper, brickDark);  // Stufe
+    _currentCanvas->drawLine(simsX, simsY + simsHeight - 1, simsX + simsWidth, simsY + simsHeight - 1, brickDark);  // Unterkante
+    _currentCanvas->drawLine(simsX + 2, simsY, simsX + simsWidth - 2, simsY, rgb565(min(255, br + 100), min(255, bg + 80), min(255, bb + 80)));  // Oberkante hell
+    
+    // Dekrative Linie auf dem Sims
+    uint16_t decoColor = rgb565(min(255, br + 40), min(255, bg + 30), min(255, bb + 30));
+    _currentCanvas->drawLine(simsX + 4, simsY + simsUpper + simsLower/2, simsX + simsWidth - 4, simsY + simsUpper + simsLower/2, decoColor);
     
     // Kamin-Rahmen (links)
     int frameWidth = (fireplaceWidth - openingWidth) / 2;
@@ -1293,18 +1330,70 @@ void HolidayAnimationsModule::drawFireplace() {
     // Feuer zeichnen
     drawFireplaceFlames(centerX, baseY - 2, openingWidth - 10, openingHeight - 5);
     
-    // Holzscheite
-    uint16_t woodColor = rgb565(101, 67, 33);
-    uint16_t woodDark = rgb565(60, 40, 20);
-    int logY = baseY - 4;
-    int logWidth = (int)(25 * scale);
-    int logHeight = (int)(5 * scale);
-    // Linkes Scheit
-    _currentCanvas->fillRect(centerX - logWidth - 2, logY - logHeight, logWidth, logHeight, woodColor);
-    _currentCanvas->drawRect(centerX - logWidth - 2, logY - logHeight, logWidth, logHeight, woodDark);
+    // ===== HOLZSCHEITE - realistischer mit runder Form =====
+    uint16_t woodOuter = rgb565(101, 67, 33);   // Rinde außen
+    uint16_t woodInner = rgb565(180, 140, 90);  // Holz innen (heller)
+    uint16_t woodDark = rgb565(60, 40, 20);     // Schatten
+    uint16_t woodRing = rgb565(140, 100, 60);   // Jahresringe
+    
+    int logY = baseY - 3;
+    int logRadius = (int)(4 * scale);
+    int logLength = (int)(28 * scale);
+    
+    // Linkes Scheit (schräg liegend)
+    int log1X = centerX - logLength/2 - 3;
+    int log1Y = logY - logRadius;
+    
+    // Körper des Scheits (zylindrisch)
+    for (int i = 0; i < logLength; i++) {
+        int x = log1X + i;
+        // Oben heller, unten dunkler für Rundung
+        _currentCanvas->drawLine(x, log1Y - logRadius + 1, x, log1Y + logRadius - 1, woodOuter);
+        _currentCanvas->drawPixel(x, log1Y - logRadius, woodDark);  // Oberkante dunkel (Schatten)
+        _currentCanvas->drawPixel(x, log1Y, woodRing);  // Mitte heller
+    }
+    
+    // Schnittfläche links (Kreis/Oval)
+    _currentCanvas->fillCircle(log1X, log1Y, logRadius, woodInner);
+    _currentCanvas->drawCircle(log1X, log1Y, logRadius, woodOuter);
+    // Jahresringe
+    if (logRadius > 2) {
+        _currentCanvas->drawCircle(log1X, log1Y, logRadius - 2, woodRing);
+    }
+    _currentCanvas->drawPixel(log1X, log1Y, woodDark);  // Mittelpunkt
+    
     // Rechtes Scheit
-    _currentCanvas->fillRect(centerX + 2, logY - logHeight, logWidth, logHeight, woodColor);
-    _currentCanvas->drawRect(centerX + 2, logY - logHeight, logWidth, logHeight, woodDark);
+    int log2X = centerX + 3;
+    int log2Y = logY - logRadius - 1;
+    
+    for (int i = 0; i < logLength; i++) {
+        int x = log2X + i;
+        _currentCanvas->drawLine(x, log2Y - logRadius + 1, x, log2Y + logRadius - 1, woodOuter);
+        _currentCanvas->drawPixel(x, log2Y - logRadius, woodDark);
+        _currentCanvas->drawPixel(x, log2Y, woodRing);
+    }
+    
+    // Schnittfläche rechts
+    _currentCanvas->fillCircle(log2X + logLength, log2Y, logRadius, woodInner);
+    _currentCanvas->drawCircle(log2X + logLength, log2Y, logRadius, woodOuter);
+    if (logRadius > 2) {
+        _currentCanvas->drawCircle(log2X + logLength, log2Y, logRadius - 2, woodRing);
+    }
+    _currentCanvas->drawPixel(log2X + logLength, log2Y, woodDark);
+    
+    // Kleines drittes Scheit oben drauf
+    int log3X = centerX - (int)(8 * scale);
+    int log3Y = logY - logRadius * 3;
+    int log3Radius = (int)(3 * scale);
+    int log3Length = (int)(20 * scale);
+    
+    for (int i = 0; i < log3Length; i++) {
+        int x = log3X + i;
+        _currentCanvas->drawLine(x, log3Y - log3Radius + 1, x, log3Y + log3Radius - 1, woodOuter);
+        _currentCanvas->drawPixel(x, log3Y, woodRing);
+    }
+    _currentCanvas->fillCircle(log3X, log3Y, log3Radius, woodInner);
+    _currentCanvas->drawCircle(log3X, log3Y, log3Radius, woodOuter);
     
     // Strümpfe am Kaminsims
     drawStockings(simsY, simsWidth, centerX);
