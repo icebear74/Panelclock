@@ -125,6 +125,10 @@ void loadDeviceConfig() {
                 deviceConfig->adventWreathFlameSpeedMs = doc["adventWreathFlameSpeedMs"] | 50;
                 deviceConfig->adventWreathDaysBefore24 = doc["adventWreathDaysBefore24"] | 30;
                 deviceConfig->adventWreathBerryCount = doc["adventWreathBerryCount"] | 12;
+                deviceConfig->adventWreathOnlyFromFirstAdvent = doc["adventWreathOnlyFromFirstAdvent"] | false;
+                deviceConfig->adventWreathBgColor = doc["adventWreathBgColor"] | "#000000";
+                deviceConfig->christmasTreeBgColor = doc["christmasTreeBgColor"] | "#000000";
+                deviceConfig->fireplaceBgColor = doc["fireplaceBgColor"] | "#3C3228";
                 deviceConfig->christmasTreeDaysBefore24 = doc["christmasTreeDaysBefore24"] | 23;
                 deviceConfig->christmasTreeDaysAfter24 = doc["christmasTreeDaysAfter24"] | 7;
                 deviceConfig->christmasTreeEnabled = doc["christmasTreeEnabled"] | true;
@@ -261,6 +265,10 @@ void saveDeviceConfig() {
     doc["adventWreathFlameSpeedMs"] = deviceConfig->adventWreathFlameSpeedMs;
     doc["adventWreathDaysBefore24"] = deviceConfig->adventWreathDaysBefore24;
     doc["adventWreathBerryCount"] = deviceConfig->adventWreathBerryCount;
+    doc["adventWreathOnlyFromFirstAdvent"] = deviceConfig->adventWreathOnlyFromFirstAdvent;
+    doc["adventWreathBgColor"] = deviceConfig->adventWreathBgColor.c_str();
+    doc["christmasTreeBgColor"] = deviceConfig->christmasTreeBgColor.c_str();
+    doc["fireplaceBgColor"] = deviceConfig->fireplaceBgColor.c_str();
     doc["christmasTreeDaysBefore24"] = deviceConfig->christmasTreeDaysBefore24;
     doc["christmasTreeDaysAfter24"] = deviceConfig->christmasTreeDaysAfter24;
     doc["christmasTreeEnabled"] = deviceConfig->christmasTreeEnabled;

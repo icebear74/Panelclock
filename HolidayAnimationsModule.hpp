@@ -1,5 +1,5 @@
-#ifndef ADVENTWREATHMODULE_HPP
-#define ADVENTWREATHMODULE_HPP
+#ifndef HOLIDAYANIMATIONSMODULE_HPP
+#define HOLIDAYANIMATIONSMODULE_HPP
 
 #include "DrawableModule.hpp"
 #include "GeneralTimeConverter.hpp"
@@ -35,10 +35,10 @@ enum class ChristmasDisplayMode {
  * um während der Adventszeit regelmäßig als nächstes nach dem
  * aktuellen Modul angezeigt zu werden.
  */
-class AdventWreathModule : public DrawableModule {
+class HolidayAnimationsModule : public DrawableModule {
 public:
-    AdventWreathModule(U8G2_FOR_ADAFRUIT_GFX& u8g2, GFXcanvas16& canvas, GeneralTimeConverter& timeConverter, DeviceConfig* config);
-    ~AdventWreathModule();
+    HolidayAnimationsModule(U8G2_FOR_ADAFRUIT_GFX& u8g2, GFXcanvas16& canvas, GeneralTimeConverter& timeConverter, DeviceConfig* config);
+    ~HolidayAnimationsModule();
 
     /**
      * @brief Initialisiert das Modul.
@@ -57,8 +57,8 @@ public:
     void onUpdate(std::function<void()> callback);
 
     // --- DrawableModule Interface ---
-    const char* getModuleName() const override { return "AdventWreathModule"; }
-    const char* getModuleDisplayName() const override { return "Adventskranz"; }
+    const char* getModuleName() const override { return "HolidayAnimationsModule"; }
+    const char* getModuleDisplayName() const override { return "Weihnachtsanimationen"; }
     void draw() override;
     void tick() override;
     void logicTick() override;
@@ -273,4 +273,4 @@ private:
     uint32_t simpleRandom(uint32_t seed);
 };
 
-#endif // ADVENTWREATHMODULE_HPP
+#endif // HOLIDAYANIMATIONSMODULE_HPP

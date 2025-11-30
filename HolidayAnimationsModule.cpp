@@ -1,15 +1,15 @@
-#include "AdventWreathModule.hpp"
+#include "HolidayAnimationsModule.hpp"
 #include "webconfig.hpp"
 #include "MultiLogger.hpp"
 #include <time.h>
 
 // Hilfsfunktion für RGB565
-uint16_t AdventWreathModule::rgb565(uint8_t r, uint8_t g, uint8_t b) {
+uint16_t HolidayAnimationsModule::rgb565(uint8_t r, uint8_t g, uint8_t b) {
     return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
 }
 
 // Hilfsfunktion um Hex-Farbe zu RGB565 zu konvertieren
-uint16_t AdventWreathModule::hexToRgb565(const char* hex) {
+uint16_t HolidayAnimationsModule::hexToRgb565(const char* hex) {
     if (!hex || hex[0] != '#' || strlen(hex) < 7) {
         return rgb565(255, 255, 255);
     }
@@ -20,20 +20,20 @@ uint16_t AdventWreathModule::hexToRgb565(const char* hex) {
 }
 
 // Einfacher Pseudo-Zufallsgenerator
-uint32_t AdventWreathModule::simpleRandom(uint32_t seed) {
+uint32_t HolidayAnimationsModule::simpleRandom(uint32_t seed) {
     seed = seed * 1103515245 + 12345;
     return (seed / 65536) % 32768;
 }
 
-AdventWreathModule::AdventWreathModule(U8G2_FOR_ADAFRUIT_GFX& u8g2, GFXcanvas16& canvas, 
+HolidayAnimationsModule::HolidayAnimationsModule(U8G2_FOR_ADAFRUIT_GFX& u8g2, GFXcanvas16& canvas, 
                                        GeneralTimeConverter& timeConverter, DeviceConfig* config)
     : u8g2(u8g2), canvas(canvas), timeConverter(timeConverter), config(config) {
 }
 
-AdventWreathModule::~AdventWreathModule() {
+HolidayAnimationsModule::~HolidayAnimationsModule() {
 }
 
-void AdventWreathModule::begin() {
+void HolidayAnimationsModule::begin() {
     time_t now = time(nullptr);
     time_t local_time = timeConverter.toLocal(now);
     struct tm tm_now;
@@ -44,7 +44,7 @@ void AdventWreathModule::begin() {
     Log.println("[AdventWreath] Modul initialisiert");
 }
 
-void AdventWreathModule::setConfig() {
+void HolidayAnimationsModule::setConfig() {
     if (config) {
         _displayDurationMs = config->adventWreathDisplaySec * 1000UL;
         _repeatIntervalMs = config->adventWreathRepeatMin * 60UL * 1000UL;
@@ -52,11 +52,11 @@ void AdventWreathModule::setConfig() {
     }
 }
 
-void AdventWreathModule::onUpdate(std::function<void()> callback) {
+void HolidayAnimationsModule::onUpdate(std::function<void()> callback) {
     _updateCallback = callback;
 }
 
-void AdventWreathModule::shuffleCandleOrder() {
+void HolidayAnimationsModule::shuffleCandleOrder() {
     time_t now_utc;
     time(&now_utc);
     uint32_t seed = (uint32_t)now_utc + _displayCounter;
@@ -71,7 +71,7 @@ void AdventWreathModule::shuffleCandleOrder() {
     _lastOrderSeed = seed;
 }
 
-bool AdventWreathModule::isAdventSeason() {
+bool HolidayAnimationsModule::isAdventSeason() {
     time_t now_utc;
     time(&now_utc);
     time_t local_now = timeConverter.toLocal(now_utc);
@@ -83,30 +83,50 @@ bool AdventWreathModule::isAdventSeason() {
     int day = tm_now.tm_mday;
     int year = tm_now.tm_year + 1900;
     
-    // Berechne Start- und Enddatum basierend auf "Tage vor dem 24."
-    int daysBefore = config ? config->adventWreathDaysBefore24 : 30;
-    if (daysBefore > 30) daysBefore = 30;
-    if (daysBefore < 0) daysBefore = 0;
-    
-    // Startdatum: 24. Dezember minus daysBefore
-    int startDay = 24 - daysBefore;
-    int startMonth = 12;
-    if (startDay <= 0) {
-        startDay += 30;  // November hat 30 Tage
-        startMonth = 11;
+    // Option: Erst ab dem 1. Advent zeigen
+    if (config && config->adventWreathOnlyFromFirstAdvent) {
+        // Berechne 1. Advent (4. Advent - 21 Tage)
+        time_t fourthAdvent = calculateFourthAdvent(year);
+        time_t firstAdvent = fourthAdvent - (21 * 24 * 60 * 60);
+        
+        // Prüfe ob wir vor dem 1. Advent sind
+        if (local_now < firstAdvent) {
+            return false;
+        }
+    } else {
+        // Berechne Start- und Enddatum basierend auf "Tage vor dem 24."
+        int daysBefore = config ? config->adventWreathDaysBefore24 : 30;
+        if (daysBefore > 30) daysBefore = 30;
+        if (daysBefore < 0) daysBefore = 0;
+        
+        // Startdatum: 24. Dezember minus daysBefore
+        int startDay = 24 - daysBefore;
+        int startMonth = 12;
+        if (startDay <= 0) {
+            startDay += 30;  // November hat 30 Tage
+            startMonth = 11;
+        }
+        
+        // Prüfe ob wir vor dem Startdatum sind
+        if (startMonth == 11 && month == 11 && day < startDay) {
+            return false;
+        }
+        if (month < 11) {
+            return false;
+        }
     }
     
     // Adventskranz wird bis zum 24.12. gezeigt
     if (month == 12 && day <= 24) {
         return true;
-    } else if (month == 11 && day >= startDay) {
+    } else if (month == 11) {
         return true;
     }
     
     return false;
 }
 
-bool AdventWreathModule::isChristmasSeason() {
+bool HolidayAnimationsModule::isChristmasSeason() {
     time_t now_utc;
     time(&now_utc);
     time_t local_now = timeConverter.toLocal(now_utc);
@@ -158,11 +178,11 @@ bool AdventWreathModule::isChristmasSeason() {
     return false;
 }
 
-bool AdventWreathModule::isHolidaySeason() {
+bool HolidayAnimationsModule::isHolidaySeason() {
     return isAdventSeason() || isChristmasSeason() || isFireplaceSeason();
 }
 
-bool AdventWreathModule::isFireplaceSeason() {
+bool HolidayAnimationsModule::isFireplaceSeason() {
     if (!config || !config->fireplaceEnabled) return false;
     
     time_t now_utc;
@@ -209,7 +229,7 @@ bool AdventWreathModule::isFireplaceSeason() {
     return false;
 }
 
-ChristmasDisplayMode AdventWreathModule::getCurrentDisplayMode() {
+ChristmasDisplayMode HolidayAnimationsModule::getCurrentDisplayMode() {
     time_t now_utc;
     time(&now_utc);
     time_t local_now = timeConverter.toLocal(now_utc);
@@ -254,7 +274,7 @@ ChristmasDisplayMode AdventWreathModule::getCurrentDisplayMode() {
     return ChristmasDisplayMode::Wreath;
 }
 
-int AdventWreathModule::calculateCurrentAdvent() {
+int HolidayAnimationsModule::calculateCurrentAdvent() {
     time_t now_utc;
     time(&now_utc);
     time_t local_now = timeConverter.toLocal(now_utc);
@@ -294,7 +314,7 @@ int AdventWreathModule::calculateCurrentAdvent() {
     return 0;
 }
 
-time_t AdventWreathModule::calculateFourthAdvent(int year) {
+time_t HolidayAnimationsModule::calculateFourthAdvent(int year) {
     struct tm tm_christmas;
     memset(&tm_christmas, 0, sizeof(tm_christmas));
     tm_christmas.tm_year = year - 1900;
@@ -312,7 +332,7 @@ time_t AdventWreathModule::calculateFourthAdvent(int year) {
     return mktime(&tm_christmas);
 }
 
-void AdventWreathModule::periodicTick() {
+void HolidayAnimationsModule::periodicTick() {
     if (!config) return;
     
     if (!config->adventWreathEnabled && !config->christmasTreeEnabled) return;
@@ -408,7 +428,7 @@ void AdventWreathModule::periodicTick() {
     }
 }
 
-void AdventWreathModule::tick() {
+void HolidayAnimationsModule::tick() {
     unsigned long now = millis();
     bool needsUpdate = false;
     
@@ -441,18 +461,28 @@ void AdventWreathModule::tick() {
     }
 }
 
-void AdventWreathModule::logicTick() {
+void HolidayAnimationsModule::logicTick() {
 }
 
-bool AdventWreathModule::wantsFullscreen() const {
+bool HolidayAnimationsModule::wantsFullscreen() const {
     return config && config->adventWreathFullscreen && _fullscreenCanvas != nullptr;
 }
 
-void AdventWreathModule::draw() {
+void HolidayAnimationsModule::draw() {
     // Wähle den richtigen Canvas basierend auf Fullscreen-Modus
     _currentCanvas = wantsFullscreen() ? _fullscreenCanvas : &canvas;
     
-    _currentCanvas->fillScreen(0);
+    // Hintergrundfarbe basierend auf Modus
+    uint16_t bgColor = 0;
+    if (_showFireplace && config && config->fireplaceBgColor.length() > 0) {
+        bgColor = hexToRgb565(config->fireplaceBgColor.c_str());
+    } else if (_showTree && config && config->christmasTreeBgColor.length() > 0) {
+        bgColor = hexToRgb565(config->christmasTreeBgColor.c_str());
+    } else if (!_showFireplace && !_showTree && config && config->adventWreathBgColor.length() > 0) {
+        bgColor = hexToRgb565(config->adventWreathBgColor.c_str());
+    }
+    
+    _currentCanvas->fillScreen(bgColor);
     u8g2.begin(*_currentCanvas);
     
     if (_showFireplace) {
@@ -467,7 +497,7 @@ void AdventWreathModule::draw() {
     }
 }
 
-void AdventWreathModule::drawChristmasTree() {
+void HolidayAnimationsModule::drawChristmasTree() {
     int canvasW = _currentCanvas->width();
     int canvasH = _currentCanvas->height();
     int centerX = canvasW / 2;
@@ -516,7 +546,7 @@ void AdventWreathModule::drawChristmasTree() {
     drawGifts(centerX, baseY, scale);
 }
 
-void AdventWreathModule::drawNaturalTree(int centerX, int baseY, float scale) {
+void HolidayAnimationsModule::drawNaturalTree(int centerX, int baseY, float scale) {
     // Grüntöne für natürlicheren Look
     uint16_t greens[] = {
         rgb565(0, 80, 0),     // Dunkelgrün
@@ -609,7 +639,7 @@ void AdventWreathModule::drawNaturalTree(int centerX, int baseY, float scale) {
     }
 }
 
-void AdventWreathModule::drawTreeOrnaments(int centerX, int baseY, float scale) {
+void HolidayAnimationsModule::drawTreeOrnaments(int centerX, int baseY, float scale) {
     uint16_t ornamentColors[] = {
         rgb565(255, 0, 0),      // Rot
         rgb565(255, 215, 0),    // Gold
@@ -643,7 +673,7 @@ void AdventWreathModule::drawTreeOrnaments(int centerX, int baseY, float scale) 
     }
 }
 
-void AdventWreathModule::drawTreeLights() {
+void HolidayAnimationsModule::drawTreeLights() {
     int centerX = _currentCanvas->width() / 2;
     int baseY = 62;
     
@@ -707,7 +737,7 @@ void AdventWreathModule::drawTreeLights() {
     }
 }
 
-void AdventWreathModule::drawGifts(int centerX, int baseY, float scale) {
+void HolidayAnimationsModule::drawGifts(int centerX, int baseY, float scale) {
     // Konfigurierbare Anzahl der Geschenke (0-10)
     int giftCount = config ? config->christmasTreeGiftCount : 5;
     if (giftCount < 0) giftCount = 0;
@@ -774,7 +804,7 @@ void AdventWreathModule::drawGifts(int centerX, int baseY, float scale) {
     }
 }
 
-void AdventWreathModule::drawOrnament(int x, int y, int radius, uint16_t color) {
+void HolidayAnimationsModule::drawOrnament(int x, int y, int radius, uint16_t color) {
     _currentCanvas->fillCircle(x, y, radius, color);
     
     uint8_t r = ((color >> 11) & 0x1F) * 8;
@@ -795,21 +825,23 @@ void AdventWreathModule::drawOrnament(int x, int y, int radius, uint16_t color) 
     }
 }
 
-void AdventWreathModule::drawWreath() {
+void HolidayAnimationsModule::drawWreath() {
     int currentAdvent = calculateCurrentAdvent();
     
     int canvasW = _currentCanvas->width();
     int canvasH = _currentCanvas->height();
     int centerX = canvasW / 2;
     
-    // Dynamische Skalierung
+    // Dynamische Skalierung - nutze den GESAMTEN verfügbaren Platz
     float scaleY = canvasH / 66.0f;
     float scaleX = canvasW / 192.0f;
     float scale = min(scaleX, scaleY);
     
-    int baseY = canvasH - (int)(10 * scale);
+    // BaseY am unteren Rand mit kleinem Abstand
+    int baseY = canvasH - (int)(14 * scale);
     
-    int candleSpacing = (int)(38 * scale);
+    // Kerzenabstand skaliert
+    int candleSpacing = (int)(36 * scale);
     int candlePositions[4] = {
         centerX - candleSpacing - candleSpacing/2,
         centerX - candleSpacing/2,
@@ -861,7 +893,7 @@ void AdventWreathModule::drawWreath() {
     }
 }
 
-void AdventWreathModule::drawCandle(int x, int y, uint16_t color, bool isLit, int candleIndex) {
+void HolidayAnimationsModule::drawCandle(int x, int y, uint16_t color, bool isLit, int candleIndex) {
     // Dynamische Skalierung
     float scaleY = _currentCanvas->height() / 66.0f;
     float scale = scaleY;
@@ -886,7 +918,7 @@ void AdventWreathModule::drawCandle(int x, int y, uint16_t color, bool isLit, in
     }
 }
 
-void AdventWreathModule::drawFlame(int x, int y, int phase) {
+void HolidayAnimationsModule::drawFlame(int x, int y, int phase) {
     // Mehr Zufälligkeit durch Kombination von Phase und Position
     uint32_t randSeed = simpleRandom(x * 127 + phase * 31);
     int flicker = ((phase / 3) % 5) - 2 + ((randSeed % 3) - 1);
@@ -944,7 +976,7 @@ void AdventWreathModule::drawFlame(int x, int y, int phase) {
     }
 }
 
-void AdventWreathModule::drawGreenery() {
+void HolidayAnimationsModule::drawGreenery() {
     // Mehrere Grüntöne für natürlicheres Aussehen
     uint16_t greens[] = {
         rgb565(0, 70, 0),     // Sehr dunkelgrün
@@ -957,36 +989,37 @@ void AdventWreathModule::drawGreenery() {
     int numGreens = sizeof(greens) / sizeof(greens[0]);
     
     // Dynamische Skalierung
+    int canvasW = _currentCanvas->width();
     int canvasH = _currentCanvas->height();
     float scale = canvasH / 66.0f;
     
-    int baseY = canvasH - (int)(8 * scale);
-    int centerX = _currentCanvas->width() / 2;
+    int baseY = canvasH - (int)(12 * scale);
+    int centerX = canvasW / 2;
     
-    // Skalierte Werte
-    int candleSpacing = (int)(38 * scale);
-    int rx = (int)(85 * scale);
-    int ry = (int)(10 * scale);
+    // Skalierte Werte - breiter für bessere Abdeckung
+    int rx = (int)(80 * scale);  // Horizontaler Radius
+    int ry = (int)(12 * scale);  // Vertikaler Radius
     
     // Mehr und dichteres Tannengrün
-    for (int angle = 0; angle < 360; angle += 12) {
+    for (int angle = 0; angle < 360; angle += 10) {
         float rad = angle * 3.14159f / 180.0f;
         
         int bx = centerX + (int)(rx * cos(rad));
         int by = baseY + (int)(ry * sin(rad));
         
         // Mehr Nadeln pro Position
-        int needleCount = scale > 1.2 ? 8 : 6;
+        int needleCount = scale > 1.2 ? 10 : 7;
         for (int n = 0; n < needleCount; n++) {
             int nx = bx + (int)((n - needleCount/2) * 2 * scale);
             int nyOffset = ((angle + n * 17) % 5) - 2;
             int ny = by + nyOffset;
             
-            if (ny >= 0 && ny < _currentCanvas->height()) {
+            if (ny >= 0 && ny < canvasH && nx >= 0 && nx < canvasW) {
                 uint32_t seed = simpleRandom(angle * 13 + n * 7);
                 uint16_t needleColor = greens[seed % numGreens];
                 int lineOffset = ((angle + n * 23) % 4) - 2;
-                int endY = ny - (int)(3 * scale) - (seed % 2);
+                int nadelLaenge = (int)(4 * scale) + (seed % 2);
+                int endY = ny - nadelLaenge;
                 if (endY >= 0) {
                     _currentCanvas->drawLine(nx, ny, nx + lineOffset, endY, needleColor);
                 }
@@ -995,14 +1028,14 @@ void AdventWreathModule::drawGreenery() {
     }
     
     // Mehr Äste zwischen den Kerzen (skaliert)
-    int branchOffsets[] = {-70, -55, -30, -8, 8, 30, 55, 70};
+    int branchOffsets[] = {-65, -50, -28, -8, 8, 28, 50, 65};
     int branchDirs[] = {1, 1, -1, -1, 1, 1, -1, -1};
     for (int i = 0; i < 8; i++) {
-        drawBranch(centerX + (int)(branchOffsets[i] * scale), baseY - (int)(2 * scale), branchDirs[i]);
+        drawBranch(centerX + (int)(branchOffsets[i] * scale), baseY - (int)(4 * scale), branchDirs[i]);
     }
 }
 
-void AdventWreathModule::drawBranch(int x, int y, int direction) {
+void HolidayAnimationsModule::drawBranch(int x, int y, int direction) {
     uint16_t greens[] = {
         rgb565(0, 90, 15),
         rgb565(0, 110, 25),
@@ -1024,7 +1057,7 @@ void AdventWreathModule::drawBranch(int x, int y, int direction) {
     }
 }
 
-void AdventWreathModule::drawBerries() {
+void HolidayAnimationsModule::drawBerries() {
     uint16_t berryColors[] = {
         rgb565(200, 0, 0),
         rgb565(255, 215, 0),
@@ -1038,11 +1071,12 @@ void AdventWreathModule::drawBerries() {
     int numColors = 8;
     
     // Dynamische Skalierung
+    int canvasW = _currentCanvas->width();
     int canvasH = _currentCanvas->height();
     float scale = canvasH / 66.0f;
     
-    int baseY = canvasH - (int)(8 * scale);
-    int centerX = _currentCanvas->width() / 2;
+    int baseY = canvasH - (int)(12 * scale);
+    int centerX = canvasW / 2;
     
     // Konfigurierbare Anzahl der Kugeln (4-20)
     int totalBerries = config ? config->adventWreathBerryCount : 12;
@@ -1053,7 +1087,7 @@ void AdventWreathModule::drawBerries() {
     if (scale > 1.2) totalBerries = (int)(totalBerries * 1.5);
     
     // Skalierte Kerzenpositionen für Kollisionsvermeidung
-    int candleSpacing = (int)(38 * scale);
+    int candleSpacing = (int)(36 * scale);
     int candleX[4] = {
         centerX - candleSpacing - candleSpacing/2,
         centerX - candleSpacing/2,
@@ -1067,8 +1101,8 @@ void AdventWreathModule::drawBerries() {
     int numBgBerries = totalBerries / 2;
     int numFgBerries = totalBerries - numBgBerries;
     
-    // Sichere X-Positionen die keine Kerze treffen (skaliert)
-    int safeXOffsets[] = {-88, -80, -72, -50, -45, 45, 50, 72, 80, 88};
+    // Sichere X-Positionen die keine Kerze treffen (skaliert) - enger für bessere Verteilung
+    int safeXOffsets[] = {-75, -65, -55, -42, -35, 35, 42, 55, 65, 75};
     int numSafePositions = 10;
     
     // Hintergrund-Kugeln (kleiner, höher = 3D-Effekt)
@@ -1076,8 +1110,8 @@ void AdventWreathModule::drawBerries() {
         uint32_t seed = simpleRandom(i * 37 + 123);
         int posIdx = seed % numSafePositions;
         int bx = centerX + (int)(safeXOffsets[posIdx] * scale) + ((seed / 7) % 5) - 2;
-        int by = baseY - (int)(6 * scale) - ((seed / 11) % (int)(4 * scale));
-        int br = max(1, (int)(1 * scale));
+        int by = baseY - (int)(8 * scale) - ((seed / 11) % (int)(5 * scale));
+        int br = max(1, (int)(1.5 * scale));
         
         // Prüfe Kollision mit Kerzen
         bool collision = false;
@@ -1088,7 +1122,7 @@ void AdventWreathModule::drawBerries() {
             }
         }
         
-        if (!collision && by >= 2 && by < _currentCanvas->height() - 2) {
+        if (!collision && by >= 2 && by < canvasH - 2 && bx >= 2 && bx < canvasW - 2) {
             uint32_t colorSeed = simpleRandom(bx * 31 + by * 17 + i);
             uint16_t color = berryColors[colorSeed % numColors];
             // Gedimmt für Hintergrund-Effekt
@@ -1104,7 +1138,7 @@ void AdventWreathModule::drawBerries() {
         uint32_t seed = simpleRandom(i * 47 + 456);
         int posIdx = seed % numSafePositions;
         int bx = centerX + (int)(safeXOffsets[posIdx] * scale) + ((seed / 13) % 7) - 3;
-        int by = baseY + (int)(3 * scale) + ((seed / 17) % (int)(4 * scale));
+        int by = baseY + (int)(2 * scale) + ((seed / 17) % (int)(4 * scale));
         int br = (int)((2 + ((seed / 23) % 2)) * scale);
         if (br < 2) br = 2;
         
@@ -1117,7 +1151,7 @@ void AdventWreathModule::drawBerries() {
             }
         }
         
-        if (!collision && by >= 2 && by < _currentCanvas->height() - 2) {
+        if (!collision && by >= 2 && by < canvasH - 2 && bx >= 2 && bx < canvasW - 2) {
             uint32_t colorSeed = simpleRandom(bx * 47 + by * 23 + i);
             uint16_t color = berryColors[colorSeed % numColors];
             drawOrnament(bx, by, br, color);
@@ -1125,11 +1159,11 @@ void AdventWreathModule::drawBerries() {
     }
 }
 
-unsigned long AdventWreathModule::getDisplayDuration() {
+unsigned long HolidayAnimationsModule::getDisplayDuration() {
     return _displayDurationMs;
 }
 
-bool AdventWreathModule::isEnabled() {
+bool HolidayAnimationsModule::isEnabled() {
     if (!config) return false;
     
     if (!config->adventWreathEnabled && !config->christmasTreeEnabled && !config->fireplaceEnabled) {
@@ -1139,11 +1173,11 @@ bool AdventWreathModule::isEnabled() {
     return isHolidaySeason();
 }
 
-void AdventWreathModule::resetPaging() {
+void HolidayAnimationsModule::resetPaging() {
     _isFinished = false;
 }
 
-void AdventWreathModule::onActivate() {
+void HolidayAnimationsModule::onActivate() {
     _isFinished = false;
     _isAdventViewActive = true;
     _adventViewStartTime = millis();
@@ -1156,7 +1190,7 @@ void AdventWreathModule::onActivate() {
     Log.printf("[AdventWreath] Aktiviert: %s (UID=%lu)\n", modeName, _currentAdventUID);
 }
 
-void AdventWreathModule::timeIsUp() {
+void HolidayAnimationsModule::timeIsUp() {
     const char* modeName = _showFireplace ? "Kamin" : (_showTree ? "Weihnachtsbaum" : "Adventskranz");
     Log.printf("[AdventWreath] Zeit abgelaufen für %s (UID=%lu)\n", modeName, _currentAdventUID);
     _isAdventViewActive = false;
@@ -1166,7 +1200,7 @@ void AdventWreathModule::timeIsUp() {
 
 // ============== KAMIN ZEICHENFUNKTIONEN ==============
 
-void AdventWreathModule::drawFireplace() {
+void HolidayAnimationsModule::drawFireplace() {
     int canvasW = _currentCanvas->width();
     int canvasH = _currentCanvas->height();
     int centerX = canvasW / 2;
@@ -1201,9 +1235,7 @@ void AdventWreathModule::drawFireplace() {
     int fireX = centerX - fireplaceWidth / 2;
     int fireY = baseY - fireplaceHeight;
     
-    // Hintergrund (Wand)
-    uint16_t wallColor = rgb565(60, 50, 40);
-    _currentCanvas->fillRect(0, 0, canvasW, canvasH, wallColor);
+    // Hintergrund wird bereits in draw() mit fireplaceBgColor gesetzt
     
     // Kaminsims (oben)
     int simsY = fireY - simsHeight;
@@ -1281,88 +1313,146 @@ void AdventWreathModule::drawFireplace() {
     drawMantleCandles(simsY, simsWidth, centerX);
 }
 
-void AdventWreathModule::drawFireplaceFlames(int x, int y, int width, int height) {
+void HolidayAnimationsModule::drawFireplaceFlames(int x, int y, int width, int height) {
     // Feuerfarben basierend auf Konfiguration
     int flameColorMode = config ? config->fireplaceFlameColor : 0;
     
-    uint16_t flameColors[4];
+    uint16_t flameColors[5];
+    uint16_t coreColor;
     switch (flameColorMode) {
         case 1:  // Blau
-            flameColors[0] = rgb565(100, 150, 255);
-            flameColors[1] = rgb565(50, 100, 255);
-            flameColors[2] = rgb565(150, 200, 255);
-            flameColors[3] = rgb565(80, 120, 200);
+            flameColors[0] = rgb565(200, 230, 255);  // Kern (hell)
+            flameColors[1] = rgb565(100, 180, 255);
+            flameColors[2] = rgb565(50, 120, 255);
+            flameColors[3] = rgb565(30, 80, 200);
+            flameColors[4] = rgb565(20, 50, 150);   // Außen (dunkel)
+            coreColor = rgb565(220, 240, 255);
             break;
         case 2:  // Grün
-            flameColors[0] = rgb565(100, 255, 100);
-            flameColors[1] = rgb565(50, 200, 50);
-            flameColors[2] = rgb565(150, 255, 150);
-            flameColors[3] = rgb565(80, 180, 80);
+            flameColors[0] = rgb565(200, 255, 200);
+            flameColors[1] = rgb565(100, 255, 100);
+            flameColors[2] = rgb565(50, 200, 50);
+            flameColors[3] = rgb565(30, 150, 30);
+            flameColors[4] = rgb565(20, 100, 20);
+            coreColor = rgb565(220, 255, 220);
             break;
         case 3:  // Violett
-            flameColors[0] = rgb565(200, 100, 255);
-            flameColors[1] = rgb565(150, 50, 200);
-            flameColors[2] = rgb565(255, 150, 255);
-            flameColors[3] = rgb565(180, 80, 220);
+            flameColors[0] = rgb565(255, 200, 255);
+            flameColors[1] = rgb565(220, 130, 255);
+            flameColors[2] = rgb565(180, 80, 220);
+            flameColors[3] = rgb565(140, 50, 180);
+            flameColors[4] = rgb565(100, 30, 140);
+            coreColor = rgb565(255, 220, 255);
             break;
         default:  // Klassisch Orange/Gelb
-            flameColors[0] = rgb565(255, 200, 50);
-            flameColors[1] = rgb565(255, 150, 30);
-            flameColors[2] = rgb565(255, 100, 20);
-            flameColors[3] = rgb565(255, 80, 10);
+            flameColors[0] = rgb565(255, 255, 180);  // Kern (hellgelb)
+            flameColors[1] = rgb565(255, 220, 80);   // Gelb
+            flameColors[2] = rgb565(255, 160, 30);   // Orange
+            flameColors[3] = rgb565(255, 100, 10);   // Rotorange
+            flameColors[4] = rgb565(200, 50, 0);     // Dunkelrot
+            coreColor = rgb565(255, 255, 220);
             break;
     }
     
-    // Mehrere Flammen zeichnen
-    int numFlames = 5;
+    // Mehrere spitze Flammen zeichnen
+    int numFlames = 7;
     for (int f = 0; f < numFlames; f++) {
-        uint32_t seed = simpleRandom(f * 37 + _fireplaceFlamePhase);
+        uint32_t seed = simpleRandom(f * 37 + _fireplaceFlamePhase * 3);
         
-        int flameX = x - width/2 + (f * width / numFlames) + (int)((seed % 6) - 3);
-        int flameHeight = height / 2 + (seed % (height / 3));
-        int flameWidth = 4 + (seed % 4);
+        // Position und Größe der Flamme
+        int spacing = width / (numFlames + 1);
+        int flameX = x - width/2 + spacing * (f + 1) + (int)((seed % 8) - 4);
+        int baseFlameHeight = height * 2 / 3 + (seed % (height / 3));
+        int flameWidth = 3 + (seed % 4);
         
-        // Flamme von unten nach oben zeichnen
-        for (int i = 0; i < flameHeight; i++) {
-            float progress = (float)i / flameHeight;
-            int currentWidth = (int)(flameWidth * (1.0f - progress * 0.7f));
-            if (currentWidth < 1) currentWidth = 1;
+        // Flamme von unten nach oben zeichnen - SPITZ ZULAUFEND
+        for (int i = 0; i < baseFlameHeight; i++) {
+            float progress = (float)i / baseFlameHeight;  // 0 = unten, 1 = oben
             
-            // Farbe basierend auf Höhe
-            int colorIdx = (int)(progress * 3);
-            if (colorIdx > 3) colorIdx = 3;
+            // Breite nimmt nach oben stark ab (spitz)
+            float widthFactor = 1.0f - progress * progress;  // Quadratisch abnehmen
+            int currentWidth = (int)(flameWidth * widthFactor);
+            if (currentWidth < 1 && i < baseFlameHeight - 2) currentWidth = 1;
+            
+            // Farbe basierend auf Position (innen heller, außen dunkler, oben dunkler)
+            int colorIdx = (int)(progress * 4);
+            if (colorIdx > 4) colorIdx = 4;
             uint16_t color = flameColors[colorIdx];
             
-            // Flicker-Effekt
-            int flickerX = ((seed + i + _fireplaceFlamePhase) % 5) - 2;
+            // Flicker-Effekt (mehr oben)
+            int flickerAmplitude = (int)(progress * 4);
+            int flickerX = ((seed + i * 3 + _fireplaceFlamePhase) % (flickerAmplitude * 2 + 1)) - flickerAmplitude;
             
-            _currentCanvas->drawLine(
-                flameX - currentWidth + flickerX, y - i,
-                flameX + currentWidth + flickerX, y - i,
-                color
-            );
+            if (currentWidth >= 1) {
+                for (int dx = -currentWidth; dx <= currentWidth; dx++) {
+                    // Innerer Bereich heller
+                    float distFromCenter = abs(dx) / (float)(currentWidth + 1);
+                    int innerColorIdx = colorIdx - (int)((1.0f - distFromCenter) * 2);
+                    if (innerColorIdx < 0) innerColorIdx = 0;
+                    uint16_t pixelColor = flameColors[innerColorIdx];
+                    
+                    int px = flameX + dx + flickerX;
+                    int py = y - i;
+                    if (px >= x - width/2 && px < x + width/2 && py >= 0 && py < _currentCanvas->height()) {
+                        _currentCanvas->drawPixel(px, py, pixelColor);
+                    }
+                }
+            } else if (currentWidth == 0) {
+                // Spitze der Flamme
+                int px = flameX + flickerX;
+                int py = y - i;
+                if (px >= x - width/2 && px < x + width/2 && py >= 0 && py < _currentCanvas->height()) {
+                    _currentCanvas->drawPixel(px, py, flameColors[min(4, colorIdx + 1)]);
+                }
+            }
+        }
+        
+        // Heller Kern am Fuß der Flamme
+        for (int dy = 0; dy < 3; dy++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                int px = flameX + dx;
+                int py = y - dy;
+                if (px >= x - width/2 && px < x + width/2 && py >= 0) {
+                    _currentCanvas->drawPixel(px, py, coreColor);
+                }
+            }
+        }
+    }
+    
+    // Funken
+    for (int i = 0; i < 8; i++) {
+        uint32_t seed = simpleRandom(i * 17 + _fireplaceFlamePhase * 7);
+        if (seed % 4 == 0) {
+            int sparkX = x - width/2 + (seed % width);
+            int sparkY = y - height/2 - (seed % (height/2));
+            if (sparkY >= 0 && sparkX >= x - width/2 && sparkX < x + width/2) {
+                _currentCanvas->drawPixel(sparkX, sparkY, flameColors[seed % 2]);
+            }
         }
     }
     
     // Glut am Boden
     uint16_t emberColors[] = {
-        rgb565(255, 100, 0),
-        rgb565(255, 50, 0),
-        rgb565(200, 30, 0),
-        rgb565(150, 20, 0)
+        rgb565(255, 120, 20),
+        rgb565(255, 80, 10),
+        rgb565(220, 50, 0),
+        rgb565(180, 30, 0)
     };
     
     for (int i = 0; i < width - 4; i++) {
         uint32_t seed = simpleRandom(i * 13 + _fireplaceFlamePhase / 2);
-        if (seed % 3 == 0) {
-            int emberY = y + (seed % 3);
+        if (seed % 2 == 0) {
+            int emberY = y + 1 + (seed % 2);
             int colorIdx = seed % 4;
-            _currentCanvas->drawPixel(x - width/2 + 2 + i, emberY, emberColors[colorIdx]);
+            int px = x - width/2 + 2 + i;
+            if (emberY < _currentCanvas->height()) {
+                _currentCanvas->drawPixel(px, emberY, emberColors[colorIdx]);
+            }
         }
     }
 }
 
-void AdventWreathModule::drawStockings(int simsY, int simsWidth, int centerX) {
+void HolidayAnimationsModule::drawStockings(int simsY, int simsWidth, int centerX) {
     int stockingCount = config ? config->fireplaceStockingCount : 3;
     if (stockingCount < 0) stockingCount = 0;
     if (stockingCount > 5) stockingCount = 5;
@@ -1398,7 +1488,7 @@ void AdventWreathModule::drawStockings(int simsY, int simsWidth, int centerX) {
     }
 }
 
-void AdventWreathModule::drawMantleCandles(int simsY, int simsWidth, int centerX) {
+void HolidayAnimationsModule::drawMantleCandles(int simsY, int simsWidth, int centerX) {
     int candleCount = config ? config->fireplaceCandleCount : 2;
     if (candleCount < 0) candleCount = 0;
     if (candleCount > 3) candleCount = 3;

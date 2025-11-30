@@ -13,7 +13,7 @@
 #include "MemoryLogger.hpp"
 #include "MultiLogger.hpp"
 #include "PanelStreamer.hpp"
-#include "AdventWreathModule.hpp"
+#include "HolidayAnimationsModule.hpp"
 
 // --- Globale Variablen ---
 Application* Application::_instance = nullptr;
@@ -120,7 +120,7 @@ void Application::begin() {
     _weatherMod = new WeatherModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, webClient);
     _themeParkMod = new ThemeParkModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), webClient);
     themeParkModule = _themeParkMod;
-    _adventWreathMod = new AdventWreathModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, deviceConfig);
+    _adventWreathMod = new HolidayAnimationsModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, deviceConfig);
     
     _panelManager->registerClockModule(_clockMod);
     _panelManager->registerSensorModule(mwaveSensorModule);

@@ -183,6 +183,14 @@ struct DeviceConfig {
     int adventWreathDaysBefore24 = 30;
     /// @brief Adventskranz: Anzahl der Kugeln/Beeren (4-20)
     int adventWreathBerryCount = 12;
+    /// @brief Adventskranz: Erst ab dem 1. Advent zeigen (sonst ab konfigurierter Anzahl Tage vor 24.12.)
+    bool adventWreathOnlyFromFirstAdvent = false;
+    /// @brief Adventskranz: Hintergrundfarbe als Hex-String
+    PsramString adventWreathBgColor = "#000000";
+    /// @brief Weihnachtsbaum: Hintergrundfarbe als Hex-String
+    PsramString christmasTreeBgColor = "#000000";
+    /// @brief Kamin: Hintergrundfarbe/Wandfarbe als Hex-String
+    PsramString fireplaceBgColor = "#3C3228";
     /// @brief Weihnachtsbaum: Tage vor dem 24.12. starten (0-30, Standard: 23 = ab 1. Dezember)
     int christmasTreeDaysBefore24 = 23;
     /// @brief Weihnachtsbaum: Tage nach dem 24.12. anzeigen (0-30, Standard: 7 = bis 31. Dezember)
