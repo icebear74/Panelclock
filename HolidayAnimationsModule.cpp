@@ -674,8 +674,17 @@ void HolidayAnimationsModule::drawTreeOrnaments(int centerX, int baseY, float sc
 }
 
 void HolidayAnimationsModule::drawTreeLights() {
-    int centerX = _currentCanvas->width() / 2;
-    int baseY = 62;
+    int canvasW = _currentCanvas->width();
+    int canvasH = _currentCanvas->height();
+    int centerX = canvasW / 2;
+    
+    // Dynamische Skalierung wie im Baum
+    float scaleY = canvasH / 66.0f;
+    float scale = scaleY;
+    
+    // baseY muss mit dem Baum übereinstimmen
+    int trunkHeight = (int)(10 * scale);
+    int baseY = canvasH - 4 - trunkHeight + 2;  // Gleiche Berechnung wie in drawChristmasTree
     
     // Konfigurierbare Anzahl und Geschwindigkeit
     int lightCount = config ? config->christmasTreeLightCount : 18;
@@ -699,18 +708,23 @@ void HolidayAnimationsModule::drawTreeLights() {
     };
     int numColors = 6;
     
+    // Skalierte Baumhöhe (muss mit drawNaturalTree übereinstimmen)
+    int treeHeight = (int)(54 * scale);
+    
     // Lichter über den Baum verteilt (pseudo-zufällig basierend auf lightCount)
     for (int i = 0; i < lightCount; i++) {
         // Berechne Position basierend auf Index
         uint32_t seed = simpleRandom(i * 37 + 789);
         
-        // Y-Position: verteilt zwischen baseY-12 und baseY-52
-        int yRange = 40;
-        int lightY = baseY - 12 - (seed % yRange);
+        // Y-Position: verteilt innerhalb des Baumes (skaliert)
+        int yRange = (int)(treeHeight * 0.85);  // Skalierte Y-Range
+        int lightY = baseY - (int)(8 * scale) - (seed % yRange);
         
         // X-Position abhängig von Y (breiter unten, schmaler oben)
-        int progress = (baseY - 12 - lightY);
-        int maxX = 24 - (progress * 0.5);
+        int progress = baseY - (int)(8 * scale) - lightY;
+        int maxXBase = (int)(28 * scale);  // Skalierte Baumbreite unten
+        float progressRatio = (float)progress / yRange;
+        int maxX = (int)(maxXBase * (1.0f - progressRatio * 0.7f));  // Breite nimmt nach oben ab
         if (maxX < 3) maxX = 3;
         
         seed = simpleRandom(seed);
@@ -1117,31 +1131,35 @@ void HolidayAnimationsModule::drawBerries() {
         startX + candleSpacing * 3
     };
     int candleWidth = (int)(10 * scale);
-    int safeDistance = candleWidth / 2 + (int)(8 * scale);
+    int safeDistance = candleWidth / 2 + (int)(5 * scale);  // Reduziert für mehr Platz
     
     // Hälfte Hintergrund-Kugeln, Hälfte Vordergrund-Kugeln
     int numBgBerries = totalBerries / 2;
     int numFgBerries = totalBerries - numBgBerries;
     
-    // Hintergrund-Kugeln (kleiner, höher = 3D-Effekt)
+    // Hintergrund-Kugeln (kleiner, höher = 3D-Effekt) - OBERHALB der Kerzen
     for (int i = 0; i < numBgBerries; i++) {
         uint32_t seed = simpleRandom(i * 37 + 123);
         
-        // Position über die gesamte Breite verteilen
-        int bx = 15 + (seed % (canvasW - 30));
-        int by = baseY - (int)(10 * scale) - ((seed / 11) % (int)(8 * scale));
+        // Position: gleichmäßig verteilt, nicht zu nah an Rand
+        int xSpacing = (canvasW - 30) / (numBgBerries + 1);
+        int bx = 15 + xSpacing * (i + 1) + ((int)(seed % 10) - 5);
+        
+        // Y-Position: im Bereich des Tannengrüns (Mitte des Canvas)
+        int by = baseY - (int)(5 * scale) - ((seed / 11) % (int)(6 * scale));
         int br = max(2, (int)(2 * scale));
         
-        // Prüfe Kollision mit Kerzen
+        // Prüfe Kollision mit Kerzen (weniger strikt für Hintergrund)
         bool collision = false;
         for (int c = 0; c < 4; c++) {
-            if (abs(bx - candleX[c]) < safeDistance) {
+            if (abs(bx - candleX[c]) < safeDistance - 3) {
                 collision = true;
                 break;
             }
         }
         
-        if (!collision && by >= 2 && by < canvasH - 2 && bx >= 2 && bx < canvasW - 2) {
+        // Stelle sicher, dass wir innerhalb des Canvas sind
+        if (!collision && by >= 5 && by < canvasH - 5 && bx >= 5 && bx < canvasW - 5) {
             uint32_t colorSeed = simpleRandom(bx * 31 + by * 17 + i);
             uint16_t color = berryColors[colorSeed % numColors];
             // Gedimmt für Hintergrund-Effekt
@@ -1152,15 +1170,22 @@ void HolidayAnimationsModule::drawBerries() {
         }
     }
     
-    // Vordergrund-Kugeln (größer, tiefer)
+    // Vordergrund-Kugeln (größer, auf dem Tannengrün)
     for (int i = 0; i < numFgBerries; i++) {
         uint32_t seed = simpleRandom(i * 47 + 456);
         
-        // Position über die gesamte Breite verteilen
-        int bx = 15 + (seed % (canvasW - 30));
-        int by = baseY + (int)(4 * scale) + ((seed / 17) % (int)(6 * scale));
+        // Position: gleichmäßig verteilt
+        int xSpacing = (canvasW - 30) / (numFgBerries + 1);
+        int bx = 15 + xSpacing * (i + 1) + ((int)(seed % 12) - 6);
+        
+        // Y-Position: auf dem Tannengrün (nicht unterhalb!)
+        int by = baseY - (int)(2 * scale) + ((seed / 17) % (int)(4 * scale));
+        // Begrenzen auf sichtbaren Bereich
+        if (by > canvasH - 5) by = canvasH - 5;
+        
         int br = (int)((3 + ((seed / 23) % 2)) * scale);
         if (br < 3) br = 3;
+        if (br > 5) br = 5;
         
         // Prüfe Kollision mit Kerzen
         bool collision = false;
@@ -1171,7 +1196,8 @@ void HolidayAnimationsModule::drawBerries() {
             }
         }
         
-        if (!collision && by >= 2 && by < canvasH - 2 && bx >= 2 && bx < canvasW - 2) {
+        // Stelle sicher, dass wir innerhalb des Canvas sind
+        if (!collision && by >= 5 && by < canvasH - 3 && bx >= 5 && bx < canvasW - 5) {
             uint32_t colorSeed = simpleRandom(bx * 47 + by * 23 + i);
             uint16_t color = berryColors[colorSeed % numColors];
             drawOrnament(bx, by, br, color);
@@ -1312,10 +1338,26 @@ void HolidayAnimationsModule::drawFireplace() {
         _currentCanvas->drawLine(rightFrameX, y, rightFrameX + frameWidth, y, brickDark);
     }
     
-    // Kamin-Öffnung (schwarz)
+    // Kamin-Öffnung (SCHWARZ)
     int openingX = centerX - openingWidth / 2;
     int openingY = baseY - openingHeight;
-    _currentCanvas->fillRect(openingX, openingY, openingWidth, openingHeight, rgb565(10, 5, 5));
+    _currentCanvas->fillRect(openingX, openingY, openingWidth, openingHeight, rgb565(0, 0, 0));
+    
+    // Flackernder Feuerschein in der Öffnung
+    uint16_t glowColors[] = {
+        rgb565(50, 20, 5),
+        rgb565(60, 25, 8),
+        rgb565(45, 18, 3),
+        rgb565(55, 22, 6)
+    };
+    int glowIdx = _fireplaceFlamePhase % 4;
+    // Sanfter Schein an den Seiten der Öffnung
+    for (int i = 0; i < 5; i++) {
+        int glowX = openingX + 2 + i;
+        _currentCanvas->drawLine(glowX, openingY + 5, glowX, baseY - 5, glowColors[(glowIdx + i) % 4]);
+        glowX = openingX + openingWidth - 3 - i;
+        _currentCanvas->drawLine(glowX, openingY + 5, glowX, baseY - 5, glowColors[(glowIdx + i + 2) % 4]);
+    }
     
     // Bogen über der Öffnung
     uint16_t archColor = brickDark;
@@ -1326,10 +1368,7 @@ void HolidayAnimationsModule::drawFireplace() {
         _currentCanvas->drawPixel(openingX + i, archY + 1, brickColor);
     }
     
-    // Feuer zeichnen
-    drawFireplaceFlames(centerX, baseY - 2, openingWidth - 10, openingHeight - 5);
-    
-    // ===== HOLZSCHEITE - realistischer mit runder Form =====
+    // ===== HOLZSCHEITE - ZUERST zeichnen =====
     uint16_t woodOuter = rgb565(101, 67, 33);   // Rinde außen
     uint16_t woodInner = rgb565(180, 140, 90);  // Holz innen (heller)
     uint16_t woodDark = rgb565(60, 40, 20);     // Schatten
@@ -1394,11 +1433,14 @@ void HolidayAnimationsModule::drawFireplace() {
     _currentCanvas->fillCircle(log3X, log3Y, log3Radius, woodInner);
     _currentCanvas->drawCircle(log3X, log3Y, log3Radius, woodOuter);
     
+    // ===== FEUER - NACH den Holzscheiten zeichnen =====
+    drawFireplaceFlames(centerX, baseY - 2, openingWidth - 10, openingHeight - 5);
+    
     // Strümpfe am Kaminsims
     drawStockings(simsY, simsWidth, centerX);
     
-    // Kerzen auf dem Kaminsims
-    drawMantleCandles(simsY, simsWidth, centerX);
+    // Dekorative Gegenstände auf dem Kaminsims (statt Kerzen)
+    drawMantleDecorations(simsY, simsWidth, centerX, scale);
 }
 
 void HolidayAnimationsModule::drawFireplaceFlames(int x, int y, int width, int height) {
@@ -1576,21 +1618,19 @@ void HolidayAnimationsModule::drawStockings(int simsY, int simsWidth, int center
     }
 }
 
-void HolidayAnimationsModule::drawMantleCandles(int simsY, int simsWidth, int centerX) {
-    int candleCount = config ? config->fireplaceCandleCount : 2;
-    if (candleCount < 0) candleCount = 0;
-    if (candleCount > 3) candleCount = 3;
+void HolidayAnimationsModule::drawMantleDecorations(int simsY, int simsWidth, int centerX, float scale) {
+    // Dekorative Gegenstände statt Kerzen
+    int decoCount = config ? config->fireplaceCandleCount : 2;  // Nutzt gleiche Config
+    if (decoCount < 0) decoCount = 0;
+    if (decoCount > 3) decoCount = 3;
     
-    if (candleCount == 0) return;
+    if (decoCount == 0) return;
     
-    int candleH = 12;
-    int candleW = 4;
-    
-    // Positionen für 1, 2 oder 3 Kerzen
+    // Positionen für 1, 2 oder 3 Objekte
     int positions[3];
-    if (candleCount == 1) {
+    if (decoCount == 1) {
         positions[0] = centerX;
-    } else if (candleCount == 2) {
+    } else if (decoCount == 2) {
         positions[0] = centerX - simsWidth/3;
         positions[1] = centerX + simsWidth/3;
     } else {
@@ -1599,26 +1639,62 @@ void HolidayAnimationsModule::drawMantleCandles(int simsY, int simsWidth, int ce
         positions[2] = centerX + simsWidth/3;
     }
     
-    uint16_t candleColor = rgb565(200, 180, 160);  // Cremeweiß
-    
-    for (int i = 0; i < candleCount; i++) {
+    // Verschiedene Dekorationen
+    for (int i = 0; i < decoCount; i++) {
         int cx = positions[i];
-        int cy = simsY - candleH;
+        int cy = simsY - 2;
+        int decoType = i % 3;
         
-        // Kerze
-        _currentCanvas->fillRect(cx - candleW/2, cy, candleW, candleH, candleColor);
-        
-        // Docht
-        _currentCanvas->drawLine(cx, cy - 1, cx, cy - 3, rgb565(50, 50, 50));
-        
-        // Kleine Flamme
-        int phase = _flamePhase + i * 7;
-        int flicker = (phase % 4) - 1;
-        
-        uint16_t flameYellow = rgb565(255, 255, 100);
-        uint16_t flameOrange = rgb565(255, 180, 50);
-        
-        _currentCanvas->fillCircle(cx + flicker, cy - 5, 2, flameYellow);
-        _currentCanvas->drawPixel(cx + flicker, cy - 7, flameOrange);
+        if (decoType == 0) {
+            // Blumenvase mit Blumen
+            uint16_t vaseColor = rgb565(80, 60, 40);
+            uint16_t flowerColors[] = {rgb565(255, 100, 100), rgb565(255, 200, 100), rgb565(255, 150, 200)};
+            
+            // Vase
+            int vaseH = (int)(8 * scale);
+            int vaseW = (int)(4 * scale);
+            _currentCanvas->fillRect(cx - vaseW/2, cy - vaseH, vaseW, vaseH, vaseColor);
+            _currentCanvas->drawRect(cx - vaseW/2, cy - vaseH, vaseW, vaseH, rgb565(50, 40, 30));
+            
+            // Blumen
+            for (int f = 0; f < 3; f++) {
+                int fx = cx + (f - 1) * 2;
+                int fy = cy - vaseH - 3 - f;
+                _currentCanvas->fillCircle(fx, fy, 2, flowerColors[f % 3]);
+                _currentCanvas->drawLine(fx, fy + 2, fx, cy - vaseH + 1, rgb565(50, 100, 50));
+            }
+        } else if (decoType == 1) {
+            // Schneekugel
+            uint16_t baseColor = rgb565(60, 60, 60);
+            uint16_t glassColor = rgb565(180, 200, 220);
+            
+            int globeR = (int)(5 * scale);
+            // Basis
+            _currentCanvas->fillRect(cx - globeR, cy - 3, globeR * 2, 3, baseColor);
+            // Glasmugel
+            _currentCanvas->fillCircle(cx, cy - 3 - globeR, globeR, glassColor);
+            // Kleiner Tannenbaum drin
+            _currentCanvas->fillTriangle(cx, cy - 3 - globeR - 3, cx - 2, cy - 3 - 2, cx + 2, cy - 3 - 2, rgb565(0, 100, 50));
+            // Schneeflocken
+            uint32_t seed = simpleRandom(_fireplaceFlamePhase + i * 17);
+            for (int s = 0; s < 3; s++) {
+                int sx = cx - globeR/2 + (seed % globeR);
+                int sy = cy - 3 - globeR/2 - (seed / 7 % globeR);
+                _currentCanvas->drawPixel(sx, sy, rgb565(255, 255, 255));
+                seed = simpleRandom(seed);
+            }
+        } else {
+            // Bilderrahmen
+            uint16_t frameColor = rgb565(139, 90, 43);
+            uint16_t pictureColor = rgb565(200, 180, 150);
+            
+            int frameW = (int)(8 * scale);
+            int frameH = (int)(10 * scale);
+            _currentCanvas->fillRect(cx - frameW/2, cy - frameH, frameW, frameH, frameColor);
+            _currentCanvas->fillRect(cx - frameW/2 + 1, cy - frameH + 1, frameW - 2, frameH - 2, pictureColor);
+            // Kleines Motiv (Haus)
+            _currentCanvas->fillRect(cx - 2, cy - frameH + 4, 4, 4, rgb565(180, 100, 80));
+            _currentCanvas->fillTriangle(cx - 3, cy - frameH + 4, cx, cy - frameH + 1, cx + 3, cy - frameH + 4, rgb565(150, 80, 60));
+        }
     }
 }

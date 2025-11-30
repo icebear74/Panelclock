@@ -248,9 +248,9 @@ private:
     void drawStockings(int simsY, int simsWidth, int centerX);
 
     /**
-     * @brief Zeichnet Kerzen auf dem Kaminsims
+     * @brief Zeichnet dekorative Gegenstände auf dem Kaminsims
      */
-    void drawMantleCandles(int simsY, int simsWidth, int centerX);
+    void drawMantleDecorations(int simsY, int simsWidth, int centerX, float scale);
 
     /**
      * @brief Prüft ob der Kamin in der aktuellen Saison aktiv ist

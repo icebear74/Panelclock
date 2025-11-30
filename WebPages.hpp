@@ -349,12 +349,12 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
         </select>
         <label for="fireplaceBrickColor">Kaminfarbe</label><input type="color" id="fireplaceBrickColor" name="fireplaceBrickColor" value="{fireplaceBrickColor}">
         <label for="fireplaceStockingCount">Anzahl Str&uuml;mpfe am Kaminsims (0-5)</label><input type="number" id="fireplaceStockingCount" name="fireplaceStockingCount" value="{fireplaceStockingCount}" min="0" max="5">
-        <label for="fireplaceCandleCount">Anzahl Kerzen auf dem Kaminsims (0-3)</label><input type="number" id="fireplaceCandleCount" name="fireplaceCandleCount" value="{fireplaceCandleCount}" min="0" max="3">
+        <label for="fireplaceCandleCount">Anzahl Dekoration auf dem Kaminsims (0-3)</label><input type="number" id="fireplaceCandleCount" name="fireplaceCandleCount" value="{fireplaceCandleCount}" min="0" max="3">
         
         <h3 style="margin-top: 20px; border-bottom: 1px solid #666; padding-bottom: 5px;">Allgemein</h3>
         <label style="display: inline-block; margin: 10px 0;"><input type="checkbox" name="adventWreathFullscreen" id="adventWreathFullscreen" {adventWreathFullscreen_checked}> Vollbild-Modus (192x96 statt 192x66)</label>
         
-        <p style="color:#bbb; margin-top:10px;">Der Adventskranz zeigt 1-4 brennende Kerzen je nach aktuellem Advent mit zuf&auml;llig flackernden Flammen. Der Weihnachtsbaum hat blinkende Lichter und Kugeln. Der Kamin zeigt ein gem&uuml;tliches Feuer mit Str&uuml;mpfen. Wenn mehrere aktiviert sind, wechseln sie ab.</p>
+        <p style="color:#bbb; margin-top:10px;">Der Adventskranz zeigt 1-4 brennende Kerzen je nach aktuellem Advent mit zuf&auml;llig flackernden Flammen. Der Weihnachtsbaum hat blinkende Lichter und Kugeln. Der Kamin zeigt ein gem&uuml;tliches Feuer mit Str&uuml;mpfen und Dekoration (Vasen, Schneekugeln, Bilderrahmen). Wenn mehrere aktiviert sind, wechseln sie ab.</p>
     </div>
 </div>
 <script>
