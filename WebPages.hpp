@@ -312,14 +312,14 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
         
         <label for="adventWreathFlameSpeedMs">Flammen-Animation (ms)</label><input type="number" id="adventWreathFlameSpeedMs" name="adventWreathFlameSpeedMs" value="{adventWreathFlameSpeedMs}" min="20" max="500">
         
-        <label for="adventWreathEndDay">Adventskranz bis (Dezember-Tag)</label><input type="number" id="adventWreathEndDay" name="adventWreathEndDay" value="{adventWreathEndDay}" min="1" max="31">
+        <label for="adventWreathDaysBefore24">Adventskranz: Tage vor dem 24.12.</label><input type="number" id="adventWreathDaysBefore24" name="adventWreathDaysBefore24" value="{adventWreathDaysBefore24}" min="0" max="30">
         
         <h3 style="margin-top:15px;">Weihnachtsbaum</h3>
         <input type="checkbox" id="christmasTreeEnabled" name="christmasTreeEnabled" {christmasTreeEnabled_checked}><label for="christmasTreeEnabled" style="display:inline;">Weihnachtsbaum aktivieren</label><br>
-        <label for="christmasTreeStartDay">Weihnachtsbaum ab (Dezember-Tag)</label><input type="number" id="christmasTreeStartDay" name="christmasTreeStartDay" value="{christmasTreeStartDay}" min="1" max="31">
-        <label for="christmasTreeEndDay">Weihnachtsbaum bis (Dezember-Tag)</label><input type="number" id="christmasTreeEndDay" name="christmasTreeEndDay" value="{christmasTreeEndDay}" min="1" max="31">
+        <label for="christmasTreeDaysBefore24">Weihnachtsbaum: Tage vor dem 24.12.</label><input type="number" id="christmasTreeDaysBefore24" name="christmasTreeDaysBefore24" value="{christmasTreeDaysBefore24}" min="0" max="30">
+        <label for="christmasTreeDaysAfter24">Weihnachtsbaum: Tage nach dem 24.12.</label><input type="number" id="christmasTreeDaysAfter24" name="christmasTreeDaysAfter24" value="{christmasTreeDaysAfter24}" min="0" max="30">
         
-        <p style="color:#bbb; margin-top:10px;">Der Adventskranz zeigt 1-4 brennende Kerzen je nach aktuellem Advent. Der Weihnachtsbaum wird mit blinkenden Lichtern und bunten Kugeln angezeigt. Wenn beide aktiviert sind, wechseln sie sich ab. Nach dem Kranz-Enddatum wird nur noch der Baum gezeigt.</p>
+        <p style="color:#bbb; margin-top:10px;">Der Adventskranz zeigt 1-4 brennende Kerzen je nach aktuellem Advent mit zuf&auml;llig flackernden Flammen. Der Weihnachtsbaum hat blinkende Lichter und Kugeln. Wenn beide aktiviert sind, wechseln sie ab. Nach dem 24.12. wird nur noch der Baum gezeigt.</p>
     </div>
 </div>
 <script>

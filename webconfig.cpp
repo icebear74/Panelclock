@@ -123,9 +123,9 @@ void loadDeviceConfig() {
                 deviceConfig->adventWreathCustomColors = doc["adventWreathCustomColors"] | "#FF0000,#FFD700,#008000,#FFFFFF";
                 deviceConfig->adventWreathInterrupt = doc["adventWreathInterrupt"] | false;
                 deviceConfig->adventWreathFlameSpeedMs = doc["adventWreathFlameSpeedMs"] | 50;
-                deviceConfig->adventWreathEndDay = doc["adventWreathEndDay"] | 24;
-                deviceConfig->christmasTreeStartDay = doc["christmasTreeStartDay"] | 1;
-                deviceConfig->christmasTreeEndDay = doc["christmasTreeEndDay"] | 31;
+                deviceConfig->adventWreathDaysBefore24 = doc["adventWreathDaysBefore24"] | 30;
+                deviceConfig->christmasTreeDaysBefore24 = doc["christmasTreeDaysBefore24"] | 23;
+                deviceConfig->christmasTreeDaysAfter24 = doc["christmasTreeDaysAfter24"] | 7;
                 deviceConfig->christmasTreeEnabled = doc["christmasTreeEnabled"] | true;
                 
                 deviceConfig->globalScrollSpeedMs = doc["globalScrollSpeedMs"] | 50;
@@ -242,9 +242,9 @@ void saveDeviceConfig() {
     doc["adventWreathCustomColors"] = deviceConfig->adventWreathCustomColors.c_str();
     doc["adventWreathInterrupt"] = deviceConfig->adventWreathInterrupt;
     doc["adventWreathFlameSpeedMs"] = deviceConfig->adventWreathFlameSpeedMs;
-    doc["adventWreathEndDay"] = deviceConfig->adventWreathEndDay;
-    doc["christmasTreeStartDay"] = deviceConfig->christmasTreeStartDay;
-    doc["christmasTreeEndDay"] = deviceConfig->christmasTreeEndDay;
+    doc["adventWreathDaysBefore24"] = deviceConfig->adventWreathDaysBefore24;
+    doc["christmasTreeDaysBefore24"] = deviceConfig->christmasTreeDaysBefore24;
+    doc["christmasTreeDaysAfter24"] = deviceConfig->christmasTreeDaysAfter24;
     doc["christmasTreeEnabled"] = deviceConfig->christmasTreeEnabled;
     
     doc["globalScrollSpeedMs"] = deviceConfig->globalScrollSpeedMs;

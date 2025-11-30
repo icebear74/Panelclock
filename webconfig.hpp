@@ -179,12 +179,12 @@ struct DeviceConfig {
     bool adventWreathInterrupt = false;
     /// @brief Flammen-Animation Geschwindigkeit in Millisekunden (niedriger = schneller)
     int adventWreathFlameSpeedMs = 50;
-    /// @brief Letzter Tag für Adventskranz-Anzeige (Standard: 24 = Heiligabend)
-    int adventWreathEndDay = 24;
-    /// @brief Erster Tag für Weihnachtsbaum-Anzeige (Standard: 1 = 1. Dezember)
-    int christmasTreeStartDay = 1;
-    /// @brief Letzter Tag für Weihnachtsbaum-Anzeige (Standard: 31 = Silvester)
-    int christmasTreeEndDay = 31;
+    /// @brief Adventskranz: Tage vor dem 24.12. starten (0-30, Standard: 30 = ab ca. 24. November)
+    int adventWreathDaysBefore24 = 30;
+    /// @brief Weihnachtsbaum: Tage vor dem 24.12. starten (0-30, Standard: 23 = ab 1. Dezember)
+    int christmasTreeDaysBefore24 = 23;
+    /// @brief Weihnachtsbaum: Tage nach dem 24.12. anzeigen (0-30, Standard: 7 = bis 31. Dezember)
+    int christmasTreeDaysAfter24 = 7;
     /// @brief Weihnachtsbaum aktivieren
     bool christmasTreeEnabled = true;
 

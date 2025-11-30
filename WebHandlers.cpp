@@ -212,9 +212,9 @@ void handleConfigModules() {
     replaceAll(content, "{adventWreathCustomColors}", deviceConfig->adventWreathCustomColors.c_str());
     replaceAll(content, "{adventWreathInterrupt_checked}", deviceConfig->adventWreathInterrupt ? "checked" : "");
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->adventWreathFlameSpeedMs); replaceAll(content, "{adventWreathFlameSpeedMs}", num_buf);
-    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->adventWreathEndDay); replaceAll(content, "{adventWreathEndDay}", num_buf);
-    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->christmasTreeStartDay); replaceAll(content, "{christmasTreeStartDay}", num_buf);
-    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->christmasTreeEndDay); replaceAll(content, "{christmasTreeEndDay}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->adventWreathDaysBefore24); replaceAll(content, "{adventWreathDaysBefore24}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->christmasTreeDaysBefore24); replaceAll(content, "{christmasTreeDaysBefore24}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->christmasTreeDaysAfter24); replaceAll(content, "{christmasTreeDaysAfter24}", num_buf);
     replaceAll(content, "{christmasTreeEnabled_checked}", deviceConfig->christmasTreeEnabled ? "checked" : "");
     
     // Parse custom colors for individual color pickers
@@ -356,9 +356,9 @@ void handleSaveModules() {
     if (server->hasArg("adventWreathCustomColors")) deviceConfig->adventWreathCustomColors = server->arg("adventWreathCustomColors").c_str();
     deviceConfig->adventWreathInterrupt = server->hasArg("adventWreathInterrupt");
     if (server->hasArg("adventWreathFlameSpeedMs")) deviceConfig->adventWreathFlameSpeedMs = server->arg("adventWreathFlameSpeedMs").toInt();
-    if (server->hasArg("adventWreathEndDay")) deviceConfig->adventWreathEndDay = server->arg("adventWreathEndDay").toInt();
-    if (server->hasArg("christmasTreeStartDay")) deviceConfig->christmasTreeStartDay = server->arg("christmasTreeStartDay").toInt();
-    if (server->hasArg("christmasTreeEndDay")) deviceConfig->christmasTreeEndDay = server->arg("christmasTreeEndDay").toInt();
+    if (server->hasArg("adventWreathDaysBefore24")) deviceConfig->adventWreathDaysBefore24 = server->arg("adventWreathDaysBefore24").toInt();
+    if (server->hasArg("christmasTreeDaysBefore24")) deviceConfig->christmasTreeDaysBefore24 = server->arg("christmasTreeDaysBefore24").toInt();
+    if (server->hasArg("christmasTreeDaysAfter24")) deviceConfig->christmasTreeDaysAfter24 = server->arg("christmasTreeDaysAfter24").toInt();
     deviceConfig->christmasTreeEnabled = server->hasArg("christmasTreeEnabled");
     
     // Global scrolling configuration

@@ -81,21 +81,26 @@ bool AdventWreathModule::isAdventSeason() {
     
     int month = tm_now.tm_mon + 1;
     int day = tm_now.tm_mday;
-    int endDay = config ? config->adventWreathEndDay : 24;
     int year = tm_now.tm_year + 1900;
     
-    time_t fourthAdvent = calculateFourthAdvent(year);
-    struct tm tm_fourth;
-    localtime_r(&fourthAdvent, &tm_fourth);
+    // Berechne Start- und Enddatum basierend auf "Tage vor dem 24."
+    int daysBefore = config ? config->adventWreathDaysBefore24 : 30;
+    if (daysBefore > 30) daysBefore = 30;
+    if (daysBefore < 0) daysBefore = 0;
     
-    struct tm tm_first = tm_fourth;
-    tm_first.tm_mday -= 21;
-    mktime(&tm_first);
+    // Startdatum: 24. Dezember minus daysBefore
+    int startDay = 24 - daysBefore;
+    int startMonth = 12;
+    if (startDay <= 0) {
+        startDay += 30;  // November hat 30 Tage
+        startMonth = 11;
+    }
     
-    if (month == 11) {
-        return (day >= tm_first.tm_mday && tm_first.tm_mon == 10);
-    } else if (month == 12) {
-        return (day <= endDay);
+    // Adventskranz wird bis zum 24.12. gezeigt
+    if (month == 12 && day <= 24) {
+        return true;
+    } else if (month == 11 && day >= startDay) {
+        return true;
     }
     
     return false;
@@ -111,11 +116,43 @@ bool AdventWreathModule::isChristmasSeason() {
     
     int month = tm_now.tm_mon + 1;
     int day = tm_now.tm_mday;
-    int endDay = config ? config->christmasTreeEndDay : 31;
-    int startDay = config ? config->christmasTreeStartDay : 1;
     
-    if (month == 12) {
-        return (day >= startDay && day <= endDay);
+    // Berechne Start- und Enddatum basierend auf "Tage vor/nach dem 24."
+    int daysBefore = config ? config->christmasTreeDaysBefore24 : 23;
+    int daysAfter = config ? config->christmasTreeDaysAfter24 : 7;
+    if (daysBefore > 30) daysBefore = 30;
+    if (daysBefore < 0) daysBefore = 0;
+    if (daysAfter > 30) daysAfter = 30;
+    if (daysAfter < 0) daysAfter = 0;
+    
+    // Startdatum: 24. Dezember minus daysBefore
+    int startDay = 24 - daysBefore;
+    int startMonth = 12;
+    if (startDay <= 0) {
+        startDay += 30;
+        startMonth = 11;
+    }
+    
+    // Enddatum: 24. Dezember plus daysAfter
+    int endDay = 24 + daysAfter;
+    int endMonth = 12;
+    if (endDay > 31) {
+        endDay -= 31;
+        endMonth = 1;  // Januar nächstes Jahr
+    }
+    
+    // Prüfe ob aktuelles Datum im Bereich liegt
+    if (endMonth == 1) {
+        // Bereich geht über Jahreswechsel
+        if (month == 12 && day >= startDay) return true;
+        if (month == 1 && day <= endDay) return true;
+    } else if (startMonth == 11) {
+        // Bereich startet im November
+        if (month == 11 && day >= startDay) return true;
+        if (month == 12 && day <= endDay) return true;
+    } else {
+        // Alles im Dezember
+        if (month == 12 && day >= startDay && day <= endDay) return true;
     }
     
     return false;
@@ -135,20 +172,22 @@ ChristmasDisplayMode AdventWreathModule::getCurrentDisplayMode() {
     
     int month = tm_now.tm_mon + 1;
     int day = tm_now.tm_mday;
-    int wreathEndDay = config ? config->adventWreathEndDay : 24;
     bool treeEnabled = config ? config->christmasTreeEnabled : true;
     bool wreathEnabled = config ? config->adventWreathEnabled : true;
     
-    if (month == 12) {
-        if (day > wreathEndDay) {
-            return treeEnabled ? ChristmasDisplayMode::Tree : ChristmasDisplayMode::Wreath;
-        }
-        
-        if (wreathEnabled && treeEnabled) {
-            return ChristmasDisplayMode::Alternate;
-        } else if (treeEnabled) {
-            return ChristmasDisplayMode::Tree;
-        }
+    // Adventskranz bis zum 24.12., danach nur noch Baum
+    if (month == 12 && day > 24) {
+        return treeEnabled ? ChristmasDisplayMode::Tree : ChristmasDisplayMode::Wreath;
+    } else if (month == 1) {
+        // Januar: nur Baum (wenn noch in der Saison)
+        return treeEnabled ? ChristmasDisplayMode::Tree : ChristmasDisplayMode::Wreath;
+    }
+    
+    // Vor/am 24.12.: Wechsel zwischen beiden wenn aktiviert
+    if (wreathEnabled && treeEnabled) {
+        return ChristmasDisplayMode::Alternate;
+    } else if (treeEnabled) {
+        return ChristmasDisplayMode::Tree;
     }
     
     return ChristmasDisplayMode::Wreath;
@@ -517,9 +556,11 @@ void AdventWreathModule::drawCandle(int x, int y, uint16_t color, bool isLit, in
 }
 
 void AdventWreathModule::drawFlame(int x, int y, int phase) {
-    int flicker = ((phase / 3) % 5) - 2;
-    int heightVar = (phase % 6);
-    int widthVar = ((phase / 2) % 3);
+    // Mehr Zufälligkeit durch Kombination von Phase und Position
+    uint32_t randSeed = simpleRandom(x * 127 + phase * 31);
+    int flicker = ((phase / 3) % 5) - 2 + ((randSeed % 3) - 1);
+    int heightVar = (phase % 6) + ((randSeed / 3) % 2);
+    int widthVar = ((phase / 2) % 3) + ((randSeed / 7) % 2);
     
     int flameHeight = 8 + heightVar;
     
@@ -527,23 +568,29 @@ void AdventWreathModule::drawFlame(int x, int y, int phase) {
         int baseWidth = (flameHeight - i) / 2 + widthVar;
         if (baseWidth < 1) baseWidth = 1;
         
-        int colorPhase = (i + phase / 2) % 8;
+        // Zufällige Farbvariation pro Zeile
+        int colorPhase = (i + phase / 2 + ((randSeed / (i + 1)) % 3)) % 8;
         uint8_t r, g, b;
         
+        // Zufällige Helligkeitsvariation
+        int brightnessVar = ((randSeed / (i + 5)) % 30) - 15;
+        
         if (colorPhase < 2) {
-            r = 255; g = 255; b = 150 - i * 10;
+            r = 255; g = 255 + brightnessVar; b = 150 - i * 10;
         } else if (colorPhase < 4) {
-            r = 255; g = 180 - i * 12; b = 0;
+            r = 255; g = 180 - i * 12 + brightnessVar; b = 0;
         } else if (colorPhase < 6) {
-            r = 255; g = 120 - i * 8; b = 0;
+            r = 255; g = 120 - i * 8 + brightnessVar; b = 0;
         } else {
-            r = 255; g = 220 - i * 15; b = 50;
+            r = 255; g = 220 - i * 15 + brightnessVar; b = 50;
         }
         
         if (g < 30) g = 30;
+        if (g > 255) g = 255;
         if (b < 0) b = 0;
         
-        int flickerOffset = (i < flameHeight / 2) ? 0 : flicker;
+        // Zufälliger Flicker-Offset pro Zeile
+        int flickerOffset = (i < flameHeight / 2) ? 0 : flicker + ((randSeed / (i + 3)) % 2);
         canvas.drawLine(x - baseWidth + flickerOffset, y - i, 
                        x + baseWidth + flickerOffset, y - i, rgb565(r, g, b));
     }
@@ -637,15 +684,17 @@ void AdventWreathModule::drawBerries() {
     int baseY = 54;
     int centerX = canvas.width() / 2;
     
+    // Hintergrund-Kugeln: höher positioniert (kleinere Y-Werte) für 3D-Effekt
+    // Sie liegen "hinter" den Kerzen, also weiter oben auf dem Bildschirm
     int bgBerries[][3] = {
-        {centerX - 80, baseY + 2, 1},
-        {centerX - 60, baseY + 4, 1},
-        {centerX - 35, baseY + 3, 1},
-        {centerX + 35, baseY + 3, 1},
-        {centerX + 60, baseY + 4, 1},
-        {centerX + 80, baseY + 2, 1},
-        {centerX - 55, baseY + 1, 1},
-        {centerX + 55, baseY + 1, 1}
+        {centerX - 80, baseY - 8, 1},
+        {centerX - 60, baseY - 6, 1},
+        {centerX - 35, baseY - 7, 1},
+        {centerX + 35, baseY - 7, 1},
+        {centerX + 60, baseY - 6, 1},
+        {centerX + 80, baseY - 8, 1},
+        {centerX - 55, baseY - 9, 1},
+        {centerX + 55, baseY - 9, 1}
     };
     int numBgBerries = 8;
     
