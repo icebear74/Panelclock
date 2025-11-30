@@ -68,6 +68,10 @@ public:
     bool isFinished() const override { return _isFinished; }
     bool canBeInPlaylist() const override { return false; } // Nur als PlayNext OneShot
     void timeIsUp() override;
+    
+    // --- Fullscreen-Unterstützung ---
+    bool supportsFullscreen() const override { return true; }
+    bool wantsFullscreen() const override;
 
 protected:
     void onActivate() override;
@@ -77,10 +81,14 @@ private:
     GFXcanvas16& canvas;
     GeneralTimeConverter& timeConverter;
     DeviceConfig* config;
+    
+    // Zeiger auf den aktuell verwendeten Canvas (normal oder fullscreen)
+    GFXcanvas16* _currentCanvas = nullptr;
 
     // Zustandsvariablen
     bool _isFinished = false;
     bool _isAdventViewActive = false;
+    bool _requestPending = false;  // Verhindert doppelte Requests bevor Aktivierung erfolgt
     uint32_t _currentAdventUID = 0;
     unsigned long _adventViewStartTime = 0;
     unsigned long _lastAdventDisplayTime = 0;

@@ -5,6 +5,10 @@
 #include <ArduinoJson.h>
 #include "PsramUtils.hpp"
 #include "MemoryLogger.hpp"
+#include <Adafruit_GFX.h>
+
+// Forward declaration
+class GFXcanvas16;
 
 #define runtime_safe_buffer 10000;
 
@@ -94,6 +98,25 @@ public:
      */
     virtual bool canBeInPlaylist() const { return true; }
     
+    // --- Fullscreen-Unterstützung ---
+    /**
+     * Gibt an, ob dieses Modul den Fullscreen-Modus unterstützt.
+     * @return true = Modul kann im Fullscreen-Modus angezeigt werden
+     */
+    virtual bool supportsFullscreen() const { return false; }
+    
+    /**
+     * Gibt an, ob das Modul aktuell im Fullscreen-Modus angezeigt werden soll.
+     * @return true = Fullscreen-Modus aktiv für dieses Modul
+     */
+    virtual bool wantsFullscreen() const { return false; }
+    
+    /**
+     * Setzt den Canvas für Fullscreen-Modus.
+     * @param fullCanvas Zeiger auf den Fullscreen-Canvas (192x96)
+     */
+    virtual void setFullscreenCanvas(GFXcanvas16* fullCanvas) { _fullscreenCanvas = fullCanvas; }
+    
     // --- Erweiterte Callbacks mit UID ---
     void setRequestCallbackEx(std::function<bool(DrawableModule*, Priority, uint32_t, unsigned long)> cb) { 
         requestCallbackEx = cb; 
@@ -165,6 +188,7 @@ protected:
     bool _isFinished = false;
     uint32_t maxRuntimeMs = 30000;
     uint32_t _activeUID = 0;
+    GFXcanvas16* _fullscreenCanvas = nullptr;
 
 private:
     // Callbacks

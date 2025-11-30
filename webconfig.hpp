@@ -197,6 +197,10 @@ struct DeviceConfig {
     PsramString christmasTreeLightColor = "#FFD700";
     /// @brief Weihnachtsbaum: Anzahl der Lichter (5-30)
     int christmasTreeLightCount = 18;
+    /// @brief Weihnachtsbaum: Anzahl der Geschenke (0-10)
+    int christmasTreeGiftCount = 5;
+    /// @brief Adventskranz/Weihnachtsbaum: Fullscreen-Modus (0=Teilbereich 192x66, 1=Vollbild 192x96)
+    bool adventWreathFullscreen = false;
 
     // --- Globale Scrolling-Einstellungen ---
     /// @brief Globale Scroll-Geschwindigkeit in Millisekunden pro Pixel für alle Module.

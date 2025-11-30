@@ -322,6 +322,7 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
         
         <label for="christmasTreeLightSpeedMs">Lichterketten-Blinkgeschwindigkeit (ms)</label><input type="number" id="christmasTreeLightSpeedMs" name="christmasTreeLightSpeedMs" value="{christmasTreeLightSpeedMs}" min="30" max="500">
         <label for="christmasTreeLightCount">Anzahl der Lichter (5-30)</label><input type="number" id="christmasTreeLightCount" name="christmasTreeLightCount" value="{christmasTreeLightCount}" min="5" max="30">
+        <label for="christmasTreeGiftCount">Anzahl der Geschenke (0-10)</label><input type="number" id="christmasTreeGiftCount" name="christmasTreeGiftCount" value="{christmasTreeGiftCount}" min="0" max="10">
         <label for="christmasTreeLightMode">Lichterketten-Farbe</label>
         <select id="christmasTreeLightMode" name="christmasTreeLightMode" onchange="toggleTreeLightColor()">
             <option value="0" {christmasTreeLightMode0_selected}>Zuf&auml;llige Farben</option>
@@ -330,6 +331,8 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
         <div id="treeLightColorDiv" style="display:none;">
             <label for="christmasTreeLightColor">Feste Lichterfarbe</label><input type="color" id="christmasTreeLightColor" name="christmasTreeLightColor" value="{christmasTreeLightColor}">
         </div>
+        
+        <label style="display: inline-block; margin: 10px 0;"><input type="checkbox" name="adventWreathFullscreen" id="adventWreathFullscreen" {adventWreathFullscreen_checked}> Vollbild-Modus (192x96 statt 192x66)</label>
         
         <p style="color:#bbb; margin-top:10px;">Der Adventskranz zeigt 1-4 brennende Kerzen je nach aktuellem Advent mit zuf&auml;llig flackernden Flammen. Der Weihnachtsbaum hat blinkende Lichter und Kugeln. Wenn beide aktiviert sind, wechseln sie ab. Nach dem 24.12. wird nur noch der Baum gezeigt.</p>
     </div>

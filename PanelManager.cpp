@@ -119,6 +119,12 @@ void PanelManager::registerModule(DrawableModule* mod) {
         this->handlePriorityRelease(m, uid);
     });
     
+    // Fullscreen-Canvas setzen wenn das Modul Fullscreen unterstützt
+    if (mod->supportsFullscreen() && _fullCanvas) {
+        mod->setFullscreenCanvas(_fullCanvas);
+        Serial.printf("[PanelManager] Fullscreen-Canvas für '%s' gesetzt\n", mod->getModuleName());
+    }
+    
     // Zu Catalog hinzufügen (IMMER, für periodicTick)
     _moduleCatalog.push_back(mod);
     
@@ -397,9 +403,13 @@ void PanelManager::tick() {
     
     // Schritt 3: Wenn kein Modul aktiv, starte eines
     if (!activeEntry) {
+        _fullscreenActive = false;  // Kein Modul = kein Fullscreen
         switchNextModule();
         return;
     }
+    
+    // Schritt 3.5: Fullscreen-Modus aktualisieren basierend auf aktivem Modul
+    _fullscreenActive = activeEntry->module && activeEntry->module->wantsFullscreen();
     
     // Schritt 4: Prüfe ob Modul noch enabled ist
     if (!activeEntry->module->isEnabled()) {
@@ -416,6 +426,7 @@ void PanelManager::tick() {
             }
         }
         
+        _fullscreenActive = false;
         switchNextModule();
         return;
     }
@@ -723,22 +734,40 @@ void PanelManager::render() {
         return;
     }
     
-    if (!_virtualDisp || !_dma_display || !_canvasTime || !_canvasData) return;
+    if (!_virtualDisp || !_dma_display || !_canvasTime || !_canvasData || !_fullCanvas) return;
     
     // Lock canvas access for thread-safe rendering
     if (_canvasMutex && xSemaphoreTake(_canvasMutex, portMAX_DELAY) == pdTRUE) {
-        drawClockArea();
-        drawDataArea();
-        
-        _virtualDisp->drawRGBBitmap(0, 0, _canvasTime->getBuffer(), 
-                                    _canvasTime->width(), _canvasTime->height());
-        _virtualDisp->drawRGBBitmap(0, TIME_AREA_H, _canvasData->getBuffer(), 
-                                    _canvasData->width(), _canvasData->height());
+        if (_fullscreenActive) {
+            // Fullscreen-Modus: Modul zeichnet auf gesamten Bildschirm
+            drawFullscreenArea();
+            _virtualDisp->drawRGBBitmap(0, 0, _fullCanvas->getBuffer(), 
+                                        _fullCanvas->width(), _fullCanvas->height());
+        } else {
+            // Normaler Modus: Uhr oben, Daten unten
+            drawClockArea();
+            drawDataArea();
+            
+            _virtualDisp->drawRGBBitmap(0, 0, _canvasTime->getBuffer(), 
+                                        _canvasTime->width(), _canvasTime->height());
+            _virtualDisp->drawRGBBitmap(0, TIME_AREA_H, _canvasData->getBuffer(), 
+                                        _canvasData->width(), _canvasData->height());
+        }
         
         xSemaphoreGive(_canvasMutex);
     }
     
     _dma_display->flipDMABuffer();
+}
+
+void PanelManager::drawFullscreenArea() {
+    PlaylistEntry* activeEntry = findActiveEntry();
+    
+    if (activeEntry && activeEntry->module && !activeEntry->isPaused) {
+        activeEntry->module->draw();
+    } else {
+        if (_fullCanvas) _fullCanvas->fillScreen(0);
+    }
 }
 
 void PanelManager::drawClockArea() {

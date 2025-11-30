@@ -183,6 +183,18 @@ public:
     
     // NEW: Thread-safe panel buffer copy for streaming
     bool copyFullPanelBuffer(uint16_t* destinationBuffer, size_t bufferSize);
+    
+    // NEU: Fullscreen Canvas Support
+    /**
+     * @brief Gibt zurück ob gerade ein Modul im Fullscreen-Modus angezeigt wird.
+     */
+    bool isFullscreenActive() const { return _fullscreenActive; }
+    
+    /**
+     * @brief Setzt den Fullscreen-Modus für das aktive Modul.
+     * @param active true = Modul zeichnet auf gesamten Bildschirm, false = nur Datenbereich
+     */
+    void setFullscreenMode(bool active) { _fullscreenActive = active; }
 
 private:
     // Kernfunktionen
@@ -193,6 +205,7 @@ private:
     // Helper-Funktionen
     void drawClockArea();
     void drawDataArea();
+    void drawFullscreenArea();
     PlaylistEntry* findEntryByModuleAndUID(DrawableModule* mod, uint32_t uid);
     PlaylistEntry* findRunningInPlaylist();
     PlaylistEntry* findPausedInPlaylist();
@@ -231,6 +244,9 @@ private:
     
     // NEW: Canvas mutex for thread-safe access during streaming
     SemaphoreHandle_t _canvasMutex = nullptr;
+    
+    // NEU: Fullscreen-Modus
+    bool _fullscreenActive = false;
 };
 
 #endif // PANELMANAGER_HPP
