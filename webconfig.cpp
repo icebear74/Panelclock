@@ -135,6 +135,16 @@ void loadDeviceConfig() {
                 deviceConfig->christmasTreeGiftCount = doc["christmasTreeGiftCount"] | 5;
                 deviceConfig->adventWreathFullscreen = doc["adventWreathFullscreen"] | false;
                 
+                // Kamin-Konfiguration
+                deviceConfig->fireplaceEnabled = doc["fireplaceEnabled"] | true;
+                deviceConfig->fireplaceDaysBefore24 = doc["fireplaceDaysBefore24"] | 23;
+                deviceConfig->fireplaceDaysAfter24 = doc["fireplaceDaysAfter24"] | 7;
+                deviceConfig->fireplaceFlameSpeedMs = doc["fireplaceFlameSpeedMs"] | 40;
+                deviceConfig->fireplaceFlameColor = doc["fireplaceFlameColor"] | 0;
+                deviceConfig->fireplaceBrickColor = doc["fireplaceBrickColor"] | "#8B4513";
+                deviceConfig->fireplaceStockingCount = doc["fireplaceStockingCount"] | 3;
+                deviceConfig->fireplaceCandleCount = doc["fireplaceCandleCount"] | 2;
+                
                 deviceConfig->globalScrollSpeedMs = doc["globalScrollSpeedMs"] | 50;
                 deviceConfig->scrollMode = doc["scrollMode"] | 0;
                 deviceConfig->scrollPauseSec = doc["scrollPauseSec"] | 0;
@@ -260,6 +270,16 @@ void saveDeviceConfig() {
     doc["christmasTreeLightCount"] = deviceConfig->christmasTreeLightCount;
     doc["christmasTreeGiftCount"] = deviceConfig->christmasTreeGiftCount;
     doc["adventWreathFullscreen"] = deviceConfig->adventWreathFullscreen;
+    
+    // Kamin-Konfiguration
+    doc["fireplaceEnabled"] = deviceConfig->fireplaceEnabled;
+    doc["fireplaceDaysBefore24"] = deviceConfig->fireplaceDaysBefore24;
+    doc["fireplaceDaysAfter24"] = deviceConfig->fireplaceDaysAfter24;
+    doc["fireplaceFlameSpeedMs"] = deviceConfig->fireplaceFlameSpeedMs;
+    doc["fireplaceFlameColor"] = deviceConfig->fireplaceFlameColor;
+    doc["fireplaceBrickColor"] = deviceConfig->fireplaceBrickColor.c_str();
+    doc["fireplaceStockingCount"] = deviceConfig->fireplaceStockingCount;
+    doc["fireplaceCandleCount"] = deviceConfig->fireplaceCandleCount;
     
     doc["globalScrollSpeedMs"] = deviceConfig->globalScrollSpeedMs;
     doc["scrollMode"] = deviceConfig->scrollMode;

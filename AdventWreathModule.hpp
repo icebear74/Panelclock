@@ -18,7 +18,8 @@ struct DeviceConfig;
 enum class ChristmasDisplayMode {
     Wreath,      // Adventskranz
     Tree,        // Weihnachtsbaum
-    Alternate    // Wechsel zwischen beiden
+    Fireplace,   // Kamin
+    Alternate    // Wechsel zwischen allen aktiven
 };
 
 /**
@@ -95,8 +96,10 @@ private:
     unsigned long _lastPeriodicCheck = 0;
     int _lastCheckedDay = -1;
     
-    // Wechsel zwischen Kranz und Baum
+    // Wechsel zwischen Kranz, Baum und Kamin
+    int _displayMode = 0;  // 0=Kranz, 1=Baum, 2=Kamin
     bool _showTree = false;
+    bool _showFireplace = false;
     int _displayCounter = 0;
     
     // Zufällige Kerzenreihenfolge für jeden Durchgang
@@ -114,6 +117,8 @@ private:
     unsigned long _repeatIntervalMs = 30 * 60 * 1000;  // 30 Minuten
     unsigned long _flameAnimationMs = 50;  // 50ms = 20 FPS für Flammen-Animation
     unsigned long _treeLightAnimationMs = 80;  // 80ms für Baumlicht-Animation
+    unsigned long _fireplaceFlameMs = 40;  // 40ms für Kaminfeuer-Animation
+    int _fireplaceFlamePhase = 0;
     
     // Callback für Redraw
     std::function<void()> _updateCallback = nullptr;
@@ -168,18 +173,21 @@ private:
 
     /**
      * @brief Zeichnet den natürlichen Baum mit Grünvariationen
+     * @param scale Skalierungsfaktor basierend auf Canvas-Größe
      */
-    void drawNaturalTree(int centerX, int baseY);
+    void drawNaturalTree(int centerX, int baseY, float scale = 1.0f);
 
     /**
      * @brief Zeichnet Kugeln am Weihnachtsbaum
+     * @param scale Skalierungsfaktor
      */
-    void drawTreeOrnaments(int centerX, int baseY);
+    void drawTreeOrnaments(int centerX, int baseY, float scale = 1.0f);
 
     /**
      * @brief Zeichnet Geschenke unter dem Baum
+     * @param scale Skalierungsfaktor
      */
-    void drawGifts(int centerX, int baseY);
+    void drawGifts(int centerX, int baseY, float scale = 1.0f);
 
     /**
      * @brief Zeichnet eine einzelne Kerze.
@@ -223,6 +231,31 @@ private:
      * @brief Zeichnet blinkende Lichter am Baum
      */
     void drawTreeLights();
+
+    /**
+     * @brief Zeichnet einen Kamin mit Feuer
+     */
+    void drawFireplace();
+
+    /**
+     * @brief Zeichnet animiertes Kaminfeuer
+     */
+    void drawFireplaceFlames(int x, int y, int width, int height);
+
+    /**
+     * @brief Zeichnet Strümpfe am Kaminsims
+     */
+    void drawStockings(int simsY, int simsWidth, int centerX);
+
+    /**
+     * @brief Zeichnet Kerzen auf dem Kaminsims
+     */
+    void drawMantleCandles(int simsY, int simsWidth, int centerX);
+
+    /**
+     * @brief Prüft ob der Kamin in der aktuellen Saison aktiv ist
+     */
+    bool isFireplaceSeason();
 
     /**
      * @brief Konvertiert RGB zu RGB565.

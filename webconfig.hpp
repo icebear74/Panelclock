@@ -201,6 +201,24 @@ struct DeviceConfig {
     int christmasTreeGiftCount = 5;
     /// @brief Adventskranz/Weihnachtsbaum: Fullscreen-Modus (0=Teilbereich 192x66, 1=Vollbild 192x96)
     bool adventWreathFullscreen = false;
+    
+    // --- Kamin Modul ---
+    /// @brief Kamin aktivieren
+    bool fireplaceEnabled = true;
+    /// @brief Kamin: Tage vor dem 24.12. starten (0-30)
+    int fireplaceDaysBefore24 = 23;
+    /// @brief Kamin: Tage nach dem 24.12. anzeigen (0-30)
+    int fireplaceDaysAfter24 = 7;
+    /// @brief Kamin: Feuer-Animation Geschwindigkeit in ms (niedriger = schneller)
+    int fireplaceFlameSpeedMs = 40;
+    /// @brief Kamin: Feuerfarbe (0=Klassisch Orange/Gelb, 1=Blau, 2=Grün, 3=Violett)
+    int fireplaceFlameColor = 0;
+    /// @brief Kamin: Kaminfarbe als Hex-String (Ziegel/Stein)
+    PsramString fireplaceBrickColor = "#8B4513";
+    /// @brief Kamin: Zeige Strümpfe am Kaminsims (0-5)
+    int fireplaceStockingCount = 3;
+    /// @brief Kamin: Zeige Kerzen auf dem Kaminsims (0-3)
+    int fireplaceCandleCount = 2;
 
     // --- Globale Scrolling-Einstellungen ---
     /// @brief Globale Scroll-Geschwindigkeit in Millisekunden pro Pixel für alle Module.
