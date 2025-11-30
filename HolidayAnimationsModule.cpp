@@ -1053,7 +1053,6 @@ void HolidayAnimationsModule::drawGreenery() {
         int branchDir = (i % 2 == 0) ? 1 : -1;
         drawBranch(branchX, baseY - (int)(5 * scale), branchDir);
     }
-    }
 }
 
 void HolidayAnimationsModule::drawBranch(int x, int y, int direction) {
