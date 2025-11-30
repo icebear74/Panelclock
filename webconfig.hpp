@@ -179,6 +179,14 @@ struct DeviceConfig {
     bool adventWreathInterrupt = false;
     /// @brief Flammen-Animation Geschwindigkeit in Millisekunden (niedriger = schneller)
     int adventWreathFlameSpeedMs = 50;
+    /// @brief Letzter Tag für Adventskranz-Anzeige (Standard: 24 = Heiligabend)
+    int adventWreathEndDay = 24;
+    /// @brief Erster Tag für Weihnachtsbaum-Anzeige (Standard: 1 = 1. Dezember)
+    int christmasTreeStartDay = 1;
+    /// @brief Letzter Tag für Weihnachtsbaum-Anzeige (Standard: 31 = Silvester)
+    int christmasTreeEndDay = 31;
+    /// @brief Weihnachtsbaum aktivieren
+    bool christmasTreeEnabled = true;
 
     // --- Globale Scrolling-Einstellungen ---
     /// @brief Globale Scroll-Geschwindigkeit in Millisekunden pro Pixel für alle Module.

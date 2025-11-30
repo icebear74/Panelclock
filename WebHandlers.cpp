@@ -212,6 +212,10 @@ void handleConfigModules() {
     replaceAll(content, "{adventWreathCustomColors}", deviceConfig->adventWreathCustomColors.c_str());
     replaceAll(content, "{adventWreathInterrupt_checked}", deviceConfig->adventWreathInterrupt ? "checked" : "");
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->adventWreathFlameSpeedMs); replaceAll(content, "{adventWreathFlameSpeedMs}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->adventWreathEndDay); replaceAll(content, "{adventWreathEndDay}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->christmasTreeStartDay); replaceAll(content, "{christmasTreeStartDay}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->christmasTreeEndDay); replaceAll(content, "{christmasTreeEndDay}", num_buf);
+    replaceAll(content, "{christmasTreeEnabled_checked}", deviceConfig->christmasTreeEnabled ? "checked" : "");
     
     // Parse custom colors for individual color pickers
     PsramString colors = deviceConfig->adventWreathCustomColors;
@@ -352,6 +356,10 @@ void handleSaveModules() {
     if (server->hasArg("adventWreathCustomColors")) deviceConfig->adventWreathCustomColors = server->arg("adventWreathCustomColors").c_str();
     deviceConfig->adventWreathInterrupt = server->hasArg("adventWreathInterrupt");
     if (server->hasArg("adventWreathFlameSpeedMs")) deviceConfig->adventWreathFlameSpeedMs = server->arg("adventWreathFlameSpeedMs").toInt();
+    if (server->hasArg("adventWreathEndDay")) deviceConfig->adventWreathEndDay = server->arg("adventWreathEndDay").toInt();
+    if (server->hasArg("christmasTreeStartDay")) deviceConfig->christmasTreeStartDay = server->arg("christmasTreeStartDay").toInt();
+    if (server->hasArg("christmasTreeEndDay")) deviceConfig->christmasTreeEndDay = server->arg("christmasTreeEndDay").toInt();
+    deviceConfig->christmasTreeEnabled = server->hasArg("christmasTreeEnabled");
     
     // Global scrolling configuration
     if (server->hasArg("globalScrollSpeedMs")) deviceConfig->globalScrollSpeedMs = server->arg("globalScrollSpeedMs").toInt();

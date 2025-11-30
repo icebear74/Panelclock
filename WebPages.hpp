@@ -308,12 +308,18 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
             <input type="hidden" id="adventWreathCustomColors" name="adventWreathCustomColors" value="{adventWreathCustomColors}">
         </div>
         
-        <br><input type="checkbox" id="adventWreathInterrupt" name="adventWreathInterrupt" {adventWreathInterrupt_checked}><label for="adventWreathInterrupt" style="display:inline;">Unterbrechend anzeigen (unterbricht laufende Anzeige sofort)</label><br>
+        <br><input type="checkbox" id="adventWreathInterrupt" name="adventWreathInterrupt" {adventWreathInterrupt_checked}><label for="adventWreathInterrupt" style="display:inline;">Unterbrechend anzeigen</label><br>
         
-        <label for="adventWreathFlameSpeedMs">Flammen-Animation Geschwindigkeit (ms)</label><input type="number" id="adventWreathFlameSpeedMs" name="adventWreathFlameSpeedMs" value="{adventWreathFlameSpeedMs}" min="20" max="500">
-        <p style="color:#bbb; font-size:12px;">Niedriger = schnellere Animation. Standard: 50ms (20 FPS)</p>
+        <label for="adventWreathFlameSpeedMs">Flammen-Animation (ms)</label><input type="number" id="adventWreathFlameSpeedMs" name="adventWreathFlameSpeedMs" value="{adventWreathFlameSpeedMs}" min="20" max="500">
         
-        <p style="color:#bbb; margin-top:10px;">Zeigt w&auml;hrend der Adventszeit einen animierten Adventskranz mit brennenden Kerzen. Je nach aktuellem Advent brennen 1-4 Kerzen. Wenn "Unterbrechend" aktiviert ist, wird die aktuelle Anzeige sofort unterbrochen. Sonst erscheint der Kranz als n&auml;chstes nach dem aktuellen Modul.</p>
+        <label for="adventWreathEndDay">Adventskranz bis (Dezember-Tag)</label><input type="number" id="adventWreathEndDay" name="adventWreathEndDay" value="{adventWreathEndDay}" min="1" max="31">
+        
+        <h3 style="margin-top:15px;">Weihnachtsbaum</h3>
+        <input type="checkbox" id="christmasTreeEnabled" name="christmasTreeEnabled" {christmasTreeEnabled_checked}><label for="christmasTreeEnabled" style="display:inline;">Weihnachtsbaum aktivieren</label><br>
+        <label for="christmasTreeStartDay">Weihnachtsbaum ab (Dezember-Tag)</label><input type="number" id="christmasTreeStartDay" name="christmasTreeStartDay" value="{christmasTreeStartDay}" min="1" max="31">
+        <label for="christmasTreeEndDay">Weihnachtsbaum bis (Dezember-Tag)</label><input type="number" id="christmasTreeEndDay" name="christmasTreeEndDay" value="{christmasTreeEndDay}" min="1" max="31">
+        
+        <p style="color:#bbb; margin-top:10px;">Der Adventskranz zeigt 1-4 brennende Kerzen je nach aktuellem Advent. Der Weihnachtsbaum wird mit blinkenden Lichtern und bunten Kugeln angezeigt. Wenn beide aktiviert sind, wechseln sie sich ab. Nach dem Kranz-Enddatum wird nur noch der Baum gezeigt.</p>
     </div>
 </div>
 <script>

@@ -12,13 +12,23 @@ struct DeviceConfig;
 
 // UID für Advent-Interrupts
 #define ADVENT_WREATH_UID_BASE 2000
+#define CHRISTMAS_TREE_UID_BASE 2100
+
+// Anzeige-Modi
+enum class ChristmasDisplayMode {
+    Wreath,      // Adventskranz
+    Tree,        // Weihnachtsbaum
+    Alternate    // Wechsel zwischen beiden
+};
 
 /**
- * @brief Modul zur Anzeige eines animierten Adventskranzes.
+ * @brief Modul zur Anzeige eines animierten Adventskranzes und Weihnachtsbaums.
  * 
  * Zeigt einen Adventskranz mit 4 Kerzen in verschiedenen Farben.
  * Je nach aktuellem Advent (1-4) brennen die entsprechenden Kerzen
  * mit animierten Flammen. Der Kranz ist mit Tannengrün dekoriert.
+ * 
+ * Zusätzlich wird ein Weihnachtsbaum mit Lichtern und Kugeln gezeigt.
  * 
  * Das Modul verwendet Priority::PlayNext (OneShot),
  * um während der Adventszeit regelmäßig als nächstes nach dem
@@ -76,10 +86,19 @@ private:
     unsigned long _lastAdventDisplayTime = 0;
     unsigned long _lastPeriodicCheck = 0;
     int _lastCheckedDay = -1;
+    
+    // Wechsel zwischen Kranz und Baum
+    bool _showTree = false;
+    int _displayCounter = 0;
+    
+    // Zufällige Kerzenreihenfolge für jeden Durchgang
+    int _candleOrder[4] = {0, 1, 2, 3};
+    uint32_t _lastOrderSeed = 0;
 
     // Animation
     unsigned long _lastFlameUpdate = 0;
     int _flamePhase = 0;
+    int _treeLightPhase = 0;
     
     // Konfigurierbare Parameter (Defaults)
     unsigned long _displayDurationMs = 15000;  // 15 Sekunden
@@ -96,6 +115,26 @@ private:
     int calculateCurrentAdvent();
 
     /**
+     * @brief Prüft ob wir in der Adventszeit sind (bis 24.12.)
+     */
+    bool isAdventSeason();
+
+    /**
+     * @brief Prüft ob wir in der Weihnachtszeit sind (25.12. - 31.12.)
+     */
+    bool isChristmasSeason();
+
+    /**
+     * @brief Prüft ob wir in der Gesamt-Weihnachtszeit sind (1. Advent - 31.12.)
+     */
+    bool isHolidaySeason();
+
+    /**
+     * @brief Bestimmt den aktuellen Anzeige-Modus basierend auf Datum
+     */
+    ChristmasDisplayMode getCurrentDisplayMode();
+
+    /**
      * @brief Berechnet das Datum des 4. Advents für ein gegebenes Jahr.
      * @param year Das Jahr
      * @return time_t des 4. Advents
@@ -103,9 +142,19 @@ private:
     time_t calculateFourthAdvent(int year);
 
     /**
+     * @brief Mischt die Kerzenreihenfolge neu
+     */
+    void shuffleCandleOrder();
+
+    /**
      * @brief Zeichnet den Adventskranz mit Tannengrün.
      */
     void drawWreath();
+
+    /**
+     * @brief Zeichnet den Weihnachtsbaum
+     */
+    void drawChristmasTree();
 
     /**
      * @brief Zeichnet eine einzelne Kerze.
@@ -118,7 +167,7 @@ private:
     void drawCandle(int x, int y, uint16_t color, bool isLit, int candleIndex);
 
     /**
-     * @brief Zeichnet eine animierte Flamme.
+     * @brief Zeichnet eine animierte Flamme mit Mischfarben.
      * @param x X-Position
      * @param y Y-Position
      * @param phase Animationsphase
@@ -136,9 +185,19 @@ private:
     void drawBranch(int x, int y, int direction);
 
     /**
-     * @brief Zeichnet dekorative Beeren.
+     * @brief Zeichnet dekorative Kugeln mit 3D-Effekt.
      */
     void drawBerries();
+
+    /**
+     * @brief Zeichnet eine Baumkugel mit 3D-Effekt
+     */
+    void drawOrnament(int x, int y, int radius, uint16_t color);
+
+    /**
+     * @brief Zeichnet blinkende Lichter am Baum
+     */
+    void drawTreeLights();
 
     /**
      * @brief Konvertiert RGB zu RGB565.
@@ -149,6 +208,11 @@ private:
      * @brief Konvertiert Hex-Farbstring zu RGB565.
      */
     static uint16_t hexToRgb565(const char* hex);
+    
+    /**
+     * @brief Einfacher Pseudo-Zufallsgenerator
+     */
+    uint32_t simpleRandom(uint32_t seed);
 };
 
 #endif // ADVENTWREATHMODULE_HPP
