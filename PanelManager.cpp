@@ -835,14 +835,12 @@ void PanelManager::displayStatus(const char* msg) {
 // ============================================================================
 
 bool PanelManager::copyFullPanelBuffer(uint16_t* destinationBuffer, size_t bufferSize) {
-    if (!destinationBuffer || !_canvasTime || !_canvasData) {
+    if (!destinationBuffer) {
         return false;
     }
     
-    // Calculate required buffer size
-    size_t timeBufferSize = FULL_WIDTH * TIME_AREA_H;
-    size_t dataBufferSize = FULL_WIDTH * DATA_AREA_H;
-    size_t totalRequired = timeBufferSize + dataBufferSize;
+    // Calculate required buffer size (full panel)
+    size_t totalRequired = FULL_WIDTH * FULL_HEIGHT;
     
     if (bufferSize < totalRequired) {
         return false;
@@ -850,16 +848,34 @@ bool PanelManager::copyFullPanelBuffer(uint16_t* destinationBuffer, size_t buffe
     
     // Lock canvas access
     if (_canvasMutex && xSemaphoreTake(_canvasMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        // Copy time area
-        uint16_t* timeBuffer = _canvasTime->getBuffer();
-        if (timeBuffer) {
-            memcpy(destinationBuffer, timeBuffer, timeBufferSize * sizeof(uint16_t));
-        }
-        
-        // Copy data area
-        uint16_t* dataBuffer = _canvasData->getBuffer();
-        if (dataBuffer) {
-            memcpy(destinationBuffer + timeBufferSize, dataBuffer, dataBufferSize * sizeof(uint16_t));
+        if (_fullscreenActive && _fullCanvas) {
+            // Fullscreen-Modus: Kopiere den kompletten Fullscreen-Canvas
+            uint16_t* fullBuffer = _fullCanvas->getBuffer();
+            if (fullBuffer) {
+                memcpy(destinationBuffer, fullBuffer, totalRequired * sizeof(uint16_t));
+            } else {
+                xSemaphoreGive(_canvasMutex);
+                return false;
+            }
+        } else if (_canvasTime && _canvasData) {
+            // Normaler Modus: Kopiere Time + Data Canvas
+            size_t timeBufferSize = FULL_WIDTH * TIME_AREA_H;
+            size_t dataBufferSize = FULL_WIDTH * DATA_AREA_H;
+            
+            // Copy time area
+            uint16_t* timeBuffer = _canvasTime->getBuffer();
+            if (timeBuffer) {
+                memcpy(destinationBuffer, timeBuffer, timeBufferSize * sizeof(uint16_t));
+            }
+            
+            // Copy data area
+            uint16_t* dataBuffer = _canvasData->getBuffer();
+            if (dataBuffer) {
+                memcpy(destinationBuffer + timeBufferSize, dataBuffer, dataBufferSize * sizeof(uint16_t));
+            }
+        } else {
+            xSemaphoreGive(_canvasMutex);
+            return false;
         }
         
         xSemaphoreGive(_canvasMutex);
