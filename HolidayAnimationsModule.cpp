@@ -1,6 +1,7 @@
 #include "HolidayAnimationsModule.hpp"
 #include "webconfig.hpp"
 #include "MultiLogger.hpp"
+#include "PsramUtils.hpp"
 #include <time.h>
 
 // Hilfsfunktion für RGB565
