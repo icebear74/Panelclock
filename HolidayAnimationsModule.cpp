@@ -654,16 +654,44 @@ void HolidayAnimationsModule::drawTreeOrnaments(int centerX, int baseY, float sc
     // Skalierte Kugelpositionen
     int numOrnaments = scale > 1.2 ? 14 : 11;  // Mehr Kugeln bei Fullscreen
     
+    // Baumhöhe und Schichten (müssen mit drawNaturalTree übereinstimmen)
+    int treeHeight = (int)(54 * scale);
+    int layer1Height = (int)(18 * scale);
+    int layer2Height = (int)(18 * scale);
+    int layer1Width = (int)(28 * scale);
+    int layer2Width = (int)(22 * scale);
+    int layer3Width = (int)(16 * scale);
+    
     for (int i = 0; i < numOrnaments; i++) {
         uint32_t seed = simpleRandom(i * 123 + 456);
         
-        // Berechne Position basierend auf Skala
-        int yOffset = (int)((seed % 40) * scale);
-        int xRange = (int)((24 - yOffset * 0.5) * scale);
-        if (xRange < 3) xRange = 3;
+        // Gleichmäßig über die Baumhöhe verteilen (von unten bis oben)
+        int ySection = i * treeHeight / numOrnaments;
+        int yOffset = ySection + (seed % 6) - 3;  // kleine Variation
+        if (yOffset < 3) yOffset = 3;
+        if (yOffset > treeHeight - 5) yOffset = treeHeight - 5;
         
-        int ox = centerX - xRange + (int)((seed / 7) % (xRange * 2));
-        int oy = baseY - (int)(12 * scale) - yOffset;
+        // Berechne maximale Breite an dieser Y-Position
+        int maxWidth;
+        if (yOffset < layer1Height) {
+            // Unterste Schicht
+            float progress = (float)yOffset / layer1Height;
+            maxWidth = (int)(layer1Width * (1.0f - progress * 0.5f));
+        } else if (yOffset < layer1Height + layer2Height - (int)(4 * scale)) {
+            // Mittlere Schicht
+            float progress = (float)(yOffset - layer1Height + (int)(4 * scale)) / layer2Height;
+            maxWidth = (int)(layer2Width * (1.0f - progress * 0.5f));
+        } else {
+            // Oberste Schicht
+            float progress = (float)(yOffset - layer1Height - layer2Height + (int)(14 * scale)) / layer3Width;
+            maxWidth = (int)(layer3Width * (1.0f - progress * 0.6f));
+        }
+        
+        if (maxWidth < 3) maxWidth = 3;
+        maxWidth -= 2;  // Etwas Abstand vom Rand
+        
+        int ox = centerX - maxWidth + (int)((seed / 7) % (maxWidth * 2));
+        int oy = baseY - yOffset;
         int radius = 2 + (seed % 2);
         if (scale > 1.2) radius = 2 + (seed % 3);
         
@@ -707,24 +735,46 @@ void HolidayAnimationsModule::drawTreeLights() {
     };
     int numColors = 6;
     
-    // Skalierte Baumhöhe (muss mit drawNaturalTree übereinstimmen)
-    int treeHeight = (int)(54 * scale);
+    // Baumschichten (müssen mit drawNaturalTree übereinstimmen)
+    int layer1Height = (int)(18 * scale);
+    int layer2Height = (int)(18 * scale);
+    int layer3Height = (int)(18 * scale);
+    int layer1Width = (int)(28 * scale);
+    int layer2Width = (int)(22 * scale);
+    int layer3Width = (int)(16 * scale);
+    int treeHeight = layer1Height + layer2Height - (int)(4 * scale) + layer3Height - (int)(10 * scale);
     
-    // Lichter über den Baum verteilt (pseudo-zufällig basierend auf lightCount)
+    // Lichter über den Baum verteilt
     for (int i = 0; i < lightCount; i++) {
         // Berechne Position basierend auf Index
         uint32_t seed = simpleRandom(i * 37 + 789);
         
-        // Y-Position: verteilt innerhalb des Baumes (skaliert)
-        int yRange = (int)(treeHeight * 0.85);  // Skalierte Y-Range
-        int lightY = treeBaseY - (int)(8 * scale) - (seed % yRange);
+        // Y-Position: gleichmäßig über den Baum verteilt
+        int ySection = i * treeHeight / lightCount;
+        int yOffset = ySection + (seed % 5) - 2;
+        if (yOffset < 2) yOffset = 2;
+        if (yOffset > treeHeight - 3) yOffset = treeHeight - 3;
         
-        // X-Position abhängig von Y (breiter unten, schmaler oben)
-        int progress = treeBaseY - (int)(8 * scale) - lightY;
-        int maxXBase = (int)(28 * scale);  // Skalierte Baumbreite unten
-        float progressRatio = (float)progress / yRange;
-        int maxX = (int)(maxXBase * (1.0f - progressRatio * 0.7f));  // Breite nimmt nach oben ab
+        int lightY = treeBaseY - yOffset;
+        
+        // X-Position abhängig von Y (berechne maximale Breite an dieser Position)
+        int maxX;
+        if (yOffset < layer1Height) {
+            // Unterste Schicht
+            float progress = (float)yOffset / layer1Height;
+            maxX = (int)(layer1Width * (1.0f - progress * 0.5f));
+        } else if (yOffset < layer1Height + layer2Height - (int)(4 * scale)) {
+            // Mittlere Schicht (mit Überlappung)
+            float progress = (float)(yOffset - layer1Height + (int)(4 * scale)) / layer2Height;
+            maxX = (int)(layer2Width * (1.0f - progress * 0.5f));
+        } else {
+            // Oberste Schicht
+            float progress = (float)(yOffset - layer1Height - layer2Height + (int)(14 * scale)) / layer3Height;
+            maxX = (int)(layer3Width * (1.0f - progress * 0.7f));
+        }
+        
         if (maxX < 3) maxX = 3;
+        maxX -= 2;  // Etwas Abstand vom Rand des Baumes
         
         seed = simpleRandom(seed);
         int lightX = centerX - maxX + (seed % (maxX * 2));
@@ -1250,8 +1300,11 @@ void HolidayAnimationsModule::drawFireplace() {
     int canvasH = _currentCanvas->height();
     int centerX = canvasW / 2;
     
-    // Dynamische Skalierung - nutze Höhe für Skalierung
-    float scale = canvasH / 66.0f;
+    // Skalierung: X-Achse stärker als Y-Achse für breiteres Bild
+    float scaleX = canvasW / 192.0f;
+    float scaleY = canvasH / 66.0f;
+    // Begrenzte Höhenskalierung, damit der Kamin nicht zu hoch wird
+    float effectiveScaleY = min(scaleY, 1.0f + (scaleY - 1.0f) * 0.5f);
     
     // Kaminfarbe aus Config oder Standard
     uint16_t brickColor = rgb565(139, 69, 19);  // Standard: Braun
@@ -1266,19 +1319,17 @@ void HolidayAnimationsModule::drawFireplace() {
     uint16_t brickDark = rgb565(br, bg, bb);
     uint16_t brickLight = rgb565(min(255, br + 60), min(255, bg + 40), min(255, bb + 40));
     
-    // Kamin-Dimensionen (skaliert) - größer um mehr vom Bildschirm zu füllen
-    int fireplaceWidth = (int)(120 * scale);  // breiter
-    int fireplaceHeight = (int)(55 * scale);  // höher
-    int simsHeight = (int)(10 * scale);
-    int simsOverhang = (int)(15 * scale);
-    int openingWidth = (int)(70 * scale);
-    int openingHeight = (int)(40 * scale);
+    // Kamin-Dimensionen - X breiter skalieren, Y moderat
+    int fireplaceWidth = (int)(130 * scaleX);  // Breiter
+    int fireplaceHeight = (int)(48 * effectiveScaleY);  // Höhe moderat skaliert
+    int simsHeight = (int)(8 * effectiveScaleY);
+    int simsOverhang = (int)(12 * scaleX);
+    int openingWidth = (int)(75 * scaleX);
+    int openingHeight = (int)(35 * effectiveScaleY);
     
     int baseY = canvasH - 2;
     int fireX = centerX - fireplaceWidth / 2;
     int fireY = baseY - fireplaceHeight;
-    
-    // Hintergrund wird bereits in draw() mit fireplaceBgColor gesetzt
     
     // ===== KAMINSIMS (oben) - schöner mit Profil =====
     int simsY = fireY - simsHeight;
@@ -1295,9 +1346,9 @@ void HolidayAnimationsModule::drawFireplace() {
     _currentCanvas->fillRect(simsX, simsY + simsUpper, simsWidth, simsLower, brickLight);
     
     // Schatten und Kanten für 3D-Effekt
-    _currentCanvas->drawLine(simsX, simsY + simsUpper, simsX + simsWidth, simsY + simsUpper, brickDark);  // Stufe
-    _currentCanvas->drawLine(simsX, simsY + simsHeight - 1, simsX + simsWidth, simsY + simsHeight - 1, brickDark);  // Unterkante
-    _currentCanvas->drawLine(simsX + 2, simsY, simsX + simsWidth - 2, simsY, rgb565(min(255, br + 100), min(255, bg + 80), min(255, bb + 80)));  // Oberkante hell
+    _currentCanvas->drawLine(simsX, simsY + simsUpper, simsX + simsWidth, simsY + simsUpper, brickDark);
+    _currentCanvas->drawLine(simsX, simsY + simsHeight - 1, simsX + simsWidth, simsY + simsHeight - 1, brickDark);
+    _currentCanvas->drawLine(simsX + 2, simsY, simsX + simsWidth - 2, simsY, rgb565(min(255, br + 100), min(255, bg + 80), min(255, bb + 80)));
     
     // Dekrative Linie auf dem Sims
     uint16_t decoColor = rgb565(min(255, br + 40), min(255, bg + 30), min(255, bb + 30));
@@ -1340,31 +1391,6 @@ void HolidayAnimationsModule::drawFireplace() {
     int openingY = baseY - openingHeight;
     _currentCanvas->fillRect(openingX, openingY, openingWidth, openingHeight, rgb565(0, 0, 0));
     
-    // Flackernder Feuerschein in der Öffnung
-    uint16_t glowColors[] = {
-        rgb565(50, 20, 5),
-        rgb565(60, 25, 8),
-        rgb565(45, 18, 3),
-        rgb565(55, 22, 6)
-    };
-    int glowIdx = _fireplaceFlamePhase % 4;
-    // Sanfter Schein an den Seiten der Öffnung
-    for (int i = 0; i < 5; i++) {
-        int glowX = openingX + 2 + i;
-        _currentCanvas->drawLine(glowX, openingY + 5, glowX, baseY - 5, glowColors[(glowIdx + i) % 4]);
-        glowX = openingX + openingWidth - 3 - i;
-        _currentCanvas->drawLine(glowX, openingY + 5, glowX, baseY - 5, glowColors[(glowIdx + i + 2) % 4]);
-    }
-    
-    // Bogen über der Öffnung
-    uint16_t archColor = brickDark;
-    for (int i = 0; i < openingWidth; i++) {
-        float angle = 3.14159f * i / openingWidth;
-        int archY = openingY - (int)(sin(angle) * 8 * scale);
-        _currentCanvas->drawPixel(openingX + i, archY, archColor);
-        _currentCanvas->drawPixel(openingX + i, archY + 1, brickColor);
-    }
-    
     // ===== HOLZSCHEITE - ZUERST zeichnen =====
     uint16_t woodOuter = rgb565(101, 67, 33);   // Rinde außen
     uint16_t woodInner = rgb565(180, 140, 90);  // Holz innen (heller)
@@ -1372,8 +1398,8 @@ void HolidayAnimationsModule::drawFireplace() {
     uint16_t woodRing = rgb565(140, 100, 60);   // Jahresringe
     
     int logY = baseY - 3;
-    int logRadius = (int)(4 * scale);
-    int logLength = (int)(28 * scale);
+    int logRadius = (int)(4 * effectiveScaleY);
+    int logLength = (int)(28 * scaleX);
     
     // Linkes Scheit (schräg liegend)
     int log1X = centerX - logLength/2 - 3;
@@ -1382,20 +1408,18 @@ void HolidayAnimationsModule::drawFireplace() {
     // Körper des Scheits (zylindrisch)
     for (int i = 0; i < logLength; i++) {
         int x = log1X + i;
-        // Oben heller, unten dunkler für Rundung
         _currentCanvas->drawLine(x, log1Y - logRadius + 1, x, log1Y + logRadius - 1, woodOuter);
-        _currentCanvas->drawPixel(x, log1Y - logRadius, woodDark);  // Oberkante dunkel (Schatten)
-        _currentCanvas->drawPixel(x, log1Y, woodRing);  // Mitte heller
+        _currentCanvas->drawPixel(x, log1Y - logRadius, woodDark);
+        _currentCanvas->drawPixel(x, log1Y, woodRing);
     }
     
     // Schnittfläche links (Kreis/Oval)
     _currentCanvas->fillCircle(log1X, log1Y, logRadius, woodInner);
     _currentCanvas->drawCircle(log1X, log1Y, logRadius, woodOuter);
-    // Jahresringe
     if (logRadius > 2) {
         _currentCanvas->drawCircle(log1X, log1Y, logRadius - 2, woodRing);
     }
-    _currentCanvas->drawPixel(log1X, log1Y, woodDark);  // Mittelpunkt
+    _currentCanvas->drawPixel(log1X, log1Y, woodDark);
     
     // Rechtes Scheit
     int log2X = centerX + 3;
@@ -1417,10 +1441,10 @@ void HolidayAnimationsModule::drawFireplace() {
     _currentCanvas->drawPixel(log2X + logLength, log2Y, woodDark);
     
     // Kleines drittes Scheit oben drauf
-    int log3X = centerX - (int)(8 * scale);
+    int log3X = centerX - (int)(8 * scaleX);
     int log3Y = logY - logRadius * 3;
-    int log3Radius = (int)(3 * scale);
-    int log3Length = (int)(20 * scale);
+    int log3Radius = (int)(3 * effectiveScaleY);
+    int log3Length = (int)(20 * scaleX);
     
     for (int i = 0; i < log3Length; i++) {
         int x = log3X + i;
@@ -1437,23 +1461,26 @@ void HolidayAnimationsModule::drawFireplace() {
     drawStockings(simsY, simsWidth, centerX);
     
     // Dekorative Gegenstände auf dem Kaminsims (statt Kerzen)
-    drawMantleDecorations(simsY, simsWidth, centerX, scale);
+    drawMantleDecorations(simsY, simsWidth, centerX, effectiveScaleY);
 }
 
 void HolidayAnimationsModule::drawFireplaceFlames(int x, int y, int width, int height) {
     // Feuerfarben basierend auf Konfiguration
     int flameColorMode = config ? config->fireplaceFlameColor : 0;
     
-    uint16_t flameColors[5];
+    uint16_t flameColors[6];
     uint16_t coreColor;
+    uint16_t glowColor;
     switch (flameColorMode) {
         case 1:  // Blau
             flameColors[0] = rgb565(200, 230, 255);  // Kern (hell)
             flameColors[1] = rgb565(100, 180, 255);
             flameColors[2] = rgb565(50, 120, 255);
             flameColors[3] = rgb565(30, 80, 200);
-            flameColors[4] = rgb565(20, 50, 150);   // Außen (dunkel)
+            flameColors[4] = rgb565(20, 50, 150);
+            flameColors[5] = rgb565(10, 30, 100);
             coreColor = rgb565(220, 240, 255);
+            glowColor = rgb565(30, 60, 120);
             break;
         case 2:  // Grün
             flameColors[0] = rgb565(200, 255, 200);
@@ -1461,7 +1488,9 @@ void HolidayAnimationsModule::drawFireplaceFlames(int x, int y, int width, int h
             flameColors[2] = rgb565(50, 200, 50);
             flameColors[3] = rgb565(30, 150, 30);
             flameColors[4] = rgb565(20, 100, 20);
+            flameColors[5] = rgb565(10, 60, 10);
             coreColor = rgb565(220, 255, 220);
+            glowColor = rgb565(30, 80, 30);
             break;
         case 3:  // Violett
             flameColors[0] = rgb565(255, 200, 255);
@@ -1469,96 +1498,130 @@ void HolidayAnimationsModule::drawFireplaceFlames(int x, int y, int width, int h
             flameColors[2] = rgb565(180, 80, 220);
             flameColors[3] = rgb565(140, 50, 180);
             flameColors[4] = rgb565(100, 30, 140);
+            flameColors[5] = rgb565(60, 20, 100);
             coreColor = rgb565(255, 220, 255);
+            glowColor = rgb565(80, 30, 80);
             break;
         default:  // Klassisch Orange/Gelb
             flameColors[0] = rgb565(255, 255, 180);  // Kern (hellgelb)
-            flameColors[1] = rgb565(255, 220, 80);   // Gelb
-            flameColors[2] = rgb565(255, 160, 30);   // Orange
-            flameColors[3] = rgb565(255, 100, 10);   // Rotorange
-            flameColors[4] = rgb565(200, 50, 0);     // Dunkelrot
+            flameColors[1] = rgb565(255, 230, 100);  // Gelb
+            flameColors[2] = rgb565(255, 180, 50);   // Gelb-Orange
+            flameColors[3] = rgb565(255, 120, 20);   // Orange
+            flameColors[4] = rgb565(220, 70, 0);     // Dunkelorange
+            flameColors[5] = rgb565(150, 40, 0);     // Dunkelrot
             coreColor = rgb565(255, 255, 220);
+            glowColor = rgb565(80, 40, 10);
             break;
     }
     
-    // Mehrere spitze Flammen zeichnen
-    int numFlames = 7;
-    for (int f = 0; f < numFlames; f++) {
-        uint32_t seed = simpleRandom(f * 37 + _fireplaceFlamePhase * 3);
-        
-        // Position und Größe der Flamme
-        int spacing = width / (numFlames + 1);
-        int flameX = x - width/2 + spacing * (f + 1) + (int)((seed % 8) - 4);
-        int baseFlameHeight = height * 2 / 3 + (seed % (height / 3));
-        int flameWidth = 3 + (seed % 4);
-        
-        // Flamme von unten nach oben zeichnen - SPITZ ZULAUFEND
-        for (int i = 0; i < baseFlameHeight; i++) {
-            float progress = (float)i / baseFlameHeight;  // 0 = unten, 1 = oben
+    // ===== HINTERGRUND-FEUERSCHEIN (flackerndes orange Leuchten) =====
+    for (int gy = 0; gy < height; gy++) {
+        for (int gx = -width/2; gx <= width/2; gx++) {
+            uint32_t seed = simpleRandom((gx + 100) * 17 + gy * 31 + _fireplaceFlamePhase * 3);
             
-            // Breite nimmt nach oben stark ab (spitz)
-            float widthFactor = 1.0f - progress * progress;  // Quadratisch abnehmen
-            int currentWidth = (int)(flameWidth * widthFactor);
-            if (currentWidth < 1 && i < baseFlameHeight - 2) currentWidth = 1;
+            // Wahrscheinlichkeit für Pixel basierend auf Position (mehr unten)
+            float yFactor = 1.0f - (float)gy / height;
+            float xFactor = 1.0f - abs(gx) / (float)(width/2);
+            float glowProb = yFactor * xFactor * 0.6f;
             
-            // Farbe basierend auf Position (innen heller, außen dunkler, oben dunkler)
-            int colorIdx = (int)(progress * 4);
-            if (colorIdx > 4) colorIdx = 4;
-            uint16_t color = flameColors[colorIdx];
-            
-            // Flicker-Effekt (mehr oben)
-            int flickerAmplitude = (int)(progress * 4);
-            int flickerX = ((seed + i * 3 + _fireplaceFlamePhase) % (flickerAmplitude * 2 + 1)) - flickerAmplitude;
-            
-            if (currentWidth >= 1) {
-                for (int dx = -currentWidth; dx <= currentWidth; dx++) {
-                    // Innerer Bereich heller
-                    float distFromCenter = abs(dx) / (float)(currentWidth + 1);
-                    int innerColorIdx = colorIdx - (int)((1.0f - distFromCenter) * 2);
-                    if (innerColorIdx < 0) innerColorIdx = 0;
-                    uint16_t pixelColor = flameColors[innerColorIdx];
-                    
-                    int px = flameX + dx + flickerX;
-                    int py = y - i;
-                    if (px >= x - width/2 && px < x + width/2 && py >= 0 && py < _currentCanvas->height()) {
-                        _currentCanvas->drawPixel(px, py, pixelColor);
-                    }
-                }
-            } else if (currentWidth == 0) {
-                // Spitze der Flamme
-                int px = flameX + flickerX;
-                int py = y - i;
-                if (px >= x - width/2 && px < x + width/2 && py >= 0 && py < _currentCanvas->height()) {
-                    _currentCanvas->drawPixel(px, py, flameColors[min(4, colorIdx + 1)]);
+            if ((seed % 100) < glowProb * 100) {
+                int colorIdx = 3 + (seed % 3);  // Dunklere Farben für Hintergrund
+                int px = x + gx;
+                int py = y - gy;
+                if (py >= 0 && py < _currentCanvas->height()) {
+                    _currentCanvas->drawPixel(px, py, glowColor);
                 }
             }
         }
+    }
+    
+    // ===== HAUPTFEUER - Ein zusammenhängender Feuerbereich =====
+    // Von unten nach oben mit abnehmender Breite und Dichte
+    for (int fy = 0; fy < height; fy++) {
+        float yProgress = (float)fy / height;  // 0 = unten, 1 = oben
         
-        // Heller Kern am Fuß der Flamme
-        for (int dy = 0; dy < 3; dy++) {
-            for (int dx = -1; dx <= 1; dx++) {
-                int px = flameX + dx;
-                int py = y - dy;
-                if (px >= x - width/2 && px < x + width/2 && py >= 0) {
+        // Breite nimmt nach oben ab (organische Form)
+        float widthFactor = (1.0f - yProgress * yProgress) * 0.9f + 0.1f;
+        int lineWidth = (int)(width / 2 * widthFactor);
+        
+        // Wellenbewegung für natürlicheren Look
+        int waveOffset = (int)(sin((fy + _fireplaceFlamePhase * 2) * 0.5f) * 3);
+        
+        for (int fx = -lineWidth; fx <= lineWidth; fx++) {
+            uint32_t seed = simpleRandom(fx * 23 + fy * 47 + _fireplaceFlamePhase * 5);
+            
+            // Dichte nimmt nach oben ab
+            float density = 1.0f - yProgress * 0.7f;
+            if ((seed % 100) > density * 100) continue;
+            
+            // Position mit leichtem Flackern
+            int flickerX = ((seed / 7) % 3) - 1;
+            int px = x + fx + waveOffset + flickerX;
+            int py = y - fy;
+            
+            // Farbe: innen heller (Kern), außen dunkler
+            float distFromCenter = abs(fx) / (float)(lineWidth + 1);
+            int baseColorIdx = (int)(yProgress * 4);  // Oben dunkler
+            int colorIdx = baseColorIdx + (int)(distFromCenter * 2);
+            if (colorIdx > 5) colorIdx = 5;
+            if (colorIdx < 0) colorIdx = 0;
+            
+            // Kern in der Mitte (nur unten)
+            if (abs(fx) < 3 && fy < height / 3) {
+                colorIdx = max(0, colorIdx - 2);
+            }
+            
+            if (px >= x - width/2 && px <= x + width/2 && py >= 0 && py < _currentCanvas->height()) {
+                _currentCanvas->drawPixel(px, py, flameColors[colorIdx]);
+            }
+        }
+    }
+    
+    // ===== FLAMMENSPITZEN (verzweigte Flammen oben) =====
+    int numTips = 5 + (_fireplaceFlamePhase % 3);
+    for (int t = 0; t < numTips; t++) {
+        uint32_t seed = simpleRandom(t * 67 + _fireplaceFlamePhase * 11);
+        
+        // Position der Flammenspitze
+        int tipBaseX = x - width/3 + (seed % (width * 2 / 3));
+        int tipBaseY = y - height + 5;
+        int tipHeight = 5 + (seed % 10);
+        int tipWidth = 2 + (seed % 2);
+        
+        // Flammenspitze zeichnen (von unten nach oben)
+        for (int i = 0; i < tipHeight; i++) {
+            float progress = (float)i / tipHeight;
+            int currentWidth = (int)(tipWidth * (1.0f - progress));
+            int flickerX = ((seed + i * 3 + _fireplaceFlamePhase * 2) % 3) - 1;
+            
+            for (int dx = -currentWidth; dx <= currentWidth; dx++) {
+                int colorIdx = 2 + (int)(progress * 3);
+                if (colorIdx > 5) colorIdx = 5;
+                int px = tipBaseX + dx + flickerX;
+                int py = tipBaseY - i;
+                if (px >= x - width/2 && px <= x + width/2 && py >= 0) {
+                    _currentCanvas->drawPixel(px, py, flameColors[colorIdx]);
+                }
+            }
+        }
+    }
+    
+    // ===== HELLER KERN am Boden =====
+    for (int cy = 0; cy < 4; cy++) {
+        int coreWidth = (width / 3) - cy * 2;
+        for (int cx = -coreWidth; cx <= coreWidth; cx++) {
+            uint32_t seed = simpleRandom(cx * 13 + cy * 37);
+            if (seed % 3 < 2) {
+                int px = x + cx;
+                int py = y - cy;
+                if (py >= 0) {
                     _currentCanvas->drawPixel(px, py, coreColor);
                 }
             }
         }
     }
     
-    // Funken
-    for (int i = 0; i < 8; i++) {
-        uint32_t seed = simpleRandom(i * 17 + _fireplaceFlamePhase * 7);
-        if (seed % 4 == 0) {
-            int sparkX = x - width/2 + (seed % width);
-            int sparkY = y - height/2 - (seed % (height/2));
-            if (sparkY >= 0 && sparkX >= x - width/2 && sparkX < x + width/2) {
-                _currentCanvas->drawPixel(sparkX, sparkY, flameColors[seed % 2]);
-            }
-        }
-    }
-    
-    // Glut am Boden
+    // ===== GLUT am Boden =====
     uint16_t emberColors[] = {
         rgb565(255, 120, 20),
         rgb565(255, 80, 10),
@@ -1574,6 +1637,18 @@ void HolidayAnimationsModule::drawFireplaceFlames(int x, int y, int width, int h
             int px = x - width/2 + 2 + i;
             if (emberY < _currentCanvas->height()) {
                 _currentCanvas->drawPixel(px, emberY, emberColors[colorIdx]);
+            }
+        }
+    }
+    
+    // ===== FUNKEN =====
+    for (int i = 0; i < 6; i++) {
+        uint32_t seed = simpleRandom(i * 17 + _fireplaceFlamePhase * 7);
+        if (seed % 5 == 0) {
+            int sparkX = x - width/3 + (seed % (width * 2 / 3));
+            int sparkY = y - height - (seed % 8);
+            if (sparkY >= 0 && sparkX >= x - width/2 && sparkX <= x + width/2) {
+                _currentCanvas->drawPixel(sparkX, sparkY, flameColors[seed % 2]);
             }
         }
     }
