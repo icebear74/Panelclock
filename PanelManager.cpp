@@ -726,38 +726,43 @@ PlaylistEntry* PanelManager::findEntryByModuleAndUID(DrawableModule* mod, uint32
 // ============================================================================
 
 void PanelManager::render() {
-    if (!_sensorMod || !_sensorMod->isDisplayOn()) {
-        if (_dma_display) {
-            _dma_display->clearScreen();
-            _dma_display->flipDMABuffer();
-        }
-        return;
-    }
-    
     if (!_virtualDisp || !_dma_display || !_canvasTime || !_canvasData || !_fullCanvas) return;
+    
+    // Prüfe ob das physische Display eingeschaltet sein soll
+    bool displayOn = _sensorMod && _sensorMod->isDisplayOn();
     
     // Lock canvas access for thread-safe rendering
     if (_canvasMutex && xSemaphoreTake(_canvasMutex, portMAX_DELAY) == pdTRUE) {
+        // Canvas IMMER zeichnen (für Streaming auch wenn Display aus)
         if (_fullscreenActive) {
             // Fullscreen-Modus: Modul zeichnet auf gesamten Bildschirm
             drawFullscreenArea();
-            _virtualDisp->drawRGBBitmap(0, 0, _fullCanvas->getBuffer(), 
-                                        _fullCanvas->width(), _fullCanvas->height());
         } else {
             // Normaler Modus: Uhr oben, Daten unten
             drawClockArea();
             drawDataArea();
-            
-            _virtualDisp->drawRGBBitmap(0, 0, _canvasTime->getBuffer(), 
-                                        _canvasTime->width(), _canvasTime->height());
-            _virtualDisp->drawRGBBitmap(0, TIME_AREA_H, _canvasData->getBuffer(), 
-                                        _canvasData->width(), _canvasData->height());
+        }
+        
+        // Physisches Display nur aktualisieren wenn eingeschaltet
+        if (displayOn) {
+            if (_fullscreenActive) {
+                _virtualDisp->drawRGBBitmap(0, 0, _fullCanvas->getBuffer(), 
+                                            _fullCanvas->width(), _fullCanvas->height());
+            } else {
+                _virtualDisp->drawRGBBitmap(0, 0, _canvasTime->getBuffer(), 
+                                            _canvasTime->width(), _canvasTime->height());
+                _virtualDisp->drawRGBBitmap(0, TIME_AREA_H, _canvasData->getBuffer(), 
+                                            _canvasData->width(), _canvasData->height());
+            }
+            _dma_display->flipDMABuffer();
+        } else {
+            // Display aus: Nur Bildschirm löschen
+            _dma_display->clearScreen();
+            _dma_display->flipDMABuffer();
         }
         
         xSemaphoreGive(_canvasMutex);
     }
-    
-    _dma_display->flipDMABuffer();
 }
 
 void PanelManager::drawFullscreenArea() {
