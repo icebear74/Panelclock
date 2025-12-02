@@ -23,7 +23,7 @@ time_t parseICalDateTime(const char* line, size_t len, bool& isAllDay, const Gen
         value_ptr = colon + 1;
     }
 
-    // Check for property parameters (TZID, VALUE=DATE, etc.)
+    // Check for property parameters (TZID, VALUE=DATE)
     bool hasTZID = false;
     const char* semicolon = (const char*)memchr(line, ';', len);
     if (semicolon && semicolon < colon) { // Property parameter
@@ -32,8 +32,9 @@ time_t parseICalDateTime(const char* line, size_t len, bool& isAllDay, const Gen
             isAllDay = true;
         }
         // Check if there's a TZID parameter
+        // TZID format is "TZID=timezone_name" followed by colon
         const char* tzid = strstr(semicolon, "TZID=");
-        if (tzid && tzid < colon) {
+        if (tzid && tzid < colon && tzid >= semicolon) {
             hasTZID = true;
         }
     }
@@ -82,12 +83,16 @@ time_t parseICalDateTime(const char* line, size_t len, bool& isAllDay, const Gen
         // timegm treats the tm struct as UTC, giving us the epoch if it were UTC
         time_t as_if_utc = timegm(&t);
         
-        // Now we need to adjust for the timezone offset
-        // The time is in local timezone, so to get UTC we subtract the offset
-        // But GeneralTimeConverter's toLocal ADDS offset, so we need to reverse that
-        // If local = UTC + offset, then UTC = local - offset
-        int offset = converter->isDST(as_if_utc) ? converter->getDstOffsetSec() : converter->getStdOffsetSec();
-        return as_if_utc - offset;
+        // To check DST correctly, we need to approximate the UTC time first
+        // Use a simplified approach: check DST based on the approximate UTC time
+        // This works because DST transitions don't happen at the same time in local and UTC
+        int initial_offset = converter->isDST(as_if_utc) ? converter->getDstOffsetSec() : converter->getStdOffsetSec();
+        time_t approx_utc = as_if_utc - initial_offset;
+        
+        // Now check DST again with the approximated UTC time
+        // This handles edge cases around DST transitions
+        int final_offset = converter->isDST(approx_utc) ? converter->getDstOffsetSec() : converter->getStdOffsetSec();
+        return as_if_utc - final_offset;
     } else {
         // No timezone specified - treat as local time using system timezone
         return mktime(&t);
