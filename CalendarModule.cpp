@@ -133,7 +133,7 @@ void CalendarModule::tick() {
     }
     
     // Wenn pulsierende Events vorhanden sind, regelmäßig Updates triggern
-    // damit das Blinken smooth läuft (ca. 20-30 FPS für smooth pulsing)
+    // damit das Blinken smooth läuft (~30 FPS für smooth pulsing)
     if (_hasPulsingEvents && (now - _lastPulseUpdate >= 33)) { // ~30 FPS
         _lastPulseUpdate = now;
         needsUpdate = true;
