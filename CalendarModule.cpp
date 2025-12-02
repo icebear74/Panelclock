@@ -485,7 +485,7 @@ void CalendarModule::parseICS(char* icsBuffer, size_t size) {
         size_t endPos = ics.find(endTag, pos); if (endPos == PsramString::npos) break;
         PsramString veventBlock = ics.substr(pos, (endPos + endTag.length()) - pos);
         Event parsedEvent;
-        parseVEvent(veventBlock.c_str(), veventBlock.length(), parsedEvent);
+        parseVEvent(veventBlock.c_str(), veventBlock.length(), parsedEvent, &timeConverter);
         if(parsedEvent.dtstart > 0) parsedEvents.push_back(std::move(parsedEvent));
         idx = endPos + endTag.length();
         if (parsedEvents.size() % 50 == 0) delay(1);
@@ -522,7 +522,7 @@ void CalendarModule::parseICS(char* icsBuffer, size_t size) {
         } else {
             PsramTimeVector occurrences;
             occurrences.reserve(128);
-            parseRRule(masterEvent, occurrences);
+            parseRRule(masterEvent, occurrences, 15, &timeConverter);
             
             PsramEventPairVector final_series_vec;
             final_series_vec.reserve(occurrences.size() + exceptions.size());
