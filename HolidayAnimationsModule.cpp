@@ -653,7 +653,7 @@ void HolidayAnimationsModule::drawTreeOrnaments(int centerX, int baseY, float sc
     int numColors = 8;
     
     // Skalierte Kugelpositionen
-    int numOrnaments = scale > 1.2 ? 14 : 11;  // Mehr Kugeln bei Fullscreen
+    int numOrnaments = scale > 1.2 ? 16 : 12;  // Mehr Kugeln bei Fullscreen
     
     // Baumhöhe und Schichten (müssen mit drawNaturalTree übereinstimmen)
     int treeHeight = (int)(54 * scale);
@@ -663,35 +663,43 @@ void HolidayAnimationsModule::drawTreeOrnaments(int centerX, int baseY, float sc
     int layer2Width = (int)(22 * scale);
     int layer3Width = (int)(16 * scale);
     
+    // Verteilungsmuster - gemischte Positionen für natürlicheren Look
     for (int i = 0; i < numOrnaments; i++) {
-        uint32_t seed = simpleRandom(i * 123 + 456);
+        uint32_t seed = simpleRandom(i * 157 + 789);
         
-        // Gleichmäßig über die Baumhöhe verteilen (von unten bis oben)
-        int ySection = i * treeHeight / numOrnaments;
-        int yOffset = ySection + (seed % 6) - 3;  // kleine Variation
-        if (yOffset < 3) yOffset = 3;
-        if (yOffset > treeHeight - 5) yOffset = treeHeight - 5;
+        // Y-Position: Spiralmuster mit Zufälligkeit für organischen Look
+        float angle = (float)i / numOrnaments * 3.14159f * 2.5f;  // ~2.5 Umdrehungen
+        int yOffset = (int)(3 + (treeHeight - 8) * (float)i / numOrnaments);
+        yOffset += (seed % 5) - 2;  // kleine Variation
+        if (yOffset < 4) yOffset = 4;
+        if (yOffset > treeHeight - 6) yOffset = treeHeight - 6;
         
-        // Berechne maximale Breite an dieser Y-Position
+        // Berechne maximale Breite an dieser Y-Position (konservativ)
         int maxWidth;
         if (yOffset < layer1Height) {
-            // Unterste Schicht
             float progress = (float)yOffset / layer1Height;
-            maxWidth = (int)(layer1Width * (1.0f - progress * 0.5f));
+            maxWidth = (int)(layer1Width * (1.0f - progress * 0.6f) * 0.7f);
         } else if (yOffset < layer1Height + layer2Height - (int)(4 * scale)) {
-            // Mittlere Schicht
             float progress = (float)(yOffset - layer1Height + (int)(4 * scale)) / layer2Height;
-            maxWidth = (int)(layer2Width * (1.0f - progress * 0.5f));
+            maxWidth = (int)(layer2Width * (1.0f - progress * 0.6f) * 0.75f);
         } else {
-            // Oberste Schicht
-            float progress = (float)(yOffset - layer1Height - layer2Height + (int)(14 * scale)) / layer3Width;
-            maxWidth = (int)(layer3Width * (1.0f - progress * 0.6f));
+            float progress = (float)(yOffset - layer1Height - layer2Height + (int)(14 * scale)) / (layer3Width + 4);
+            maxWidth = (int)(layer3Width * (1.0f - progress * 0.7f) * 0.7f);
         }
         
-        if (maxWidth < 3) maxWidth = 3;
-        maxWidth -= 2;  // Etwas Abstand vom Rand
+        if (maxWidth < 2) maxWidth = 2;
         
-        int ox = centerX - maxWidth + (int)((seed / 7) % (maxWidth * 2));
+        // X-Position mit Spiralmuster (abwechselnd links/rechts)
+        int xRange = maxWidth - 1;
+        int ox;
+        if (i % 2 == 0) {
+            // Linke Seite
+            ox = centerX - (seed % xRange) - 2;
+        } else {
+            // Rechte Seite
+            ox = centerX + (seed % xRange) + 2;
+        }
+        
         int oy = baseY - yOffset;
         int radius = 2 + (seed % 2);
         if (scale > 1.2) radius = 2 + (seed % 3);
@@ -745,40 +753,42 @@ void HolidayAnimationsModule::drawTreeLights() {
     int layer3Width = (int)(16 * scale);
     int treeHeight = layer1Height + layer2Height - (int)(4 * scale) + layer3Height - (int)(10 * scale);
     
-    // Lichter über den Baum verteilt
+    // Lichter über den Baum verteilt mit organischem Muster
     for (int i = 0; i < lightCount; i++) {
-        // Berechne Position basierend auf Index
-        uint32_t seed = simpleRandom(i * 37 + 789);
+        // Berechne Position basierend auf Index mit Spiralmuster
+        uint32_t seed = simpleRandom(i * 67 + 321);
         
-        // Y-Position: gleichmäßig über den Baum verteilt
+        // Y-Position: spiralförmig über den Baum verteilt
         int ySection = i * treeHeight / lightCount;
-        int yOffset = ySection + (seed % 5) - 2;
+        int yOffset = ySection + (seed % 4) - 2;
         if (yOffset < 2) yOffset = 2;
-        if (yOffset > treeHeight - 3) yOffset = treeHeight - 3;
+        if (yOffset > treeHeight - 4) yOffset = treeHeight - 4;
         
         int lightY = treeBaseY - yOffset;
         
-        // X-Position abhängig von Y (berechne maximale Breite an dieser Position)
+        // X-Position abhängig von Y (berechne maximale Breite an dieser Position - konservativ)
         int maxX;
         if (yOffset < layer1Height) {
-            // Unterste Schicht
             float progress = (float)yOffset / layer1Height;
-            maxX = (int)(layer1Width * (1.0f - progress * 0.5f));
+            maxX = (int)(layer1Width * (1.0f - progress * 0.6f) * 0.65f);
         } else if (yOffset < layer1Height + layer2Height - (int)(4 * scale)) {
-            // Mittlere Schicht (mit Überlappung)
             float progress = (float)(yOffset - layer1Height + (int)(4 * scale)) / layer2Height;
-            maxX = (int)(layer2Width * (1.0f - progress * 0.5f));
+            maxX = (int)(layer2Width * (1.0f - progress * 0.6f) * 0.7f);
         } else {
-            // Oberste Schicht
             float progress = (float)(yOffset - layer1Height - layer2Height + (int)(14 * scale)) / layer3Height;
-            maxX = (int)(layer3Width * (1.0f - progress * 0.7f));
+            maxX = (int)(layer3Width * (1.0f - progress * 0.8f) * 0.6f);
         }
         
-        if (maxX < 3) maxX = 3;
-        maxX -= 2;  // Etwas Abstand vom Rand des Baumes
+        if (maxX < 2) maxX = 2;
         
-        seed = simpleRandom(seed);
-        int lightX = centerX - maxX + (seed % (maxX * 2));
+        // Abwechselnd links und rechts für bessere Verteilung
+        int lightX;
+        seed = simpleRandom(seed + i);
+        if (i % 2 == 0) {
+            lightX = centerX - maxX + (seed % (maxX / 2 + 1));
+        } else {
+            lightX = centerX + (seed % (maxX / 2 + 1));
+        }
         
         // Blinken basierend auf Phase
         seed = simpleRandom(seed + i * 11);
@@ -1578,28 +1588,30 @@ void HolidayAnimationsModule::drawFireplaceFlames(int x, int y, int width, int h
         }
     }
     
-    // ===== FLAMMENSPITZEN (verzweigte Flammen oben) =====
-    int numTips = 5 + (_fireplaceFlamePhase % 3);
+    // ===== FLAMMENSPITZEN (verzweigte Flammen oben - verbunden mit Hauptfeuer) =====
+    int numTips = 4 + (_fireplaceFlamePhase % 2);
     for (int t = 0; t < numTips; t++) {
         uint32_t seed = simpleRandom(t * 67 + _fireplaceFlamePhase * 11);
         
-        // Position der Flammenspitze
-        int tipBaseX = x - width/3 + (seed % (width * 2 / 3));
-        int tipBaseY = y - height + 5;
-        int tipHeight = 5 + (seed % 10);
-        int tipWidth = 2 + (seed % 2);
+        // Position der Flammenspitze - startet wo das Hauptfeuer aufhört (y - height * 0.7)
+        // So dass sie im oberen Bereich des Hauptfeuers beginnt und darüber hinausragt
+        int tipBaseX = x - width/4 + (seed % (width / 2));
+        int tipStartY = (int)(y - height * 0.65);  // Startet im oberen Drittel des Hauptfeuers
+        int tipHeight = 4 + (seed % 6);
+        int tipWidth = 1 + (seed % 2);
         
         // Flammenspitze zeichnen (von unten nach oben)
         for (int i = 0; i < tipHeight; i++) {
             float progress = (float)i / tipHeight;
-            int currentWidth = (int)(tipWidth * (1.0f - progress));
+            int currentWidth = (int)(tipWidth * (1.0f - progress * 0.8f));
             int flickerX = ((seed + i * 3 + _fireplaceFlamePhase * 2) % 3) - 1;
             
             for (int dx = -currentWidth; dx <= currentWidth; dx++) {
-                int colorIdx = 2 + (int)(progress * 3);
+                // Farbe: beginnt mit Hauptfeuer-Farbe (Mitte) und wird nach oben dunkler
+                int colorIdx = 1 + (int)(progress * 3);
                 if (colorIdx > 5) colorIdx = 5;
                 int px = tipBaseX + dx + flickerX;
-                int py = tipBaseY - i;
+                int py = tipStartY - i;
                 if (px >= x - width/2 && px <= x + width/2 && py >= 0) {
                     _currentCanvas->drawPixel(px, py, flameColors[colorIdx]);
                 }
