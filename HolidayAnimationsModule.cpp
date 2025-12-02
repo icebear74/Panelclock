@@ -1708,7 +1708,7 @@ void HolidayAnimationsModule::drawMantleDecorations(int simsY, int simsWidth, in
         
         int clockCx = centerX;
         int clockCy = simsY - 1;  // Auf dem Sims stehend
-        int clockR = (int)(7 * scale);  // Radius
+        int clockR = (int)(12 * scale);  // Radius - größer für bessere Sichtbarkeit
         
         // Uhren-Basis/Gehäuse
         uint16_t caseColor = rgb565(60, 45, 30);
@@ -1717,38 +1717,40 @@ void HolidayAnimationsModule::drawMantleDecorations(int simsY, int simsWidth, in
         uint16_t hourMarks = rgb565(80, 60, 40);
         
         // Gehäuse (Sockel)
-        int baseH = 3;
-        _currentCanvas->fillRect(clockCx - clockR - 1, clockCy - baseH, (clockR + 1) * 2, baseH, caseColor);
+        int baseH = 4;
+        _currentCanvas->fillRect(clockCx - clockR - 2, clockCy - baseH, (clockR + 2) * 2, baseH, caseColor);
         
         // Zifferblatt (Kreis)
         int faceCy = clockCy - baseH - clockR;
         _currentCanvas->fillCircle(clockCx, faceCy, clockR, faceColor);
         _currentCanvas->drawCircle(clockCx, faceCy, clockR, caseColor);
         
-        // Stundenmarkierungen (12, 3, 6, 9)
-        _currentCanvas->drawPixel(clockCx, faceCy - clockR + 1, hourMarks);  // 12
-        _currentCanvas->drawPixel(clockCx + clockR - 1, faceCy, hourMarks);  // 3
-        _currentCanvas->drawPixel(clockCx, faceCy + clockR - 1, hourMarks);  // 6
-        _currentCanvas->drawPixel(clockCx - clockR + 1, faceCy, hourMarks);  // 9
+        // Stundenmarkierungen (12, 3, 6, 9) - größere Markierungen
+        _currentCanvas->drawLine(clockCx, faceCy - clockR + 1, clockCx, faceCy - clockR + 2, hourMarks);  // 12
+        _currentCanvas->drawLine(clockCx + clockR - 2, faceCy, clockCx + clockR - 1, faceCy, hourMarks);  // 3
+        _currentCanvas->drawLine(clockCx, faceCy + clockR - 2, clockCx, faceCy + clockR - 1, hourMarks);  // 6
+        _currentCanvas->drawLine(clockCx - clockR + 1, faceCy, clockCx - clockR + 2, faceCy, hourMarks);  // 9
         
-        // Stundenzeiger (kürzer)
+        // Stundenzeiger (kürzer, aber dicker)
         float hourAngle = (hours + minutes / 60.0f) * 30.0f - 90.0f;  // 30° pro Stunde
         float hourRad = hourAngle * 3.14159f / 180.0f;
-        int hourLen = clockR - 3;
+        int hourLen = (int)(clockR * 0.55f);  // 55% des Radius
         int hx = clockCx + (int)(cos(hourRad) * hourLen);
         int hy = faceCy + (int)(sin(hourRad) * hourLen);
         _currentCanvas->drawLine(clockCx, faceCy, hx, hy, handColor);
+        // Dickerer Stundenzeiger (zusätzliche Linie parallel)
+        _currentCanvas->drawLine(clockCx + 1, faceCy, hx + 1, hy, handColor);
         
         // Minutenzeiger (länger)
         float minAngle = minutes * 6.0f - 90.0f;  // 6° pro Minute
         float minRad = minAngle * 3.14159f / 180.0f;
-        int minLen = clockR - 1;
+        int minLen = (int)(clockR * 0.8f);  // 80% des Radius
         int mx = clockCx + (int)(cos(minRad) * minLen);
         int my = faceCy + (int)(sin(minRad) * minLen);
         _currentCanvas->drawLine(clockCx, faceCy, mx, my, handColor);
         
-        // Mittelpunkt
-        _currentCanvas->drawPixel(clockCx, faceCy, handColor);
+        // Mittelpunkt (größer)
+        _currentCanvas->fillCircle(clockCx, faceCy, 2, handColor);
     }
     
     // ===== DEKORATIONEN LINKS UND RECHTS =====
