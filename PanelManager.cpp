@@ -119,6 +119,12 @@ void PanelManager::registerModule(DrawableModule* mod) {
         this->handlePriorityRelease(m, uid);
     });
     
+    // Fullscreen-Canvas setzen wenn das Modul Fullscreen unterstützt
+    if (mod->supportsFullscreen() && _fullCanvas) {
+        mod->setFullscreenCanvas(_fullCanvas);
+        Serial.printf("[PanelManager] Fullscreen-Canvas für '%s' gesetzt\n", mod->getModuleName());
+    }
+    
     // Zu Catalog hinzufügen (IMMER, für periodicTick)
     _moduleCatalog.push_back(mod);
     
@@ -397,9 +403,13 @@ void PanelManager::tick() {
     
     // Schritt 3: Wenn kein Modul aktiv, starte eines
     if (!activeEntry) {
+        _fullscreenActive = false;  // Kein Modul = kein Fullscreen
         switchNextModule();
         return;
     }
+    
+    // Schritt 3.5: Fullscreen-Modus aktualisieren basierend auf aktivem Modul
+    _fullscreenActive = activeEntry->module && activeEntry->module->wantsFullscreen();
     
     // Schritt 4: Prüfe ob Modul noch enabled ist
     if (!activeEntry->module->isEnabled()) {
@@ -416,6 +426,7 @@ void PanelManager::tick() {
             }
         }
         
+        _fullscreenActive = false;
         switchNextModule();
         return;
     }
@@ -715,30 +726,53 @@ PlaylistEntry* PanelManager::findEntryByModuleAndUID(DrawableModule* mod, uint32
 // ============================================================================
 
 void PanelManager::render() {
-    if (!_sensorMod || !_sensorMod->isDisplayOn()) {
-        if (_dma_display) {
-            _dma_display->clearScreen();
-            _dma_display->flipDMABuffer();
-        }
-        return;
-    }
+    if (!_virtualDisp || !_dma_display || !_canvasTime || !_canvasData || !_fullCanvas) return;
     
-    if (!_virtualDisp || !_dma_display || !_canvasTime || !_canvasData) return;
+    // Prüfe ob das physische Display eingeschaltet sein soll
+    bool displayOn = _sensorMod && _sensorMod->isDisplayOn();
     
     // Lock canvas access for thread-safe rendering
     if (_canvasMutex && xSemaphoreTake(_canvasMutex, portMAX_DELAY) == pdTRUE) {
-        drawClockArea();
-        drawDataArea();
+        // Canvas IMMER zeichnen (für Streaming auch wenn Display aus)
+        if (_fullscreenActive) {
+            // Fullscreen-Modus: Modul zeichnet auf gesamten Bildschirm
+            drawFullscreenArea();
+        } else {
+            // Normaler Modus: Uhr oben, Daten unten
+            drawClockArea();
+            drawDataArea();
+        }
         
-        _virtualDisp->drawRGBBitmap(0, 0, _canvasTime->getBuffer(), 
-                                    _canvasTime->width(), _canvasTime->height());
-        _virtualDisp->drawRGBBitmap(0, TIME_AREA_H, _canvasData->getBuffer(), 
-                                    _canvasData->width(), _canvasData->height());
+        // Physisches Display nur aktualisieren wenn eingeschaltet
+        if (displayOn) {
+            if (_fullscreenActive) {
+                _virtualDisp->drawRGBBitmap(0, 0, _fullCanvas->getBuffer(), 
+                                            _fullCanvas->width(), _fullCanvas->height());
+            } else {
+                _virtualDisp->drawRGBBitmap(0, 0, _canvasTime->getBuffer(), 
+                                            _canvasTime->width(), _canvasTime->height());
+                _virtualDisp->drawRGBBitmap(0, TIME_AREA_H, _canvasData->getBuffer(), 
+                                            _canvasData->width(), _canvasData->height());
+            }
+            _dma_display->flipDMABuffer();
+        } else {
+            // Display aus: Nur Bildschirm löschen
+            _dma_display->clearScreen();
+            _dma_display->flipDMABuffer();
+        }
         
         xSemaphoreGive(_canvasMutex);
     }
+}
+
+void PanelManager::drawFullscreenArea() {
+    PlaylistEntry* activeEntry = findActiveEntry();
     
-    _dma_display->flipDMABuffer();
+    if (activeEntry && activeEntry->module && !activeEntry->isPaused) {
+        activeEntry->module->draw();
+    } else {
+        if (_fullCanvas) _fullCanvas->fillScreen(0);
+    }
 }
 
 void PanelManager::drawClockArea() {
@@ -801,14 +835,12 @@ void PanelManager::displayStatus(const char* msg) {
 // ============================================================================
 
 bool PanelManager::copyFullPanelBuffer(uint16_t* destinationBuffer, size_t bufferSize) {
-    if (!destinationBuffer || !_canvasTime || !_canvasData) {
+    if (!destinationBuffer) {
         return false;
     }
     
-    // Calculate required buffer size
-    size_t timeBufferSize = FULL_WIDTH * TIME_AREA_H;
-    size_t dataBufferSize = FULL_WIDTH * DATA_AREA_H;
-    size_t totalRequired = timeBufferSize + dataBufferSize;
+    // Calculate required buffer size (full panel)
+    size_t totalRequired = FULL_WIDTH * FULL_HEIGHT;
     
     if (bufferSize < totalRequired) {
         return false;
@@ -816,16 +848,34 @@ bool PanelManager::copyFullPanelBuffer(uint16_t* destinationBuffer, size_t buffe
     
     // Lock canvas access
     if (_canvasMutex && xSemaphoreTake(_canvasMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        // Copy time area
-        uint16_t* timeBuffer = _canvasTime->getBuffer();
-        if (timeBuffer) {
-            memcpy(destinationBuffer, timeBuffer, timeBufferSize * sizeof(uint16_t));
-        }
-        
-        // Copy data area
-        uint16_t* dataBuffer = _canvasData->getBuffer();
-        if (dataBuffer) {
-            memcpy(destinationBuffer + timeBufferSize, dataBuffer, dataBufferSize * sizeof(uint16_t));
+        if (_fullscreenActive && _fullCanvas) {
+            // Fullscreen-Modus: Kopiere den kompletten Fullscreen-Canvas
+            uint16_t* fullBuffer = _fullCanvas->getBuffer();
+            if (fullBuffer) {
+                memcpy(destinationBuffer, fullBuffer, totalRequired * sizeof(uint16_t));
+            } else {
+                xSemaphoreGive(_canvasMutex);
+                return false;
+            }
+        } else if (_canvasTime && _canvasData) {
+            // Normaler Modus: Kopiere Time + Data Canvas
+            size_t timeBufferSize = FULL_WIDTH * TIME_AREA_H;
+            size_t dataBufferSize = FULL_WIDTH * DATA_AREA_H;
+            
+            // Copy time area
+            uint16_t* timeBuffer = _canvasTime->getBuffer();
+            if (timeBuffer) {
+                memcpy(destinationBuffer, timeBuffer, timeBufferSize * sizeof(uint16_t));
+            }
+            
+            // Copy data area
+            uint16_t* dataBuffer = _canvasData->getBuffer();
+            if (dataBuffer) {
+                memcpy(destinationBuffer + timeBufferSize, dataBuffer, dataBufferSize * sizeof(uint16_t));
+            }
+        } else {
+            xSemaphoreGive(_canvasMutex);
+            return false;
         }
         
         xSemaphoreGive(_canvasMutex);

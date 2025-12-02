@@ -123,85 +123,41 @@ void BackupManager::collectConfiguration(JsonDocument& doc) {
     
     JsonObject config = doc["configuration"].to<JsonObject>();
     
-    // Device config
-    if (deviceConfig) {
-        JsonObject deviceConf = config["device"].to<JsonObject>();
-        deviceConf["hostname"] = deviceConfig->hostname.c_str();
-        deviceConf["ssid"] = deviceConfig->ssid.c_str();
-        deviceConf["password"] = deviceConfig->password.c_str();
-        deviceConf["otaPassword"] = deviceConfig->otaPassword.c_str();
-        deviceConf["timezone"] = deviceConfig->timezone.c_str();
-        deviceConf["tankerApiKey"] = deviceConfig->tankerApiKey.c_str();
-        deviceConf["stationId"] = deviceConfig->stationId.c_str();
-        deviceConf["tankerkoenigStationIds"] = deviceConfig->tankerkoenigStationIds.c_str();
-        deviceConf["stationFetchIntervalMin"] = deviceConfig->stationFetchIntervalMin;
-        deviceConf["icsUrl"] = deviceConfig->icsUrl.c_str();
-        deviceConf["calendarFetchIntervalMin"] = deviceConfig->calendarFetchIntervalMin;
-        deviceConf["calendarScrollMs"] = deviceConfig->calendarScrollMs;
-        deviceConf["calendarDateColor"] = deviceConfig->calendarDateColor.c_str();
-        deviceConf["calendarTextColor"] = deviceConfig->calendarTextColor.c_str();
-        deviceConf["calendarDisplaySec"] = deviceConfig->calendarDisplaySec;
-        deviceConf["stationDisplaySec"] = deviceConfig->stationDisplaySec;
-        deviceConf["calendarFastBlinkHours"] = deviceConfig->calendarFastBlinkHours;
-        deviceConf["calendarUrgentThresholdHours"] = deviceConfig->calendarUrgentThresholdHours;
-        deviceConf["calendarUrgentDurationSec"] = deviceConfig->calendarUrgentDurationSec;
-        deviceConf["calendarUrgentRepeatMin"] = deviceConfig->calendarUrgentRepeatMin;
-        deviceConf["dartsOomEnabled"] = deviceConfig->dartsOomEnabled;
-        deviceConf["dartsProTourEnabled"] = deviceConfig->dartsProTourEnabled;
-        deviceConf["dartsDisplaySec"] = deviceConfig->dartsDisplaySec;
-        deviceConf["trackedDartsPlayers"] = deviceConfig->trackedDartsPlayers.c_str();
-        deviceConf["fritzboxEnabled"] = deviceConfig->fritzboxEnabled;
-        deviceConf["fritzboxIp"] = deviceConfig->fritzboxIp.c_str();
-        deviceConf["fritzboxUser"] = deviceConfig->fritzboxUser.c_str();
-        deviceConf["fritzboxPassword"] = deviceConfig->fritzboxPassword.c_str();
-        deviceConf["weatherEnabled"] = deviceConfig->weatherEnabled;
-        deviceConf["weatherApiKey"] = deviceConfig->weatherApiKey.c_str();
-        deviceConf["weatherFetchIntervalMin"] = deviceConfig->weatherFetchIntervalMin;
-        deviceConf["weatherDisplaySec"] = deviceConfig->weatherDisplaySec;
-        deviceConf["weatherShowCurrent"] = deviceConfig->weatherShowCurrent;
-        deviceConf["weatherShowHourly"] = deviceConfig->weatherShowHourly;
-        deviceConf["weatherShowDaily"] = deviceConfig->weatherShowDaily;
-        deviceConf["weatherDailyForecastDays"] = deviceConfig->weatherDailyForecastDays;
-        deviceConf["weatherHourlyMode"] = deviceConfig->weatherHourlyMode;
-        deviceConf["weatherHourlySlotMorning"] = deviceConfig->weatherHourlySlotMorning;
-        deviceConf["weatherHourlySlotNoon"] = deviceConfig->weatherHourlySlotNoon;
-        deviceConf["weatherHourlySlotEvening"] = deviceConfig->weatherHourlySlotEvening;
-        deviceConf["weatherHourlyInterval"] = deviceConfig->weatherHourlyInterval;
-        deviceConf["weatherAlertsEnabled"] = deviceConfig->weatherAlertsEnabled;
-        deviceConf["weatherAlertsDisplaySec"] = deviceConfig->weatherAlertsDisplaySec;
-        deviceConf["weatherAlertsRepeatMin"] = deviceConfig->weatherAlertsRepeatMin;
-        deviceConf["tankerkoenigCertFile"] = deviceConfig->tankerkoenigCertFile.c_str();
-        deviceConf["dartsCertFile"] = deviceConfig->dartsCertFile.c_str();
-        deviceConf["googleCertFile"] = deviceConfig->googleCertFile.c_str();
-        deviceConf["webClientBufferSize"] = deviceConfig->webClientBufferSize;
-        deviceConf["mwaveSensorEnabled"] = deviceConfig->mwaveSensorEnabled;
-        deviceConf["mwaveOffCheckDuration"] = deviceConfig->mwaveOffCheckDuration;
-        deviceConf["mwaveOffCheckOnPercent"] = deviceConfig->mwaveOffCheckOnPercent;
-        deviceConf["mwaveOnCheckDuration"] = deviceConfig->mwaveOnCheckDuration;
-        deviceConf["mwaveOnCheckPercentage"] = deviceConfig->mwaveOnCheckPercentage;
-        deviceConf["userLatitude"] = deviceConfig->userLatitude;
-        deviceConf["userLongitude"] = deviceConfig->userLongitude;
-        deviceConf["movingAverageDays"] = deviceConfig->movingAverageDays;
-        deviceConf["trendAnalysisDays"] = deviceConfig->trendAnalysisDays;
+    // Read config.json directly - this automatically includes ALL fields without manual listing
+    // Any new config fields are automatically backed up without needing to modify this code
+    if (LittleFS.exists("/config.json")) {
+        File configFile = LittleFS.open("/config.json", "r");
+        if (configFile) {
+            SpiRamAllocator allocator;
+            JsonDocument configDoc(&allocator);
+            DeserializationError error = deserializeJson(configDoc, configFile);
+            configFile.close();
+            
+            if (!error) {
+                config["device"] = configDoc.as<JsonVariant>();
+                Log.println("[BackupManager] Device config collected from config.json");
+            } else {
+                Log.printf("[BackupManager] Error parsing config.json: %s\n", error.c_str());
+            }
+        }
     }
     
-    // Hardware config
-    if (hardwareConfig) {
-        JsonObject hwConf = config["hardware"].to<JsonObject>();
-        hwConf["R1"] = hardwareConfig->R1;
-        hwConf["G1"] = hardwareConfig->G1;
-        hwConf["B1"] = hardwareConfig->B1;
-        hwConf["R2"] = hardwareConfig->R2;
-        hwConf["G2"] = hardwareConfig->G2;
-        hwConf["B2"] = hardwareConfig->B2;
-        hwConf["A"] = hardwareConfig->A;
-        hwConf["B"] = hardwareConfig->B;
-        hwConf["C"] = hardwareConfig->C;
-        hwConf["D"] = hardwareConfig->D;
-        hwConf["E"] = hardwareConfig->E;
-        hwConf["CLK"] = hardwareConfig->CLK;
-        hwConf["LAT"] = hardwareConfig->LAT;
-        hwConf["OE"] = hardwareConfig->OE;
+    // Read hardware.json directly - same approach for hardware config
+    if (LittleFS.exists("/hardware.json")) {
+        File hwFile = LittleFS.open("/hardware.json", "r");
+        if (hwFile) {
+            SpiRamAllocator allocator;
+            JsonDocument hwDoc(&allocator);
+            DeserializationError error = deserializeJson(hwDoc, hwFile);
+            hwFile.close();
+            
+            if (!error) {
+                config["hardware"] = hwDoc.as<JsonVariant>();
+                Log.println("[BackupManager] Hardware config collected from hardware.json");
+            } else {
+                Log.printf("[BackupManager] Error parsing hardware.json: %s\n", error.c_str());
+            }
+        }
     }
 }
 

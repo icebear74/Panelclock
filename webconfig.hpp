@@ -164,6 +164,72 @@ struct DeviceConfig {
     /// @brief Die Anzeigedauer pro Feiertag in Sekunden.
     int curiousHolidaysDisplaySec = 10;
 
+    // --- Adventskranz Modul ---
+    /// @brief Aktiviert die Anzeige des Adventskranzes während der Adventszeit.
+    bool adventWreathEnabled = true;
+    /// @brief Die Anzeigedauer des Adventskranzes in Sekunden.
+    int adventWreathDisplaySec = 15;
+    /// @brief Das Wiederholungsintervall für den Adventskranz in Minuten.
+    int adventWreathRepeatMin = 30;
+    /// @brief Kerzenfarben-Modus: 0=Traditionell (violett/rosa), 1=Bunt, 2=Eigene Farben
+    int adventWreathColorMode = 1;
+    /// @brief Eigene Kerzenfarben als Hex-String (z.B. "#FF0000,#00FF00,#0000FF,#FFFF00")
+    PsramString adventWreathCustomColors = "#FF0000,#FFD700,#008000,#FFFFFF";
+    /// @brief Unterbrechend (true = Low Priority Interrupt, unterbricht sofort) oder nicht-unterbrechend (false = PlayNext, wartet auf aktuelles Modul)
+    bool adventWreathInterrupt = false;
+    /// @brief Flammen-Animation Geschwindigkeit in Millisekunden (niedriger = schneller)
+    int adventWreathFlameSpeedMs = 50;
+    /// @brief Adventskranz: Tage vor dem 24.12. starten (0-30, Standard: 30 = ab ca. 24. November)
+    int adventWreathDaysBefore24 = 30;
+    /// @brief Adventskranz: Anzahl der Kugeln/Beeren (4-20)
+    int adventWreathBerryCount = 12;
+    /// @brief Adventskranz: Erst ab dem 1. Advent zeigen (sonst ab konfigurierter Anzahl Tage vor 24.12.)
+    bool adventWreathOnlyFromFirstAdvent = false;
+    /// @brief Adventskranz: Hintergrundfarbe als Hex-String
+    PsramString adventWreathBgColor = "#000000";
+    /// @brief Weihnachtsbaum: Hintergrundfarbe als Hex-String
+    PsramString christmasTreeBgColor = "#000000";
+    /// @brief Kamin: Hintergrundfarbe/Wandfarbe als Hex-String
+    PsramString fireplaceBgColor = "#000000";
+    /// @brief Weihnachtsbaum: Tage vor dem 24.12. starten (0-30, Standard: 23 = ab 1. Dezember)
+    int christmasTreeDaysBefore24 = 23;
+    /// @brief Weihnachtsbaum: Tage nach dem 24.12. anzeigen (0-30, Standard: 7 = bis 31. Dezember)
+    int christmasTreeDaysAfter24 = 7;
+    /// @brief Weihnachtsbaum aktivieren
+    bool christmasTreeEnabled = true;
+    /// @brief Weihnachtsbaum: Blinkgeschwindigkeit der Lichter in ms (niedriger = schneller)
+    int christmasTreeLightSpeedMs = 80;
+    /// @brief Weihnachtsbaum: Lichterketten-Farbmodus (0=Zufällig bunt, 1=Feste Farbe)
+    int christmasTreeLightMode = 0;
+    /// @brief Weihnachtsbaum: Feste Lichterfarbe als Hex-String (wenn christmasTreeLightMode=1)
+    PsramString christmasTreeLightColor = "#FFD700";
+    /// @brief Weihnachtsbaum: Anzahl der Lichter (5-30)
+    int christmasTreeLightCount = 18;
+    /// @brief Weihnachtsbaum: Anzahl der Geschenke (0-10)
+    int christmasTreeGiftCount = 5;
+    /// @brief Adventskranz/Weihnachtsbaum: Fullscreen-Modus (0=Teilbereich 192x66, 1=Vollbild 192x96)
+    bool adventWreathFullscreen = false;
+    
+    // --- Kamin Modul ---
+    /// @brief Kamin aktivieren
+    bool fireplaceEnabled = true;
+    /// @brief Kamin: Tage vor dem 24.12. starten (0-30)
+    int fireplaceDaysBefore24 = 23;
+    /// @brief Kamin: Tage nach dem 24.12. anzeigen (0-30)
+    int fireplaceDaysAfter24 = 7;
+    /// @brief Kamin: Feuer-Animation Geschwindigkeit in ms (niedriger = schneller)
+    int fireplaceFlameSpeedMs = 40;
+    /// @brief Kamin: Feuerfarbe (0=Klassisch Orange/Gelb, 1=Blau, 2=Grün, 3=Violett)
+    int fireplaceFlameColor = 0;
+    /// @brief Kamin: Kaminfarbe als Hex-String (Ziegel/Stein)
+    PsramString fireplaceBrickColor = "#8B4513";
+    /// @brief Kamin: Zeige Strümpfe am Kaminsims (0-5)
+    int fireplaceStockingCount = 3;
+    /// @brief Kamin: Zeige Dekoration auf dem Kaminsims (0-2, wenn Uhr aus: 0-3)
+    int fireplaceCandleCount = 2;
+    /// @brief Kamin: Zeige analoge Uhr auf dem Kaminsims
+    bool fireplaceClockEnabled = false;
+
     // --- Globale Scrolling-Einstellungen ---
     /// @brief Globale Scroll-Geschwindigkeit in Millisekunden pro Pixel für alle Module.
     int globalScrollSpeedMs = 50;

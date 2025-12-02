@@ -202,6 +202,64 @@ void handleConfigModules() {
     replaceAll(content, "{curiousHolidaysEnabled_checked}", deviceConfig->curiousHolidaysEnabled ? "checked" : "");
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->curiousHolidaysDisplaySec); replaceAll(content, "{curiousHolidaysDisplaySec}", num_buf);
     
+    // Advent Wreath configuration
+    replaceAll(content, "{adventWreathEnabled_checked}", deviceConfig->adventWreathEnabled ? "checked" : "");
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->adventWreathDisplaySec); replaceAll(content, "{adventWreathDisplaySec}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->adventWreathRepeatMin); replaceAll(content, "{adventWreathRepeatMin}", num_buf);
+    replaceAll(content, "{adventWreathColorMode0_selected}", deviceConfig->adventWreathColorMode == 0 ? "selected" : "");
+    replaceAll(content, "{adventWreathColorMode1_selected}", deviceConfig->adventWreathColorMode == 1 ? "selected" : "");
+    replaceAll(content, "{adventWreathColorMode2_selected}", deviceConfig->adventWreathColorMode == 2 ? "selected" : "");
+    replaceAll(content, "{adventWreathCustomColors}", deviceConfig->adventWreathCustomColors.c_str());
+    replaceAll(content, "{adventWreathInterrupt_checked}", deviceConfig->adventWreathInterrupt ? "checked" : "");
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->adventWreathFlameSpeedMs); replaceAll(content, "{adventWreathFlameSpeedMs}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->adventWreathDaysBefore24); replaceAll(content, "{adventWreathDaysBefore24}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->adventWreathBerryCount); replaceAll(content, "{adventWreathBerryCount}", num_buf);
+    replaceAll(content, "{adventWreathOnlyFromFirstAdvent_checked}", deviceConfig->adventWreathOnlyFromFirstAdvent ? "checked" : "");
+    replaceAll(content, "{adventWreathBgColor}", deviceConfig->adventWreathBgColor.c_str());
+    replaceAll(content, "{christmasTreeBgColor}", deviceConfig->christmasTreeBgColor.c_str());
+    replaceAll(content, "{fireplaceBgColor}", deviceConfig->fireplaceBgColor.c_str());
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->christmasTreeDaysBefore24); replaceAll(content, "{christmasTreeDaysBefore24}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->christmasTreeDaysAfter24); replaceAll(content, "{christmasTreeDaysAfter24}", num_buf);
+    replaceAll(content, "{christmasTreeEnabled_checked}", deviceConfig->christmasTreeEnabled ? "checked" : "");
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->christmasTreeLightSpeedMs); replaceAll(content, "{christmasTreeLightSpeedMs}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->christmasTreeLightCount); replaceAll(content, "{christmasTreeLightCount}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->christmasTreeGiftCount); replaceAll(content, "{christmasTreeGiftCount}", num_buf);
+    replaceAll(content, "{christmasTreeLightMode0_selected}", deviceConfig->christmasTreeLightMode == 0 ? "selected" : "");
+    replaceAll(content, "{christmasTreeLightMode1_selected}", deviceConfig->christmasTreeLightMode == 1 ? "selected" : "");
+    replaceAll(content, "{christmasTreeLightColor}", deviceConfig->christmasTreeLightColor.c_str());
+    replaceAll(content, "{adventWreathFullscreen_checked}", deviceConfig->adventWreathFullscreen ? "checked" : "");
+    
+    // Kamin-Konfiguration
+    replaceAll(content, "{fireplaceEnabled_checked}", deviceConfig->fireplaceEnabled ? "checked" : "");
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->fireplaceDaysBefore24); replaceAll(content, "{fireplaceDaysBefore24}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->fireplaceDaysAfter24); replaceAll(content, "{fireplaceDaysAfter24}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->fireplaceFlameSpeedMs); replaceAll(content, "{fireplaceFlameSpeedMs}", num_buf);
+    replaceAll(content, "{fireplaceFlameColor0_selected}", deviceConfig->fireplaceFlameColor == 0 ? "selected" : "");
+    replaceAll(content, "{fireplaceFlameColor1_selected}", deviceConfig->fireplaceFlameColor == 1 ? "selected" : "");
+    replaceAll(content, "{fireplaceFlameColor2_selected}", deviceConfig->fireplaceFlameColor == 2 ? "selected" : "");
+    replaceAll(content, "{fireplaceFlameColor3_selected}", deviceConfig->fireplaceFlameColor == 3 ? "selected" : "");
+    replaceAll(content, "{fireplaceBrickColor}", deviceConfig->fireplaceBrickColor.c_str());
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->fireplaceStockingCount); replaceAll(content, "{fireplaceStockingCount}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->fireplaceCandleCount); replaceAll(content, "{fireplaceCandleCount}", num_buf);
+    replaceAll(content, "{fireplaceClockEnabled_checked}", deviceConfig->fireplaceClockEnabled ? "checked" : "");
+    
+    // Parse custom colors for individual color pickers
+    PsramString colors = deviceConfig->adventWreathCustomColors;
+    PsramString candleColors[4] = {"#FF0000", "#FFD700", "#008000", "#FFFFFF"};
+    int colorIdx = 0;
+    size_t pos = 0;
+    while (colorIdx < 4 && pos < colors.length()) {
+        size_t commaPos = colors.find(',', pos);
+        if (commaPos == PsramString::npos) commaPos = colors.length();
+        candleColors[colorIdx] = colors.substr(pos, commaPos - pos);
+        pos = commaPos + 1;
+        colorIdx++;
+    }
+    replaceAll(content, "{candleColor1}", candleColors[0].c_str());
+    replaceAll(content, "{candleColor2}", candleColors[1].c_str());
+    replaceAll(content, "{candleColor3}", candleColors[2].c_str());
+    replaceAll(content, "{candleColor4}", candleColors[3].c_str());
+    
     // Global scrolling configuration
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->globalScrollSpeedMs); replaceAll(content, "{globalScrollSpeedMs}", num_buf);
     replaceAll(content, "{scrollMode0_selected}", deviceConfig->scrollMode == 0 ? "selected" : "");
@@ -315,6 +373,41 @@ void handleSaveModules() {
     // Curious Holidays configuration
     deviceConfig->curiousHolidaysEnabled = server->hasArg("curiousHolidaysEnabled");
     if (server->hasArg("curiousHolidaysDisplaySec")) deviceConfig->curiousHolidaysDisplaySec = server->arg("curiousHolidaysDisplaySec").toInt();
+    
+    // Advent Wreath configuration
+    deviceConfig->adventWreathEnabled = server->hasArg("adventWreathEnabled");
+    if (server->hasArg("adventWreathDisplaySec")) deviceConfig->adventWreathDisplaySec = server->arg("adventWreathDisplaySec").toInt();
+    if (server->hasArg("adventWreathRepeatMin")) deviceConfig->adventWreathRepeatMin = server->arg("adventWreathRepeatMin").toInt();
+    if (server->hasArg("adventWreathColorMode")) deviceConfig->adventWreathColorMode = server->arg("adventWreathColorMode").toInt();
+    if (server->hasArg("adventWreathCustomColors")) deviceConfig->adventWreathCustomColors = server->arg("adventWreathCustomColors").c_str();
+    deviceConfig->adventWreathInterrupt = server->hasArg("adventWreathInterrupt");
+    if (server->hasArg("adventWreathFlameSpeedMs")) deviceConfig->adventWreathFlameSpeedMs = server->arg("adventWreathFlameSpeedMs").toInt();
+    if (server->hasArg("adventWreathDaysBefore24")) deviceConfig->adventWreathDaysBefore24 = server->arg("adventWreathDaysBefore24").toInt();
+    if (server->hasArg("adventWreathBerryCount")) deviceConfig->adventWreathBerryCount = server->arg("adventWreathBerryCount").toInt();
+    deviceConfig->adventWreathOnlyFromFirstAdvent = server->hasArg("adventWreathOnlyFromFirstAdvent");
+    if (server->hasArg("adventWreathBgColor")) deviceConfig->adventWreathBgColor = server->arg("adventWreathBgColor").c_str();
+    if (server->hasArg("christmasTreeBgColor")) deviceConfig->christmasTreeBgColor = server->arg("christmasTreeBgColor").c_str();
+    if (server->hasArg("fireplaceBgColor")) deviceConfig->fireplaceBgColor = server->arg("fireplaceBgColor").c_str();
+    if (server->hasArg("christmasTreeDaysBefore24")) deviceConfig->christmasTreeDaysBefore24 = server->arg("christmasTreeDaysBefore24").toInt();
+    if (server->hasArg("christmasTreeDaysAfter24")) deviceConfig->christmasTreeDaysAfter24 = server->arg("christmasTreeDaysAfter24").toInt();
+    deviceConfig->christmasTreeEnabled = server->hasArg("christmasTreeEnabled");
+    if (server->hasArg("christmasTreeLightSpeedMs")) deviceConfig->christmasTreeLightSpeedMs = server->arg("christmasTreeLightSpeedMs").toInt();
+    if (server->hasArg("christmasTreeLightCount")) deviceConfig->christmasTreeLightCount = server->arg("christmasTreeLightCount").toInt();
+    if (server->hasArg("christmasTreeGiftCount")) deviceConfig->christmasTreeGiftCount = server->arg("christmasTreeGiftCount").toInt();
+    if (server->hasArg("christmasTreeLightMode")) deviceConfig->christmasTreeLightMode = server->arg("christmasTreeLightMode").toInt();
+    if (server->hasArg("christmasTreeLightColor")) deviceConfig->christmasTreeLightColor = server->arg("christmasTreeLightColor").c_str();
+    deviceConfig->adventWreathFullscreen = server->hasArg("adventWreathFullscreen");
+    
+    // Kamin-Konfiguration
+    deviceConfig->fireplaceEnabled = server->hasArg("fireplaceEnabled");
+    if (server->hasArg("fireplaceDaysBefore24")) deviceConfig->fireplaceDaysBefore24 = server->arg("fireplaceDaysBefore24").toInt();
+    if (server->hasArg("fireplaceDaysAfter24")) deviceConfig->fireplaceDaysAfter24 = server->arg("fireplaceDaysAfter24").toInt();
+    if (server->hasArg("fireplaceFlameSpeedMs")) deviceConfig->fireplaceFlameSpeedMs = server->arg("fireplaceFlameSpeedMs").toInt();
+    if (server->hasArg("fireplaceFlameColor")) deviceConfig->fireplaceFlameColor = server->arg("fireplaceFlameColor").toInt();
+    if (server->hasArg("fireplaceBrickColor")) deviceConfig->fireplaceBrickColor = server->arg("fireplaceBrickColor").c_str();
+    if (server->hasArg("fireplaceStockingCount")) deviceConfig->fireplaceStockingCount = server->arg("fireplaceStockingCount").toInt();
+    if (server->hasArg("fireplaceCandleCount")) deviceConfig->fireplaceCandleCount = server->arg("fireplaceCandleCount").toInt();
+    deviceConfig->fireplaceClockEnabled = server->hasArg("fireplaceClockEnabled");
     
     // Global scrolling configuration
     if (server->hasArg("globalScrollSpeedMs")) deviceConfig->globalScrollSpeedMs = server->arg("globalScrollSpeedMs").toInt();

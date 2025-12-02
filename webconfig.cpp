@@ -114,6 +114,42 @@ void loadDeviceConfig() {
 
                 deviceConfig->curiousHolidaysEnabled = doc["curiousHolidaysEnabled"] | true;
                 deviceConfig->curiousHolidaysDisplaySec = doc["curiousHolidaysDisplaySec"] | 10;
+                
+                // Adventskranz
+                deviceConfig->adventWreathEnabled = doc["adventWreathEnabled"] | true;
+                deviceConfig->adventWreathDisplaySec = doc["adventWreathDisplaySec"] | 15;
+                deviceConfig->adventWreathRepeatMin = doc["adventWreathRepeatMin"] | 30;
+                deviceConfig->adventWreathColorMode = doc["adventWreathColorMode"] | 1;
+                deviceConfig->adventWreathCustomColors = doc["adventWreathCustomColors"] | "#FF0000,#FFD700,#008000,#FFFFFF";
+                deviceConfig->adventWreathInterrupt = doc["adventWreathInterrupt"] | false;
+                deviceConfig->adventWreathFlameSpeedMs = doc["adventWreathFlameSpeedMs"] | 50;
+                deviceConfig->adventWreathDaysBefore24 = doc["adventWreathDaysBefore24"] | 30;
+                deviceConfig->adventWreathBerryCount = doc["adventWreathBerryCount"] | 12;
+                deviceConfig->adventWreathOnlyFromFirstAdvent = doc["adventWreathOnlyFromFirstAdvent"] | false;
+                deviceConfig->adventWreathBgColor = doc["adventWreathBgColor"] | "#000000";
+                deviceConfig->christmasTreeBgColor = doc["christmasTreeBgColor"] | "#000000";
+                deviceConfig->fireplaceBgColor = doc["fireplaceBgColor"] | "#000000";
+                deviceConfig->christmasTreeDaysBefore24 = doc["christmasTreeDaysBefore24"] | 23;
+                deviceConfig->christmasTreeDaysAfter24 = doc["christmasTreeDaysAfter24"] | 7;
+                deviceConfig->christmasTreeEnabled = doc["christmasTreeEnabled"] | true;
+                deviceConfig->christmasTreeLightSpeedMs = doc["christmasTreeLightSpeedMs"] | 80;
+                deviceConfig->christmasTreeLightMode = doc["christmasTreeLightMode"] | 0;
+                deviceConfig->christmasTreeLightColor = doc["christmasTreeLightColor"] | "#FFD700";
+                deviceConfig->christmasTreeLightCount = doc["christmasTreeLightCount"] | 18;
+                deviceConfig->christmasTreeGiftCount = doc["christmasTreeGiftCount"] | 5;
+                deviceConfig->adventWreathFullscreen = doc["adventWreathFullscreen"] | false;
+                
+                // Kamin-Konfiguration
+                deviceConfig->fireplaceEnabled = doc["fireplaceEnabled"] | true;
+                deviceConfig->fireplaceDaysBefore24 = doc["fireplaceDaysBefore24"] | 23;
+                deviceConfig->fireplaceDaysAfter24 = doc["fireplaceDaysAfter24"] | 7;
+                deviceConfig->fireplaceFlameSpeedMs = doc["fireplaceFlameSpeedMs"] | 40;
+                deviceConfig->fireplaceFlameColor = doc["fireplaceFlameColor"] | 0;
+                deviceConfig->fireplaceBrickColor = doc["fireplaceBrickColor"] | "#8B4513";
+                deviceConfig->fireplaceStockingCount = doc["fireplaceStockingCount"] | 3;
+                deviceConfig->fireplaceCandleCount = doc["fireplaceCandleCount"] | 2;
+                deviceConfig->fireplaceClockEnabled = doc["fireplaceClockEnabled"] | false;
+                
                 deviceConfig->globalScrollSpeedMs = doc["globalScrollSpeedMs"] | 50;
                 deviceConfig->scrollMode = doc["scrollMode"] | 0;
                 deviceConfig->scrollPauseSec = doc["scrollPauseSec"] | 0;
@@ -219,6 +255,42 @@ void saveDeviceConfig() {
 
     doc["curiousHolidaysEnabled"] = deviceConfig->curiousHolidaysEnabled;
     doc["curiousHolidaysDisplaySec"] = deviceConfig->curiousHolidaysDisplaySec;
+    
+    // Adventskranz
+    doc["adventWreathEnabled"] = deviceConfig->adventWreathEnabled;
+    doc["adventWreathDisplaySec"] = deviceConfig->adventWreathDisplaySec;
+    doc["adventWreathRepeatMin"] = deviceConfig->adventWreathRepeatMin;
+    doc["adventWreathColorMode"] = deviceConfig->adventWreathColorMode;
+    doc["adventWreathCustomColors"] = deviceConfig->adventWreathCustomColors.c_str();
+    doc["adventWreathInterrupt"] = deviceConfig->adventWreathInterrupt;
+    doc["adventWreathFlameSpeedMs"] = deviceConfig->adventWreathFlameSpeedMs;
+    doc["adventWreathDaysBefore24"] = deviceConfig->adventWreathDaysBefore24;
+    doc["adventWreathBerryCount"] = deviceConfig->adventWreathBerryCount;
+    doc["adventWreathOnlyFromFirstAdvent"] = deviceConfig->adventWreathOnlyFromFirstAdvent;
+    doc["adventWreathBgColor"] = deviceConfig->adventWreathBgColor.c_str();
+    doc["christmasTreeBgColor"] = deviceConfig->christmasTreeBgColor.c_str();
+    doc["fireplaceBgColor"] = deviceConfig->fireplaceBgColor.c_str();
+    doc["christmasTreeDaysBefore24"] = deviceConfig->christmasTreeDaysBefore24;
+    doc["christmasTreeDaysAfter24"] = deviceConfig->christmasTreeDaysAfter24;
+    doc["christmasTreeEnabled"] = deviceConfig->christmasTreeEnabled;
+    doc["christmasTreeLightSpeedMs"] = deviceConfig->christmasTreeLightSpeedMs;
+    doc["christmasTreeLightMode"] = deviceConfig->christmasTreeLightMode;
+    doc["christmasTreeLightColor"] = deviceConfig->christmasTreeLightColor.c_str();
+    doc["christmasTreeLightCount"] = deviceConfig->christmasTreeLightCount;
+    doc["christmasTreeGiftCount"] = deviceConfig->christmasTreeGiftCount;
+    doc["adventWreathFullscreen"] = deviceConfig->adventWreathFullscreen;
+    
+    // Kamin-Konfiguration
+    doc["fireplaceEnabled"] = deviceConfig->fireplaceEnabled;
+    doc["fireplaceDaysBefore24"] = deviceConfig->fireplaceDaysBefore24;
+    doc["fireplaceDaysAfter24"] = deviceConfig->fireplaceDaysAfter24;
+    doc["fireplaceFlameSpeedMs"] = deviceConfig->fireplaceFlameSpeedMs;
+    doc["fireplaceFlameColor"] = deviceConfig->fireplaceFlameColor;
+    doc["fireplaceBrickColor"] = deviceConfig->fireplaceBrickColor.c_str();
+    doc["fireplaceStockingCount"] = deviceConfig->fireplaceStockingCount;
+    doc["fireplaceCandleCount"] = deviceConfig->fireplaceCandleCount;
+    doc["fireplaceClockEnabled"] = deviceConfig->fireplaceClockEnabled;
+    
     doc["globalScrollSpeedMs"] = deviceConfig->globalScrollSpeedMs;
     doc["scrollMode"] = deviceConfig->scrollMode;
     doc["scrollPauseSec"] = deviceConfig->scrollPauseSec;
