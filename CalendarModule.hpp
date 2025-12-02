@@ -113,6 +113,10 @@ private:
     int _urgentThresholdHours = 1; // ab wieviel Stunden vor Termin wird UrgentView gezeigt
     unsigned long _urgentDurationMs = URGENT_EVENT_DURATION; // wie lange die Urgent-View angezeigt wird
     unsigned long _urgentRepeatMs = URGENT_EVENT_INTERVAL; // Pause bis zur nächsten Anzeige (wiederholung)
+    
+    // Pulsing state tracking für korrekte Blink-Frequenz
+    bool _hasPulsingEvents = false;
+    unsigned long _lastPulseUpdate = 0;
 
     void parseICS(char* icsBuffer, size_t size);
     void onSuccessfulUpdate();

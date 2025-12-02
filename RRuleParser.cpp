@@ -64,13 +64,9 @@ time_t parseICalDateTime(const char* line, size_t len, bool& isAllDay) {
     t.tm_sec = second;
     t.tm_isdst = -1;
 
-    bool isUTC = (dt_len > 0 && dt_str[dt_len - 1] == 'Z');
-
-    if (isUTC) {
-        return timegm(&t);
-    } else {
-        return mktime(&t);
-    }
+    // Alle Zeiten als UTC behandeln, da das System mit UTC arbeitet
+    // und GeneralTimeConverter für Konvertierung zur lokalen Zeit zuständig ist
+    return timegm(&t);
 }
 
 void parseVEvent(const char* veventBlock, size_t len, Event& event) {
