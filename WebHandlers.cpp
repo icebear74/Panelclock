@@ -241,6 +241,7 @@ void handleConfigModules() {
     replaceAll(content, "{fireplaceBrickColor}", deviceConfig->fireplaceBrickColor.c_str());
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->fireplaceStockingCount); replaceAll(content, "{fireplaceStockingCount}", num_buf);
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->fireplaceCandleCount); replaceAll(content, "{fireplaceCandleCount}", num_buf);
+    replaceAll(content, "{fireplaceClockEnabled_checked}", deviceConfig->fireplaceClockEnabled ? "checked" : "");
     
     // Parse custom colors for individual color pickers
     PsramString colors = deviceConfig->adventWreathCustomColors;
@@ -406,6 +407,7 @@ void handleSaveModules() {
     if (server->hasArg("fireplaceBrickColor")) deviceConfig->fireplaceBrickColor = server->arg("fireplaceBrickColor").c_str();
     if (server->hasArg("fireplaceStockingCount")) deviceConfig->fireplaceStockingCount = server->arg("fireplaceStockingCount").toInt();
     if (server->hasArg("fireplaceCandleCount")) deviceConfig->fireplaceCandleCount = server->arg("fireplaceCandleCount").toInt();
+    deviceConfig->fireplaceClockEnabled = server->hasArg("fireplaceClockEnabled");
     
     // Global scrolling configuration
     if (server->hasArg("globalScrollSpeedMs")) deviceConfig->globalScrollSpeedMs = server->arg("globalScrollSpeedMs").toInt();

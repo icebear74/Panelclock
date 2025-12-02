@@ -225,8 +225,10 @@ struct DeviceConfig {
     PsramString fireplaceBrickColor = "#8B4513";
     /// @brief Kamin: Zeige Strümpfe am Kaminsims (0-5)
     int fireplaceStockingCount = 3;
-    /// @brief Kamin: Zeige Kerzen auf dem Kaminsims (0-3)
+    /// @brief Kamin: Zeige Dekoration auf dem Kaminsims (0-2, wenn Uhr aus: 0-3)
     int fireplaceCandleCount = 2;
+    /// @brief Kamin: Zeige analoge Uhr auf dem Kaminsims
+    bool fireplaceClockEnabled = false;
 
     // --- Globale Scrolling-Einstellungen ---
     /// @brief Globale Scroll-Geschwindigkeit in Millisekunden pro Pixel für alle Module.

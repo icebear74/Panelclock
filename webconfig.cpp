@@ -148,6 +148,7 @@ void loadDeviceConfig() {
                 deviceConfig->fireplaceBrickColor = doc["fireplaceBrickColor"] | "#8B4513";
                 deviceConfig->fireplaceStockingCount = doc["fireplaceStockingCount"] | 3;
                 deviceConfig->fireplaceCandleCount = doc["fireplaceCandleCount"] | 2;
+                deviceConfig->fireplaceClockEnabled = doc["fireplaceClockEnabled"] | false;
                 
                 deviceConfig->globalScrollSpeedMs = doc["globalScrollSpeedMs"] | 50;
                 deviceConfig->scrollMode = doc["scrollMode"] | 0;
@@ -288,6 +289,7 @@ void saveDeviceConfig() {
     doc["fireplaceBrickColor"] = deviceConfig->fireplaceBrickColor.c_str();
     doc["fireplaceStockingCount"] = deviceConfig->fireplaceStockingCount;
     doc["fireplaceCandleCount"] = deviceConfig->fireplaceCandleCount;
+    doc["fireplaceClockEnabled"] = deviceConfig->fireplaceClockEnabled;
     
     doc["globalScrollSpeedMs"] = deviceConfig->globalScrollSpeedMs;
     doc["scrollMode"] = deviceConfig->scrollMode;

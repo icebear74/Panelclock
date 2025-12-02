@@ -1342,7 +1342,7 @@ void HolidayAnimationsModule::drawFireplace() {
     int openingWidth = (int)(75 * scaleX);
     int openingHeight = (int)(35 * effectiveScaleY);
     
-    int baseY = canvasH - 2;
+    int baseY = canvasH;  // Kamin ganz unten
     int fireX = centerX - fireplaceWidth / 2;
     int fireY = baseY - fireplaceHeight;
     
@@ -1682,31 +1682,112 @@ void HolidayAnimationsModule::drawStockings(int simsY, int simsWidth, int center
 }
 
 void HolidayAnimationsModule::drawMantleDecorations(int simsY, int simsWidth, int centerX, float scale) {
-    // Dekorative Gegenstände statt Kerzen
-    int decoCount = config ? config->fireplaceCandleCount : 2;  // Nutzt gleiche Config
+    // Analoge Uhr in der Mitte?
+    bool showClock = config ? config->fireplaceClockEnabled : false;
+    
+    // Dekorative Gegenstände
+    int decoCount = config ? config->fireplaceCandleCount : 2;
     if (decoCount < 0) decoCount = 0;
-    if (decoCount > 3) decoCount = 3;
     
-    if (decoCount == 0) return;
+    // Wenn Uhr aktiv: max 2 Dekorationen (links + rechts)
+    // Wenn Uhr aus: max 3 Dekorationen
+    int maxDeco = showClock ? 2 : 3;
+    if (decoCount > maxDeco) decoCount = maxDeco;
     
-    // Positionen für 1, 2 oder 3 Objekte
-    int positions[3];
-    if (decoCount == 1) {
-        positions[0] = centerX;
-    } else if (decoCount == 2) {
-        positions[0] = centerX - simsWidth/3;
-        positions[1] = centerX + simsWidth/3;
-    } else {
-        positions[0] = centerX - simsWidth/3;
-        positions[1] = centerX;
-        positions[2] = centerX + simsWidth/3;
+    // ===== ANALOGE UHR IN DER MITTE =====
+    if (showClock) {
+        // Hole aktuelle Zeit via GeneralTimeConverter
+        time_t now_utc;
+        time(&now_utc);
+        time_t local_now = timeConverter.toLocal(now_utc);
+        struct tm tm_now;
+        localtime_r(&local_now, &tm_now);
+        
+        int hours = tm_now.tm_hour % 12;
+        int minutes = tm_now.tm_min;
+        
+        int clockCx = centerX;
+        int clockCy = simsY - 1;  // Auf dem Sims stehend
+        int clockR = (int)(7 * scale);  // Radius
+        
+        // Uhren-Basis/Gehäuse
+        uint16_t caseColor = rgb565(60, 45, 30);
+        uint16_t faceColor = rgb565(240, 235, 220);
+        uint16_t handColor = rgb565(30, 30, 30);
+        uint16_t hourMarks = rgb565(80, 60, 40);
+        
+        // Gehäuse (Sockel)
+        int baseH = 3;
+        _currentCanvas->fillRect(clockCx - clockR - 1, clockCy - baseH, (clockR + 1) * 2, baseH, caseColor);
+        
+        // Zifferblatt (Kreis)
+        int faceCy = clockCy - baseH - clockR;
+        _currentCanvas->fillCircle(clockCx, faceCy, clockR, faceColor);
+        _currentCanvas->drawCircle(clockCx, faceCy, clockR, caseColor);
+        
+        // Stundenmarkierungen (12, 3, 6, 9)
+        _currentCanvas->drawPixel(clockCx, faceCy - clockR + 1, hourMarks);  // 12
+        _currentCanvas->drawPixel(clockCx + clockR - 1, faceCy, hourMarks);  // 3
+        _currentCanvas->drawPixel(clockCx, faceCy + clockR - 1, hourMarks);  // 6
+        _currentCanvas->drawPixel(clockCx - clockR + 1, faceCy, hourMarks);  // 9
+        
+        // Stundenzeiger (kürzer)
+        float hourAngle = (hours + minutes / 60.0f) * 30.0f - 90.0f;  // 30° pro Stunde
+        float hourRad = hourAngle * 3.14159f / 180.0f;
+        int hourLen = clockR - 3;
+        int hx = clockCx + (int)(cos(hourRad) * hourLen);
+        int hy = faceCy + (int)(sin(hourRad) * hourLen);
+        _currentCanvas->drawLine(clockCx, faceCy, hx, hy, handColor);
+        
+        // Minutenzeiger (länger)
+        float minAngle = minutes * 6.0f - 90.0f;  // 6° pro Minute
+        float minRad = minAngle * 3.14159f / 180.0f;
+        int minLen = clockR - 1;
+        int mx = clockCx + (int)(cos(minRad) * minLen);
+        int my = faceCy + (int)(sin(minRad) * minLen);
+        _currentCanvas->drawLine(clockCx, faceCy, mx, my, handColor);
+        
+        // Mittelpunkt
+        _currentCanvas->drawPixel(clockCx, faceCy, handColor);
     }
     
-    // Verschiedene Dekorationen
+    // ===== DEKORATIONEN LINKS UND RECHTS =====
+    if (decoCount == 0) return;
+    
+    // Positionen: bei showClock nur links/rechts, sonst auch Mitte möglich
+    int positions[3];
+    int decoTypes[3];
+    
+    if (showClock) {
+        // Nur links und rechts
+        positions[0] = centerX - simsWidth/3;
+        positions[1] = centerX + simsWidth/3;
+        decoTypes[0] = 0;  // Blumenvase
+        decoTypes[1] = 2;  // Bilderrahmen
+    } else {
+        if (decoCount == 1) {
+            positions[0] = centerX;
+            decoTypes[0] = 0;
+        } else if (decoCount == 2) {
+            positions[0] = centerX - simsWidth/3;
+            positions[1] = centerX + simsWidth/3;
+            decoTypes[0] = 0;
+            decoTypes[1] = 2;
+        } else {
+            positions[0] = centerX - simsWidth/3;
+            positions[1] = centerX;
+            positions[2] = centerX + simsWidth/3;
+            decoTypes[0] = 0;
+            decoTypes[1] = 1;
+            decoTypes[2] = 2;
+        }
+    }
+    
+    // Verschiedene Dekorationen zeichnen
     for (int i = 0; i < decoCount; i++) {
         int cx = positions[i];
-        int cy = simsY - 2;
-        int decoType = i % 3;
+        int cy = simsY - 1;  // Direkt auf dem Sims
+        int decoType = decoTypes[i];
         
         if (decoType == 0) {
             // Blumenvase mit Blumen
