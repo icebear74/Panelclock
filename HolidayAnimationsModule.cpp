@@ -663,13 +663,15 @@ void HolidayAnimationsModule::drawTreeOrnaments(int centerX, int baseY, float sc
     int layer2Width = (int)(22 * scale);
     int layer3Width = (int)(16 * scale);
     
-    // Verteilungsmuster - gemischte Positionen für natürlicheren Look
+    // Verteilungsmuster - mehr unten wo der Baum breiter ist
     for (int i = 0; i < numOrnaments; i++) {
         uint32_t seed = simpleRandom(i * 157 + 789);
         
-        // Y-Position: gleichmäßig verteilt mit Zufälligkeit für organischen Look
-        int yOffset = (int)(3 + (treeHeight - 8) * (float)i / numOrnaments);
-        yOffset += (seed % 5) - 2;  // kleine Variation
+        // Y-Position: quadratische Verteilung - mehr Kugeln unten (wo breiter)
+        float t = (float)i / numOrnaments;  // 0.0 bis 1.0
+        float yFraction = t * t;  // Quadratisch: mehr am unteren Ende
+        int yOffset = 3 + (int)(yFraction * (treeHeight - 10));
+        yOffset += (seed % 7) - 3;  // mehr Variation
         if (yOffset < 4) yOffset = 4;
         if (yOffset > treeHeight - 6) yOffset = treeHeight - 6;
         
@@ -752,14 +754,17 @@ void HolidayAnimationsModule::drawTreeLights() {
     int layer3Width = (int)(16 * scale);
     int treeHeight = layer1Height + layer2Height - (int)(4 * scale) + layer3Height - (int)(10 * scale);
     
-    // Lichter über den Baum verteilt mit organischem Muster
+    // Lichter über den Baum verteilt - mehr unten als oben (proportional zur Breite)
     for (int i = 0; i < lightCount; i++) {
-        // Berechne Position basierend auf Index mit Spiralmuster
+        // Berechne Position basierend auf Index
         uint32_t seed = simpleRandom(i * 67 + 321);
         
-        // Y-Position: spiralförmig über den Baum verteilt
-        int ySection = i * treeHeight / lightCount;
-        int yOffset = ySection + (seed % 4) - 2;
+        // Y-Position: quadratische Verteilung - mehr unten wo der Baum breiter ist
+        // Verwende Quadratwurzel für bessere Verteilung (mehr am unteren Ende)
+        float t = (float)i / lightCount;  // 0.0 bis 1.0
+        float yFraction = t * t;  // Quadratisch: 0, 0.01, 0.04, 0.09... 1.0
+        int ySection = (int)(yFraction * treeHeight);
+        int yOffset = ySection + (seed % 6) - 3;  // Mehr Variation
         if (yOffset < 2) yOffset = 2;
         if (yOffset > treeHeight - 4) yOffset = treeHeight - 4;
         
@@ -1480,7 +1485,6 @@ void HolidayAnimationsModule::drawFireplaceFlames(int x, int y, int width, int h
     
     uint16_t flameColors[6];
     uint16_t coreColor;
-    uint16_t glowColor;
     switch (flameColorMode) {
         case 1:  // Blau
             flameColors[0] = rgb565(200, 230, 255);  // Kern (hell)
@@ -1490,7 +1494,6 @@ void HolidayAnimationsModule::drawFireplaceFlames(int x, int y, int width, int h
             flameColors[4] = rgb565(20, 50, 150);
             flameColors[5] = rgb565(10, 30, 100);
             coreColor = rgb565(220, 240, 255);
-            glowColor = rgb565(30, 60, 120);
             break;
         case 2:  // Grün
             flameColors[0] = rgb565(200, 255, 200);
@@ -1500,7 +1503,6 @@ void HolidayAnimationsModule::drawFireplaceFlames(int x, int y, int width, int h
             flameColors[4] = rgb565(20, 100, 20);
             flameColors[5] = rgb565(10, 60, 10);
             coreColor = rgb565(220, 255, 220);
-            glowColor = rgb565(30, 80, 30);
             break;
         case 3:  // Violett
             flameColors[0] = rgb565(255, 200, 255);
@@ -1510,7 +1512,6 @@ void HolidayAnimationsModule::drawFireplaceFlames(int x, int y, int width, int h
             flameColors[4] = rgb565(100, 30, 140);
             flameColors[5] = rgb565(60, 20, 100);
             coreColor = rgb565(255, 220, 255);
-            glowColor = rgb565(80, 30, 80);
             break;
         default:  // Klassisch Orange/Gelb
             flameColors[0] = rgb565(255, 255, 180);  // Kern (hellgelb)
@@ -1520,29 +1521,7 @@ void HolidayAnimationsModule::drawFireplaceFlames(int x, int y, int width, int h
             flameColors[4] = rgb565(220, 70, 0);     // Dunkelorange
             flameColors[5] = rgb565(150, 40, 0);     // Dunkelrot
             coreColor = rgb565(255, 255, 220);
-            glowColor = rgb565(80, 40, 10);
             break;
-    }
-    
-    // ===== HINTERGRUND-FEUERSCHEIN (flackerndes orange Leuchten) =====
-    for (int gy = 0; gy < height; gy++) {
-        for (int gx = -width/2; gx <= width/2; gx++) {
-            uint32_t seed = simpleRandom((gx + 100) * 17 + gy * 31 + _fireplaceFlamePhase * 3);
-            
-            // Wahrscheinlichkeit für Pixel basierend auf Position (mehr unten)
-            float yFactor = 1.0f - (float)gy / height;
-            float xFactor = 1.0f - abs(gx) / (float)(width/2);
-            float glowProb = yFactor * xFactor * 0.6f;
-            
-            if ((seed % 100) < glowProb * 100) {
-                int colorIdx = 3 + (seed % 3);  // Dunklere Farben für Hintergrund
-                int px = x + gx;
-                int py = y - gy;
-                if (py >= 0 && py < _currentCanvas->height()) {
-                    _currentCanvas->drawPixel(px, py, glowColor);
-                }
-            }
-        }
     }
     
     // ===== HAUPTFEUER - Ein zusammenhängender Feuerbereich =====
