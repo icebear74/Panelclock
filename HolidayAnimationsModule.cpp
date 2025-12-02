@@ -667,8 +667,7 @@ void HolidayAnimationsModule::drawTreeOrnaments(int centerX, int baseY, float sc
     for (int i = 0; i < numOrnaments; i++) {
         uint32_t seed = simpleRandom(i * 157 + 789);
         
-        // Y-Position: Spiralmuster mit Zufälligkeit für organischen Look
-        float angle = (float)i / numOrnaments * 3.14159f * 2.5f;  // ~2.5 Umdrehungen
+        // Y-Position: gleichmäßig verteilt mit Zufälligkeit für organischen Look
         int yOffset = (int)(3 + (treeHeight - 8) * (float)i / numOrnaments);
         yOffset += (seed % 5) - 2;  // kleine Variation
         if (yOffset < 4) yOffset = 4;
