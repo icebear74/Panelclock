@@ -1708,7 +1708,7 @@ void HolidayAnimationsModule::drawMantleDecorations(int simsY, int simsWidth, in
         
         int clockCx = centerX;
         int clockCy = simsY - 1;  // Auf dem Sims stehend
-        int clockR = (int)(12 * scale);  // Radius - größer für bessere Sichtbarkeit
+        int clockR = (int)(10 * scale);  // Radius - optimale Größe für Sichtbarkeit und Platz
         
         // Uhren-Basis/Gehäuse
         uint16_t caseColor = rgb565(60, 45, 30);
