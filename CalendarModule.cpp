@@ -121,12 +121,26 @@ void CalendarModule::processData() {
 }
 
 void CalendarModule::tick() {
+    unsigned long now = millis();
+    
     // PixelScroller tick für pixelweises Scrolling
+    bool needsUpdate = false;
     if (_pixelScroller && scrollStepInterval > 0) {
         bool scrolled = _pixelScroller->tick();
-        if (scrolled && updateCallback) {
-            updateCallback();
+        if (scrolled) {
+            needsUpdate = true;
         }
+    }
+    
+    // Wenn pulsierende Events vorhanden sind, regelmäßig Updates triggern
+    // damit das Blinken smooth läuft (~30 FPS für smooth pulsing)
+    if (_hasPulsingEvents && (now - _lastPulseUpdate >= 33)) { // ~30 FPS
+        _lastPulseUpdate = now;
+        needsUpdate = true;
+    }
+    
+    if (needsUpdate && updateCallback) {
+        updateCallback();
     }
 }
 
@@ -253,7 +267,7 @@ void CalendarModule::draw() {
         struct tm tm_local_now;
         localtime_r(&local_now, &tm_local_now);
         tm_local_now.tm_hour = 0; tm_local_now.tm_min = 0; tm_local_now.tm_sec = 0;
-        time_t today_start_local_epoch = mktime(&tm_local_now);
+        time_t today_start_local_epoch = timegm(&tm_local_now);
 
         int currentOffset = timeConverter.isDST(today_start_local_epoch) ? timeConverter.getDstOffsetSec() : timeConverter.getStdOffsetSec();
         time_t today_start_utc = today_start_local_epoch - currentOffset;
@@ -265,6 +279,9 @@ void CalendarModule::draw() {
         if (_pixelScroller) {
             _pixelScroller->ensureSlots(upcomming.size());
         }
+        
+        // Reset pulsing flag - wird gesetzt wenn pulsierende Events gefunden werden
+        _hasPulsingEvents = false;
 
         for (size_t i = 0; i < upcomming.size(); ++i) {
             const auto& ev = upcomming[i];
@@ -284,6 +301,7 @@ void CalendarModule::draw() {
             bool fastPulse = (!ev.isAllDay && minutesUntilStart >= 0 && minutesUntilStart < (long)_fastBlinkHours * 60L);
             
             if (usePulsing) {
+                _hasPulsingEvents = true; // Flag setzen für tick() Updates
                 // Verwende PixelScroller's statische Pulsing-Funktion für konsistente Farben
                 // pulsingMinBrightness aus Config verwenden
                 float minBrightness = _pixelScroller ? _pixelScroller->getConfig().pulsingMinBrightness : 0.25f;
@@ -467,7 +485,7 @@ void CalendarModule::parseICS(char* icsBuffer, size_t size) {
         size_t endPos = ics.find(endTag, pos); if (endPos == PsramString::npos) break;
         PsramString veventBlock = ics.substr(pos, (endPos + endTag.length()) - pos);
         Event parsedEvent;
-        parseVEvent(veventBlock.c_str(), veventBlock.length(), parsedEvent);
+        parseVEvent(veventBlock.c_str(), veventBlock.length(), parsedEvent, &timeConverter);
         if(parsedEvent.dtstart > 0) parsedEvents.push_back(std::move(parsedEvent));
         idx = endPos + endTag.length();
         if (parsedEvents.size() % 50 == 0) delay(1);
@@ -504,7 +522,7 @@ void CalendarModule::parseICS(char* icsBuffer, size_t size) {
         } else {
             PsramTimeVector occurrences;
             occurrences.reserve(128);
-            parseRRule(masterEvent, occurrences);
+            parseRRule(masterEvent, occurrences, 15, &timeConverter);
             
             PsramEventPairVector final_series_vec;
             final_series_vec.reserve(occurrences.size() + exceptions.size());

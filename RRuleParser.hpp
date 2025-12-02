@@ -13,11 +13,11 @@
 struct Event; 
 
 // Funktionsdeklarationen
-time_t parseICalDateTime(const char* line, size_t len, bool& isAllDay);
-void parseVEvent(const char* veventBlock, size_t len, Event& event);
+time_t parseICalDateTime(const char* line, size_t len, bool& isAllDay, const GeneralTimeConverter* converter = nullptr);
+void parseVEvent(const char* veventBlock, size_t len, Event& event, const GeneralTimeConverter* converter = nullptr);
 
 template<typename Allocator>
-void parseRRule(const Event& masterEvent, std::vector<time_t, Allocator>& occurrences, int numFutureEventsToFind = 15);
+void parseRRule(const Event& masterEvent, std::vector<time_t, Allocator>& occurrences, int numFutureEventsToFind = 15, const GeneralTimeConverter* converter = nullptr);
 
 
 // Struct-Definition bleibt im Header, da sie von anderen Dateien benötigt wird
@@ -35,7 +35,7 @@ struct Event {
 
 // Die Template-Implementierung muss im Header bleiben.
 template<typename Allocator>
-void parseRRule(const Event& masterEvent, std::vector<time_t, Allocator>& occurrences, int numFutureEventsToFind) {
+void parseRRule(const Event& masterEvent, std::vector<time_t, Allocator>& occurrences, int numFutureEventsToFind, const GeneralTimeConverter* converter) {
     if (masterEvent.rrule.empty() || masterEvent.dtstart == 0) return;
     occurrences.clear();
 
@@ -60,7 +60,7 @@ void parseRRule(const Event& masterEvent, std::vector<time_t, Allocator>& occurr
             count = atoi(part.substr(6).c_str());
         } else if (part.rfind("UNTIL=", 0) == 0) {
             PsramString u = part.substr(6);
-            bool d; until = parseICalDateTime(u.c_str(), u.length(), d);
+            bool d; until = parseICalDateTime(u.c_str(), u.length(), d, converter);
         }
     }
 

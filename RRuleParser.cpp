@@ -13,7 +13,7 @@ static inline int parseDecimal(const char* p, size_t len) {
     return v;
 }
 
-time_t parseICalDateTime(const char* line, size_t len, bool& isAllDay) {
+time_t parseICalDateTime(const char* line, size_t len, bool& isAllDay, const GeneralTimeConverter* converter) {
     isAllDay = false;
     if (!line || len == 0) return 0;
 
@@ -23,11 +23,19 @@ time_t parseICalDateTime(const char* line, size_t len, bool& isAllDay) {
         value_ptr = colon + 1;
     }
 
+    // Check for property parameters (TZID, VALUE=DATE)
+    bool hasTZID = false;
     const char* semicolon = (const char*)memchr(line, ';', len);
     if (semicolon && semicolon < colon) { // Property parameter
         const char* value_date = strstr(semicolon, "VALUE=DATE");
         if (value_date) {
             isAllDay = true;
+        }
+        // Check if there's a TZID parameter
+        // TZID format is "TZID=timezone_name" followed by colon
+        const char* tzid = strstr(semicolon, "TZID=");
+        if (tzid && tzid < colon && tzid >= semicolon) {
+            hasTZID = true;
         }
     }
 
@@ -67,13 +75,31 @@ time_t parseICalDateTime(const char* line, size_t len, bool& isAllDay) {
     bool isUTC = (dt_len > 0 && dt_str[dt_len - 1] == 'Z');
 
     if (isUTC) {
+        // Time ends with 'Z' - it's explicitly UTC
         return timegm(&t);
+    } else if (hasTZID && converter) {
+        // Time has TZID parameter - it's in that local timezone
+        // Parse as if it's a time, then subtract the timezone offset to get UTC
+        // timegm treats the tm struct as UTC, giving us the epoch if it were UTC
+        time_t as_if_utc = timegm(&t);
+        
+        // To check DST correctly, we need to approximate the UTC time first
+        // Use a simplified approach: check DST based on the approximate UTC time
+        // This works because DST transitions don't happen at the same time in local and UTC
+        int initial_offset = converter->isDST(as_if_utc) ? converter->getDstOffsetSec() : converter->getStdOffsetSec();
+        time_t approx_utc = as_if_utc - initial_offset;
+        
+        // Now check DST again with the approximated UTC time
+        // This handles edge cases around DST transitions
+        int final_offset = converter->isDST(approx_utc) ? converter->getDstOffsetSec() : converter->getStdOffsetSec();
+        return as_if_utc - final_offset;
     } else {
+        // No timezone specified - treat as local time using system timezone
         return mktime(&t);
     }
 }
 
-void parseVEvent(const char* veventBlock, size_t len, Event& event) {
+void parseVEvent(const char* veventBlock, size_t len, Event& event, const GeneralTimeConverter* converter) {
     if (!veventBlock || len == 0) return;
     const char* p = veventBlock;
     const char* end = veventBlock + len;
@@ -102,16 +128,16 @@ void parseVEvent(const char* veventBlock, size_t len, Event& event) {
             const char* val = p + 4;
             event.uid = PsramString(val, lineLen - 4);
         } else if (strncmp(p, "DTSTART", 7) == 0) {
-            event.dtstart = parseICalDateTime(p, lineLen, dtstart_is_allday);
+            event.dtstart = parseICalDateTime(p, lineLen, dtstart_is_allday, converter);
         } else if (strncmp(p, "DTEND", 5) == 0) {
-            event.dtend = parseICalDateTime(p, lineLen, dtend_is_allday);
+            event.dtend = parseICalDateTime(p, lineLen, dtend_is_allday, converter);
         } else if (strncmp(p, "EXDATE", 6) == 0) {
             bool dummy;
-            time_t ex = parseICalDateTime(p, lineLen, dummy);
+            time_t ex = parseICalDateTime(p, lineLen, dummy, converter);
             if (ex != 0) event.exdates.push_back(ex);
         } else if (strncmp(p, "RECURRENCE-ID", 13) == 0) {
             bool dummy;
-            event.recurrence_id = parseICalDateTime(p, lineLen, dummy);
+            event.recurrence_id = parseICalDateTime(p, lineLen, dummy, converter);
         }
         
         p = lineEnd + 1;
