@@ -439,10 +439,11 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById(id).addEventListener('change', updateCustomColors);
     });
     // Open first sub-tab by default when Animationen tab is opened
-    openSubTab(null, 'SubAdventskranz');
-    var defaultAnimBtn = document.getElementById('defaultAnimOpen');
-    if (defaultAnimBtn) {
-        defaultAnimBtn.className += " active";
+    var firstSubTab = document.getElementById('SubAdventskranz');
+    var firstSubTabBtn = document.getElementById('defaultAnimOpen');
+    if (firstSubTab && firstSubTabBtn) {
+        firstSubTab.style.display = "block";
+        firstSubTabBtn.className += " active";
     }
 });
 </script>
