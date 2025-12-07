@@ -293,10 +293,10 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
     
     <!-- Sub-Tabs für verschiedene Animationen -->
     <div class="tab" style="border-bottom:1px solid #555; margin-bottom:15px;">
-        <button class="subtablinks" onclick="openSubTab(event, 'SubAdventskranz')" id="defaultAnimOpen">Adventskranz</button>
-        <button class="subtablinks" onclick="openSubTab(event, 'SubWeihnachtsbaum')">Weihnachtsbaum</button>
-        <button class="subtablinks" onclick="openSubTab(event, 'SubKamin')">Kamin</button>
-        <button class="subtablinks" onclick="openSubTab(event, 'SubAllgemein')">Allgemein</button>
+        <button type="button" class="subtablinks" onclick="openSubTab(event, 'SubAdventskranz')" id="defaultAnimOpen">Adventskranz</button>
+        <button type="button" class="subtablinks" onclick="openSubTab(event, 'SubWeihnachtsbaum')">Weihnachtsbaum</button>
+        <button type="button" class="subtablinks" onclick="openSubTab(event, 'SubKamin')">Kamin</button>
+        <button type="button" class="subtablinks" onclick="openSubTab(event, 'SubAllgemein')">Allgemein</button>
     </div>
     
     <!-- Adventskranz Sub-Tab -->
