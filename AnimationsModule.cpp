@@ -2,6 +2,7 @@
 #include "webconfig.hpp"
 #include "MultiLogger.hpp"
 #include "PsramUtils.hpp"
+#include "TimeUtilities.hpp"
 #include <time.h>
 
 // Hilfsfunktion für RGB565
@@ -186,48 +187,13 @@ bool AnimationsModule::isHolidaySeason() {
 bool AnimationsModule::isFireplaceSeason() {
     if (!config || !config->fireplaceEnabled) return false;
     
-    time_t now_utc;
-    time(&now_utc);
-    time_t local_now = timeConverter.toLocal(now_utc);
-    
-    struct tm tm_now;
-    localtime_r(&local_now, &tm_now);
-    
-    int month = tm_now.tm_mon + 1;
-    int day = tm_now.tm_mday;
-    
-    int daysBefore = config->fireplaceDaysBefore24;
-    int daysAfter = config->fireplaceDaysAfter24;
-    if (daysBefore > 30) daysBefore = 30;
-    if (daysBefore < 0) daysBefore = 0;
-    if (daysAfter > 30) daysAfter = 30;
-    if (daysAfter < 0) daysAfter = 0;
-    
-    int startDay = 24 - daysBefore;
-    int startMonth = 12;
-    if (startDay <= 0) {
-        startDay += 30;
-        startMonth = 11;
+    // Wenn Nachtmodus aktiviert ist, prüfe ob es aktuell Nacht ist
+    if (config->fireplaceNightModeOnly) {
+        return TimeUtilities::isNightTime();
     }
     
-    int endDay = 24 + daysAfter;
-    int endMonth = 12;
-    if (endDay > 31) {
-        endDay -= 31;
-        endMonth = 1;
-    }
-    
-    if (endMonth == 1) {
-        if (month == 12 && day >= startDay) return true;
-        if (month == 1 && day <= endDay) return true;
-    } else if (startMonth == 11) {
-        if (month == 11 && day >= startDay) return true;
-        if (month == 12 && day <= endDay) return true;
-    } else {
-        if (month == 12 && day >= startDay && day <= endDay) return true;
-    }
-    
-    return false;
+    // Sonst ist der Kamin immer aktiv (wenn enabled)
+    return true;
 }
 
 ChristmasDisplayMode AnimationsModule::getCurrentDisplayMode() {

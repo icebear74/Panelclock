@@ -368,8 +368,7 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
         <div class="group">
             <h3>Kamin</h3>
             <label style="display: inline-block; margin: 10px 0;"><input type="checkbox" name="fireplaceEnabled" id="fireplaceEnabled" {fireplaceEnabled_checked}> Kamin aktivieren</label>
-            <label for="fireplaceDaysBefore24">Kamin: Tage vor dem 24.12.</label><input type="number" id="fireplaceDaysBefore24" name="fireplaceDaysBefore24" value="{fireplaceDaysBefore24}" min="0" max="30">
-            <label for="fireplaceDaysAfter24">Kamin: Tage nach dem 24.12.</label><input type="number" id="fireplaceDaysAfter24" name="fireplaceDaysAfter24" value="{fireplaceDaysAfter24}" min="0" max="30">
+            <label style="display: inline-block; margin: 10px 0;"><input type="checkbox" name="fireplaceNightModeOnly" id="fireplaceNightModeOnly" {fireplaceNightModeOnly_checked}> Nur abends anzeigen (nach Sonnenuntergang)</label>
             <label for="fireplaceFlameSpeedMs">Feuer-Animation Geschwindigkeit (ms)</label><input type="number" id="fireplaceFlameSpeedMs" name="fireplaceFlameSpeedMs" value="{fireplaceFlameSpeedMs}" min="20" max="200">
             <label for="fireplaceFlameColor">Feuerfarbe</label>
             <select id="fireplaceFlameColor" name="fireplaceFlameColor">
@@ -384,7 +383,7 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
             <label for="fireplaceCandleCount">Anzahl Dekoration auf dem Kaminsims (0-2 mit Uhr, 0-3 ohne)</label><input type="number" id="fireplaceCandleCount" name="fireplaceCandleCount" value="{fireplaceCandleCount}" min="0" max="3">
             <label for="fireplaceBgColor">Hintergrundfarbe Kamin</label><input type="color" id="fireplaceBgColor" name="fireplaceBgColor" value="{fireplaceBgColor}">
             
-            <p style="color:#bbb; margin-top:10px;">Der Kamin zeigt ein gem&uuml;tliches Feuer mit Str&uuml;mpfen und Dekoration (Vasen, Schneekugeln, Bilderrahmen).</p>
+            <p style="color:#bbb; margin-top:10px;">Der Kamin zeigt ein gem&uuml;tliches Feuer mit Str&uuml;mpfen und Dekoration (Vasen, Schneekugeln, Bilderrahmen). Im Nachtmodus erscheint er nur nach Sonnenuntergang (basierend auf Wetterdaten).</p>
         </div>
     </div>
     
