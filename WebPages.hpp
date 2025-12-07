@@ -22,6 +22,10 @@ table{width:100%;border-collapse:collapse;margin-top:20px;}th,td{border:1px soli
 .tab button:hover{background-color:#444;}
 .tab button.active{color:#4CAF50;border-bottom:2px solid #4CAF50;}
 .tabcontent{display:none;}
+.subtablinks{background-color:inherit;float:left;border:none;outline:none;cursor:pointer;padding:10px 14px;transition:0.3s;color:#bbb;font-size:15px;}
+.subtablinks:hover{background-color:#333;}
+.subtablinks.active{color:#4CAF50;border-bottom:2px solid #4CAF50;}
+.subtabcontent{display:none;}
 a {color:#4CAF50;}
 </style></head><body><div class="container">
 )rawliteral";
@@ -156,7 +160,7 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
   <button class="tablinks" onclick="openTab(event, 'Fritzbox')">Fritz!Box</button>
   <button class="tablinks" onclick="openTab(event, 'Kalender')">Kalender</button>
   <button class="tablinks" onclick="openTab(event, 'KurioseFeiertage')">Kuriose Feiertage</button>
-  <button class="tablinks" onclick="openTab(event, 'Adventskranz')">Adventskranz</button>
+  <button class="tablinks" onclick="openTab(event, 'Animationen')">Animationen</button>
   <button class="tablinks" onclick="openTab(event, 'Tankstellen')">Tankstellen</button>
   <button class="tablinks" onclick="openTab(event, 'Wetter')">Wetter</button>
   <button class="tablinks" onclick="openTab(event, 'Diverses')">Diverses</button>
@@ -283,83 +287,131 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
     </div>
 </div>
 
-<div id="Adventskranz" class="tabcontent">
-    <div class="group">
-        <h3>Adventskranz</h3>
-        <input type="checkbox" id="adventWreathEnabled" name="adventWreathEnabled" {adventWreathEnabled_checked}><label for="adventWreathEnabled" style="display:inline;">Adventskranz aktivieren</label><br>
-        <label for="adventWreathDisplaySec">Anzeigedauer (Sekunden)</label><input type="number" id="adventWreathDisplaySec" name="adventWreathDisplaySec" value="{adventWreathDisplaySec}" min="5">
-        <label for="adventWreathRepeatMin">Wiederholungsintervall (Minuten)</label><input type="number" id="adventWreathRepeatMin" name="adventWreathRepeatMin" value="{adventWreathRepeatMin}" min="1">
-        
-        <label for="adventWreathColorMode">Kerzenfarben</label>
-        <select id="adventWreathColorMode" name="adventWreathColorMode" onchange="toggleCustomColors()">
-            <option value="0" {adventWreathColorMode0_selected}>Traditionell (violett/rosa)</option>
-            <option value="1" {adventWreathColorMode1_selected}>Bunt (rot/gold/gr&uuml;n/wei&szlig;)</option>
-            <option value="2" {adventWreathColorMode2_selected}>Eigene Farben</option>
-        </select>
-        
-        <div id="customColorsDiv" style="display:none;">
-            <label>Eigene Kerzenfarben (4 Hex-Farben)</label>
-            <div style="display:flex;gap:10px;margin-top:5px;">
-                <div><label style="font-size:12px;">Kerze 1</label><input type="color" id="candleColor1" value="{candleColor1}"></div>
-                <div><label style="font-size:12px;">Kerze 2</label><input type="color" id="candleColor2" value="{candleColor2}"></div>
-                <div><label style="font-size:12px;">Kerze 3</label><input type="color" id="candleColor3" value="{candleColor3}"></div>
-                <div><label style="font-size:12px;">Kerze 4</label><input type="color" id="candleColor4" value="{candleColor4}"></div>
+<div id="Animationen" class="tabcontent">
+    <h2>Weihnachtsanimationen</h2>
+    <p style="color:#bbb; margin-bottom:20px;">Verschiedene Animationen für die Weihnachtszeit. Wenn mehrere aktiviert sind, wechseln sie ab.</p>
+    
+    <!-- Sub-Tabs für verschiedene Animationen -->
+    <div class="tab" style="border-bottom:1px solid #555; margin-bottom:15px;">
+        <button class="subtablinks" onclick="openSubTab(event, 'SubAdventskranz')" id="defaultAnimOpen">Adventskranz</button>
+        <button class="subtablinks" onclick="openSubTab(event, 'SubWeihnachtsbaum')">Weihnachtsbaum</button>
+        <button class="subtablinks" onclick="openSubTab(event, 'SubKamin')">Kamin</button>
+        <button class="subtablinks" onclick="openSubTab(event, 'SubAllgemein')">Allgemein</button>
+    </div>
+    
+    <!-- Adventskranz Sub-Tab -->
+    <div id="SubAdventskranz" class="subtabcontent">
+        <div class="group">
+            <h3>Adventskranz</h3>
+            <input type="checkbox" id="adventWreathEnabled" name="adventWreathEnabled" {adventWreathEnabled_checked}><label for="adventWreathEnabled" style="display:inline;">Adventskranz aktivieren</label><br>
+            <label for="adventWreathDisplaySec">Anzeigedauer (Sekunden)</label><input type="number" id="adventWreathDisplaySec" name="adventWreathDisplaySec" value="{adventWreathDisplaySec}" min="5">
+            <label for="adventWreathRepeatMin">Wiederholungsintervall (Minuten)</label><input type="number" id="adventWreathRepeatMin" name="adventWreathRepeatMin" value="{adventWreathRepeatMin}" min="1">
+            
+            <label for="adventWreathColorMode">Kerzenfarben</label>
+            <select id="adventWreathColorMode" name="adventWreathColorMode" onchange="toggleCustomColors()">
+                <option value="0" {adventWreathColorMode0_selected}>Traditionell (violett/rosa)</option>
+                <option value="1" {adventWreathColorMode1_selected}>Bunt (rot/gold/gr&uuml;n/wei&szlig;)</option>
+                <option value="2" {adventWreathColorMode2_selected}>Eigene Farben</option>
+            </select>
+            
+            <div id="customColorsDiv" style="display:none;">
+                <label>Eigene Kerzenfarben (4 Hex-Farben)</label>
+                <div style="display:flex;gap:10px;margin-top:5px;">
+                    <div><label style="font-size:12px;">Kerze 1</label><input type="color" id="candleColor1" value="{candleColor1}"></div>
+                    <div><label style="font-size:12px;">Kerze 2</label><input type="color" id="candleColor2" value="{candleColor2}"></div>
+                    <div><label style="font-size:12px;">Kerze 3</label><input type="color" id="candleColor3" value="{candleColor3}"></div>
+                    <div><label style="font-size:12px;">Kerze 4</label><input type="color" id="candleColor4" value="{candleColor4}"></div>
+                </div>
+                <input type="hidden" id="adventWreathCustomColors" name="adventWreathCustomColors" value="{adventWreathCustomColors}">
             </div>
-            <input type="hidden" id="adventWreathCustomColors" name="adventWreathCustomColors" value="{adventWreathCustomColors}">
+            
+            <br><input type="checkbox" id="adventWreathInterrupt" name="adventWreathInterrupt" {adventWreathInterrupt_checked}><label for="adventWreathInterrupt" style="display:inline;">Unterbrechend anzeigen</label><br>
+            
+            <label for="adventWreathFlameSpeedMs">Flammen-Animation (ms)</label><input type="number" id="adventWreathFlameSpeedMs" name="adventWreathFlameSpeedMs" value="{adventWreathFlameSpeedMs}" min="20" max="500">
+            
+            <label for="adventWreathDaysBefore24">Adventskranz: Tage vor dem 24.12.</label><input type="number" id="adventWreathDaysBefore24" name="adventWreathDaysBefore24" value="{adventWreathDaysBefore24}" min="0" max="30">
+            <label style="display: inline-block; margin: 10px 0;"><input type="checkbox" name="adventWreathOnlyFromFirstAdvent" id="adventWreathOnlyFromFirstAdvent" {adventWreathOnlyFromFirstAdvent_checked}> Erst ab dem 1. Advent zeigen</label><br>
+            <label for="adventWreathBerryCount">Anzahl Kugeln/Beeren (4-20)</label><input type="number" id="adventWreathBerryCount" name="adventWreathBerryCount" value="{adventWreathBerryCount}" min="4" max="20">
+            <label for="adventWreathBgColor">Hintergrundfarbe</label><input type="color" id="adventWreathBgColor" name="adventWreathBgColor" value="{adventWreathBgColor}">
+            
+            <p style="color:#bbb; margin-top:10px;">Der Adventskranz zeigt 1-4 brennende Kerzen je nach aktuellem Advent mit zuf&auml;llig flackernden Flammen. Der Kranz ist mit Tannengrün dekoriert.</p>
         </div>
-        
-        <br><input type="checkbox" id="adventWreathInterrupt" name="adventWreathInterrupt" {adventWreathInterrupt_checked}><label for="adventWreathInterrupt" style="display:inline;">Unterbrechend anzeigen</label><br>
-        
-        <label for="adventWreathFlameSpeedMs">Flammen-Animation (ms)</label><input type="number" id="adventWreathFlameSpeedMs" name="adventWreathFlameSpeedMs" value="{adventWreathFlameSpeedMs}" min="20" max="500">
-        
-        <label for="adventWreathDaysBefore24">Adventskranz: Tage vor dem 24.12.</label><input type="number" id="adventWreathDaysBefore24" name="adventWreathDaysBefore24" value="{adventWreathDaysBefore24}" min="0" max="30">
-        <label style="display: inline-block; margin: 10px 0;"><input type="checkbox" name="adventWreathOnlyFromFirstAdvent" id="adventWreathOnlyFromFirstAdvent" {adventWreathOnlyFromFirstAdvent_checked}> Erst ab dem 1. Advent zeigen</label><br>
-        <label for="adventWreathBerryCount">Anzahl Kugeln/Beeren (4-20)</label><input type="number" id="adventWreathBerryCount" name="adventWreathBerryCount" value="{adventWreathBerryCount}" min="4" max="20">
-        <label for="adventWreathBgColor">Hintergrundfarbe</label><input type="color" id="adventWreathBgColor" name="adventWreathBgColor" value="{adventWreathBgColor}">
-        
-        <h3 style="margin-top:15px;">Weihnachtsbaum</h3>
-        <input type="checkbox" id="christmasTreeEnabled" name="christmasTreeEnabled" {christmasTreeEnabled_checked}><label for="christmasTreeEnabled" style="display:inline;">Weihnachtsbaum aktivieren</label><br>
-        <label for="christmasTreeDaysBefore24">Weihnachtsbaum: Tage vor dem 24.12.</label><input type="number" id="christmasTreeDaysBefore24" name="christmasTreeDaysBefore24" value="{christmasTreeDaysBefore24}" min="0" max="30">
-        <label for="christmasTreeDaysAfter24">Weihnachtsbaum: Tage nach dem 24.12.</label><input type="number" id="christmasTreeDaysAfter24" name="christmasTreeDaysAfter24" value="{christmasTreeDaysAfter24}" min="0" max="30">
-        
-        <label for="christmasTreeLightSpeedMs">Lichterketten-Blinkgeschwindigkeit (ms)</label><input type="number" id="christmasTreeLightSpeedMs" name="christmasTreeLightSpeedMs" value="{christmasTreeLightSpeedMs}" min="30" max="500">
-        <label for="christmasTreeLightCount">Anzahl der Lichter (5-30)</label><input type="number" id="christmasTreeLightCount" name="christmasTreeLightCount" value="{christmasTreeLightCount}" min="5" max="30">
-        <label for="christmasTreeGiftCount">Anzahl der Geschenke (0-10)</label><input type="number" id="christmasTreeGiftCount" name="christmasTreeGiftCount" value="{christmasTreeGiftCount}" min="0" max="10">
-        <label for="christmasTreeBgColor">Hintergrundfarbe</label><input type="color" id="christmasTreeBgColor" name="christmasTreeBgColor" value="{christmasTreeBgColor}">
-        <label for="christmasTreeLightMode">Lichterketten-Farbe</label>
-        <select id="christmasTreeLightMode" name="christmasTreeLightMode" onchange="toggleTreeLightColor()">
-            <option value="0" {christmasTreeLightMode0_selected}>Zuf&auml;llige Farben</option>
-            <option value="1" {christmasTreeLightMode1_selected}>Feste Farbe</option>
-        </select>
-        <div id="treeLightColorDiv" style="display:none;">
-            <label for="christmasTreeLightColor">Feste Lichterfarbe</label><input type="color" id="christmasTreeLightColor" name="christmasTreeLightColor" value="{christmasTreeLightColor}">
+    </div>
+    
+    <!-- Weihnachtsbaum Sub-Tab -->
+    <div id="SubWeihnachtsbaum" class="subtabcontent">
+        <div class="group">
+            <h3>Weihnachtsbaum</h3>
+            <input type="checkbox" id="christmasTreeEnabled" name="christmasTreeEnabled" {christmasTreeEnabled_checked}><label for="christmasTreeEnabled" style="display:inline;">Weihnachtsbaum aktivieren</label><br>
+            <label for="christmasTreeDaysBefore24">Weihnachtsbaum: Tage vor dem 24.12.</label><input type="number" id="christmasTreeDaysBefore24" name="christmasTreeDaysBefore24" value="{christmasTreeDaysBefore24}" min="0" max="30">
+            <label for="christmasTreeDaysAfter24">Weihnachtsbaum: Tage nach dem 24.12.</label><input type="number" id="christmasTreeDaysAfter24" name="christmasTreeDaysAfter24" value="{christmasTreeDaysAfter24}" min="0" max="30">
+            
+            <label for="christmasTreeLightSpeedMs">Lichterketten-Blinkgeschwindigkeit (ms)</label><input type="number" id="christmasTreeLightSpeedMs" name="christmasTreeLightSpeedMs" value="{christmasTreeLightSpeedMs}" min="30" max="500">
+            <label for="christmasTreeLightCount">Anzahl der Lichter (5-30)</label><input type="number" id="christmasTreeLightCount" name="christmasTreeLightCount" value="{christmasTreeLightCount}" min="5" max="30">
+            <label for="christmasTreeGiftCount">Anzahl der Geschenke (0-10)</label><input type="number" id="christmasTreeGiftCount" name="christmasTreeGiftCount" value="{christmasTreeGiftCount}" min="0" max="10">
+            <label for="christmasTreeBgColor">Hintergrundfarbe</label><input type="color" id="christmasTreeBgColor" name="christmasTreeBgColor" value="{christmasTreeBgColor}">
+            <label for="christmasTreeLightMode">Lichterketten-Farbe</label>
+            <select id="christmasTreeLightMode" name="christmasTreeLightMode" onchange="toggleTreeLightColor()">
+                <option value="0" {christmasTreeLightMode0_selected}>Zuf&auml;llige Farben</option>
+                <option value="1" {christmasTreeLightMode1_selected}>Feste Farbe</option>
+            </select>
+            <div id="treeLightColorDiv" style="display:none;">
+                <label for="christmasTreeLightColor">Feste Lichterfarbe</label><input type="color" id="christmasTreeLightColor" name="christmasTreeLightColor" value="{christmasTreeLightColor}">
+            </div>
+            
+            <p style="color:#bbb; margin-top:10px;">Der Weihnachtsbaum hat blinkende Lichter und Kugeln. Geschenke können unter dem Baum platziert werden.</p>
         </div>
-        
-        <h3 style="margin-top: 20px; border-bottom: 1px solid #666; padding-bottom: 5px;">Kamin</h3>
-        <label style="display: inline-block; margin: 10px 0;"><input type="checkbox" name="fireplaceEnabled" id="fireplaceEnabled" {fireplaceEnabled_checked}> Kamin aktivieren</label>
-        <label for="fireplaceDaysBefore24">Kamin: Tage vor dem 24.12.</label><input type="number" id="fireplaceDaysBefore24" name="fireplaceDaysBefore24" value="{fireplaceDaysBefore24}" min="0" max="30">
-        <label for="fireplaceDaysAfter24">Kamin: Tage nach dem 24.12.</label><input type="number" id="fireplaceDaysAfter24" name="fireplaceDaysAfter24" value="{fireplaceDaysAfter24}" min="0" max="30">
-        <label for="fireplaceFlameSpeedMs">Feuer-Animation Geschwindigkeit (ms)</label><input type="number" id="fireplaceFlameSpeedMs" name="fireplaceFlameSpeedMs" value="{fireplaceFlameSpeedMs}" min="20" max="200">
-        <label for="fireplaceFlameColor">Feuerfarbe</label>
-        <select id="fireplaceFlameColor" name="fireplaceFlameColor">
-            <option value="0" {fireplaceFlameColor0_selected}>Klassisch (Orange/Gelb)</option>
-            <option value="1" {fireplaceFlameColor1_selected}>Blau</option>
-            <option value="2" {fireplaceFlameColor2_selected}>Gr&uuml;n</option>
-            <option value="3" {fireplaceFlameColor3_selected}>Violett</option>
-        </select>
-        <label for="fireplaceBrickColor">Kaminfarbe</label><input type="color" id="fireplaceBrickColor" name="fireplaceBrickColor" value="{fireplaceBrickColor}">
-        <label for="fireplaceStockingCount">Anzahl Str&uuml;mpfe am Kaminsims (0-5)</label><input type="number" id="fireplaceStockingCount" name="fireplaceStockingCount" value="{fireplaceStockingCount}" min="0" max="5">
-        <label style="display: inline-block; margin: 10px 0;"><input type="checkbox" name="fireplaceClockEnabled" id="fireplaceClockEnabled" {fireplaceClockEnabled_checked}> Analoge Uhr auf dem Kaminsims anzeigen</label>
-        <label for="fireplaceCandleCount">Anzahl Dekoration auf dem Kaminsims (0-2 mit Uhr, 0-3 ohne)</label><input type="number" id="fireplaceCandleCount" name="fireplaceCandleCount" value="{fireplaceCandleCount}" min="0" max="3">
-        <label for="fireplaceBgColor">Hintergrundfarbe Kamin</label><input type="color" id="fireplaceBgColor" name="fireplaceBgColor" value="{fireplaceBgColor}">
-        
-        <h3 style="margin-top: 20px; border-bottom: 1px solid #666; padding-bottom: 5px;">Allgemein</h3>
-        <label style="display: inline-block; margin: 10px 0;"><input type="checkbox" name="adventWreathFullscreen" id="adventWreathFullscreen" {adventWreathFullscreen_checked}> Vollbild-Modus (192x96 statt 192x66)</label>
-        
-        <p style="color:#bbb; margin-top:10px;">Der Adventskranz zeigt 1-4 brennende Kerzen je nach aktuellem Advent mit zuf&auml;llig flackernden Flammen. Der Weihnachtsbaum hat blinkende Lichter und Kugeln. Der Kamin zeigt ein gem&uuml;tliches Feuer mit Str&uuml;mpfen und Dekoration (Vasen, Schneekugeln, Bilderrahmen). Wenn mehrere aktiviert sind, wechseln sie ab.</p>
+    </div>
+    
+    <!-- Kamin Sub-Tab -->
+    <div id="SubKamin" class="subtabcontent">
+        <div class="group">
+            <h3>Kamin</h3>
+            <label style="display: inline-block; margin: 10px 0;"><input type="checkbox" name="fireplaceEnabled" id="fireplaceEnabled" {fireplaceEnabled_checked}> Kamin aktivieren</label>
+            <label for="fireplaceDaysBefore24">Kamin: Tage vor dem 24.12.</label><input type="number" id="fireplaceDaysBefore24" name="fireplaceDaysBefore24" value="{fireplaceDaysBefore24}" min="0" max="30">
+            <label for="fireplaceDaysAfter24">Kamin: Tage nach dem 24.12.</label><input type="number" id="fireplaceDaysAfter24" name="fireplaceDaysAfter24" value="{fireplaceDaysAfter24}" min="0" max="30">
+            <label for="fireplaceFlameSpeedMs">Feuer-Animation Geschwindigkeit (ms)</label><input type="number" id="fireplaceFlameSpeedMs" name="fireplaceFlameSpeedMs" value="{fireplaceFlameSpeedMs}" min="20" max="200">
+            <label for="fireplaceFlameColor">Feuerfarbe</label>
+            <select id="fireplaceFlameColor" name="fireplaceFlameColor">
+                <option value="0" {fireplaceFlameColor0_selected}>Klassisch (Orange/Gelb)</option>
+                <option value="1" {fireplaceFlameColor1_selected}>Blau</option>
+                <option value="2" {fireplaceFlameColor2_selected}>Gr&uuml;n</option>
+                <option value="3" {fireplaceFlameColor3_selected}>Violett</option>
+            </select>
+            <label for="fireplaceBrickColor">Kaminfarbe</label><input type="color" id="fireplaceBrickColor" name="fireplaceBrickColor" value="{fireplaceBrickColor}">
+            <label for="fireplaceStockingCount">Anzahl Str&uuml;mpfe am Kaminsims (0-5)</label><input type="number" id="fireplaceStockingCount" name="fireplaceStockingCount" value="{fireplaceStockingCount}" min="0" max="5">
+            <label style="display: inline-block; margin: 10px 0;"><input type="checkbox" name="fireplaceClockEnabled" id="fireplaceClockEnabled" {fireplaceClockEnabled_checked}> Analoge Uhr auf dem Kaminsims anzeigen</label>
+            <label for="fireplaceCandleCount">Anzahl Dekoration auf dem Kaminsims (0-2 mit Uhr, 0-3 ohne)</label><input type="number" id="fireplaceCandleCount" name="fireplaceCandleCount" value="{fireplaceCandleCount}" min="0" max="3">
+            <label for="fireplaceBgColor">Hintergrundfarbe Kamin</label><input type="color" id="fireplaceBgColor" name="fireplaceBgColor" value="{fireplaceBgColor}">
+            
+            <p style="color:#bbb; margin-top:10px;">Der Kamin zeigt ein gem&uuml;tliches Feuer mit Str&uuml;mpfen und Dekoration (Vasen, Schneekugeln, Bilderrahmen).</p>
+        </div>
+    </div>
+    
+    <!-- Allgemein Sub-Tab -->
+    <div id="SubAllgemein" class="subtabcontent">
+        <div class="group">
+            <h3>Allgemeine Einstellungen</h3>
+            <label style="display: inline-block; margin: 10px 0;"><input type="checkbox" name="adventWreathFullscreen" id="adventWreathFullscreen" {adventWreathFullscreen_checked}> Vollbild-Modus (192x96 statt 192x66)</label>
+            
+            <p style="color:#bbb; margin-top:10px;">Gilt für alle Animationen. Im Vollbild-Modus nutzen die Animationen die gesamte verfügbare Displayhöhe.</p>
+        </div>
     </div>
 </div>
 <script>
+function openSubTab(evt, subTabName) {
+    var i, subtabcontent, subtablinks;
+    subtabcontent = document.getElementsByClassName("subtabcontent");
+    for (i = 0; i < subtabcontent.length; i++) {
+        subtabcontent[i].style.display = "none";
+    }
+    subtablinks = document.getElementsByClassName("subtablinks");
+    for (i = 0; i < subtablinks.length; i++) {
+        subtablinks[i].className = subtablinks[i].className.replace(" active", "");
+    }
+    document.getElementById(subTabName).style.display = "block";
+    evt.currentTarget.className += " active";
+}
 function toggleCustomColors() {
     var mode = document.getElementById('adventWreathColorMode').value;
     document.getElementById('customColorsDiv').style.display = (mode == '2') ? 'block' : 'none';
@@ -381,6 +433,11 @@ document.addEventListener('DOMContentLoaded', function() {
     ['candleColor1','candleColor2','candleColor3','candleColor4'].forEach(function(id) {
         document.getElementById(id).addEventListener('change', updateCustomColors);
     });
+    // Open first sub-tab by default when Animationen tab is opened
+    var defaultAnimBtn = document.getElementById('defaultAnimOpen');
+    if (defaultAnimBtn) {
+        defaultAnimBtn.click();
+    }
 });
 </script>
 

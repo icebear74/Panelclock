@@ -1,16 +1,16 @@
-#include "HolidayAnimationsModule.hpp"
+#include "AnimationsModule.hpp"
 #include "webconfig.hpp"
 #include "MultiLogger.hpp"
 #include "PsramUtils.hpp"
 #include <time.h>
 
 // Hilfsfunktion für RGB565
-uint16_t HolidayAnimationsModule::rgb565(uint8_t r, uint8_t g, uint8_t b) {
+uint16_t AnimationsModule::rgb565(uint8_t r, uint8_t g, uint8_t b) {
     return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
 }
 
 // Hilfsfunktion um Hex-Farbe zu RGB565 zu konvertieren
-uint16_t HolidayAnimationsModule::hexToRgb565(const char* hex) {
+uint16_t AnimationsModule::hexToRgb565(const char* hex) {
     if (!hex || hex[0] != '#' || strlen(hex) < 7) {
         return rgb565(255, 255, 255);
     }
@@ -21,20 +21,20 @@ uint16_t HolidayAnimationsModule::hexToRgb565(const char* hex) {
 }
 
 // Einfacher Pseudo-Zufallsgenerator
-uint32_t HolidayAnimationsModule::simpleRandom(uint32_t seed) {
+uint32_t AnimationsModule::simpleRandom(uint32_t seed) {
     seed = seed * 1103515245 + 12345;
     return (seed / 65536) % 32768;
 }
 
-HolidayAnimationsModule::HolidayAnimationsModule(U8G2_FOR_ADAFRUIT_GFX& u8g2, GFXcanvas16& canvas, 
+AnimationsModule::HolidayAnimationsModule(U8G2_FOR_ADAFRUIT_GFX& u8g2, GFXcanvas16& canvas, 
                                        GeneralTimeConverter& timeConverter, DeviceConfig* config)
     : u8g2(u8g2), canvas(canvas), timeConverter(timeConverter), config(config) {
 }
 
-HolidayAnimationsModule::~HolidayAnimationsModule() {
+AnimationsModule::~HolidayAnimationsModule() {
 }
 
-void HolidayAnimationsModule::begin() {
+void AnimationsModule::begin() {
     time_t now = time(nullptr);
     time_t local_time = timeConverter.toLocal(now);
     struct tm tm_now;
@@ -45,7 +45,7 @@ void HolidayAnimationsModule::begin() {
     Log.println("[AdventWreath] Modul initialisiert");
 }
 
-void HolidayAnimationsModule::setConfig() {
+void AnimationsModule::setConfig() {
     if (config) {
         _displayDurationMs = config->adventWreathDisplaySec * 1000UL;
         _repeatIntervalMs = config->adventWreathRepeatMin * 60UL * 1000UL;
@@ -53,11 +53,11 @@ void HolidayAnimationsModule::setConfig() {
     }
 }
 
-void HolidayAnimationsModule::onUpdate(std::function<void()> callback) {
+void AnimationsModule::onUpdate(std::function<void()> callback) {
     _updateCallback = callback;
 }
 
-void HolidayAnimationsModule::shuffleCandleOrder() {
+void AnimationsModule::shuffleCandleOrder() {
     time_t now_utc;
     time(&now_utc);
     uint32_t seed = (uint32_t)now_utc + _displayCounter;
@@ -72,7 +72,7 @@ void HolidayAnimationsModule::shuffleCandleOrder() {
     _lastOrderSeed = seed;
 }
 
-bool HolidayAnimationsModule::isAdventSeason() {
+bool AnimationsModule::isAdventSeason() {
     time_t now_utc;
     time(&now_utc);
     time_t local_now = timeConverter.toLocal(now_utc);
@@ -127,7 +127,7 @@ bool HolidayAnimationsModule::isAdventSeason() {
     return false;
 }
 
-bool HolidayAnimationsModule::isChristmasSeason() {
+bool AnimationsModule::isChristmasSeason() {
     time_t now_utc;
     time(&now_utc);
     time_t local_now = timeConverter.toLocal(now_utc);
@@ -179,11 +179,11 @@ bool HolidayAnimationsModule::isChristmasSeason() {
     return false;
 }
 
-bool HolidayAnimationsModule::isHolidaySeason() {
+bool AnimationsModule::isHolidaySeason() {
     return isAdventSeason() || isChristmasSeason() || isFireplaceSeason();
 }
 
-bool HolidayAnimationsModule::isFireplaceSeason() {
+bool AnimationsModule::isFireplaceSeason() {
     if (!config || !config->fireplaceEnabled) return false;
     
     time_t now_utc;
@@ -230,7 +230,7 @@ bool HolidayAnimationsModule::isFireplaceSeason() {
     return false;
 }
 
-ChristmasDisplayMode HolidayAnimationsModule::getCurrentDisplayMode() {
+ChristmasDisplayMode AnimationsModule::getCurrentDisplayMode() {
     time_t now_utc;
     time(&now_utc);
     time_t local_now = timeConverter.toLocal(now_utc);
@@ -275,7 +275,7 @@ ChristmasDisplayMode HolidayAnimationsModule::getCurrentDisplayMode() {
     return ChristmasDisplayMode::Wreath;
 }
 
-int HolidayAnimationsModule::calculateCurrentAdvent() {
+int AnimationsModule::calculateCurrentAdvent() {
     time_t now_utc;
     time(&now_utc);
     time_t local_now = timeConverter.toLocal(now_utc);
@@ -315,7 +315,7 @@ int HolidayAnimationsModule::calculateCurrentAdvent() {
     return 0;
 }
 
-time_t HolidayAnimationsModule::calculateFourthAdvent(int year) {
+time_t AnimationsModule::calculateFourthAdvent(int year) {
     struct tm tm_christmas;
     memset(&tm_christmas, 0, sizeof(tm_christmas));
     tm_christmas.tm_year = year - 1900;
@@ -333,7 +333,7 @@ time_t HolidayAnimationsModule::calculateFourthAdvent(int year) {
     return mktime(&tm_christmas);
 }
 
-void HolidayAnimationsModule::periodicTick() {
+void AnimationsModule::periodicTick() {
     if (!config) return;
     
     if (!config->adventWreathEnabled && !config->christmasTreeEnabled) return;
@@ -429,7 +429,7 @@ void HolidayAnimationsModule::periodicTick() {
     }
 }
 
-void HolidayAnimationsModule::tick() {
+void AnimationsModule::tick() {
     unsigned long now = millis();
     bool needsUpdate = false;
     
@@ -462,14 +462,14 @@ void HolidayAnimationsModule::tick() {
     }
 }
 
-void HolidayAnimationsModule::logicTick() {
+void AnimationsModule::logicTick() {
 }
 
-bool HolidayAnimationsModule::wantsFullscreen() const {
+bool AnimationsModule::wantsFullscreen() const {
     return config && config->adventWreathFullscreen && _fullscreenCanvas != nullptr;
 }
 
-void HolidayAnimationsModule::draw() {
+void AnimationsModule::draw() {
     // Wähle den richtigen Canvas basierend auf Fullscreen-Modus
     _currentCanvas = wantsFullscreen() ? _fullscreenCanvas : &canvas;
     
@@ -498,7 +498,7 @@ void HolidayAnimationsModule::draw() {
     }
 }
 
-void HolidayAnimationsModule::drawChristmasTree() {
+void AnimationsModule::drawChristmasTree() {
     int canvasW = _currentCanvas->width();
     int canvasH = _currentCanvas->height();
     int centerX = canvasW / 2;
@@ -546,7 +546,7 @@ void HolidayAnimationsModule::drawChristmasTree() {
     drawGifts(centerX, baseY, scale);
 }
 
-void HolidayAnimationsModule::drawNaturalTree(int centerX, int baseY, float scale) {
+void AnimationsModule::drawNaturalTree(int centerX, int baseY, float scale) {
     // Grüntöne für natürlicheren Look
     uint16_t greens[] = {
         rgb565(0, 80, 0),     // Dunkelgrün
@@ -639,7 +639,7 @@ void HolidayAnimationsModule::drawNaturalTree(int centerX, int baseY, float scal
     }
 }
 
-void HolidayAnimationsModule::drawTreeOrnaments(int centerX, int baseY, float scale) {
+void AnimationsModule::drawTreeOrnaments(int centerX, int baseY, float scale) {
     uint16_t ornamentColors[] = {
         rgb565(255, 0, 0),      // Rot
         rgb565(255, 215, 0),    // Gold
@@ -710,7 +710,7 @@ void HolidayAnimationsModule::drawTreeOrnaments(int centerX, int baseY, float sc
     }
 }
 
-void HolidayAnimationsModule::drawTreeLights() {
+void AnimationsModule::drawTreeLights() {
     int canvasW = _currentCanvas->width();
     int canvasH = _currentCanvas->height();
     int centerX = canvasW / 2;
@@ -815,7 +815,7 @@ void HolidayAnimationsModule::drawTreeLights() {
     }
 }
 
-void HolidayAnimationsModule::drawGifts(int centerX, int baseY, float scale) {
+void AnimationsModule::drawGifts(int centerX, int baseY, float scale) {
     // Konfigurierbare Anzahl der Geschenke (0-10)
     int giftCount = config ? config->christmasTreeGiftCount : 5;
     if (giftCount < 0) giftCount = 0;
@@ -882,7 +882,7 @@ void HolidayAnimationsModule::drawGifts(int centerX, int baseY, float scale) {
     }
 }
 
-void HolidayAnimationsModule::drawOrnament(int x, int y, int radius, uint16_t color) {
+void AnimationsModule::drawOrnament(int x, int y, int radius, uint16_t color) {
     _currentCanvas->fillCircle(x, y, radius, color);
     
     uint8_t r = ((color >> 11) & 0x1F) * 8;
@@ -903,7 +903,7 @@ void HolidayAnimationsModule::drawOrnament(int x, int y, int radius, uint16_t co
     }
 }
 
-void HolidayAnimationsModule::drawWreath() {
+void AnimationsModule::drawWreath() {
     int currentAdvent = calculateCurrentAdvent();
     
     int canvasW = _currentCanvas->width();
@@ -977,7 +977,7 @@ void HolidayAnimationsModule::drawWreath() {
     }
 }
 
-void HolidayAnimationsModule::drawCandle(int x, int y, uint16_t color, bool isLit, int candleIndex) {
+void AnimationsModule::drawCandle(int x, int y, uint16_t color, bool isLit, int candleIndex) {
     // Dynamische Skalierung - Kerzen werden DEUTLICH größer bei Fullscreen
     int canvasH = _currentCanvas->height();
     float scale = canvasH / 66.0f;
@@ -1006,7 +1006,7 @@ void HolidayAnimationsModule::drawCandle(int x, int y, uint16_t color, bool isLi
     }
 }
 
-void HolidayAnimationsModule::drawFlame(int x, int y, int phase) {
+void AnimationsModule::drawFlame(int x, int y, int phase) {
     // Dynamische Skalierung für größere Flammen
     int canvasH = _currentCanvas->height();
     float scale = canvasH / 66.0f;
@@ -1070,7 +1070,7 @@ void HolidayAnimationsModule::drawFlame(int x, int y, int phase) {
     }
 }
 
-void HolidayAnimationsModule::drawGreenery() {
+void AnimationsModule::drawGreenery() {
     // Mehrere Grüntöne für natürlicheres Aussehen
     uint16_t greens[] = {
         rgb565(0, 70, 0),     // Sehr dunkelgrün
@@ -1133,7 +1133,7 @@ void HolidayAnimationsModule::drawGreenery() {
     }
 }
 
-void HolidayAnimationsModule::drawBranch(int x, int y, int direction) {
+void AnimationsModule::drawBranch(int x, int y, int direction) {
     uint16_t greens[] = {
         rgb565(0, 90, 15),
         rgb565(0, 110, 25),
@@ -1155,7 +1155,7 @@ void HolidayAnimationsModule::drawBranch(int x, int y, int direction) {
     }
 }
 
-void HolidayAnimationsModule::drawBerries() {
+void AnimationsModule::drawBerries() {
     uint16_t berryColors[] = {
         rgb565(200, 0, 0),
         rgb565(255, 215, 0),
@@ -1269,11 +1269,11 @@ void HolidayAnimationsModule::drawBerries() {
     }
 }
 
-unsigned long HolidayAnimationsModule::getDisplayDuration() {
+unsigned long AnimationsModule::getDisplayDuration() {
     return _displayDurationMs;
 }
 
-bool HolidayAnimationsModule::isEnabled() {
+bool AnimationsModule::isEnabled() {
     if (!config) return false;
     
     if (!config->adventWreathEnabled && !config->christmasTreeEnabled && !config->fireplaceEnabled) {
@@ -1283,11 +1283,11 @@ bool HolidayAnimationsModule::isEnabled() {
     return isHolidaySeason();
 }
 
-void HolidayAnimationsModule::resetPaging() {
+void AnimationsModule::resetPaging() {
     _isFinished = false;
 }
 
-void HolidayAnimationsModule::onActivate() {
+void AnimationsModule::onActivate() {
     _isFinished = false;
     _isAdventViewActive = true;
     _adventViewStartTime = millis();
@@ -1300,7 +1300,7 @@ void HolidayAnimationsModule::onActivate() {
     Log.printf("[AdventWreath] Aktiviert: %s (UID=%lu)\n", modeName, _currentAdventUID);
 }
 
-void HolidayAnimationsModule::timeIsUp() {
+void AnimationsModule::timeIsUp() {
     const char* modeName = _showFireplace ? "Kamin" : (_showTree ? "Weihnachtsbaum" : "Adventskranz");
     Log.printf("[AdventWreath] Zeit abgelaufen für %s (UID=%lu)\n", modeName, _currentAdventUID);
     _isAdventViewActive = false;
@@ -1310,7 +1310,7 @@ void HolidayAnimationsModule::timeIsUp() {
 
 // ============== KAMIN ZEICHENFUNKTIONEN ==============
 
-void HolidayAnimationsModule::drawFireplace() {
+void AnimationsModule::drawFireplace() {
     int canvasW = _currentCanvas->width();
     int canvasH = _currentCanvas->height();
     int centerX = canvasW / 2;
@@ -1479,7 +1479,7 @@ void HolidayAnimationsModule::drawFireplace() {
     drawMantleDecorations(simsY, simsWidth, centerX, effectiveScaleY);
 }
 
-void HolidayAnimationsModule::drawFireplaceFlames(int x, int y, int width, int height) {
+void AnimationsModule::drawFireplaceFlames(int x, int y, int width, int height) {
     // Feuerfarben basierend auf Konfiguration
     int flameColorMode = config ? config->fireplaceFlameColor : 0;
     
@@ -1645,7 +1645,7 @@ void HolidayAnimationsModule::drawFireplaceFlames(int x, int y, int width, int h
     }
 }
 
-void HolidayAnimationsModule::drawStockings(int simsY, int simsWidth, int centerX) {
+void AnimationsModule::drawStockings(int simsY, int simsWidth, int centerX) {
     int stockingCount = config ? config->fireplaceStockingCount : 3;
     if (stockingCount < 0) stockingCount = 0;
     if (stockingCount > 5) stockingCount = 5;
@@ -1681,7 +1681,7 @@ void HolidayAnimationsModule::drawStockings(int simsY, int simsWidth, int center
     }
 }
 
-void HolidayAnimationsModule::drawMantleDecorations(int simsY, int simsWidth, int centerX, float scale) {
+void AnimationsModule::drawMantleDecorations(int simsY, int simsWidth, int centerX, float scale) {
     // Analoge Uhr in der Mitte?
     bool showClock = config ? config->fireplaceClockEnabled : false;
     

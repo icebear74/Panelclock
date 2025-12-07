@@ -1,5 +1,5 @@
-#ifndef HOLIDAYANIMATIONSMODULE_HPP
-#define HOLIDAYANIMATIONSMODULE_HPP
+#ifndef ANIMATIONSMODULE_HPP
+#define ANIMATIONSMODULE_HPP
 
 #include "DrawableModule.hpp"
 #include "GeneralTimeConverter.hpp"
@@ -23,7 +23,7 @@ enum class ChristmasDisplayMode {
 };
 
 /**
- * @brief Modul zur Anzeige eines animierten Adventskranzes und Weihnachtsbaums.
+ * @brief Modul zur Anzeige verschiedener Weihnachtsanimationen.
  * 
  * Zeigt einen Adventskranz mit 4 Kerzen in verschiedenen Farben.
  * Je nach aktuellem Advent (1-4) brennen die entsprechenden Kerzen
@@ -35,10 +35,10 @@ enum class ChristmasDisplayMode {
  * um während der Adventszeit regelmäßig als nächstes nach dem
  * aktuellen Modul angezeigt zu werden.
  */
-class HolidayAnimationsModule : public DrawableModule {
+class AnimationsModule : public DrawableModule {
 public:
-    HolidayAnimationsModule(U8G2_FOR_ADAFRUIT_GFX& u8g2, GFXcanvas16& canvas, GeneralTimeConverter& timeConverter, DeviceConfig* config);
-    ~HolidayAnimationsModule();
+    AnimationsModule(U8G2_FOR_ADAFRUIT_GFX& u8g2, GFXcanvas16& canvas, GeneralTimeConverter& timeConverter, DeviceConfig* config);
+    ~AnimationsModule();
 
     /**
      * @brief Initialisiert das Modul.
@@ -57,8 +57,8 @@ public:
     void onUpdate(std::function<void()> callback);
 
     // --- DrawableModule Interface ---
-    const char* getModuleName() const override { return "HolidayAnimationsModule"; }
-    const char* getModuleDisplayName() const override { return "Weihnachtsanimationen"; }
+    const char* getModuleName() const override { return "AnimationsModule"; }
+    const char* getModuleDisplayName() const override { return "Animationen"; }
     void draw() override;
     void tick() override;
     void logicTick() override;
@@ -273,4 +273,4 @@ private:
     uint32_t simpleRandom(uint32_t seed);
 };
 
-#endif // HOLIDAYANIMATIONSMODULE_HPP
+#endif // ANIMATIONSMODULE_HPP
