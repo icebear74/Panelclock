@@ -209,6 +209,8 @@ struct DeviceConfig {
     int christmasTreeGiftCount = 5;
     /// @brief Adventskranz/Weihnachtsbaum: Fullscreen-Modus (0=Teilbereich 192x66, 1=Vollbild 192x96)
     bool adventWreathFullscreen = false;
+    /// @brief Zeige Countdown bis Silvester auf Adventskranz und Weihnachtsbaum
+    bool showNewYearCountdown = true;
     
     // --- Kamin Modul ---
     /// @brief Kamin aktivieren

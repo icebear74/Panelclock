@@ -392,8 +392,9 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
         <div class="group">
             <h3>Allgemeine Einstellungen</h3>
             <label style="display: inline-block; margin: 10px 0;"><input type="checkbox" name="adventWreathFullscreen" id="adventWreathFullscreen" {adventWreathFullscreen_checked}> Vollbild-Modus (192x96 statt 192x66)</label>
+            <label style="display: inline-block; margin: 10px 0;"><input type="checkbox" name="showNewYearCountdown" id="showNewYearCountdown" {showNewYearCountdown_checked}> Countdown bis Silvester anzeigen</label>
             
-            <p style="color:#bbb; margin-top:10px;">Gilt für alle Animationen. Im Vollbild-Modus nutzen die Animationen die gesamte verfügbare Displayhöhe.</p>
+            <p style="color:#bbb; margin-top:10px;">Gilt für alle Animationen. Im Vollbild-Modus nutzen die Animationen die gesamte verfügbare Displayhöhe. Der Countdown zeigt die verbleibende Zeit bis zum Jahreswechsel (Tage, Stunden, Minuten, Sekunden) auf Adventskranz und Weihnachtsbaum an.</p>
         </div>
     </div>
 </div>

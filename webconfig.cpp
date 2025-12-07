@@ -138,6 +138,7 @@ void loadDeviceConfig() {
                 deviceConfig->christmasTreeLightCount = doc["christmasTreeLightCount"] | 18;
                 deviceConfig->christmasTreeGiftCount = doc["christmasTreeGiftCount"] | 5;
                 deviceConfig->adventWreathFullscreen = doc["adventWreathFullscreen"] | false;
+                deviceConfig->showNewYearCountdown = doc["showNewYearCountdown"] | true;
                 
                 // Kamin-Konfiguration
                 deviceConfig->fireplaceEnabled = doc["fireplaceEnabled"] | true;
@@ -278,6 +279,7 @@ void saveDeviceConfig() {
     doc["christmasTreeLightCount"] = deviceConfig->christmasTreeLightCount;
     doc["christmasTreeGiftCount"] = deviceConfig->christmasTreeGiftCount;
     doc["adventWreathFullscreen"] = deviceConfig->adventWreathFullscreen;
+    doc["showNewYearCountdown"] = deviceConfig->showNewYearCountdown;
     
     // Kamin-Konfiguration
     doc["fireplaceEnabled"] = deviceConfig->fireplaceEnabled;

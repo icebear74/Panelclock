@@ -455,12 +455,28 @@ void AnimationsModule::draw() {
     if (_showFireplace) {
         drawFireplace();
     } else if (_showTree) {
+        // Regeneriere Kugeln/Lichter wenn der Baum neu angezeigt wird
+        unsigned long now = millis();
+        if (now - _lastTreeDisplay > 1000) {  // Mindestens 1 Sekunde seit letzter Anzeige
+            _treeOrnamentsNeedRegeneration = true;
+            _lastTreeDisplay = now;
+        }
+        
         drawChristmasTree();
+        drawSnowflakes();
+        
+        if (config && config->showNewYearCountdown) {
+            drawNewYearCountdown();
+        }
     } else {
         // Adventskranz ohne Beschriftung - mehr Platz für die Grafik
         drawGreenery();
         drawWreath();
         drawBerries();
+        
+        if (config && config->showNewYearCountdown) {
+            drawNewYearCountdown();
+        }
     }
 }
 
@@ -869,6 +885,121 @@ void AnimationsModule::drawOrnament(int x, int y, int radius, uint16_t color) {
     }
 }
 
+void AnimationsModule::drawSnowflakes() {
+    int canvasW = _currentCanvas->width();
+    int canvasH = _currentCanvas->height();
+    
+    // Initialize snowflakes on first call
+    if (!_snowflakesInitialized) {
+        for (int i = 0; i < MAX_SNOWFLAKES; i++) {
+            _snowflakes[i].x = (float)(rand() % canvasW);
+            _snowflakes[i].y = (float)(rand() % canvasH);
+            _snowflakes[i].speed = 0.5f + (float)(rand() % 15) / 10.0f;
+            _snowflakes[i].size = 1 + (rand() % 2);
+        }
+        _snowflakesInitialized = true;
+        _lastSnowflakeUpdate = millis();
+    }
+    
+    // Update positions
+    unsigned long now = millis();
+    if (now - _lastSnowflakeUpdate > 50) {  // Update every 50ms
+        for (int i = 0; i < MAX_SNOWFLAKES; i++) {
+            _snowflakes[i].y += _snowflakes[i].speed;
+            
+            // Slight horizontal drift
+            if ((rand() % 10) < 3) {
+                _snowflakes[i].x += (rand() % 3) - 1;
+            }
+            
+            // Reset at bottom
+            if (_snowflakes[i].y > canvasH) {
+                _snowflakes[i].y = 0;
+                _snowflakes[i].x = (float)(rand() % canvasW);
+                _snowflakes[i].speed = 0.5f + (float)(rand() % 15) / 10.0f;
+            }
+            
+            // Wrap horizontally
+            if (_snowflakes[i].x < 0) _snowflakes[i].x = canvasW - 1;
+            if (_snowflakes[i].x >= canvasW) _snowflakes[i].x = 0;
+        }
+        _lastSnowflakeUpdate = now;
+    }
+    
+    // Draw snowflakes
+    uint16_t snowColor = rgb565(255, 255, 255);
+    for (int i = 0; i < MAX_SNOWFLAKES; i++) {
+        int x = (int)_snowflakes[i].x;
+        int y = (int)_snowflakes[i].y;
+        
+        if (_snowflakes[i].size == 1) {
+            _currentCanvas->drawPixel(x, y, snowColor);
+        } else {
+            // Larger snowflake - small cross pattern
+            _currentCanvas->drawPixel(x, y, snowColor);
+            if (x > 0) _currentCanvas->drawPixel(x-1, y, snowColor);
+            if (x < canvasW-1) _currentCanvas->drawPixel(x+1, y, snowColor);
+            if (y > 0) _currentCanvas->drawPixel(x, y-1, snowColor);
+            if (y < canvasH-1) _currentCanvas->drawPixel(x, y+1, snowColor);
+        }
+    }
+}
+
+void AnimationsModule::drawNewYearCountdown() {
+    // Get current time
+    time_t now_utc;
+    time(&now_utc);
+    time_t local_now = timeConverter.toLocal(now_utc);
+    
+    struct tm tm_now;
+    localtime_r(&local_now, &tm_now);
+    
+    // Calculate New Year's Eve (next occurrence)
+    int currentYear = tm_now.tm_year + 1900;
+    int targetYear = currentYear + 1;
+    
+    // If we're already past Dec 31 23:59, target next year
+    if (tm_now.tm_mon == 11 && tm_now.tm_mday == 31 && 
+        tm_now.tm_hour == 23 && tm_now.tm_min >= 59) {
+        targetYear++;
+    }
+    
+    // Create target time: Dec 31, 23:59:59 of target year
+    struct tm tm_target = {0};
+    tm_target.tm_year = targetYear - 1900;
+    tm_target.tm_mon = 11;  // December (0-indexed)
+    tm_target.tm_mday = 31;
+    tm_target.tm_hour = 23;
+    tm_target.tm_min = 59;
+    tm_target.tm_sec = 59;
+    tm_target.tm_isdst = -1;
+    
+    time_t target_local = mktime(&tm_target);
+    time_t target_utc = timeConverter.toUTC(target_local);
+    
+    // Calculate difference
+    time_t diff = target_utc - now_utc;
+    if (diff < 0) diff = 0;
+    
+    int days = diff / (24 * 3600);
+    int hours = (diff % (24 * 3600)) / 3600;
+    int minutes = (diff % 3600) / 60;
+    int seconds = diff % 60;
+    
+    // Draw countdown at top of screen
+    int canvasW = _currentCanvas->width();
+    char countdownText[40];
+    snprintf(countdownText, sizeof(countdownText), "%dd %02d:%02d:%02d", days, hours, minutes, seconds);
+    
+    u8g2.setFont(u8g2_font_5x7_tr);
+    u8g2.setForegroundColor(rgb565(255, 215, 0));  // Gold color
+    
+    int textWidth = u8g2.getUTF8Width(countdownText);
+    int textX = (canvasW - textWidth) / 2;
+    u8g2.setCursor(textX, 6);
+    u8g2.print(countdownText);
+}
+
 void AnimationsModule::drawWreath() {
     int currentAdvent = calculateCurrentAdvent();
     
@@ -968,7 +1099,8 @@ void AnimationsModule::drawCandle(int x, int y, uint16_t color, bool isLit, int 
     _currentCanvas->drawLine(x, candleTop - 1, x, candleTop - dochtHeight, rgb565(60, 60, 60));
     
     if (isLit) {
-        drawFlame(x, candleTop - dochtHeight - 1, _flamePhase + candleIndex * 5);
+        // Verwende verbesserte Flamme vom Kaminfeuer (ohne Funken)
+        drawCandleFlame(x, candleTop - dochtHeight - 1, _flamePhase + candleIndex * 5);
     }
 }
 
@@ -1032,6 +1164,67 @@ void AnimationsModule::drawFlame(int x, int y, int phase) {
             _currentCanvas->drawLine(x - width, y - i - 1, x + width, y - i - 1, rgb565(rI, gI, bI));
         } else {
             _currentCanvas->drawPixel(x, y - i - 1, rgb565(rI, gI, bI));
+        }
+    }
+}
+
+void AnimationsModule::drawCandleFlame(int x, int y, int phase) {
+    // Ähnlich wie Kaminfeuer, aber kleiner und ohne Funken
+    int canvasH = _currentCanvas->height();
+    float scale = canvasH / 66.0f;
+    
+    // Kleinere Flammen als Kaminfeuer, basierend auf der Konfiguration
+    int baseFlameHeight = (int)(14 * scale);  // Etwas höher als alte Flamme
+    int flameWidth = (int)(6 * scale);
+    
+    // Klassische Orange/Gelb Farben für Kerzen
+    uint16_t flameColors[6];
+    flameColors[0] = rgb565(255, 255, 180);  // Kern (hellgelb)
+    flameColors[1] = rgb565(255, 230, 100);  // Gelb
+    flameColors[2] = rgb565(255, 180, 50);   // Gelb-Orange
+    flameColors[3] = rgb565(255, 120, 20);   // Orange
+    flameColors[4] = rgb565(220, 70, 0);     // Dunkelorange
+    flameColors[5] = rgb565(150, 40, 0);     // Dunkelrot
+    uint16_t coreColor = rgb565(255, 255, 220);
+    
+    // Flammenform (ohne Funkenflug)
+    for (int fy = 0; fy < baseFlameHeight; fy++) {
+        float yProgress = (float)fy / baseFlameHeight;
+        
+        // Breite nimmt nach oben ab
+        float widthFactor = (1.0f - yProgress * yProgress) * 0.9f + 0.1f;
+        int lineWidth = (int)(flameWidth / 2 * widthFactor);
+        
+        // Leichte Wellenbewegung
+        int waveOffset = (int)(sin((fy + phase * 2) * 0.5f) * 2);
+        
+        for (int fx = -lineWidth; fx <= lineWidth; fx++) {
+            uint32_t seed = simpleRandom(fx * 23 + fy * 47 + phase * 5);
+            
+            // Dichte
+            float density = 1.0f - yProgress * 0.6f;
+            if ((seed % 100) > density * 100) continue;
+            
+            // Position mit Flackern
+            int flickerX = ((seed / 7) % 3) - 1;
+            int px = x + fx + waveOffset + flickerX;
+            int py = y - fy;
+            
+            // Farbe: innen heller, außen dunkler
+            float distFromCenter = abs(fx) / (float)(lineWidth + 1);
+            int baseColorIdx = (int)(yProgress * 4);
+            int colorIdx = baseColorIdx + (int)(distFromCenter * 2);
+            if (colorIdx > 5) colorIdx = 5;
+            
+            // Kern ist heller
+            uint16_t pixelColor;
+            if (distFromCenter < 0.3f && yProgress < 0.4f) {
+                pixelColor = coreColor;
+            } else {
+                pixelColor = flameColors[colorIdx];
+            }
+            
+            _currentCanvas->drawPixel(px, py, pixelColor);
         }
     }
 }
@@ -1715,8 +1908,8 @@ void AnimationsModule::drawMantleDecorations(int simsY, int simsWidth, int cente
         int my = faceCy + (int)(sin(minRad) * minLen);
         _currentCanvas->drawLine(clockCx, faceCy, mx, my, handColor);
         
-        // Mittelpunkt (größer)
-        _currentCanvas->fillCircle(clockCx, faceCy, 2, handColor);
+        // Mittelpunkt (kleiner und rot, um sich von den Zeigern abzuheben)
+        _currentCanvas->fillCircle(clockCx, faceCy, 1, rgb565(255, 0, 0));
     }
     
     // ===== DEKORATIONEN LINKS UND RECHTS =====

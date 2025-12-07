@@ -228,6 +228,7 @@ void handleConfigModules() {
     replaceAll(content, "{christmasTreeLightMode1_selected}", deviceConfig->christmasTreeLightMode == 1 ? "selected" : "");
     replaceAll(content, "{christmasTreeLightColor}", deviceConfig->christmasTreeLightColor.c_str());
     replaceAll(content, "{adventWreathFullscreen_checked}", deviceConfig->adventWreathFullscreen ? "checked" : "");
+    replaceAll(content, "{showNewYearCountdown_checked}", deviceConfig->showNewYearCountdown ? "checked" : "");
     
     // Kamin-Konfiguration
     replaceAll(content, "{fireplaceEnabled_checked}", deviceConfig->fireplaceEnabled ? "checked" : "");
@@ -396,6 +397,7 @@ void handleSaveModules() {
     if (server->hasArg("christmasTreeLightMode")) deviceConfig->christmasTreeLightMode = server->arg("christmasTreeLightMode").toInt();
     if (server->hasArg("christmasTreeLightColor")) deviceConfig->christmasTreeLightColor = server->arg("christmasTreeLightColor").c_str();
     deviceConfig->adventWreathFullscreen = server->hasArg("adventWreathFullscreen");
+    deviceConfig->showNewYearCountdown = server->hasArg("showNewYearCountdown");
     
     // Kamin-Konfiguration
     deviceConfig->fireplaceEnabled = server->hasArg("fireplaceEnabled");

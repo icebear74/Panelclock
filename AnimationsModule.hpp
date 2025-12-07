@@ -102,6 +102,21 @@ private:
     bool _showFireplace = false;
     int _displayCounter = 0;
     
+    // Snowflake animation
+    struct Snowflake {
+        float x, y;
+        float speed;
+        int size;
+    };
+    static const int MAX_SNOWFLAKES = 20;
+    Snowflake _snowflakes[MAX_SNOWFLAKES];
+    bool _snowflakesInitialized = false;
+    unsigned long _lastSnowflakeUpdate = 0;
+    
+    // Tree ornament regeneration
+    unsigned long _lastTreeDisplay = 0;
+    bool _treeOrnamentsNeedRegeneration = true;
+    
     // Zufällige Kerzenreihenfolge für jeden Durchgang
     int _candleOrder[4] = {0, 1, 2, 3};
     uint32_t _lastOrderSeed = 0;
@@ -206,6 +221,14 @@ private:
      * @param phase Animationsphase
      */
     void drawFlame(int x, int y, int phase);
+    
+    /**
+     * @brief Zeichnet eine Kerzenflamme mit Kaminfeuer-Algorithmus (ohne Funken)
+     * @param x X-Position
+     * @param y Y-Position
+     * @param phase Animationsphase
+     */
+    void drawCandleFlame(int x, int y, int phase);
 
     /**
      * @brief Zeichnet Tannengrün-Dekoration.
@@ -231,6 +254,16 @@ private:
      * @brief Zeichnet blinkende Lichter am Baum
      */
     void drawTreeLights();
+    
+    /**
+     * @brief Zeichnet fallende Schneeflocken
+     */
+    void drawSnowflakes();
+    
+    /**
+     * @brief Zeichnet Countdown bis Silvester
+     */
+    void drawNewYearCountdown();
 
     /**
      * @brief Zeichnet einen Kamin mit Feuer
