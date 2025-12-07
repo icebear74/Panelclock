@@ -26,12 +26,12 @@ uint32_t AnimationsModule::simpleRandom(uint32_t seed) {
     return (seed / 65536) % 32768;
 }
 
-AnimationsModule::HolidayAnimationsModule(U8G2_FOR_ADAFRUIT_GFX& u8g2, GFXcanvas16& canvas, 
+AnimationsModule::AnimationsModule(U8G2_FOR_ADAFRUIT_GFX& u8g2, GFXcanvas16& canvas, 
                                        GeneralTimeConverter& timeConverter, DeviceConfig* config)
     : u8g2(u8g2), canvas(canvas), timeConverter(timeConverter), config(config) {
 }
 
-AnimationsModule::~HolidayAnimationsModule() {
+AnimationsModule::~AnimationsModule() {
 }
 
 void AnimationsModule::begin() {
