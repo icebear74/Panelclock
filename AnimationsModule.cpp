@@ -949,22 +949,21 @@ void AnimationsModule::drawNewYearCountdown() {
     // Get current time
     time_t now_utc;
     time(&now_utc);
-    time_t local_now = timeConverter.toLocal(now_utc);
     
-    struct tm tm_now;
-    localtime_r(&local_now, &tm_now);
+    struct tm tm_now_utc;
+    gmtime_r(&now_utc, &tm_now_utc);
     
-    // Calculate New Year's Eve (next occurrence)
-    int currentYear = tm_now.tm_year + 1900;
+    // Calculate New Year's Eve (next occurrence) in UTC
+    int currentYear = tm_now_utc.tm_year + 1900;
     int targetYear = currentYear + 1;
     
     // If we're already past Dec 31 23:59, target next year
-    if (tm_now.tm_mon == 11 && tm_now.tm_mday == 31 && 
-        tm_now.tm_hour == 23 && tm_now.tm_min >= 59) {
+    if (tm_now_utc.tm_mon == 11 && tm_now_utc.tm_mday == 31 && 
+        tm_now_utc.tm_hour == 23 && tm_now_utc.tm_min >= 59) {
         targetYear++;
     }
     
-    // Create target time: Dec 31, 23:59:59 of target year
+    // Create target time: Dec 31, 23:59:59 of target year in UTC
     struct tm tm_target = {0};
     tm_target.tm_year = targetYear - 1900;
     tm_target.tm_mon = 11;  // December (0-indexed)
@@ -972,10 +971,10 @@ void AnimationsModule::drawNewYearCountdown() {
     tm_target.tm_hour = 23;
     tm_target.tm_min = 59;
     tm_target.tm_sec = 59;
-    tm_target.tm_isdst = -1;
+    tm_target.tm_isdst = 0;  // UTC doesn't have DST
     
-    time_t target_local = mktime(&tm_target);
-    time_t target_utc = timeConverter.toUTC(target_local);
+    // Use timegm to convert UTC tm to time_t (available from GeneralTimeConverter.hpp)
+    time_t target_utc = timegm(&tm_target);
     
     // Calculate difference
     time_t diff = target_utc - now_utc;
