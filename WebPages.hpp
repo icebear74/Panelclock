@@ -409,8 +409,13 @@ function openSubTab(evt, subTabName) {
     for (i = 0; i < subtablinks.length; i++) {
         subtablinks[i].className = subtablinks[i].className.replace(" active", "");
     }
-    document.getElementById(subTabName).style.display = "block";
-    evt.currentTarget.className += " active";
+    var targetTab = document.getElementById(subTabName);
+    if (targetTab) {
+        targetTab.style.display = "block";
+    }
+    if (evt && evt.currentTarget) {
+        evt.currentTarget.className += " active";
+    }
 }
 function toggleCustomColors() {
     var mode = document.getElementById('adventWreathColorMode').value;
@@ -434,9 +439,10 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById(id).addEventListener('change', updateCustomColors);
     });
     // Open first sub-tab by default when Animationen tab is opened
+    openSubTab(null, 'SubAdventskranz');
     var defaultAnimBtn = document.getElementById('defaultAnimOpen');
     if (defaultAnimBtn) {
-        defaultAnimBtn.click();
+        defaultAnimBtn.className += " active";
     }
 });
 </script>

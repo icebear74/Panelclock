@@ -42,7 +42,7 @@ void AnimationsModule::begin() {
     _lastCheckedDay = tm_now.tm_mday;
     setConfig();
     shuffleCandleOrder();
-    Log.println("[AdventWreath] Modul initialisiert");
+    Log.println("[AnimationsModule] Modul initialisiert");
 }
 
 void AnimationsModule::setConfig() {
@@ -347,7 +347,7 @@ void AnimationsModule::periodicTick() {
             releasePriorityEx(_currentAdventUID);
             _isAdventViewActive = false;
             _requestPending = false;
-            Log.println("[AdventWreath] Keine Weihnachtszeit mehr");
+            Log.println("[AnimationsModule] Keine Weihnachtszeit mehr");
         }
         return;
     }
@@ -411,13 +411,13 @@ void AnimationsModule::periodicTick() {
         
         if (success) {
             const char* modeName = _showFireplace ? "Kamin" : (_showTree ? "Weihnachtsbaum" : "Adventskranz");
-            Log.printf("[AdventWreath] %s %s angefordert (UID=%lu, Counter=%d)\n", 
+            Log.printf("[AnimationsModule] %s %s angefordert (UID=%lu, Counter=%d)\n", 
                        modeName,
                        config->adventWreathInterrupt ? "Interrupt" : "PlayNext",
                        _currentAdventUID, _displayCounter);
             _displayCounter++;  // Nur erhöhen wenn Request erfolgreich
         } else {
-            Log.println("[AdventWreath] Request abgelehnt!");
+            Log.println("[AnimationsModule] Request abgelehnt!");
             _requestPending = false;  // Request fehlgeschlagen, zurücksetzen
         }
     }
@@ -1297,12 +1297,12 @@ void AnimationsModule::onActivate() {
     _treeLightPhase = 0;
     _fireplaceFlamePhase = 0;
     const char* modeName = _showFireplace ? "Kamin" : (_showTree ? "Weihnachtsbaum" : "Adventskranz");
-    Log.printf("[AdventWreath] Aktiviert: %s (UID=%lu)\n", modeName, _currentAdventUID);
+    Log.printf("[AnimationsModule] Aktiviert: %s (UID=%lu)\n", modeName, _currentAdventUID);
 }
 
 void AnimationsModule::timeIsUp() {
     const char* modeName = _showFireplace ? "Kamin" : (_showTree ? "Weihnachtsbaum" : "Adventskranz");
-    Log.printf("[AdventWreath] Zeit abgelaufen für %s (UID=%lu)\n", modeName, _currentAdventUID);
+    Log.printf("[AnimationsModule] Zeit abgelaufen für %s (UID=%lu)\n", modeName, _currentAdventUID);
     _isAdventViewActive = false;
     _requestPending = false;
     _lastAdventDisplayTime = millis();
