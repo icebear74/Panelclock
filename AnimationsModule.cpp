@@ -949,35 +949,35 @@ void AnimationsModule::drawNewYearCountdown() {
     // Get current time
     time_t now_utc;
     time(&now_utc);
+    time_t local_now = timeConverter.toLocal(now_utc);
     
-    struct tm tm_now_utc;
-    gmtime_r(&now_utc, &tm_now_utc);
+    struct tm tm_now;
+    localtime_r(&local_now, &tm_now);
     
-    // Calculate New Year's Eve (next occurrence) in UTC
-    int currentYear = tm_now_utc.tm_year + 1900;
+    // Calculate New Year (midnight) in local time
+    int currentYear = tm_now.tm_year + 1900;
     int targetYear = currentYear + 1;
     
-    // If we're already past Dec 31 23:59, target next year
-    if (tm_now_utc.tm_mon == 11 && tm_now_utc.tm_mday == 31 && 
-        tm_now_utc.tm_hour == 23 && tm_now_utc.tm_min >= 59) {
+    // If we're in the new year already, target next year
+    if (tm_now.tm_mon == 0 && tm_now.tm_mday == 1) {
+        // Already New Year, show countdown to next year
         targetYear++;
     }
     
-    // Create target time: Dec 31, 23:59:59 of target year in UTC
+    // Create target time: Jan 1, 00:00:00 of target year in local time
     struct tm tm_target = {0};
     tm_target.tm_year = targetYear - 1900;
-    tm_target.tm_mon = 11;  // December (0-indexed)
-    tm_target.tm_mday = 31;
-    tm_target.tm_hour = 23;
-    tm_target.tm_min = 59;
-    tm_target.tm_sec = 59;
-    tm_target.tm_isdst = 0;  // UTC doesn't have DST
+    tm_target.tm_mon = 0;  // January (0-indexed)
+    tm_target.tm_mday = 1;
+    tm_target.tm_hour = 0;
+    tm_target.tm_min = 0;
+    tm_target.tm_sec = 0;
+    tm_target.tm_isdst = -1;  // Let mktime determine DST
     
-    // Use timegm to convert UTC tm to time_t (available from GeneralTimeConverter.hpp)
-    time_t target_utc = timegm(&tm_target);
+    time_t target_local = mktime(&tm_target);
     
     // Calculate difference
-    time_t diff = target_utc - now_utc;
+    time_t diff = target_local - local_now;
     if (diff < 0) diff = 0;
     
     int days = diff / (24 * 3600);
@@ -985,17 +985,15 @@ void AnimationsModule::drawNewYearCountdown() {
     int minutes = (diff % 3600) / 60;
     int seconds = diff % 60;
     
-    // Draw countdown at top of screen
-    int canvasW = _currentCanvas->width();
+    // Draw countdown at top of screen - larger and left-aligned
     char countdownText[40];
     snprintf(countdownText, sizeof(countdownText), "%dd %02d:%02d:%02d", days, hours, minutes, seconds);
     
-    u8g2.setFont(u8g2_font_5x7_tr);
+    u8g2.setFont(u8g2_font_7x13_tr);  // Larger font (was 5x7)
     u8g2.setForegroundColor(rgb565(255, 215, 0));  // Gold color
     
-    int textWidth = u8g2.getUTF8Width(countdownText);
-    int textX = (canvasW - textWidth) / 2;
-    u8g2.setCursor(textX, 6);
+    // Left-aligned with small margin
+    u8g2.setCursor(2, 10);  // x=2 (left-aligned), y=10 (top)
     u8g2.print(countdownText);
 }
 
