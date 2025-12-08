@@ -29,6 +29,8 @@ struct CalendarEvent {
   time_t startEpoch;
   time_t duration;
   bool isAllDay;
+  bool isDailyRecurring;  // Flag to indicate if this is a daily recurring event
+  PsramString rrule;      // RRule string, populated only for daily recurring events for reference
 
   bool operator<(const time_t& t) const {
     return startEpoch < t;
@@ -121,6 +123,8 @@ private:
     void parseICS(char* icsBuffer, size_t size);
     void onSuccessfulUpdate();
     void addSingleEvent(const Event& ev);
+    void addDailyRecurringEvent(const Event& ev);
+    bool isDailyRecurring(const PsramString& rrule);
     PsramCalendarEventVector getUpcomingEvents(int maxCount);
     PsramString fitTextToPixelWidth(const char* text, int maxPixel);
     void resetScroll();
