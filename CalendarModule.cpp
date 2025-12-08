@@ -612,7 +612,15 @@ bool CalendarModule::isDailyRecurring(const PsramString& rrule) {
     if (rrule.empty()) return false;
     
     // Check if the RRULE contains "FREQ=DAILY"
-    return rrule.find("FREQ=DAILY") != PsramString::npos;
+    // Look for either at the start of the string or after a semicolon
+    size_t pos = rrule.find("FREQ=DAILY");
+    if (pos == PsramString::npos) return false;
+    
+    // Ensure FREQ=DAILY is at the start or preceded by a semicolon
+    if (pos == 0) return true;
+    if (rrule[pos - 1] == ';') return true;
+    
+    return false;
 }
 
 PsramCalendarEventVector CalendarModule::getUpcomingEvents(int maxCount) {

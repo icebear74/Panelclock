@@ -30,7 +30,7 @@ struct CalendarEvent {
   time_t duration;
   bool isAllDay;
   bool isDailyRecurring;  // Flag to indicate if this is a daily recurring event
-  PsramString rrule;       // Store the original RRule for reference
+  PsramString rrule;      // RRule string, populated only for daily recurring events for reference
 
   bool operator<(const time_t& t) const {
     return startEpoch < t;
