@@ -311,10 +311,22 @@ void CalendarModule::draw() {
             }
             
             u8g2.setForegroundColor(currentDateColor);
-            strftime(buf, sizeof(buf), "%d.%m.%y", &tStart);
-            u8g2.setCursor(xStart, y); u8g2.print(buf);
+            
+            // For daily recurring events, show "täglich" instead of the date
+            if (ev.isDailyRecurring) {
+                u8g2.setCursor(xStart, y); u8g2.print("täglich");
+            } else {
+                strftime(buf, sizeof(buf), "%d.%m.%y", &tStart);
+                u8g2.setCursor(xStart, y); u8g2.print(buf);
+            }
 
-            if (ev.isAllDay) {
+            if (ev.isDailyRecurring) {
+                // For daily recurring events, show the time instead of date in the second column
+                if (!ev.isAllDay) {
+                    strftime(buf, sizeof(buf), "%H:%M", &tStart);
+                    u8g2.setCursor(xEndZeit, y); u8g2.print(buf);
+                }
+            } else if (ev.isAllDay) {
                 long days = (ev.duration + 43200) / 86400;
                 if (days > 1) {
                     struct tm tEnd;
@@ -520,27 +532,34 @@ void CalendarModule::parseICS(char* icsBuffer, size_t size) {
         if (!masterFound) {
             for(const auto& single : singleEvents) addSingleEvent(single);
         } else {
-            PsramTimeVector occurrences;
-            occurrences.reserve(128);
-            parseRRule(masterEvent, occurrences, 15, &timeConverter);
-            
-            PsramEventPairVector final_series_vec;
-            final_series_vec.reserve(occurrences.size() + exceptions.size());
-            for (time_t start : occurrences) {
-                Event series_event = masterEvent;
-                series_event.dtstart = start;
-                final_series_vec.emplace_back(start, std::move(series_event));
-            }
-            for (const auto& ex : exceptions) {
-                bool replaced = false;
-                for (auto &pr : final_series_vec) {
-                    if (pr.first == ex.recurrence_id) { pr.second = ex; replaced = true; break; }
+            // Check if this is a daily recurring event
+            if (isDailyRecurring(masterEvent.rrule)) {
+                // For daily recurring events, add just one entry instead of expanding all occurrences
+                addDailyRecurringEvent(masterEvent);
+            } else {
+                // For other recurrence types (weekly, monthly, yearly), expand as before
+                PsramTimeVector occurrences;
+                occurrences.reserve(128);
+                parseRRule(masterEvent, occurrences, 15, &timeConverter);
+                
+                PsramEventPairVector final_series_vec;
+                final_series_vec.reserve(occurrences.size() + exceptions.size());
+                for (time_t start : occurrences) {
+                    Event series_event = masterEvent;
+                    series_event.dtstart = start;
+                    final_series_vec.emplace_back(start, std::move(series_event));
                 }
-                if (!replaced) final_series_vec.emplace_back((ex.recurrence_id != 0) ? ex.recurrence_id : ex.dtstart, ex);
+                for (const auto& ex : exceptions) {
+                    bool replaced = false;
+                    for (auto &pr : final_series_vec) {
+                        if (pr.first == ex.recurrence_id) { pr.second = ex; replaced = true; break; }
+                    }
+                    if (!replaced) final_series_vec.emplace_back((ex.recurrence_id != 0) ? ex.recurrence_id : ex.dtstart, ex);
+                }
+                std::sort(final_series_vec.begin(), final_series_vec.end(), [](const PsramEventPair& a, const PsramEventPair& b){ return a.first < b.first; });
+                final_series_vec.erase(std::unique(final_series_vec.begin(), final_series_vec.end(), [](const PsramEventPair& a, const PsramEventPair& b){ return a.first == b.first; }), final_series_vec.end());
+                for (auto const& pr : final_series_vec) addSingleEvent(pr.second);
             }
-            std::sort(final_series_vec.begin(), final_series_vec.end(), [](const PsramEventPair& a, const PsramEventPair& b){ return a.first < b.first; });
-            final_series_vec.erase(std::unique(final_series_vec.begin(), final_series_vec.end(), [](const PsramEventPair& a, const PsramEventPair& b){ return a.first == b.first; }), final_series_vec.end());
-            for (auto const& pr : final_series_vec) addSingleEvent(pr.second);
         }
         i = j;
     }
@@ -569,8 +588,31 @@ void CalendarModule::addSingleEvent(const Event& ev) {
     ce.startEpoch = ev.dtstart;
     ce.duration = ev.duration;
     ce.isAllDay = ev.isAllDay;
+    ce.isDailyRecurring = false;
+    ce.rrule = "";
     
     raw_events.push_back(ce);
+}
+
+void CalendarModule::addDailyRecurringEvent(const Event& ev) {
+    if (ev.dtstart == 0) return;
+    
+    CalendarEvent ce;
+    ce.summary = ev.summary.c_str();
+    ce.startEpoch = ev.dtstart;
+    ce.duration = ev.duration;
+    ce.isAllDay = ev.isAllDay;
+    ce.isDailyRecurring = true;
+    ce.rrule = ev.rrule.c_str();
+    
+    raw_events.push_back(ce);
+}
+
+bool CalendarModule::isDailyRecurring(const PsramString& rrule) {
+    if (rrule.empty()) return false;
+    
+    // Check if the RRULE contains "FREQ=DAILY"
+    return rrule.find("FREQ=DAILY") != PsramString::npos;
 }
 
 PsramCalendarEventVector CalendarModule::getUpcomingEvents(int maxCount) {
