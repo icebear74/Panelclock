@@ -666,10 +666,12 @@ void AnimationsModule::drawTreeOrnaments(int centerX, int baseY, float scale) {
         uint32_t seed = simpleRandom(i * 157 + 789);
         
         // Y-Position: Bessere Verteilung mit weniger extremer Konzentration unten
-        // Verwende Wurzelfunktion statt quadratischer Funktion für bessere Verteilung
+        // Mische linear (0.4) und quadratisch (0.6) für ausgewogenere Verteilung
+        // Linear verteilt gleichmäßig, quadratisch konzentriert nach unten
         float t = (float)i / numOrnaments;  // 0.0 bis 1.0
-        // Mische linear und quadratisch für ausgewogenere Verteilung
-        float yFraction = 0.4f * t + 0.6f * (t * t);  // Mehr am unteren Ende, aber nicht zu extrem
+        const float LINEAR_WEIGHT = 0.4f;    // 40% gleichmäßige Verteilung
+        const float QUADRATIC_WEIGHT = 0.6f; // 60% Konzentration nach unten
+        float yFraction = LINEAR_WEIGHT * t + QUADRATIC_WEIGHT * (t * t);
         int yOffset = 3 + (int)(yFraction * (treeHeight - 10));
         yOffset += (seed % 8) - 4;  // Mehr Variation für natürlicheres Aussehen
         if (yOffset < 4) yOffset = 4;
@@ -763,9 +765,11 @@ void AnimationsModule::drawTreeLights() {
         uint32_t seed = simpleRandom(i * 67 + 321);
         
         // Y-Position: Verbesserte Verteilung - mehr unten, aber ganzer Baum wird genutzt
-        // Mische linear und quadratisch für ausgewogenere Verteilung
+        // Mische linear (0.3) und quadratisch (0.7) für ausgewogenere Verteilung
         float t = (float)i / lightCount;  // 0.0 bis 1.0
-        float yFraction = 0.3f * t + 0.7f * (t * t);  // Gewichtet nach unten, aber nicht zu extrem
+        const float LINEAR_WEIGHT = 0.3f;    // 30% gleichmäßige Verteilung
+        const float QUADRATIC_WEIGHT = 0.7f; // 70% Konzentration nach unten
+        float yFraction = LINEAR_WEIGHT * t + QUADRATIC_WEIGHT * (t * t);
         int ySection = (int)(yFraction * treeHeight);
         int yOffset = ySection + (seed % 8) - 4;  // Mehr Variation
         if (yOffset < 2) yOffset = 2;
@@ -2174,8 +2178,9 @@ void AnimationsModule::drawLedBorder() {
     int perimeterLeft = canvasH;
     int totalPerimeter = perimeterTop + perimeterRight + perimeterBottom + perimeterLeft;
     
-    // Anzahl der LEDs basierend auf Umfang (alle 3-4 Pixel eine LED)
-    int numLeds = totalPerimeter / 3;
+    // Anzahl der LEDs basierend auf Umfang (alle 3-4 Pixel eine LED für gute Sichtbarkeit)
+    const int LED_SPACING_PIXELS = 3;  // Abstand zwischen LEDs in Pixeln
+    int numLeds = totalPerimeter / LED_SPACING_PIXELS;
     
     // Zeichne LEDs entlang des Rahmens
     for (int i = 0; i < numLeds; i++) {

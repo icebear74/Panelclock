@@ -391,6 +391,7 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
     <div id="SubAllgemein" class="subtabcontent">
         <div class="group">
             <h3>Allgemeine Einstellungen</h3>
+            <p style="color:#888; font-size:12px; margin:5px 0;">Hinweis: Animationen verwenden jetzt immer den Vollbild-Modus für optimale Darstellung.</p>
             <label style="display: inline-block; margin: 10px 0;"><input type="checkbox" name="showNewYearCountdown" id="showNewYearCountdown" {showNewYearCountdown_checked}> Countdown bis Silvester anzeigen</label>
             
             <h3 style="margin-top:20px;">LED-Lauflicht-Rahmen</h3>
