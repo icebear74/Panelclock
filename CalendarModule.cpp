@@ -618,12 +618,12 @@ void CalendarModule::addDailyRecurringEvent(const Event& ev) {
     tmToday.tm_sec = sec;
     
     // Create epoch for today's occurrence in "local" time (as if it were UTC)
-    time_t todayOccurrenceAsIfUTC = timegm(&tmToday);
+    time_t localTimeAsUTC = timegm(&tmToday);
     
     // Convert back to UTC by subtracting the offset
     // Check if DST applies to the calculated event time
-    int offset = timeConverter.isDST(todayOccurrenceAsIfUTC) ? timeConverter.getDstOffsetSec() : timeConverter.getStdOffsetSec();
-    time_t todayOccurrenceUTC = todayOccurrenceAsIfUTC - offset;
+    int offset = timeConverter.isDST(localTimeAsUTC) ? timeConverter.getDstOffsetSec() : timeConverter.getStdOffsetSec();
+    time_t todayOccurrenceUTC = localTimeAsUTC - offset;
     
     CalendarEvent ce;
     ce.summary = ev.summary.c_str();
