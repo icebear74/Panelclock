@@ -414,6 +414,14 @@ void AnimationsModule::tick() {
         needsUpdate = true;
     }
     
+    // LED-Rahmen-Animation
+    unsigned long ledBorderSpeed = config ? (unsigned long)config->ledBorderSpeedMs : 100;
+    if (now - _lastLedBorderUpdate > ledBorderSpeed) {
+        _lastLedBorderUpdate = now;
+        _ledBorderPhase = (_ledBorderPhase + 1) % 4;  // 4 Phasen
+        needsUpdate = true;
+    }
+    
     // Kaminfeuer-Animation
     unsigned long fireplaceSpeed = config ? (unsigned long)config->fireplaceFlameSpeedMs : 40;
     static unsigned long _lastFireplaceUpdate = 0;
@@ -466,6 +474,9 @@ void AnimationsModule::draw() {
         drawChristmasTree();
         drawSnowflakes();
         
+        // LED-Lauflicht-Rahmen
+        drawLedBorder();
+        
         if (config && config->showNewYearCountdown) {
             drawNewYearCountdown();
         }
@@ -474,6 +485,9 @@ void AnimationsModule::draw() {
         drawGreenery();
         drawWreath();
         drawBerries();
+        
+        // LED-Lauflicht-Rahmen
+        drawLedBorder();
         
         if (config && config->showNewYearCountdown) {
             drawNewYearCountdown();
@@ -646,42 +660,48 @@ void AnimationsModule::drawTreeOrnaments(int centerX, int baseY, float scale) {
     int layer2Width = (int)(22 * scale);
     int layer3Width = (int)(16 * scale);
     
-    // Verteilungsmuster - mehr unten wo der Baum breiter ist
+    // Verbesserte Verteilung - nutzt den gesamten Baum besser aus
+    // Mehr unten, aber auch oben sollten einige sein
     for (int i = 0; i < numOrnaments; i++) {
         uint32_t seed = simpleRandom(i * 157 + 789);
         
-        // Y-Position: quadratische Verteilung - mehr Kugeln unten (wo breiter)
+        // Y-Position: Bessere Verteilung mit weniger extremer Konzentration unten
+        // Verwende Wurzelfunktion statt quadratischer Funktion für bessere Verteilung
         float t = (float)i / numOrnaments;  // 0.0 bis 1.0
-        float yFraction = t * t;  // Quadratisch: mehr am unteren Ende
+        // Mische linear und quadratisch für ausgewogenere Verteilung
+        float yFraction = 0.4f * t + 0.6f * (t * t);  // Mehr am unteren Ende, aber nicht zu extrem
         int yOffset = 3 + (int)(yFraction * (treeHeight - 10));
-        yOffset += (seed % 7) - 3;  // mehr Variation
+        yOffset += (seed % 8) - 4;  // Mehr Variation für natürlicheres Aussehen
         if (yOffset < 4) yOffset = 4;
         if (yOffset > treeHeight - 6) yOffset = treeHeight - 6;
         
-        // Berechne maximale Breite an dieser Y-Position (konservativ)
+        // Berechne maximale Breite an dieser Y-Position (nutze mehr vom verfügbaren Raum)
         int maxWidth;
         if (yOffset < layer1Height) {
             float progress = (float)yOffset / layer1Height;
-            maxWidth = (int)(layer1Width * (1.0f - progress * 0.6f) * 0.7f);
+            // Erhöhe von 0.7f auf 0.85f um mehr vom Rand zu nutzen
+            maxWidth = (int)(layer1Width * (1.0f - progress * 0.5f) * 0.85f);
         } else if (yOffset < layer1Height + layer2Height - (int)(4 * scale)) {
             float progress = (float)(yOffset - layer1Height + (int)(4 * scale)) / layer2Height;
-            maxWidth = (int)(layer2Width * (1.0f - progress * 0.6f) * 0.75f);
+            maxWidth = (int)(layer2Width * (1.0f - progress * 0.5f) * 0.85f);
         } else {
             float progress = (float)(yOffset - layer1Height - layer2Height + (int)(14 * scale)) / (layer3Width + 4);
-            maxWidth = (int)(layer3Width * (1.0f - progress * 0.7f) * 0.7f);
+            maxWidth = (int)(layer3Width * (1.0f - progress * 0.6f) * 0.8f);
         }
         
         if (maxWidth < 2) maxWidth = 2;
         
-        // X-Position mit Spiralmuster (abwechselnd links/rechts)
-        int xRange = maxWidth - 1;
+        // X-Position: Bessere Nutzung der Ränder
+        int xRange = maxWidth * 2;  // Voller Bereich nutzen
         int ox;
+        // Verwende mehr Variation und nutze Ränder besser
+        int xPos = seed % xRange;
         if (i % 2 == 0) {
-            // Linke Seite
-            ox = centerX - (seed % xRange) - 2;
+            // Linke Seite - gehe näher an den Rand
+            ox = centerX - maxWidth + (xPos / 2);
         } else {
-            // Rechte Seite
-            ox = centerX + (seed % xRange) + 2;
+            // Rechte Seite - gehe näher an den Rand
+            ox = centerX - maxWidth + xRange/2 + (xPos / 2);
         }
         
         int oy = baseY - yOffset;
@@ -737,44 +757,50 @@ void AnimationsModule::drawTreeLights() {
     int layer3Width = (int)(16 * scale);
     int treeHeight = layer1Height + layer2Height - (int)(4 * scale) + layer3Height - (int)(10 * scale);
     
-    // Lichter über den Baum verteilt - mehr unten als oben (proportional zur Breite)
+    // Lichter über den Baum verteilt - bessere Verteilung über die gesamte Baumfläche
     for (int i = 0; i < lightCount; i++) {
         // Berechne Position basierend auf Index
         uint32_t seed = simpleRandom(i * 67 + 321);
         
-        // Y-Position: quadratische Verteilung - mehr unten wo der Baum breiter ist
-        // Verwende Quadratwurzel für bessere Verteilung (mehr am unteren Ende)
+        // Y-Position: Verbesserte Verteilung - mehr unten, aber ganzer Baum wird genutzt
+        // Mische linear und quadratisch für ausgewogenere Verteilung
         float t = (float)i / lightCount;  // 0.0 bis 1.0
-        float yFraction = t * t;  // Quadratisch: 0, 0.01, 0.04, 0.09... 1.0
+        float yFraction = 0.3f * t + 0.7f * (t * t);  // Gewichtet nach unten, aber nicht zu extrem
         int ySection = (int)(yFraction * treeHeight);
-        int yOffset = ySection + (seed % 6) - 3;  // Mehr Variation
+        int yOffset = ySection + (seed % 8) - 4;  // Mehr Variation
         if (yOffset < 2) yOffset = 2;
         if (yOffset > treeHeight - 4) yOffset = treeHeight - 4;
         
         int lightY = treeBaseY - yOffset;
         
-        // X-Position abhängig von Y (berechne maximale Breite an dieser Position - konservativ)
+        // X-Position abhängig von Y (nutze mehr vom verfügbaren Raum)
         int maxX;
         if (yOffset < layer1Height) {
             float progress = (float)yOffset / layer1Height;
-            maxX = (int)(layer1Width * (1.0f - progress * 0.6f) * 0.65f);
+            // Erhöhe von 0.65f auf 0.8f um mehr vom Rand zu nutzen
+            maxX = (int)(layer1Width * (1.0f - progress * 0.5f) * 0.8f);
         } else if (yOffset < layer1Height + layer2Height - (int)(4 * scale)) {
             float progress = (float)(yOffset - layer1Height + (int)(4 * scale)) / layer2Height;
-            maxX = (int)(layer2Width * (1.0f - progress * 0.6f) * 0.7f);
+            maxX = (int)(layer2Width * (1.0f - progress * 0.5f) * 0.8f);
         } else {
             float progress = (float)(yOffset - layer1Height - layer2Height + (int)(14 * scale)) / layer3Height;
-            maxX = (int)(layer3Width * (1.0f - progress * 0.8f) * 0.6f);
+            maxX = (int)(layer3Width * (1.0f - progress * 0.7f) * 0.75f);
         }
         
         if (maxX < 2) maxX = 2;
         
-        // Abwechselnd links und rechts für bessere Verteilung
+        // Bessere X-Verteilung - nutzt die Ränder besser
         int lightX;
         seed = simpleRandom(seed + i);
+        int xRange = maxX * 2;
+        int xPos = seed % xRange;
+        
         if (i % 2 == 0) {
-            lightX = centerX - maxX + (seed % (maxX / 2 + 1));
+            // Linke Seite - gehe näher an den Rand
+            lightX = centerX - maxX + (xPos / 2);
         } else {
-            lightX = centerX + (seed % (maxX / 2 + 1));
+            // Rechte Seite
+            lightX = centerX - maxX + xRange/2 + (xPos / 2);
         }
         
         // Blinken basierend auf Phase
@@ -2102,5 +2128,83 @@ void AnimationsModule::drawMantleDecorations(int simsY, int simsWidth, int cente
             _currentCanvas->fillRect(cx - 2, cy - frameH + 4, 4, 4, rgb565(180, 100, 80));
             _currentCanvas->fillTriangle(cx - 3, cy - frameH + 4, cx, cy - frameH + 1, cx + 3, cy - frameH + 4, rgb565(150, 80, 60));
         }
+    }
+}
+
+void AnimationsModule::drawLedBorder() {
+    // Prüfe ob LED-Rahmen aktiviert ist
+    if (!config || !config->ledBorderEnabled) return;
+    
+    int canvasW = _currentCanvas->width();
+    int canvasH = _currentCanvas->height();
+    
+    // Parse LED-Farben aus Config
+    uint16_t ledColors[4];
+    int numColors = 0;
+    
+    if (config && config->ledBorderColors.length() > 0) {
+        PsramString colors = config->ledBorderColors;
+        size_t pos = 0;
+        while (numColors < 4 && pos < colors.length()) {
+            size_t commaPos = colors.find(',', pos);
+            if (commaPos == PsramString::npos) commaPos = colors.length();
+            PsramString hexColor = colors.substr(pos, commaPos - pos);
+            ledColors[numColors] = hexToRgb565(hexColor.c_str());
+            pos = commaPos + 1;
+            numColors++;
+        }
+    }
+    
+    // Fallback auf Standard-Farben
+    if (numColors == 0) {
+        ledColors[0] = rgb565(255, 0, 0);    // Rot
+        ledColors[1] = rgb565(0, 255, 0);    // Grün
+        ledColors[2] = rgb565(0, 0, 255);    // Blau
+        ledColors[3] = rgb565(255, 255, 0);  // Gelb
+        numColors = 4;
+    }
+    
+    // Zeichne 1-Pixel breiten Rahmen
+    // Der Rahmen "läuft" mit 4 Phasen
+    
+    // Gesamtumfang des Rahmens
+    int perimeterTop = canvasW;
+    int perimeterRight = canvasH;
+    int perimeterBottom = canvasW;
+    int perimeterLeft = canvasH;
+    int totalPerimeter = perimeterTop + perimeterRight + perimeterBottom + perimeterLeft;
+    
+    // Anzahl der LEDs basierend auf Umfang (alle 3-4 Pixel eine LED)
+    int numLeds = totalPerimeter / 3;
+    
+    // Zeichne LEDs entlang des Rahmens
+    for (int i = 0; i < numLeds; i++) {
+        // Berechne Farbindex basierend auf Phase und Position
+        int colorIdx = (i + _ledBorderPhase) % numColors;
+        uint16_t color = ledColors[colorIdx];
+        
+        // Berechne Position entlang des Umfangs
+        int pos = (i * totalPerimeter) / numLeds;
+        int x, y;
+        
+        if (pos < perimeterTop) {
+            // Obere Kante (links nach rechts)
+            x = pos;
+            y = 0;
+        } else if (pos < perimeterTop + perimeterRight) {
+            // Rechte Kante (oben nach unten)
+            x = canvasW - 1;
+            y = pos - perimeterTop;
+        } else if (pos < perimeterTop + perimeterRight + perimeterBottom) {
+            // Untere Kante (rechts nach links)
+            x = canvasW - 1 - (pos - perimeterTop - perimeterRight);
+            y = canvasH - 1;
+        } else {
+            // Linke Kante (unten nach oben)
+            x = 0;
+            y = canvasH - 1 - (pos - perimeterTop - perimeterRight - perimeterBottom);
+        }
+        
+        _currentCanvas->drawPixel(x, y, color);
     }
 }

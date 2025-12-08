@@ -124,8 +124,10 @@ private:
     // Animation
     unsigned long _lastFlameUpdate = 0;
     unsigned long _lastTreeLightUpdate = 0;
+    unsigned long _lastLedBorderUpdate = 0;
     int _flamePhase = 0;
     int _treeLightPhase = 0;
+    int _ledBorderPhase = 0;
     
     // Konfigurierbare Parameter (Defaults)
     unsigned long _displayDurationMs = 15000;  // 15 Sekunden
@@ -137,6 +139,11 @@ private:
     
     // Callback für Redraw
     std::function<void()> _updateCallback = nullptr;
+
+    /**
+     * @brief Zeichnet einen LED-Lauflicht-Rahmen um den Bereich
+     */
+    void drawLedBorder();
 
     /**
      * @brief Berechnet den aktuellen Advent (1-4) oder 0 wenn nicht Adventszeit.

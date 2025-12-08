@@ -211,6 +211,12 @@ struct DeviceConfig {
     bool adventWreathFullscreen = false;
     /// @brief Zeige Countdown bis Silvester auf Adventskranz und Weihnachtsbaum
     bool showNewYearCountdown = true;
+    /// @brief LED-Lauflicht-Rahmen für Adventskranz und Weihnachtsbaum aktivieren
+    bool ledBorderEnabled = true;
+    /// @brief LED-Lauflicht-Geschwindigkeit in ms (niedriger = schneller)
+    int ledBorderSpeedMs = 100;
+    /// @brief LED-Lauflicht-Farben (kommasepariert, Hex-Format)
+    PsramString ledBorderColors = "#FF0000,#00FF00,#0000FF,#FFFF00";
     
     // --- Kamin Modul ---
     /// @brief Kamin aktivieren

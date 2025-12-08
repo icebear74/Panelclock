@@ -393,7 +393,20 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
             <h3>Allgemeine Einstellungen</h3>
             <label style="display: inline-block; margin: 10px 0;"><input type="checkbox" name="showNewYearCountdown" id="showNewYearCountdown" {showNewYearCountdown_checked}> Countdown bis Silvester anzeigen</label>
             
-            <p style="color:#bbb; margin-top:10px;">Gilt für alle Animationen. Der Countdown zeigt die verbleibende Zeit bis zum Jahreswechsel (Tage, Stunden, Minuten, Sekunden) rechtsbündig auf Adventskranz und Weihnachtsbaum an. Die aktuelle Uhrzeit wird linksbündig angezeigt.</p>
+            <h3 style="margin-top:20px;">LED-Lauflicht-Rahmen</h3>
+            <label style="display: inline-block; margin: 10px 0;"><input type="checkbox" name="ledBorderEnabled" id="ledBorderEnabled" {ledBorderEnabled_checked}> LED-Rahmen aktivieren (für Adventskranz & Weihnachtsbaum)</label>
+            <label for="ledBorderSpeedMs">Lauflicht-Geschwindigkeit (ms)</label><input type="number" id="ledBorderSpeedMs" name="ledBorderSpeedMs" value="{ledBorderSpeedMs}" min="30" max="500">
+            
+            <label>LED-Rahmen Farben (4 Farben)</label>
+            <div style="display:flex;gap:10px;margin-top:5px;">
+                <div><label style="font-size:12px;">Farbe 1</label><input type="color" id="ledColor1" value="{ledColor1}"></div>
+                <div><label style="font-size:12px;">Farbe 2</label><input type="color" id="ledColor2" value="{ledColor2}"></div>
+                <div><label style="font-size:12px;">Farbe 3</label><input type="color" id="ledColor3" value="{ledColor3}"></div>
+                <div><label style="font-size:12px;">Farbe 4</label><input type="color" id="ledColor4" value="{ledColor4}"></div>
+            </div>
+            <input type="hidden" id="ledBorderColors" name="ledBorderColors" value="{ledBorderColors}">
+            
+            <p style="color:#bbb; margin-top:10px;">Gilt für alle Animationen. Der Countdown zeigt die verbleibende Zeit bis zum Jahreswechsel (Tage, Stunden, Minuten, Sekunden) rechtsbündig auf Adventskranz und Weihnachtsbaum an. Die aktuelle Uhrzeit wird linksbündig angezeigt. Der LED-Rahmen läuft mit 4 Phasen und bunten Lampen um den gesamten Bereich herum.</p>
         </div>
     </div>
 </div>
@@ -431,11 +444,22 @@ function updateCustomColors() {
     var c4 = document.getElementById('candleColor4').value;
     document.getElementById('adventWreathCustomColors').value = c1 + ',' + c2 + ',' + c3 + ',' + c4;
 }
+function updateLedBorderColors() {
+    var c1 = document.getElementById('ledColor1').value;
+    var c2 = document.getElementById('ledColor2').value;
+    var c3 = document.getElementById('ledColor3').value;
+    var c4 = document.getElementById('ledColor4').value;
+    document.getElementById('ledBorderColors').value = c1 + ',' + c2 + ',' + c3 + ',' + c4;
+}
 document.addEventListener('DOMContentLoaded', function() {
     toggleCustomColors();
     toggleTreeLightColor();
     ['candleColor1','candleColor2','candleColor3','candleColor4'].forEach(function(id) {
         document.getElementById(id).addEventListener('change', updateCustomColors);
+    });
+    ['ledColor1','ledColor2','ledColor3','ledColor4'].forEach(function(id) {
+        var elem = document.getElementById(id);
+        if (elem) elem.addEventListener('change', updateLedBorderColors);
     });
     // Open first sub-tab by default when Animationen tab is opened
     var firstSubTab = document.getElementById('SubAdventskranz');
