@@ -621,8 +621,8 @@ void CalendarModule::addDailyRecurringEvent(const Event& ev) {
     time_t todayOccurrenceAsIfUTC = timegm(&tmToday);
     
     // Convert back to UTC by subtracting the offset
-    // Check if DST applies to this time
-    int offset = timeConverter.isDST(now_utc) ? timeConverter.getDstOffsetSec() : timeConverter.getStdOffsetSec();
+    // Check if DST applies to the calculated event time
+    int offset = timeConverter.isDST(todayOccurrenceAsIfUTC) ? timeConverter.getDstOffsetSec() : timeConverter.getStdOffsetSec();
     time_t todayOccurrenceUTC = todayOccurrenceAsIfUTC - offset;
     
     CalendarEvent ce;
