@@ -1,5 +1,5 @@
-#ifndef HOLIDAYANIMATIONSMODULE_HPP
-#define HOLIDAYANIMATIONSMODULE_HPP
+#ifndef ANIMATIONSMODULE_HPP
+#define ANIMATIONSMODULE_HPP
 
 #include "DrawableModule.hpp"
 #include "GeneralTimeConverter.hpp"
@@ -23,7 +23,7 @@ enum class ChristmasDisplayMode {
 };
 
 /**
- * @brief Modul zur Anzeige eines animierten Adventskranzes und Weihnachtsbaums.
+ * @brief Modul zur Anzeige verschiedener Weihnachtsanimationen.
  * 
  * Zeigt einen Adventskranz mit 4 Kerzen in verschiedenen Farben.
  * Je nach aktuellem Advent (1-4) brennen die entsprechenden Kerzen
@@ -35,10 +35,10 @@ enum class ChristmasDisplayMode {
  * um während der Adventszeit regelmäßig als nächstes nach dem
  * aktuellen Modul angezeigt zu werden.
  */
-class HolidayAnimationsModule : public DrawableModule {
+class AnimationsModule : public DrawableModule {
 public:
-    HolidayAnimationsModule(U8G2_FOR_ADAFRUIT_GFX& u8g2, GFXcanvas16& canvas, GeneralTimeConverter& timeConverter, DeviceConfig* config);
-    ~HolidayAnimationsModule();
+    AnimationsModule(U8G2_FOR_ADAFRUIT_GFX& u8g2, GFXcanvas16& canvas, GeneralTimeConverter& timeConverter, DeviceConfig* config);
+    ~AnimationsModule();
 
     /**
      * @brief Initialisiert das Modul.
@@ -57,8 +57,8 @@ public:
     void onUpdate(std::function<void()> callback);
 
     // --- DrawableModule Interface ---
-    const char* getModuleName() const override { return "HolidayAnimationsModule"; }
-    const char* getModuleDisplayName() const override { return "Weihnachtsanimationen"; }
+    const char* getModuleName() const override { return "AnimationsModule"; }
+    const char* getModuleDisplayName() const override { return "Animationen"; }
     void draw() override;
     void tick() override;
     void logicTick() override;
@@ -101,6 +101,21 @@ private:
     bool _showTree = false;
     bool _showFireplace = false;
     int _displayCounter = 0;
+    
+    // Snowflake animation
+    struct Snowflake {
+        float x, y;
+        float speed;
+        int size;
+    };
+    static const int MAX_SNOWFLAKES = 20;
+    Snowflake _snowflakes[MAX_SNOWFLAKES];
+    bool _snowflakesInitialized = false;
+    unsigned long _lastSnowflakeUpdate = 0;
+    
+    // Tree ornament regeneration
+    unsigned long _lastTreeDisplay = 0;
+    bool _treeOrnamentsNeedRegeneration = true;
     
     // Zufällige Kerzenreihenfolge für jeden Durchgang
     int _candleOrder[4] = {0, 1, 2, 3};
@@ -206,6 +221,14 @@ private:
      * @param phase Animationsphase
      */
     void drawFlame(int x, int y, int phase);
+    
+    /**
+     * @brief Zeichnet eine Kerzenflamme mit Kaminfeuer-Algorithmus (ohne Funken)
+     * @param x X-Position
+     * @param y Y-Position
+     * @param phase Animationsphase
+     */
+    void drawCandleFlame(int x, int y, int phase);
 
     /**
      * @brief Zeichnet Tannengrün-Dekoration.
@@ -231,6 +254,16 @@ private:
      * @brief Zeichnet blinkende Lichter am Baum
      */
     void drawTreeLights();
+    
+    /**
+     * @brief Zeichnet fallende Schneeflocken
+     */
+    void drawSnowflakes();
+    
+    /**
+     * @brief Zeichnet Countdown bis Silvester
+     */
+    void drawNewYearCountdown();
 
     /**
      * @brief Zeichnet einen Kamin mit Feuer
@@ -273,4 +306,4 @@ private:
     uint32_t simpleRandom(uint32_t seed);
 };
 
-#endif // HOLIDAYANIMATIONSMODULE_HPP
+#endif // ANIMATIONSMODULE_HPP

@@ -138,11 +138,11 @@ void loadDeviceConfig() {
                 deviceConfig->christmasTreeLightCount = doc["christmasTreeLightCount"] | 18;
                 deviceConfig->christmasTreeGiftCount = doc["christmasTreeGiftCount"] | 5;
                 deviceConfig->adventWreathFullscreen = doc["adventWreathFullscreen"] | false;
+                deviceConfig->showNewYearCountdown = doc["showNewYearCountdown"] | true;
                 
                 // Kamin-Konfiguration
                 deviceConfig->fireplaceEnabled = doc["fireplaceEnabled"] | true;
-                deviceConfig->fireplaceDaysBefore24 = doc["fireplaceDaysBefore24"] | 23;
-                deviceConfig->fireplaceDaysAfter24 = doc["fireplaceDaysAfter24"] | 7;
+                deviceConfig->fireplaceNightModeOnly = doc["fireplaceNightModeOnly"] | true;
                 deviceConfig->fireplaceFlameSpeedMs = doc["fireplaceFlameSpeedMs"] | 40;
                 deviceConfig->fireplaceFlameColor = doc["fireplaceFlameColor"] | 0;
                 deviceConfig->fireplaceBrickColor = doc["fireplaceBrickColor"] | "#8B4513";
@@ -279,11 +279,11 @@ void saveDeviceConfig() {
     doc["christmasTreeLightCount"] = deviceConfig->christmasTreeLightCount;
     doc["christmasTreeGiftCount"] = deviceConfig->christmasTreeGiftCount;
     doc["adventWreathFullscreen"] = deviceConfig->adventWreathFullscreen;
+    doc["showNewYearCountdown"] = deviceConfig->showNewYearCountdown;
     
     // Kamin-Konfiguration
     doc["fireplaceEnabled"] = deviceConfig->fireplaceEnabled;
-    doc["fireplaceDaysBefore24"] = deviceConfig->fireplaceDaysBefore24;
-    doc["fireplaceDaysAfter24"] = deviceConfig->fireplaceDaysAfter24;
+    doc["fireplaceNightModeOnly"] = deviceConfig->fireplaceNightModeOnly;
     doc["fireplaceFlameSpeedMs"] = deviceConfig->fireplaceFlameSpeedMs;
     doc["fireplaceFlameColor"] = deviceConfig->fireplaceFlameColor;
     doc["fireplaceBrickColor"] = deviceConfig->fireplaceBrickColor.c_str();

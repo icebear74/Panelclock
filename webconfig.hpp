@@ -209,14 +209,14 @@ struct DeviceConfig {
     int christmasTreeGiftCount = 5;
     /// @brief Adventskranz/Weihnachtsbaum: Fullscreen-Modus (0=Teilbereich 192x66, 1=Vollbild 192x96)
     bool adventWreathFullscreen = false;
+    /// @brief Zeige Countdown bis Silvester auf Adventskranz und Weihnachtsbaum
+    bool showNewYearCountdown = true;
     
     // --- Kamin Modul ---
     /// @brief Kamin aktivieren
     bool fireplaceEnabled = true;
-    /// @brief Kamin: Tage vor dem 24.12. starten (0-30)
-    int fireplaceDaysBefore24 = 23;
-    /// @brief Kamin: Tage nach dem 24.12. anzeigen (0-30)
-    int fireplaceDaysAfter24 = 7;
+    /// @brief Kamin: Nur abends anzeigen (nach Sonnenuntergang)
+    bool fireplaceNightModeOnly = true;
     /// @brief Kamin: Feuer-Animation Geschwindigkeit in ms (niedriger = schneller)
     int fireplaceFlameSpeedMs = 40;
     /// @brief Kamin: Feuerfarbe (0=Klassisch Orange/Gelb, 1=Blau, 2=Grün, 3=Violett)

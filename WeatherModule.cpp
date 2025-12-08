@@ -2,6 +2,7 @@
 #include "MultiLogger.hpp"
 #include "webconfig.hpp" 
 #include "WebClientModule.hpp"
+#include "TimeUtilities.hpp"
 #include <ArduinoJson.h>
 #include <time.h>
 
@@ -422,6 +423,10 @@ void WeatherModule::parseForecastData(char* jsonBuffer, size_t size) {
         if (!_dailyForecast.empty()) {
             _currentWeather.sunrise = _dailyForecast[0].sunrise;
             _currentWeather.sunset = _dailyForecast[0].sunset;
+            
+            // Aktualisiere globale Sonnenauf- und Sonnenuntergangswerte
+            TimeUtilities::globalSunrise = _currentWeather.sunrise;
+            TimeUtilities::globalSunset = _currentWeather.sunset;
         }
     } else {
         _dataAvailable = false; 

@@ -228,11 +228,11 @@ void handleConfigModules() {
     replaceAll(content, "{christmasTreeLightMode1_selected}", deviceConfig->christmasTreeLightMode == 1 ? "selected" : "");
     replaceAll(content, "{christmasTreeLightColor}", deviceConfig->christmasTreeLightColor.c_str());
     replaceAll(content, "{adventWreathFullscreen_checked}", deviceConfig->adventWreathFullscreen ? "checked" : "");
+    replaceAll(content, "{showNewYearCountdown_checked}", deviceConfig->showNewYearCountdown ? "checked" : "");
     
     // Kamin-Konfiguration
     replaceAll(content, "{fireplaceEnabled_checked}", deviceConfig->fireplaceEnabled ? "checked" : "");
-    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->fireplaceDaysBefore24); replaceAll(content, "{fireplaceDaysBefore24}", num_buf);
-    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->fireplaceDaysAfter24); replaceAll(content, "{fireplaceDaysAfter24}", num_buf);
+    replaceAll(content, "{fireplaceNightModeOnly_checked}", deviceConfig->fireplaceNightModeOnly ? "checked" : "");
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->fireplaceFlameSpeedMs); replaceAll(content, "{fireplaceFlameSpeedMs}", num_buf);
     replaceAll(content, "{fireplaceFlameColor0_selected}", deviceConfig->fireplaceFlameColor == 0 ? "selected" : "");
     replaceAll(content, "{fireplaceFlameColor1_selected}", deviceConfig->fireplaceFlameColor == 1 ? "selected" : "");
@@ -397,11 +397,11 @@ void handleSaveModules() {
     if (server->hasArg("christmasTreeLightMode")) deviceConfig->christmasTreeLightMode = server->arg("christmasTreeLightMode").toInt();
     if (server->hasArg("christmasTreeLightColor")) deviceConfig->christmasTreeLightColor = server->arg("christmasTreeLightColor").c_str();
     deviceConfig->adventWreathFullscreen = server->hasArg("adventWreathFullscreen");
+    deviceConfig->showNewYearCountdown = server->hasArg("showNewYearCountdown");
     
     // Kamin-Konfiguration
     deviceConfig->fireplaceEnabled = server->hasArg("fireplaceEnabled");
-    if (server->hasArg("fireplaceDaysBefore24")) deviceConfig->fireplaceDaysBefore24 = server->arg("fireplaceDaysBefore24").toInt();
-    if (server->hasArg("fireplaceDaysAfter24")) deviceConfig->fireplaceDaysAfter24 = server->arg("fireplaceDaysAfter24").toInt();
+    deviceConfig->fireplaceNightModeOnly = server->hasArg("fireplaceNightModeOnly");
     if (server->hasArg("fireplaceFlameSpeedMs")) deviceConfig->fireplaceFlameSpeedMs = server->arg("fireplaceFlameSpeedMs").toInt();
     if (server->hasArg("fireplaceFlameColor")) deviceConfig->fireplaceFlameColor = server->arg("fireplaceFlameColor").toInt();
     if (server->hasArg("fireplaceBrickColor")) deviceConfig->fireplaceBrickColor = server->arg("fireplaceBrickColor").c_str();
