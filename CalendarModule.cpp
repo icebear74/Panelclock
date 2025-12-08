@@ -597,9 +597,37 @@ void CalendarModule::addSingleEvent(const Event& ev) {
 void CalendarModule::addDailyRecurringEvent(const Event& ev) {
     if (ev.dtstart == 0) return;
     
+    // For daily recurring events, calculate today's occurrence
+    time_t now_utc;
+    time(&now_utc);
+    
+    // Convert the original event time to local timezone to extract the time-of-day
+    time_t localStartEpoch = timeConverter.toLocal(ev.dtstart);
+    struct tm tmLocal;
+    localtime_r(&localStartEpoch, &tmLocal);
+    int hour = tmLocal.tm_hour;
+    int min = tmLocal.tm_min;
+    int sec = tmLocal.tm_sec;
+    
+    // Get today's date in local time
+    time_t localNow = timeConverter.toLocal(now_utc);
+    struct tm tmToday;
+    localtime_r(&localNow, &tmToday);
+    tmToday.tm_hour = hour;
+    tmToday.tm_min = min;
+    tmToday.tm_sec = sec;
+    
+    // Create epoch for today's occurrence in "local" time (as if it were UTC)
+    time_t todayOccurrenceAsIfUTC = timegm(&tmToday);
+    
+    // Convert back to UTC by subtracting the offset
+    // Check if DST applies to this time
+    int offset = timeConverter.isDST(now_utc) ? timeConverter.getDstOffsetSec() : timeConverter.getStdOffsetSec();
+    time_t todayOccurrenceUTC = todayOccurrenceAsIfUTC - offset;
+    
     CalendarEvent ce;
     ce.summary = ev.summary.c_str();
-    ce.startEpoch = ev.dtstart;
+    ce.startEpoch = todayOccurrenceUTC;
     ce.duration = ev.duration;
     ce.isAllDay = ev.isAllDay;
     ce.isDailyRecurring = true;
