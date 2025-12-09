@@ -113,5 +113,58 @@ The project is structured as an Arduino sketch.
 - **Partition Scheme:** A custom `partitions.csv` is used to provide enough space for the large application, OTA updates, and the LittleFS filesystem for web files.
 - **PSRAM:** PSRAM must be enabled in the Arduino IDE's board settings.
 
+### Which Binary File to Use for Flashing?
+
+After compiling with the Arduino IDE, several `.bin` files are generated in the sketch folder:
+
+#### **panelclock.merged.bin** ← **USE THIS FILE FOR INITIAL INSTALLATION**
+- **Complete Image:** Contains bootloader, partition table, and application
+- **Flash Address:** Always flash at `0x0000`
+- **Use Cases:**
+  - ✅ **Initial installation** on a new/erased ESP32
+  - ✅ Flashing with `esptool.py` or other flash tools
+  - ✅ When experiencing boot problems after flashing
+- **Example (esptool.py):**
+  ```bash
+  esptool.py --chip esp32 --port /dev/ttyUSB0 --baud 921600 write_flash 0x0000 panelclock.merged.bin
+  ```
+
+#### **panelclock.bin**
+- **Application Only:** Contains only the compiled application, no bootloader
+- **Flash Address:** Flash at `0x10000` (see `partitions.csv`)
+- **Use Cases:**
+  - ✅ **OTA updates** via the web interface
+  - ✅ Updates with Arduino IDE (automatically uses correct address)
+  - ⚠️ Not suitable for initial installation (bootloader missing)
+
+#### **Other Files**
+- `panelclock.ino.bootloader.bin` - Bootloader only
+- `panelclock.ino.partitions.bin` - Partition table only
+- These are typically not flashed individually
+
+### Flashing Methods
+
+#### 1. Arduino IDE (recommended for development)
+- Select the correct port and ESP32 board type
+- Click "Upload" - the IDE automatically uses the correct addresses
+- The IDE automatically flashes bootloader, partition table, and application
+
+#### 2. Web OTA Update (recommended for updates)
+- Open the Panelclock's web interface
+- Navigate to the update page
+- Upload the `panelclock.bin` file
+- The device will automatically restart after the update
+
+#### 3. esptool.py (for manual installation)
+For initial installation with `panelclock.merged.bin`:
+```bash
+esptool.py --chip esp32 --port COM3 --baud 921600 write_flash 0x0000 panelclock.merged.bin
+```
+
+For update with `panelclock.bin` (only if bootloader is already present):
+```bash
+esptool.py --chip esp32 --port COM3 --baud 921600 write_flash 0x10000 panelclock.bin
+```
+
 ---
 *This README was generated based on a source code analysis and has been manually extended.*
