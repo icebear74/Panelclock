@@ -9,6 +9,7 @@
 #include <Update.h>
 #include "MemoryLogger.hpp"
 #include "MultiLogger.hpp"
+#include "PsramUtils.hpp"
 
 // PSRAM Allocator for ArduinoJson (same pattern as ThemeParkModule and WeatherModule)
 struct SpiRamAllocator : ArduinoJson::Allocator {
@@ -1131,7 +1132,7 @@ void handleFirmwareUpload() {
         uploadSize += upload.currentSize;
         
         // Log progress every 100KB
-        if (uploadSize % 102400 < upload.currentSize) {
+        if ((uploadSize / 102400) > ((uploadSize - upload.currentSize) / 102400)) {
             Log.printf("[FirmwareUpdate] Progress: %u bytes\n", uploadSize);
         }
     } else if (upload.status == UPLOAD_FILE_END) {
