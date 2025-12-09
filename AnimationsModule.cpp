@@ -1665,101 +1665,172 @@ void AnimationsModule::drawFireplace() {
     drawFireplaceFlames(openingX + openingWidth/2, baseY - 2, openingWidth - 10, openingHeight - 5);
     
     // ===== HOLZLAGER RECHTS UNTER DEM KAMINSIMS =====
-    // Bereich rechts vom Kamin für gestapelte Holzscheite
-    int woodStorageX = fireX + fireplaceWidth + (int)(5 * scaleX);
-    int woodStorageY = baseY - (int)(35 * effectiveScaleY);
-    int woodStorageWidth = canvasW - woodStorageX - (int)(5 * scaleX);
-    int woodStorageHeight = (int)(30 * effectiveScaleY);
+    // Bereich rechts vom Kamin für gestapelte Holzscheite - jetzt besser genutzt
+    int woodStorageX = fireX + fireplaceWidth + (int)(3 * scaleX);
+    int woodStorageMaxX = canvasW - (int)(3 * scaleX);  // Fast bis zum rechten Rand
+    int woodStorageWidth = woodStorageMaxX - woodStorageX;
     
-    // Gestapelte Holzscheite (3-4 Lagen)
-    int storageLogRadius = (int)(3 * effectiveScaleY);
-    int storageLogLength = (int)(18 * scaleX);
+    // Verbesserte Holzscheite mit mehr Details
+    int storageLogRadius = (int)(3.5 * effectiveScaleY);
+    int storageLogLength = (int)(22 * scaleX);  // Längere Scheite
     
-    // Untere Reihe (3 Scheite)
-    for (int i = 0; i < 3; i++) {
-        int lx = woodStorageX + (int)(i * 7 * scaleX);
+    // Variationen für realistischeres Holz
+    uint16_t woodVariants[] = {
+        rgb565(101, 67, 33),   // Dunkler
+        rgb565(110, 75, 40),   // Standard
+        rgb565(95, 62, 30),    // Noch dunkler
+        rgb565(105, 70, 35)    // Mittel
+    };
+    
+    // UNTERE LAGE: Horizontal gestapelt (4-5 Scheite nebeneinander)
+    int numBottomLogs = min(5, woodStorageWidth / (int)(23 * scaleX));
+    for (int i = 0; i < numBottomLogs; i++) {
+        int lx = woodStorageX + (int)(i * 23 * scaleX);
         int ly = baseY - storageLogRadius - 2;
-        if (lx + storageLogLength < canvasW - 2) {
-            // Horizontal liegendes Scheit
+        
+        if (lx + storageLogLength <= woodStorageMaxX) {
+            uint16_t logColor = woodVariants[i % 4];
+            
+            // Zeichne Scheit horizontal
             for (int j = 0; j < storageLogLength; j++) {
                 int x = lx + j;
-                if (x < canvasW) {
-                    _currentCanvas->drawLine(x, ly - storageLogRadius + 1, x, ly + storageLogRadius - 1, woodOuter);
+                _currentCanvas->drawLine(x, ly - storageLogRadius + 1, x, ly + storageLogRadius - 1, logColor);
+                // Textur: gelegentliche Risse
+                if (j % 8 == 0) {
+                    _currentCanvas->drawPixel(x, ly, woodDark);
                 }
             }
+            
+            // Schnittflächen mit Jahresringen
+            _currentCanvas->fillCircle(lx, ly, storageLogRadius, woodInner);
+            _currentCanvas->drawCircle(lx, ly, storageLogRadius, logColor);
+            if (storageLogRadius > 2) {
+                _currentCanvas->drawCircle(lx, ly, storageLogRadius - 2, woodRing);
+                _currentCanvas->drawPixel(lx, ly, woodDark);
+            }
+            
+            if (lx + storageLogLength <= canvasW) {
+                _currentCanvas->fillCircle(lx + storageLogLength, ly, storageLogRadius, woodInner);
+                _currentCanvas->drawCircle(lx + storageLogLength, ly, storageLogRadius, logColor);
+                if (storageLogRadius > 2) {
+                    _currentCanvas->drawCircle(lx + storageLogLength, ly, storageLogRadius - 2, woodRing);
+                }
+            }
+        }
+    }
+    
+    // MITTLERE LAGE: Quer gestapelt (90° gedreht) - realistisches Kreuzstapeln
+    int numMiddleLogs = min(4, (woodStorageWidth - 5) / (int)(8 * scaleX));
+    int middleY = baseY - storageLogRadius * 2 - (int)(4 * effectiveScaleY);
+    for (int i = 0; i < numMiddleLogs; i++) {
+        int lx = woodStorageX + (int)((i * (storageLogLength / numMiddleLogs + 5)) * scaleX);
+        int ly = middleY;
+        
+        if (lx < woodStorageMaxX - 5) {
+            uint16_t logColor = woodVariants[(i + 1) % 4];
+            int thisLogLength = min(storageLogLength, (int)((woodStorageMaxX - lx - 5) * 0.9));
+            
+            // Zeichne Scheit vertikal (quer zur unteren Lage)
+            for (int j = 0; j < thisLogLength; j++) {
+                int x = lx + j;
+                if (x < woodStorageMaxX) {
+                    _currentCanvas->drawLine(x, ly - storageLogRadius + 1, x, ly + storageLogRadius - 1, logColor);
+                }
+            }
+            
             // Schnittflächen
             _currentCanvas->fillCircle(lx, ly, storageLogRadius, woodInner);
-            _currentCanvas->drawCircle(lx, ly, storageLogRadius, woodOuter);
-            if (lx + storageLogLength < canvasW) {
-                _currentCanvas->fillCircle(lx + storageLogLength, ly, storageLogRadius, woodInner);
-                _currentCanvas->drawCircle(lx + storageLogLength, ly, storageLogRadius, woodOuter);
+            _currentCanvas->drawCircle(lx, ly, storageLogRadius, logColor);
+            if (storageLogRadius > 2) {
+                _currentCanvas->drawCircle(lx, ly, storageLogRadius - 2, woodRing);
             }
         }
     }
     
-    // Mittlere Reihe (2 Scheite, etwas versetzt)
-    for (int i = 0; i < 2; i++) {
-        int lx = woodStorageX + (int)((i * 10 + 3) * scaleX);
-        int ly = baseY - storageLogRadius * 3 - 4;
-        if (lx + storageLogLength < canvasW - 2) {
-            for (int j = 0; j < storageLogLength; j++) {
-                int x = lx + j;
-                if (x < canvasW) {
-                    _currentCanvas->drawLine(x, ly - storageLogRadius + 1, x, ly + storageLogRadius - 1, woodOuter);
+    // OBERE LAGE: Wieder horizontal (wie unten) - klassische Kreuzstapelung
+    int topY = baseY - storageLogRadius * 4 - (int)(8 * effectiveScaleY);
+    if (topY > simsY + simsHeight + 5) {
+        int numTopLogs = min(3, woodStorageWidth / (int)(28 * scaleX));
+        for (int i = 0; i < numTopLogs; i++) {
+            int lx = woodStorageX + (int)((i * 28 + 5) * scaleX);
+            int ly = topY;
+            
+            if (lx + storageLogLength - 8 <= woodStorageMaxX) {
+                uint16_t logColor = woodVariants[(i + 2) % 4];
+                int thisLogLength = storageLogLength - 8;
+                
+                for (int j = 0; j < thisLogLength; j++) {
+                    int x = lx + j;
+                    if (x < woodStorageMaxX) {
+                        _currentCanvas->drawLine(x, ly - storageLogRadius + 1, x, ly + storageLogRadius - 1, logColor);
+                    }
+                }
+                
+                _currentCanvas->fillCircle(lx, ly, storageLogRadius, woodInner);
+                _currentCanvas->drawCircle(lx, ly, storageLogRadius, logColor);
+                if (storageLogRadius > 2) {
+                    _currentCanvas->drawCircle(lx, ly, storageLogRadius - 2, woodRing);
                 }
             }
-            _currentCanvas->fillCircle(lx, ly, storageLogRadius, woodInner);
-            _currentCanvas->drawCircle(lx, ly, storageLogRadius, woodOuter);
         }
     }
     
-    // Obere Reihe (1-2 Scheite)
-    int lx = woodStorageX + (int)(6 * scaleX);
-    int ly = baseY - storageLogRadius * 5 - 6;
-    if (lx + storageLogLength < canvasW - 2 && ly > simsY + simsHeight) {
-        for (int j = 0; j < storageLogLength - 5; j++) {
-            int x = lx + j;
-            if (x < canvasW) {
-                _currentCanvas->drawLine(x, ly - storageLogRadius + 1, x, ly + storageLogRadius - 1, woodOuter);
-            }
-        }
-        _currentCanvas->fillCircle(lx, ly, storageLogRadius, woodInner);
-        _currentCanvas->drawCircle(lx, ly, storageLogRadius, woodOuter);
-    }
+    // ===== KAMINWERKZEUGE RECHTS NEBEN DEM HOLZLAGER =====
+    // Werkzeuge rechts neben dem Holz platzieren statt links vom Kamin
+    int toolsX = woodStorageMaxX - (int)(12 * scaleX);
     
-    // ===== OPTIONAL: KAMINWERKZEUGE LINKS =====
-    // Nur wenn genug Platz vorhanden ist (links vom Kamin)
-    int toolAreaX = (int)(3 * scaleX);
-    int toolWidth = fireplaceLeftEdge - toolAreaX - (int)(2 * scaleX);
-    
-    if (toolWidth > 8) {  // Nur wenn mindestens 8 Pixel Platz
-        uint16_t toolColor = rgb565(60, 60, 60);  // Dunkelgrau (Metall)
-        uint16_t handleColor = rgb565(100, 70, 40);  // Holzgriff
+    if (toolsX > woodStorageX + storageLogLength + 5) {
+        uint16_t toolColor = rgb565(70, 70, 70);      // Metall
+        uint16_t toolDark = rgb565(40, 40, 40);       // Dunkleres Metall
+        uint16_t handleColor = rgb565(100, 70, 40);   // Holzgriff
+        uint16_t brassColor = rgb565(180, 150, 50);   // Messing-Akzent
         
-        // Schürhaken (vertikal stehend)
-        int poker1X = toolAreaX + toolWidth / 3;
-        int poker1Y = baseY - (int)(40 * effectiveScaleY);
-        int pokerHeight = (int)(35 * effectiveScaleY);
+        int toolsBaseY = baseY;
+        int toolHeight = (int)(40 * effectiveScaleY);
+        
+        // Schürhaken (poker)
+        int pokerX = toolsX + (int)(2 * scaleX);
+        int pokerY = toolsBaseY - toolHeight;
+        
+        // Stiel mit Schattierung
+        _currentCanvas->drawLine(pokerX, pokerY, pokerX, toolsBaseY - (int)(8 * effectiveScaleY), toolColor);
+        _currentCanvas->drawLine(pokerX + 1, pokerY, pokerX + 1, toolsBaseY - (int)(8 * effectiveScaleY), toolDark);
+        
+        // Holzgriff
+        int handleStart = toolsBaseY - (int)(8 * effectiveScaleY);
+        _currentCanvas->drawLine(pokerX, handleStart, pokerX, toolsBaseY - 2, handleColor);
+        _currentCanvas->drawLine(pokerX + 1, handleStart, pokerX + 1, toolsBaseY - 2, rgb565(80, 55, 30));
+        
+        // Haken oben (detaillierter)
+        _currentCanvas->drawLine(pokerX, pokerY, pokerX + 3, pokerY + 2, toolColor);
+        _currentCanvas->drawLine(pokerX + 3, pokerY + 2, pokerX + 3, pokerY + 5, toolColor);
+        _currentCanvas->drawPixel(pokerX + 1, pokerY + 1, toolDark);
+        
+        // Kleiner Messing-Ring am Griff
+        _currentCanvas->drawPixel(pokerX, handleStart + (int)(3 * effectiveScaleY), brassColor);
+        
+        // Schaufel/Kelle
+        int shovelX = toolsX + (int)(7 * scaleX);
+        int shovelY = toolsBaseY - toolHeight + (int)(3 * effectiveScaleY);
         
         // Stiel
-        _currentCanvas->drawLine(poker1X, poker1Y, poker1X, poker1Y + pokerHeight - (int)(8 * effectiveScaleY), toolColor);
-        // Griff
-        _currentCanvas->drawLine(poker1X, poker1Y + pokerHeight - (int)(8 * effectiveScaleY), poker1X, poker1Y + pokerHeight, handleColor);
-        // Haken oben
-        _currentCanvas->drawLine(poker1X, poker1Y, poker1X + 2, poker1Y + 3, toolColor);
+        _currentCanvas->drawLine(shovelX, shovelY, shovelX, toolsBaseY - (int)(8 * effectiveScaleY), toolColor);
+        _currentCanvas->drawLine(shovelX + 1, shovelY, shovelX + 1, toolsBaseY - (int)(8 * effectiveScaleY), toolDark);
         
-        // Schaufel (falls noch Platz)
-        if (toolWidth > 12) {
-            int shovelX = toolAreaX + (toolWidth * 2) / 3;
-            int shovelY = baseY - (int)(38 * effectiveScaleY);
-            
-            // Stiel
-            _currentCanvas->drawLine(shovelX, shovelY, shovelX, shovelY + pokerHeight - (int)(8 * effectiveScaleY), toolColor);
-            // Griff
-            _currentCanvas->drawLine(shovelX, shovelY + pokerHeight - (int)(8 * effectiveScaleY), shovelX, shovelY + pokerHeight, handleColor);
-            // Schaufelblatt (kleines Rechteck oben)
-            _currentCanvas->fillRect(shovelX - 2, shovelY, 5, 4, toolColor);
-        }
+        // Holzgriff
+        _currentCanvas->drawLine(shovelX, handleStart, shovelX, toolsBaseY - 2, handleColor);
+        _currentCanvas->drawLine(shovelX + 1, handleStart, shovelX + 1, toolsBaseY - 2, rgb565(80, 55, 30));
+        
+        // Schaufelblatt (größer und detaillierter)
+        int bladeW = (int)(6 * scaleX);
+        int bladeH = (int)(5 * effectiveScaleY);
+        _currentCanvas->fillRect(shovelX - bladeW/2, shovelY, bladeW, bladeH, toolColor);
+        _currentCanvas->drawRect(shovelX - bladeW/2, shovelY, bladeW, bladeH, toolDark);
+        // Highlight auf der Schaufel
+        _currentCanvas->drawLine(shovelX - 1, shovelY + 1, shovelX - 1, shovelY + bladeH - 1, rgb565(100, 100, 100));
+        
+        // Messing-Ring
+        _currentCanvas->drawPixel(shovelX, handleStart + (int)(3 * effectiveScaleY), brassColor);
     }
     
     // Strümpfe am Kaminsims
