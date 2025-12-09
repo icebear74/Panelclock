@@ -40,6 +40,7 @@ const char HTML_INDEX[] PROGMEM = R"rawliteral(
 <!-- File manager button added to main menu -->
 <a href="/fs" class="button">Dateimanager</a>
 <a href="/backup" class="button" style="background-color:#FF9800;">Backup & Wiederherstellung</a>
+<a href="/firmware" class="button button-danger">Firmware Update</a>
 <hr>
 <a href="/stream" class="button" style="background-color:#2196F3;">Live-Stream & Debug</a>
 <a href="/debug" class="button" style="background-color:#555;">Debug Daten</a>
@@ -1099,6 +1100,110 @@ function refreshBackupList() {
 
 // Load backup list on page load
 refreshBackupList();
+</script>
+)rawliteral";
+
+const char HTML_FIRMWARE_UPDATE[] PROGMEM = R"rawliteral(
+<h1>Firmware Update</h1>
+<div class="group">
+    <h3>Firmware hochladen</h3>
+    <p>W&auml;hlen Sie eine Firmware-Datei (.bin) aus, um die Panelclock zu aktualisieren.</p>
+    <p style="color:#ff8c00;"><strong>Warnung:</strong> W&auml;hrend des Updates wird das Ger&auml;t neu gestartet. Unterbrechen Sie nicht die Stromversorgung!</p>
+    
+    <form id="uploadForm" method="POST" action="/update" enctype="multipart/form-data">
+        <label for="firmwareFile">Firmware-Datei ausw&auml;hlen:</label>
+        <input type="file" id="firmwareFile" name="firmware" accept=".bin" required style="margin-top:10px;margin-bottom:10px;">
+        <div id="progressContainer" style="display:none;margin-top:20px;">
+            <label>Upload-Fortschritt:</label>
+            <div style="width:100%;background-color:#333;border-radius:4px;margin-top:5px;overflow:hidden;">
+                <div id="progressBar" style="width:0%;height:30px;background-color:#4CAF50;text-align:center;line-height:30px;color:white;transition:width 0.3s;">0%</div>
+            </div>
+            <p id="statusMessage" style="margin-top:10px;color:#4CAF50;"></p>
+        </div>
+        <input type="submit" value="Firmware hochladen" id="uploadButton" class="button-danger">
+    </form>
+</div>
+
+<div class="footer-link"><a href="/">&laquo; Zur&uuml;ck zum Hauptmen&uuml;</a></div>
+
+<script>
+document.getElementById('uploadForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const fileInput = document.getElementById('firmwareFile');
+    const file = fileInput.files[0];
+    
+    if (!file) {
+        alert('Bitte w\u00e4hlen Sie eine Datei aus.');
+        return;
+    }
+    
+    if (!file.name.endsWith('.bin')) {
+        alert('Bitte w\u00e4hlen Sie eine .bin Datei aus.');
+        return;
+    }
+    
+    const progressContainer = document.getElementById('progressContainer');
+    const progressBar = document.getElementById('progressBar');
+    const statusMessage = document.getElementById('statusMessage');
+    const uploadButton = document.getElementById('uploadButton');
+    
+    progressContainer.style.display = 'block';
+    uploadButton.disabled = true;
+    statusMessage.textContent = 'Upload wird gestartet...';
+    statusMessage.style.color = '#4CAF50';
+    
+    const xhr = new XMLHttpRequest();
+    
+    xhr.upload.addEventListener('progress', function(e) {
+        if (e.lengthComputable) {
+            const percentComplete = Math.round((e.loaded / e.total) * 100);
+            progressBar.style.width = percentComplete + '%';
+            progressBar.textContent = percentComplete + '%';
+            statusMessage.textContent = 'Hochladen... ' + percentComplete + '%';
+        }
+    });
+    
+    xhr.addEventListener('load', function() {
+        if (xhr.status === 200) {
+            progressBar.style.width = '100%';
+            progressBar.textContent = '100%';
+            statusMessage.textContent = 'Upload erfolgreich! Ger\u00e4t wird neu gestartet...';
+            statusMessage.style.color = '#4CAF50';
+            
+            setTimeout(function() {
+                statusMessage.textContent = 'Neustart abgeschlossen. Seite wird neu geladen...';
+                setTimeout(function() {
+                    window.location.href = '/';
+                }, 5000);
+            }, 10000);
+        } else {
+            progressBar.style.backgroundColor = '#f44336';
+            statusMessage.textContent = 'Fehler beim Upload: ' + xhr.responseText;
+            statusMessage.style.color = '#f44336';
+            uploadButton.disabled = false;
+        }
+    });
+    
+    xhr.addEventListener('error', function() {
+        progressBar.style.backgroundColor = '#f44336';
+        statusMessage.textContent = 'Netzwerkfehler beim Upload';
+        statusMessage.style.color = '#f44336';
+        uploadButton.disabled = false;
+    });
+    
+    xhr.addEventListener('abort', function() {
+        statusMessage.textContent = 'Upload abgebrochen';
+        statusMessage.style.color = '#ff8c00';
+        uploadButton.disabled = false;
+    });
+    
+    const formData = new FormData();
+    formData.append('firmware', file);
+    
+    xhr.open('POST', '/update', true);
+    xhr.send(formData);
+});
 </script>
 )rawliteral";
 

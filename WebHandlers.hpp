@@ -28,4 +28,8 @@ void handleBackupUpload();
 void handleBackupList();
 void handleBackupRestore();
 
+// Firmware update handlers
+void handleFirmwarePage();
+void handleFirmwareUpload();
+
 #endif // WEB_HANDLERS_HPP
