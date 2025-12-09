@@ -46,7 +46,8 @@ void handleRoot() {
     PsramString content = (const char*)FPSTR(HTML_INDEX);
     
     // Add version information
-    replaceAll(content, "{version}", PANELCLOCK_VERSION);
+    PsramString version = PANELCLOCK_VERSION;
+    replaceAll(content, PsramString("{version}"), version);
     
     page += content;
     page += (const char*)FPSTR(HTML_PAGE_FOOTER);
