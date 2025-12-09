@@ -15,6 +15,9 @@
 #include "PanelStreamer.hpp"
 #include "AnimationsModule.hpp"
 
+// --- Konstanten ---
+constexpr uint16_t OTA_PORT = 3232; // Standard ArduinoOTA port
+
 // --- Globale Variablen ---
 Application* Application::_instance = nullptr;
 HardwareConfig* hardwareConfig = nullptr;
@@ -148,12 +151,35 @@ void Application::begin() {
         _themeParkMod->begin();
         _animationsMod->begin();
 
-        WiFi.setHostname(deviceConfig->hostname.c_str());
+        // Determine effective hostname (with fallback if empty)
+        bool hostnameEmpty = deviceConfig->hostname.empty();
+        if (hostnameEmpty) {
+            Log.println("[Application] WARNUNG: Hostname ist leer. Verwende Standard-Hostname 'panelclock'.");
+        }
+        const char* effectiveHostname = hostnameEmpty ? "panelclock" : deviceConfig->hostname.c_str();
+        
+        // Set WiFi hostname
+        WiFi.setHostname(effectiveHostname);
+        
+        // Initialize mDNS - required for OTA discovery in Arduino IDE
+        Log.println("[Application] Starte mDNS...");
+        if (!MDNS.begin(effectiveHostname)) {
+            Log.printf("[Application] FEHLER: mDNS-Start mit Hostname '%s' fehlgeschlagen!\n", effectiveHostname);
+            displayStatus("mDNS Fehler!");
+            delay(2000); // Allow user to see error message on display
+        } else {
+            Log.printf("[Application] mDNS gestartet: %s.local\n", effectiveHostname);
+        }
+        
+        // Configure OTA with same hostname as mDNS
         if (!deviceConfig->otaPassword.empty()) ArduinoOTA.setPassword(deviceConfig->otaPassword.c_str());
-        ArduinoOTA.setHostname(deviceConfig->hostname.c_str());
+        ArduinoOTA.setHostname(effectiveHostname);
         
         otaManager->begin();
         ArduinoOTA.begin();
+        
+        // Add mDNS service for OTA
+        MDNS.addService("arduino", "tcp", OTA_PORT);
         
         // Initialize BackupManager before web server setup
         backupManager = new BackupManager(this);
