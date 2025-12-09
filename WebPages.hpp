@@ -1155,6 +1155,7 @@ document.getElementById('uploadForm').addEventListener('submit', function(e) {
     statusMessage.style.color = '#4CAF50';
     
     const xhr = new XMLHttpRequest();
+    let uploadCompleted = false;
     
     xhr.upload.addEventListener('progress', function(e) {
         if (e.lengthComputable) {
@@ -1167,16 +1168,31 @@ document.getElementById('uploadForm').addEventListener('submit', function(e) {
     
     xhr.addEventListener('load', function() {
         if (xhr.status === 200) {
+            uploadCompleted = true;
             progressBar.style.width = '100%';
             progressBar.textContent = '100%';
-            statusMessage.textContent = 'Upload erfolgreich! Ger\u00e4t wird neu gestartet...';
-            statusMessage.style.color = '#4CAF50';
+            progressBar.style.backgroundColor = '#4CAF50';
             
+            let countdown = 10;
+            statusMessage.innerHTML = '<strong>Upload erfolgreich!</strong><br>Ger&auml;t wird neu gestartet...<br>Seite wird in <span id="countdown">10</span> Sekunden automatisch neu geladen.';
+            statusMessage.style.color = '#4CAF50';
+            statusMessage.style.fontSize = '16px';
+            
+            // Update countdown every second
+            const countdownInterval = setInterval(function() {
+                countdown--;
+                const countdownElement = document.getElementById('countdown');
+                if (countdownElement) {
+                    countdownElement.textContent = countdown;
+                }
+                if (countdown <= 0) {
+                    clearInterval(countdownInterval);
+                }
+            }, 1000);
+            
+            // Reload page after 10 seconds
             setTimeout(function() {
-                statusMessage.textContent = 'Neustart abgeschlossen. Seite wird neu geladen...';
-                setTimeout(function() {
-                    window.location.href = '/';
-                }, 5000);
+                window.location.href = '/';
             }, 10000);
         } else {
             progressBar.style.backgroundColor = '#f44336';
@@ -1187,10 +1203,36 @@ document.getElementById('uploadForm').addEventListener('submit', function(e) {
     });
     
     xhr.addEventListener('error', function() {
-        progressBar.style.backgroundColor = '#f44336';
-        statusMessage.textContent = 'Netzwerkfehler beim Upload';
-        statusMessage.style.color = '#f44336';
-        uploadButton.disabled = false;
+        // If upload completed successfully but connection lost (device rebooting), show success message
+        if (uploadCompleted) {
+            progressBar.style.backgroundColor = '#4CAF50';
+            
+            let countdown = 10;
+            statusMessage.innerHTML = '<strong>Upload erfolgreich!</strong><br>Ger&auml;t wird neu gestartet...<br>Seite wird in <span id="countdown">10</span> Sekunden automatisch neu geladen.';
+            statusMessage.style.color = '#4CAF50';
+            statusMessage.style.fontSize = '16px';
+            
+            // Update countdown every second
+            const countdownInterval = setInterval(function() {
+                countdown--;
+                const countdownElement = document.getElementById('countdown');
+                if (countdownElement) {
+                    countdownElement.textContent = countdown;
+                }
+                if (countdown <= 0) {
+                    clearInterval(countdownInterval);
+                }
+            }, 1000);
+            
+            setTimeout(function() {
+                window.location.href = '/';
+            }, 10000);
+        } else {
+            progressBar.style.backgroundColor = '#f44336';
+            statusMessage.textContent = 'Netzwerkfehler beim Upload';
+            statusMessage.style.color = '#f44336';
+            uploadButton.disabled = false;
+        }
     });
     
     xhr.addEventListener('abort', function() {
