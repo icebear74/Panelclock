@@ -149,11 +149,25 @@ void Application::begin() {
         _animationsMod->begin();
 
         WiFi.setHostname(deviceConfig->hostname.c_str());
+        
+        // Initialize mDNS - required for OTA discovery in Arduino IDE
+        Log.println("[Application] Starte mDNS...");
+        if (!MDNS.begin(deviceConfig->hostname.c_str())) {
+            Log.println("[Application] FEHLER: mDNS-Start fehlgeschlagen!");
+            displayStatus("mDNS Fehler!");
+            delay(2000);
+        } else {
+            Log.printf("[Application] mDNS gestartet: %s.local\n", deviceConfig->hostname.c_str());
+        }
+        
         if (!deviceConfig->otaPassword.empty()) ArduinoOTA.setPassword(deviceConfig->otaPassword.c_str());
         ArduinoOTA.setHostname(deviceConfig->hostname.c_str());
         
         otaManager->begin();
         ArduinoOTA.begin();
+        
+        // Add mDNS service for OTA
+        MDNS.addService("arduino", "tcp", 3232);
         
         // Initialize BackupManager before web server setup
         backupManager = new BackupManager(this);
