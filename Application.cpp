@@ -151,17 +151,17 @@ void Application::begin() {
         _themeParkMod->begin();
         _animationsMod->begin();
 
-        WiFi.setHostname(deviceConfig->hostname.c_str());
-        
         // Determine effective hostname (with fallback if empty)
-        const char* effectiveHostname = deviceConfig->hostname.empty() ? "panelclock" : deviceConfig->hostname.c_str();
-        
-        // Initialize mDNS - required for OTA discovery in Arduino IDE
-        Log.println("[Application] Starte mDNS...");
         if (deviceConfig->hostname.empty()) {
             Log.println("[Application] WARNUNG: Hostname ist leer. Verwende Standard-Hostname 'panelclock'.");
         }
+        const char* effectiveHostname = deviceConfig->hostname.empty() ? "panelclock" : deviceConfig->hostname.c_str();
         
+        // Set WiFi hostname
+        WiFi.setHostname(effectiveHostname);
+        
+        // Initialize mDNS - required for OTA discovery in Arduino IDE
+        Log.println("[Application] Starte mDNS...");
         if (!MDNS.begin(effectiveHostname)) {
             Log.printf("[Application] FEHLER: mDNS-Start mit Hostname '%s' fehlgeschlagen!\n", effectiveHostname);
             displayStatus("mDNS Fehler!");
