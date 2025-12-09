@@ -304,8 +304,6 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
         <div class="group">
             <h3>Adventskranz</h3>
             <input type="checkbox" id="adventWreathEnabled" name="adventWreathEnabled" {adventWreathEnabled_checked}><label for="adventWreathEnabled" style="display:inline;">Adventskranz aktivieren</label><br>
-            <label for="adventWreathDisplaySec">Anzeigedauer (Sekunden)</label><input type="number" id="adventWreathDisplaySec" name="adventWreathDisplaySec" value="{adventWreathDisplaySec}" min="5">
-            <label for="adventWreathRepeatMin">Wiederholungsintervall (Minuten)</label><input type="number" id="adventWreathRepeatMin" name="adventWreathRepeatMin" value="{adventWreathRepeatMin}" min="1">
             
             <label for="adventWreathColorMode">Kerzenfarben</label>
             <select id="adventWreathColorMode" name="adventWreathColorMode" onchange="toggleCustomColors()">
@@ -324,8 +322,6 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
                 </div>
                 <input type="hidden" id="adventWreathCustomColors" name="adventWreathCustomColors" value="{adventWreathCustomColors}">
             </div>
-            
-            <br><input type="checkbox" id="adventWreathInterrupt" name="adventWreathInterrupt" {adventWreathInterrupt_checked}><label for="adventWreathInterrupt" style="display:inline;">Unterbrechend anzeigen</label><br>
             
             <label for="adventWreathFlameSpeedMs">Flammen-Animation (ms)</label><input type="number" id="adventWreathFlameSpeedMs" name="adventWreathFlameSpeedMs" value="{adventWreathFlameSpeedMs}" min="20" max="500">
             
@@ -392,6 +388,11 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
         <div class="group">
             <h3>Allgemeine Einstellungen</h3>
             <p style="color:#888; font-size:12px; margin:5px 0;">Hinweis: Animationen verwenden jetzt immer den Vollbild-Modus für optimale Darstellung.</p>
+            
+            <label for="adventWreathDisplaySec">Anzeigedauer (Sekunden)</label><input type="number" id="adventWreathDisplaySec" name="adventWreathDisplaySec" value="{adventWreathDisplaySec}" min="5">
+            <label for="adventWreathRepeatMin">Wiederholungsintervall (Minuten)</label><input type="number" id="adventWreathRepeatMin" name="adventWreathRepeatMin" value="{adventWreathRepeatMin}" min="1">
+            <label style="display: inline-block; margin: 10px 0;"><input type="checkbox" id="adventWreathInterrupt" name="adventWreathInterrupt" {adventWreathInterrupt_checked}> Unterbrechend anzeigen</label><br>
+            
             <label style="display: inline-block; margin: 10px 0;"><input type="checkbox" name="showNewYearCountdown" id="showNewYearCountdown" {showNewYearCountdown_checked}> Countdown bis Silvester anzeigen</label>
             
             <h3 style="margin-top:20px;">LED-Lauflicht-Rahmen</h3>
