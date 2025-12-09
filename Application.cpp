@@ -153,27 +153,26 @@ void Application::begin() {
 
         WiFi.setHostname(deviceConfig->hostname.c_str());
         
+        // Determine effective hostname (with fallback if empty)
+        const char* effectiveHostname = deviceConfig->hostname.empty() ? "panelclock" : deviceConfig->hostname.c_str();
+        
         // Initialize mDNS - required for OTA discovery in Arduino IDE
         Log.println("[Application] Starte mDNS...");
         if (deviceConfig->hostname.empty()) {
-            Log.println("[Application] WARNUNG: Hostname ist leer. Verwende Standard-Hostname.");
-            if (!MDNS.begin("panelclock")) {
-                Log.println("[Application] FEHLER: mDNS-Start mit Standard-Hostname fehlgeschlagen!");
-                displayStatus("mDNS Fehler!");
-                delay(2000);
-            } else {
-                Log.println("[Application] mDNS gestartet: panelclock.local");
-            }
-        } else if (!MDNS.begin(deviceConfig->hostname.c_str())) {
-            Log.println("[Application] FEHLER: mDNS-Start fehlgeschlagen!");
+            Log.println("[Application] WARNUNG: Hostname ist leer. Verwende Standard-Hostname 'panelclock'.");
+        }
+        
+        if (!MDNS.begin(effectiveHostname)) {
+            Log.printf("[Application] FEHLER: mDNS-Start mit Hostname '%s' fehlgeschlagen!\n", effectiveHostname);
             displayStatus("mDNS Fehler!");
             delay(2000);
         } else {
-            Log.printf("[Application] mDNS gestartet: %s.local\n", deviceConfig->hostname.c_str());
+            Log.printf("[Application] mDNS gestartet: %s.local\n", effectiveHostname);
         }
         
+        // Configure OTA with same hostname as mDNS
         if (!deviceConfig->otaPassword.empty()) ArduinoOTA.setPassword(deviceConfig->otaPassword.c_str());
-        ArduinoOTA.setHostname(deviceConfig->hostname.c_str());
+        ArduinoOTA.setHostname(effectiveHostname);
         
         otaManager->begin();
         ArduinoOTA.begin();
