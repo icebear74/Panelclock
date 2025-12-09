@@ -15,6 +15,9 @@
 #include "PanelStreamer.hpp"
 #include "AnimationsModule.hpp"
 
+// --- Konstanten ---
+constexpr uint16_t OTA_PORT = 3232; // Standard ArduinoOTA port
+
 // --- Globale Variablen ---
 Application* Application::_instance = nullptr;
 HardwareConfig* hardwareConfig = nullptr;
@@ -152,7 +155,16 @@ void Application::begin() {
         
         // Initialize mDNS - required for OTA discovery in Arduino IDE
         Log.println("[Application] Starte mDNS...");
-        if (!MDNS.begin(deviceConfig->hostname.c_str())) {
+        if (deviceConfig->hostname.empty()) {
+            Log.println("[Application] WARNUNG: Hostname ist leer. Verwende Standard-Hostname.");
+            if (!MDNS.begin("panelclock")) {
+                Log.println("[Application] FEHLER: mDNS-Start mit Standard-Hostname fehlgeschlagen!");
+                displayStatus("mDNS Fehler!");
+                delay(2000);
+            } else {
+                Log.println("[Application] mDNS gestartet: panelclock.local");
+            }
+        } else if (!MDNS.begin(deviceConfig->hostname.c_str())) {
             Log.println("[Application] FEHLER: mDNS-Start fehlgeschlagen!");
             displayStatus("mDNS Fehler!");
             delay(2000);
@@ -167,7 +179,7 @@ void Application::begin() {
         ArduinoOTA.begin();
         
         // Add mDNS service for OTA
-        MDNS.addService("arduino", "tcp", 3232);
+        MDNS.addService("arduino", "tcp", OTA_PORT);
         
         // Initialize BackupManager before web server setup
         backupManager = new BackupManager(this);
