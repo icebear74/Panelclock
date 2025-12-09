@@ -33,6 +33,7 @@ const char HTML_PAGE_FOOTER[] PROGMEM = R"rawliteral(</div></body></html>)rawlit
 
 const char HTML_INDEX[] PROGMEM = R"rawliteral(
 <h1>Panelclock Hauptmen&uuml;</h1>
+<p style="color:#bbb;font-size:14px;margin-top:-10px;">Version {version}</p>
 <a href="/config_base" class="button button-danger">Grundkonfiguration (mit Neustart)</a>
 <a href="/config_location" class="button">Mein Standort</a>
 <a href="/config_modules" class="button">Anzeige-Module (Live-Update)</a>

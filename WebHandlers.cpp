@@ -10,6 +10,7 @@
 #include "MemoryLogger.hpp"
 #include "MultiLogger.hpp"
 #include "PsramUtils.hpp"
+#include "Version.hpp"
 
 // PSRAM Allocator for ArduinoJson (same pattern as ThemeParkModule and WeatherModule)
 struct SpiRamAllocator : ArduinoJson::Allocator {
@@ -42,7 +43,12 @@ void applyLiveConfig();
 void handleRoot() {
     if (!server) return;
     PsramString page = (const char*)FPSTR(HTML_PAGE_HEADER);
-    page += (const char*)FPSTR(HTML_INDEX);
+    PsramString content = (const char*)FPSTR(HTML_INDEX);
+    
+    // Add version information
+    replaceAll(content, "{version}", PANELCLOCK_VERSION);
+    
+    page += content;
     page += (const char*)FPSTR(HTML_PAGE_FOOTER);
     server->send(200, "text/html", page.c_str());
 }
