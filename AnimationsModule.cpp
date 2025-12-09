@@ -414,6 +414,14 @@ void AnimationsModule::tick() {
         needsUpdate = true;
     }
     
+    // LED-Rahmen-Animation
+    unsigned long ledBorderSpeed = config ? (unsigned long)config->ledBorderSpeedMs : 100;
+    if (now - _lastLedBorderUpdate > ledBorderSpeed) {
+        _lastLedBorderUpdate = now;
+        _ledBorderPhase = (_ledBorderPhase + 1) % 4;  // 4 Phasen
+        needsUpdate = true;
+    }
+    
     // Kaminfeuer-Animation
     unsigned long fireplaceSpeed = config ? (unsigned long)config->fireplaceFlameSpeedMs : 40;
     static unsigned long _lastFireplaceUpdate = 0;
@@ -432,7 +440,8 @@ void AnimationsModule::logicTick() {
 }
 
 bool AnimationsModule::wantsFullscreen() const {
-    return config && config->adventWreathFullscreen && _fullscreenCanvas != nullptr;
+    // Always use fullscreen mode
+    return _fullscreenCanvas != nullptr;
 }
 
 void AnimationsModule::draw() {
@@ -465,6 +474,9 @@ void AnimationsModule::draw() {
         drawChristmasTree();
         drawSnowflakes();
         
+        // LED-Lauflicht-Rahmen
+        drawLedBorder();
+        
         if (config && config->showNewYearCountdown) {
             drawNewYearCountdown();
         }
@@ -473,6 +485,9 @@ void AnimationsModule::draw() {
         drawGreenery();
         drawWreath();
         drawBerries();
+        
+        // LED-Lauflicht-Rahmen
+        drawLedBorder();
         
         if (config && config->showNewYearCountdown) {
             drawNewYearCountdown();
@@ -645,42 +660,50 @@ void AnimationsModule::drawTreeOrnaments(int centerX, int baseY, float scale) {
     int layer2Width = (int)(22 * scale);
     int layer3Width = (int)(16 * scale);
     
-    // Verteilungsmuster - mehr unten wo der Baum breiter ist
+    // Verbesserte Verteilung - nutzt den gesamten Baum besser aus
+    // Mehr unten, aber auch oben sollten einige sein
     for (int i = 0; i < numOrnaments; i++) {
         uint32_t seed = simpleRandom(i * 157 + 789);
         
-        // Y-Position: quadratische Verteilung - mehr Kugeln unten (wo breiter)
+        // Y-Position: Bessere Verteilung mit weniger extremer Konzentration unten
+        // Mische linear (0.4) und quadratisch (0.6) für ausgewogenere Verteilung
+        // Linear verteilt gleichmäßig, quadratisch konzentriert nach unten
         float t = (float)i / numOrnaments;  // 0.0 bis 1.0
-        float yFraction = t * t;  // Quadratisch: mehr am unteren Ende
+        const float LINEAR_WEIGHT = 0.4f;    // 40% gleichmäßige Verteilung
+        const float QUADRATIC_WEIGHT = 0.6f; // 60% Konzentration nach unten
+        float yFraction = LINEAR_WEIGHT * t + QUADRATIC_WEIGHT * (t * t);
         int yOffset = 3 + (int)(yFraction * (treeHeight - 10));
-        yOffset += (seed % 7) - 3;  // mehr Variation
+        yOffset += (seed % 8) - 4;  // Mehr Variation für natürlicheres Aussehen
         if (yOffset < 4) yOffset = 4;
         if (yOffset > treeHeight - 6) yOffset = treeHeight - 6;
         
-        // Berechne maximale Breite an dieser Y-Position (konservativ)
+        // Berechne maximale Breite an dieser Y-Position (nutze mehr vom verfügbaren Raum)
         int maxWidth;
         if (yOffset < layer1Height) {
             float progress = (float)yOffset / layer1Height;
-            maxWidth = (int)(layer1Width * (1.0f - progress * 0.6f) * 0.7f);
+            // Erhöhe von 0.7f auf 0.85f um mehr vom Rand zu nutzen
+            maxWidth = (int)(layer1Width * (1.0f - progress * 0.5f) * 0.85f);
         } else if (yOffset < layer1Height + layer2Height - (int)(4 * scale)) {
             float progress = (float)(yOffset - layer1Height + (int)(4 * scale)) / layer2Height;
-            maxWidth = (int)(layer2Width * (1.0f - progress * 0.6f) * 0.75f);
+            maxWidth = (int)(layer2Width * (1.0f - progress * 0.5f) * 0.85f);
         } else {
             float progress = (float)(yOffset - layer1Height - layer2Height + (int)(14 * scale)) / (layer3Width + 4);
-            maxWidth = (int)(layer3Width * (1.0f - progress * 0.7f) * 0.7f);
+            maxWidth = (int)(layer3Width * (1.0f - progress * 0.6f) * 0.8f);
         }
         
         if (maxWidth < 2) maxWidth = 2;
         
-        // X-Position mit Spiralmuster (abwechselnd links/rechts)
-        int xRange = maxWidth - 1;
+        // X-Position: Bessere Nutzung der Ränder
+        int xRange = maxWidth * 2;  // Voller Bereich nutzen
         int ox;
+        // Verwende mehr Variation und nutze Ränder besser
+        int xPos = seed % xRange;
         if (i % 2 == 0) {
-            // Linke Seite
-            ox = centerX - (seed % xRange) - 2;
+            // Linke Seite - gehe näher an den Rand
+            ox = centerX - maxWidth + (xPos / 2);
         } else {
-            // Rechte Seite
-            ox = centerX + (seed % xRange) + 2;
+            // Rechte Seite - gehe näher an den Rand
+            ox = centerX - maxWidth + xRange/2 + (xPos / 2);
         }
         
         int oy = baseY - yOffset;
@@ -736,44 +759,52 @@ void AnimationsModule::drawTreeLights() {
     int layer3Width = (int)(16 * scale);
     int treeHeight = layer1Height + layer2Height - (int)(4 * scale) + layer3Height - (int)(10 * scale);
     
-    // Lichter über den Baum verteilt - mehr unten als oben (proportional zur Breite)
+    // Lichter über den Baum verteilt - bessere Verteilung über die gesamte Baumfläche
     for (int i = 0; i < lightCount; i++) {
         // Berechne Position basierend auf Index
         uint32_t seed = simpleRandom(i * 67 + 321);
         
-        // Y-Position: quadratische Verteilung - mehr unten wo der Baum breiter ist
-        // Verwende Quadratwurzel für bessere Verteilung (mehr am unteren Ende)
+        // Y-Position: Verbesserte Verteilung - mehr unten, aber ganzer Baum wird genutzt
+        // Mische linear (0.3) und quadratisch (0.7) für ausgewogenere Verteilung
         float t = (float)i / lightCount;  // 0.0 bis 1.0
-        float yFraction = t * t;  // Quadratisch: 0, 0.01, 0.04, 0.09... 1.0
+        const float LINEAR_WEIGHT = 0.3f;    // 30% gleichmäßige Verteilung
+        const float QUADRATIC_WEIGHT = 0.7f; // 70% Konzentration nach unten
+        float yFraction = LINEAR_WEIGHT * t + QUADRATIC_WEIGHT * (t * t);
         int ySection = (int)(yFraction * treeHeight);
-        int yOffset = ySection + (seed % 6) - 3;  // Mehr Variation
+        int yOffset = ySection + (seed % 8) - 4;  // Mehr Variation
         if (yOffset < 2) yOffset = 2;
         if (yOffset > treeHeight - 4) yOffset = treeHeight - 4;
         
         int lightY = treeBaseY - yOffset;
         
-        // X-Position abhängig von Y (berechne maximale Breite an dieser Position - konservativ)
+        // X-Position abhängig von Y (nutze mehr vom verfügbaren Raum)
         int maxX;
         if (yOffset < layer1Height) {
             float progress = (float)yOffset / layer1Height;
-            maxX = (int)(layer1Width * (1.0f - progress * 0.6f) * 0.65f);
+            // Erhöhe von 0.65f auf 0.8f um mehr vom Rand zu nutzen
+            maxX = (int)(layer1Width * (1.0f - progress * 0.5f) * 0.8f);
         } else if (yOffset < layer1Height + layer2Height - (int)(4 * scale)) {
             float progress = (float)(yOffset - layer1Height + (int)(4 * scale)) / layer2Height;
-            maxX = (int)(layer2Width * (1.0f - progress * 0.6f) * 0.7f);
+            maxX = (int)(layer2Width * (1.0f - progress * 0.5f) * 0.8f);
         } else {
             float progress = (float)(yOffset - layer1Height - layer2Height + (int)(14 * scale)) / layer3Height;
-            maxX = (int)(layer3Width * (1.0f - progress * 0.8f) * 0.6f);
+            maxX = (int)(layer3Width * (1.0f - progress * 0.7f) * 0.75f);
         }
         
         if (maxX < 2) maxX = 2;
         
-        // Abwechselnd links und rechts für bessere Verteilung
+        // Bessere X-Verteilung - nutzt die Ränder besser
         int lightX;
         seed = simpleRandom(seed + i);
+        int xRange = maxX * 2;
+        int xPos = seed % xRange;
+        
         if (i % 2 == 0) {
-            lightX = centerX - maxX + (seed % (maxX / 2 + 1));
+            // Linke Seite - gehe näher an den Rand
+            lightX = centerX - maxX + (xPos / 2);
         } else {
-            lightX = centerX + (seed % (maxX / 2 + 1));
+            // Rechte Seite
+            lightX = centerX - maxX + xRange/2 + (xPos / 2);
         }
         
         // Blinken basierend auf Phase
@@ -954,6 +985,18 @@ void AnimationsModule::drawNewYearCountdown() {
     struct tm tm_now;
     localtime_r(&local_now, &tm_now);
     
+    // === AKTUELLE UHRZEIT LINKS ===
+    char timeText[16];
+    snprintf(timeText, sizeof(timeText), "%02d:%02d:%02d", tm_now.tm_hour, tm_now.tm_min, tm_now.tm_sec);
+    
+    u8g2.setFont(u8g2_font_7x13_tr);  // Same font as countdown
+    u8g2.setForegroundColor(rgb565(100, 200, 255));  // Light blue color for time
+    
+    // Left-aligned with small margin
+    u8g2.setCursor(2, 10);  // x=2 (left-aligned), y=10 (top)
+    u8g2.print(timeText);
+    
+    // === COUNTDOWN RECHTS ===
     // Calculate New Year (midnight) in local time
     int currentYear = tm_now.tm_year + 1900;
     int targetYear = currentYear + 1;
@@ -985,15 +1028,18 @@ void AnimationsModule::drawNewYearCountdown() {
     int minutes = (diff % 3600) / 60;
     int seconds = diff % 60;
     
-    // Draw countdown at top of screen - larger and left-aligned
+    // Draw countdown at top of screen - right-aligned
     char countdownText[40];
     snprintf(countdownText, sizeof(countdownText), "%dd %02d:%02d:%02d", days, hours, minutes, seconds);
     
-    u8g2.setFont(u8g2_font_7x13_tr);  // Larger font (was 5x7)
-    u8g2.setForegroundColor(rgb565(255, 215, 0));  // Gold color
+    u8g2.setForegroundColor(rgb565(255, 215, 0));  // Gold color for countdown
     
-    // Left-aligned with small margin
-    u8g2.setCursor(2, 10);  // x=2 (left-aligned), y=10 (top)
+    // Calculate text width for right alignment
+    int textWidth = u8g2.getUTF8Width(countdownText);
+    int canvasW = _currentCanvas->width();
+    
+    // Right-aligned with small margin (2 pixels from right edge)
+    u8g2.setCursor(canvasW - textWidth - 2, 10);  // Right-aligned, y=10 (top)
     u8g2.print(countdownText);
 }
 
@@ -1167,6 +1213,7 @@ void AnimationsModule::drawFlame(int x, int y, int phase) {
 
 void AnimationsModule::drawCandleFlame(int x, int y, int phase) {
     // Ähnlich wie Kaminfeuer, aber kleiner und ohne Funken
+    // Ruhigere Flamme mit weniger X-Achsen-Bewegung für realistischeren Kerzeneffekt
     int canvasH = _currentCanvas->height();
     float scale = canvasH / 66.0f;
     
@@ -1192,8 +1239,9 @@ void AnimationsModule::drawCandleFlame(int x, int y, int phase) {
         float widthFactor = (1.0f - yProgress * yProgress) * 0.9f + 0.1f;
         int lineWidth = (int)(flameWidth / 2 * widthFactor);
         
-        // Leichte Wellenbewegung
-        int waveOffset = (int)(sin((fy + phase * 2) * 0.5f) * 2);
+        // Deutlich reduzierte Wellenbewegung für ruhigere Flamme
+        // Nur sehr sanfte Y-abhängige Bewegung, kein starkes Flackern
+        int waveOffset = (fy > baseFlameHeight / 2) ? ((phase / 4) % 2) - 1 : 0;
         
         for (int fx = -lineWidth; fx <= lineWidth; fx++) {
             uint32_t seed = simpleRandom(fx * 23 + fy * 47 + phase * 5);
@@ -1202,8 +1250,8 @@ void AnimationsModule::drawCandleFlame(int x, int y, int phase) {
             float density = 1.0f - yProgress * 0.6f;
             if ((seed % 100) > density * 100) continue;
             
-            // Position mit Flackern
-            int flickerX = ((seed / 7) % 3) - 1;
+            // Sehr reduziertes Flackern - nur minimal für natürlichen Effekt
+            int flickerX = (fy > baseFlameHeight * 0.7f) ? ((seed / 7) % 2) : 0;
             int px = x + fx + waveOffset + flickerX;
             int py = y - fy;
             
@@ -1469,7 +1517,6 @@ void AnimationsModule::timeIsUp() {
 void AnimationsModule::drawFireplace() {
     int canvasW = _currentCanvas->width();
     int canvasH = _currentCanvas->height();
-    int centerX = canvasW / 2;
     
     // Skalierung: X-Achse stärker als Y-Achse für breiteres Bild
     float scaleX = canvasW / 192.0f;
@@ -1490,22 +1537,84 @@ void AnimationsModule::drawFireplace() {
     uint16_t brickDark = rgb565(br, bg, bb);
     uint16_t brickLight = rgb565(min(255, br + 60), min(255, bg + 40), min(255, bb + 40));
     
-    // Kamin-Dimensionen - X breiter skalieren, Y moderat
-    int fireplaceWidth = (int)(130 * scaleX);  // Breiter
-    int fireplaceHeight = (int)(48 * effectiveScaleY);  // Höhe moderat skaliert
+    // Layout-Planung: Werkzeuge links, Kamin Mitte-Links, Holzlager rechts
+    int toolsWidth = (int)(15 * scaleX);  // Platz für Werkzeuge links
+    int fireplaceWidth = (int)(110 * scaleX);
+    int woodStorageSpace = canvasW - toolsWidth - fireplaceWidth - (int)(6 * scaleX);  // Restlicher Platz rechts
+    
+    // Kamin-Dimensionen
+    int fireplaceHeight = (int)(48 * effectiveScaleY);
     int simsHeight = (int)(8 * effectiveScaleY);
-    int simsOverhang = (int)(12 * scaleX);
-    int openingWidth = (int)(75 * scaleX);
+    int simsOverhang = (int)(8 * scaleX);
+    int openingWidth = (int)(65 * scaleX);
     int openingHeight = (int)(35 * effectiveScaleY);
     
-    int baseY = canvasH;  // Kamin ganz unten
-    int fireX = centerX - fireplaceWidth / 2;
+    int baseY = canvasH;
+    // Kamin positionieren: nach den Werkzeugen
+    int fireplaceLeftEdge = toolsWidth + (int)(3 * scaleX);
+    int fireX = fireplaceLeftEdge;
     int fireY = baseY - fireplaceHeight;
+    int centerX = fireX + fireplaceWidth / 2;  // Zentriert innerhalb des Kamins
+    
+    // ===== KAMINWERKZEUGE LINKS VOM KAMIN =====
+    // Werkzeuge links platzieren für schönere Symmetrie
+    int toolsX = (int)(3 * scaleX);
+    uint16_t toolColor = rgb565(70, 70, 70);      // Metall
+    uint16_t toolDark = rgb565(40, 40, 40);       // Dunkleres Metall
+    uint16_t handleColor = rgb565(100, 70, 40);   // Holzgriff
+    uint16_t brassColor = rgb565(180, 150, 50);   // Messing-Akzent
+    
+    int toolsBaseY = baseY;
+    int toolHeight = (int)(42 * effectiveScaleY);
+    
+    // Schürhaken (poker) - links
+    int pokerX = toolsX + (int)(3 * scaleX);
+    int pokerY = toolsBaseY - toolHeight;
+    
+    // Stiel mit Schattierung
+    _currentCanvas->drawLine(pokerX, pokerY, pokerX, toolsBaseY - (int)(8 * effectiveScaleY), toolColor);
+    _currentCanvas->drawLine(pokerX + 1, pokerY, pokerX + 1, toolsBaseY - (int)(8 * effectiveScaleY), toolDark);
+    
+    // Holzgriff
+    int handleStart = toolsBaseY - (int)(8 * effectiveScaleY);
+    _currentCanvas->drawLine(pokerX, handleStart, pokerX, toolsBaseY - 2, handleColor);
+    _currentCanvas->drawLine(pokerX + 1, handleStart, pokerX + 1, toolsBaseY - 2, rgb565(80, 55, 30));
+    
+    // Haken oben (detaillierter)
+    _currentCanvas->drawLine(pokerX, pokerY, pokerX + 3, pokerY + 2, toolColor);
+    _currentCanvas->drawLine(pokerX + 3, pokerY + 2, pokerX + 3, pokerY + 5, toolColor);
+    _currentCanvas->drawPixel(pokerX + 1, pokerY + 1, toolDark);
+    
+    // Kleiner Messing-Ring am Griff
+    _currentCanvas->drawPixel(pokerX, handleStart + (int)(3 * effectiveScaleY), brassColor);
+    
+    // Schaufel/Kelle - rechts vom Schürhaken
+    int shovelX = toolsX + (int)(9 * scaleX);
+    int shovelY = toolsBaseY - toolHeight + (int)(3 * effectiveScaleY);
+    
+    // Stiel
+    _currentCanvas->drawLine(shovelX, shovelY, shovelX, toolsBaseY - (int)(8 * effectiveScaleY), toolColor);
+    _currentCanvas->drawLine(shovelX + 1, shovelY, shovelX + 1, toolsBaseY - (int)(8 * effectiveScaleY), toolDark);
+    
+    // Holzgriff
+    _currentCanvas->drawLine(shovelX, handleStart, shovelX, toolsBaseY - 2, handleColor);
+    _currentCanvas->drawLine(shovelX + 1, handleStart, shovelX + 1, toolsBaseY - 2, rgb565(80, 55, 30));
+    
+    // Schaufelblatt (größer und detaillierter)
+    int bladeW = (int)(6 * scaleX);
+    int bladeH = (int)(5 * effectiveScaleY);
+    _currentCanvas->fillRect(shovelX - bladeW/2, shovelY, bladeW, bladeH, toolColor);
+    _currentCanvas->drawRect(shovelX - bladeW/2, shovelY, bladeW, bladeH, toolDark);
+    // Highlight auf der Schaufel
+    _currentCanvas->drawLine(shovelX - 1, shovelY + 1, shovelX - 1, shovelY + bladeH - 1, rgb565(100, 100, 100));
+    
+    // Messing-Ring
+    _currentCanvas->drawPixel(shovelX, handleStart + (int)(3 * effectiveScaleY), brassColor);
     
     // ===== KAMINSIMS (oben) - schöner mit Profil =====
     int simsY = fireY - simsHeight;
     int simsWidth = fireplaceWidth + simsOverhang * 2;
-    int simsX = centerX - simsWidth / 2;
+    int simsX = fireX - simsOverhang;
     
     // Sims-Profil: Unterteil (dicker)
     int simsLower = (int)(simsHeight * 0.6);
@@ -1542,7 +1651,7 @@ void AnimationsModule::drawFireplace() {
     }
     
     // Kamin-Rahmen (rechts)
-    int rightFrameX = centerX + openingWidth / 2;
+    int rightFrameX = fireX + frameWidth + openingWidth;
     _currentCanvas->fillRect(rightFrameX, fireY, frameWidth, fireplaceHeight, brickColor);
     // Ziegel-Muster rechts
     for (int row = 0; row < fireplaceHeight / 6; row++) {
@@ -1558,22 +1667,23 @@ void AnimationsModule::drawFireplace() {
     }
     
     // Kamin-Öffnung (SCHWARZ)
-    int openingX = centerX - openingWidth / 2;
+    int openingX = fireX + frameWidth;
     int openingY = baseY - openingHeight;
     _currentCanvas->fillRect(openingX, openingY, openingWidth, openingHeight, rgb565(0, 0, 0));
     
-    // ===== HOLZSCHEITE - ZUERST zeichnen =====
-    uint16_t woodOuter = rgb565(101, 67, 33);   // Rinde außen
-    uint16_t woodInner = rgb565(180, 140, 90);  // Holz innen (heller)
-    uint16_t woodDark = rgb565(60, 40, 20);     // Schatten
-    uint16_t woodRing = rgb565(140, 100, 60);   // Jahresringe
+    // ===== HOLZSCHEITE IM KAMIN - ZUERST zeichnen =====
+    // Farben angepasst für 5-bit RGB565 Farbtiefe (deutlichere Unterschiede)
+    uint16_t woodOuter = rgb565(96, 64, 32);    // Rinde außen - dunkleres Braun
+    uint16_t woodInner = rgb565(192, 144, 96);  // Holz innen - heller, mehr Kontrast
+    uint16_t woodDark = rgb565(48, 32, 16);     // Schatten - deutlich dunkler
+    uint16_t woodRing = rgb565(144, 96, 64);    // Jahresringe - mittlerer Ton
     
     int logY = baseY - 3;
     int logRadius = (int)(4 * effectiveScaleY);
     int logLength = (int)(28 * scaleX);
     
-    // Linkes Scheit (schräg liegend)
-    int log1X = centerX - logLength/2 - 3;
+    // Linkes Scheit (schräg liegend) im Kamin
+    int log1X = openingX + 5;
     int log1Y = logY - logRadius;
     
     // Körper des Scheits (zylindrisch)
@@ -1592,11 +1702,11 @@ void AnimationsModule::drawFireplace() {
     }
     _currentCanvas->drawPixel(log1X, log1Y, woodDark);
     
-    // Rechtes Scheit
-    int log2X = centerX + 3;
+    // Rechtes Scheit im Kamin
+    int log2X = openingX + 10;
     int log2Y = logY - logRadius - 1;
     
-    for (int i = 0; i < logLength; i++) {
+    for (int i = 0; i < logLength - 5; i++) {
         int x = log2X + i;
         _currentCanvas->drawLine(x, log2Y - logRadius + 1, x, log2Y + logRadius - 1, woodOuter);
         _currentCanvas->drawPixel(x, log2Y - logRadius, woodDark);
@@ -1604,29 +1714,127 @@ void AnimationsModule::drawFireplace() {
     }
     
     // Schnittfläche rechts
-    _currentCanvas->fillCircle(log2X + logLength, log2Y, logRadius, woodInner);
-    _currentCanvas->drawCircle(log2X + logLength, log2Y, logRadius, woodOuter);
+    _currentCanvas->fillCircle(log2X + logLength - 5, log2Y, logRadius, woodInner);
+    _currentCanvas->drawCircle(log2X + logLength - 5, log2Y, logRadius, woodOuter);
     if (logRadius > 2) {
-        _currentCanvas->drawCircle(log2X + logLength, log2Y, logRadius - 2, woodRing);
+        _currentCanvas->drawCircle(log2X + logLength - 5, log2Y, logRadius - 2, woodRing);
     }
-    _currentCanvas->drawPixel(log2X + logLength, log2Y, woodDark);
-    
-    // Kleines drittes Scheit oben drauf
-    int log3X = centerX - (int)(8 * scaleX);
-    int log3Y = logY - logRadius * 3;
-    int log3Radius = (int)(3 * effectiveScaleY);
-    int log3Length = (int)(20 * scaleX);
-    
-    for (int i = 0; i < log3Length; i++) {
-        int x = log3X + i;
-        _currentCanvas->drawLine(x, log3Y - log3Radius + 1, x, log3Y + log3Radius - 1, woodOuter);
-        _currentCanvas->drawPixel(x, log3Y, woodRing);
-    }
-    _currentCanvas->fillCircle(log3X, log3Y, log3Radius, woodInner);
-    _currentCanvas->drawCircle(log3X, log3Y, log3Radius, woodOuter);
+    _currentCanvas->drawPixel(log2X + logLength - 5, log2Y, woodDark);
     
     // ===== FEUER - NACH den Holzscheiten zeichnen =====
-    drawFireplaceFlames(centerX, baseY - 2, openingWidth - 10, openingHeight - 5);
+    drawFireplaceFlames(openingX + openingWidth/2, baseY - 2, openingWidth - 10, openingHeight - 5);
+    
+    // ===== HOLZLAGER RECHTS UNTER DEM KAMINSIMS =====
+    // Bereich rechts vom Kamin für gestapelte Holzscheite
+    int woodStorageX = fireX + fireplaceWidth + (int)(3 * scaleX);
+    int woodStorageMaxX = canvasW - (int)(3 * scaleX);  // Fast bis zum rechten Rand
+    int woodStorageWidth = woodStorageMaxX - woodStorageX;
+    
+    // Verbesserte Holzscheite mit mehr Details
+    int storageLogRadius = (int)(3.5 * effectiveScaleY);
+    int storageLogLength = (int)(22 * scaleX);  // Längere Scheite
+    
+    // Variationen für realistischeres Holz - angepasst für 5-bit RGB565 Farbtiefe
+    // Deutlichere Farbunterschiede für bessere Sichtbarkeit
+    uint16_t woodVariants[] = {
+        rgb565(96, 64, 32),    // Dunkel
+        rgb565(128, 88, 48),   // Mittel-Dunkel  
+        rgb565(160, 112, 64),  // Mittel-Hell
+        rgb565(112, 72, 40)    // Mittel
+    };
+    
+    // UNTERE LAGE: Horizontal gestapelt (4-5 Scheite nebeneinander)
+    int numBottomLogs = min(5, woodStorageWidth / (int)(23 * scaleX));
+    for (int i = 0; i < numBottomLogs; i++) {
+        int lx = woodStorageX + (int)(i * 23 * scaleX);
+        int ly = baseY - storageLogRadius - 2;
+        
+        if (lx + storageLogLength <= woodStorageMaxX) {
+            uint16_t logColor = woodVariants[i % 4];
+            
+            // Zeichne Scheit horizontal
+            for (int j = 0; j < storageLogLength; j++) {
+                int x = lx + j;
+                _currentCanvas->drawLine(x, ly - storageLogRadius + 1, x, ly + storageLogRadius - 1, logColor);
+                // Textur: gelegentliche Risse
+                if (j % 8 == 0) {
+                    _currentCanvas->drawPixel(x, ly, woodDark);
+                }
+            }
+            
+            // Schnittflächen mit Jahresringen
+            _currentCanvas->fillCircle(lx, ly, storageLogRadius, woodInner);
+            _currentCanvas->drawCircle(lx, ly, storageLogRadius, logColor);
+            if (storageLogRadius > 2) {
+                _currentCanvas->drawCircle(lx, ly, storageLogRadius - 2, woodRing);
+                _currentCanvas->drawPixel(lx, ly, woodDark);
+            }
+            
+            if (lx + storageLogLength <= canvasW) {
+                _currentCanvas->fillCircle(lx + storageLogLength, ly, storageLogRadius, woodInner);
+                _currentCanvas->drawCircle(lx + storageLogLength, ly, storageLogRadius, logColor);
+                if (storageLogRadius > 2) {
+                    _currentCanvas->drawCircle(lx + storageLogLength, ly, storageLogRadius - 2, woodRing);
+                }
+            }
+        }
+    }
+    
+    // MITTLERE LAGE: Quer gestapelt (90° gedreht) - realistisches Kreuzstapeln
+    int numMiddleLogs = min(4, (woodStorageWidth - 5) / (int)(8 * scaleX));
+    int middleY = baseY - storageLogRadius * 2 - (int)(4 * effectiveScaleY);
+    for (int i = 0; i < numMiddleLogs; i++) {
+        int lx = woodStorageX + (int)((i * (storageLogLength / numMiddleLogs + 5)) * scaleX);
+        int ly = middleY;
+        
+        if (lx < woodStorageMaxX - 5) {
+            uint16_t logColor = woodVariants[(i + 1) % 4];
+            int thisLogLength = min(storageLogLength, (int)((woodStorageMaxX - lx - 5) * 0.9));
+            
+            // Zeichne Scheit vertikal (quer zur unteren Lage)
+            for (int j = 0; j < thisLogLength; j++) {
+                int x = lx + j;
+                if (x < woodStorageMaxX) {
+                    _currentCanvas->drawLine(x, ly - storageLogRadius + 1, x, ly + storageLogRadius - 1, logColor);
+                }
+            }
+            
+            // Schnittflächen
+            _currentCanvas->fillCircle(lx, ly, storageLogRadius, woodInner);
+            _currentCanvas->drawCircle(lx, ly, storageLogRadius, logColor);
+            if (storageLogRadius > 2) {
+                _currentCanvas->drawCircle(lx, ly, storageLogRadius - 2, woodRing);
+            }
+        }
+    }
+    
+    // OBERE LAGE: Wieder horizontal (wie unten) - klassische Kreuzstapelung
+    int topY = baseY - storageLogRadius * 4 - (int)(8 * effectiveScaleY);
+    if (topY > simsY + simsHeight + 5) {
+        int numTopLogs = min(3, woodStorageWidth / (int)(28 * scaleX));
+        for (int i = 0; i < numTopLogs; i++) {
+            int lx = woodStorageX + (int)((i * 28 + 5) * scaleX);
+            int ly = topY;
+            
+            if (lx + storageLogLength - 8 <= woodStorageMaxX) {
+                uint16_t logColor = woodVariants[(i + 2) % 4];
+                int thisLogLength = storageLogLength - 8;
+                
+                for (int j = 0; j < thisLogLength; j++) {
+                    int x = lx + j;
+                    if (x < woodStorageMaxX) {
+                        _currentCanvas->drawLine(x, ly - storageLogRadius + 1, x, ly + storageLogRadius - 1, logColor);
+                    }
+                }
+                
+                _currentCanvas->fillCircle(lx, ly, storageLogRadius, woodInner);
+                _currentCanvas->drawCircle(lx, ly, storageLogRadius, logColor);
+                if (storageLogRadius > 2) {
+                    _currentCanvas->drawCircle(lx, ly, storageLogRadius - 2, woodRing);
+                }
+            }
+        }
+    }
     
     // Strümpfe am Kaminsims
     drawStockings(simsY, simsWidth, centerX);
@@ -1998,5 +2206,73 @@ void AnimationsModule::drawMantleDecorations(int simsY, int simsWidth, int cente
             _currentCanvas->fillRect(cx - 2, cy - frameH + 4, 4, 4, rgb565(180, 100, 80));
             _currentCanvas->fillTriangle(cx - 3, cy - frameH + 4, cx, cy - frameH + 1, cx + 3, cy - frameH + 4, rgb565(150, 80, 60));
         }
+    }
+}
+
+void AnimationsModule::drawLedBorder() {
+    // Prüfe ob LED-Rahmen aktiviert ist
+    if (!config || !config->ledBorderEnabled) return;
+    
+    int canvasW = _currentCanvas->width();
+    int canvasH = _currentCanvas->height();
+    
+    // Parse LED-Farben aus Config
+    uint16_t ledColors[4];
+    int numColors = 0;
+    
+    if (config && config->ledBorderColors.length() > 0) {
+        PsramString colors = config->ledBorderColors;
+        size_t pos = 0;
+        while (numColors < 4 && pos < colors.length()) {
+            size_t commaPos = colors.find(',', pos);
+            if (commaPos == PsramString::npos) commaPos = colors.length();
+            PsramString hexColor = colors.substr(pos, commaPos - pos);
+            ledColors[numColors] = hexToRgb565(hexColor.c_str());
+            pos = commaPos + 1;
+            numColors++;
+        }
+    }
+    
+    // Fallback auf Standard-Farben
+    if (numColors == 0) {
+        ledColors[0] = rgb565(255, 0, 0);    // Rot
+        ledColors[1] = rgb565(0, 255, 0);    // Grün
+        ledColors[2] = rgb565(0, 0, 255);    // Blau
+        ledColors[3] = rgb565(255, 255, 0);  // Gelb
+        numColors = 4;
+    }
+    
+    // Zeichne jedes einzelne Pixel des Rahmens mit Farbzyklus
+    // LED1=Farbe1, LED2=Farbe2, LED3=Farbe3, LED4=Farbe4, dann wiederholen
+    // Animation: Phase verschiebt, welche Farbe an welcher Position ist
+    
+    int pixelIndex = 0;
+    
+    // Obere Kante (links nach rechts)
+    for (int x = 0; x < canvasW; x++) {
+        int colorIdx = (pixelIndex + _ledBorderPhase) % numColors;
+        _currentCanvas->drawPixel(x, 0, ledColors[colorIdx]);
+        pixelIndex++;
+    }
+    
+    // Rechte Kante (oben nach unten) - ohne Eckpixel
+    for (int y = 1; y < canvasH; y++) {
+        int colorIdx = (pixelIndex + _ledBorderPhase) % numColors;
+        _currentCanvas->drawPixel(canvasW - 1, y, ledColors[colorIdx]);
+        pixelIndex++;
+    }
+    
+    // Untere Kante (rechts nach links) - ohne Eckpixel
+    for (int x = canvasW - 2; x >= 0; x--) {
+        int colorIdx = (pixelIndex + _ledBorderPhase) % numColors;
+        _currentCanvas->drawPixel(x, canvasH - 1, ledColors[colorIdx]);
+        pixelIndex++;
+    }
+    
+    // Linke Kante (unten nach oben) - ohne Eckpixel
+    for (int y = canvasH - 2; y > 0; y--) {
+        int colorIdx = (pixelIndex + _ledBorderPhase) % numColors;
+        _currentCanvas->drawPixel(0, y, ledColors[colorIdx]);
+        pixelIndex++;
     }
 }

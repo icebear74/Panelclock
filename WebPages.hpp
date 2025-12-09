@@ -304,8 +304,6 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
         <div class="group">
             <h3>Adventskranz</h3>
             <input type="checkbox" id="adventWreathEnabled" name="adventWreathEnabled" {adventWreathEnabled_checked}><label for="adventWreathEnabled" style="display:inline;">Adventskranz aktivieren</label><br>
-            <label for="adventWreathDisplaySec">Anzeigedauer (Sekunden)</label><input type="number" id="adventWreathDisplaySec" name="adventWreathDisplaySec" value="{adventWreathDisplaySec}" min="5">
-            <label for="adventWreathRepeatMin">Wiederholungsintervall (Minuten)</label><input type="number" id="adventWreathRepeatMin" name="adventWreathRepeatMin" value="{adventWreathRepeatMin}" min="1">
             
             <label for="adventWreathColorMode">Kerzenfarben</label>
             <select id="adventWreathColorMode" name="adventWreathColorMode" onchange="toggleCustomColors()">
@@ -324,8 +322,6 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
                 </div>
                 <input type="hidden" id="adventWreathCustomColors" name="adventWreathCustomColors" value="{adventWreathCustomColors}">
             </div>
-            
-            <br><input type="checkbox" id="adventWreathInterrupt" name="adventWreathInterrupt" {adventWreathInterrupt_checked}><label for="adventWreathInterrupt" style="display:inline;">Unterbrechend anzeigen</label><br>
             
             <label for="adventWreathFlameSpeedMs">Flammen-Animation (ms)</label><input type="number" id="adventWreathFlameSpeedMs" name="adventWreathFlameSpeedMs" value="{adventWreathFlameSpeedMs}" min="20" max="500">
             
@@ -391,10 +387,28 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
     <div id="SubAllgemein" class="subtabcontent">
         <div class="group">
             <h3>Allgemeine Einstellungen</h3>
-            <label style="display: inline-block; margin: 10px 0;"><input type="checkbox" name="adventWreathFullscreen" id="adventWreathFullscreen" {adventWreathFullscreen_checked}> Vollbild-Modus (192x96 statt 192x66)</label>
+            <p style="color:#888; font-size:12px; margin:5px 0;">Hinweis: Animationen verwenden jetzt immer den Vollbild-Modus für optimale Darstellung.</p>
+            
+            <label for="adventWreathDisplaySec">Anzeigedauer (Sekunden)</label><input type="number" id="adventWreathDisplaySec" name="adventWreathDisplaySec" value="{adventWreathDisplaySec}" min="5">
+            <label for="adventWreathRepeatMin">Wiederholungsintervall (Minuten)</label><input type="number" id="adventWreathRepeatMin" name="adventWreathRepeatMin" value="{adventWreathRepeatMin}" min="1">
+            <label style="display: inline-block; margin: 10px 0;"><input type="checkbox" id="adventWreathInterrupt" name="adventWreathInterrupt" {adventWreathInterrupt_checked}> Unterbrechend anzeigen</label><br>
+            
             <label style="display: inline-block; margin: 10px 0;"><input type="checkbox" name="showNewYearCountdown" id="showNewYearCountdown" {showNewYearCountdown_checked}> Countdown bis Silvester anzeigen</label>
             
-            <p style="color:#bbb; margin-top:10px;">Gilt für alle Animationen. Im Vollbild-Modus nutzen die Animationen die gesamte verfügbare Displayhöhe. Der Countdown zeigt die verbleibende Zeit bis zum Jahreswechsel (Tage, Stunden, Minuten, Sekunden) auf Adventskranz und Weihnachtsbaum an.</p>
+            <h3 style="margin-top:20px;">LED-Lauflicht-Rahmen</h3>
+            <label style="display: inline-block; margin: 10px 0;"><input type="checkbox" name="ledBorderEnabled" id="ledBorderEnabled" {ledBorderEnabled_checked}> LED-Rahmen aktivieren (für Adventskranz & Weihnachtsbaum)</label>
+            <label for="ledBorderSpeedMs">Lauflicht-Geschwindigkeit (ms)</label><input type="number" id="ledBorderSpeedMs" name="ledBorderSpeedMs" value="{ledBorderSpeedMs}" min="30" max="500">
+            
+            <label>LED-Rahmen Farben (4 Farben)</label>
+            <div style="display:flex;gap:10px;margin-top:5px;">
+                <div><label style="font-size:12px;">Farbe 1</label><input type="color" id="ledColor1" value="{ledColor1}"></div>
+                <div><label style="font-size:12px;">Farbe 2</label><input type="color" id="ledColor2" value="{ledColor2}"></div>
+                <div><label style="font-size:12px;">Farbe 3</label><input type="color" id="ledColor3" value="{ledColor3}"></div>
+                <div><label style="font-size:12px;">Farbe 4</label><input type="color" id="ledColor4" value="{ledColor4}"></div>
+            </div>
+            <input type="hidden" id="ledBorderColors" name="ledBorderColors" value="{ledBorderColors}">
+            
+            <p style="color:#bbb; margin-top:10px;">Gilt für alle Animationen. Der Countdown zeigt die verbleibende Zeit bis zum Jahreswechsel (Tage, Stunden, Minuten, Sekunden) rechtsbündig auf Adventskranz und Weihnachtsbaum an. Die aktuelle Uhrzeit wird linksbündig angezeigt. Der LED-Rahmen läuft mit 4 Phasen und bunten Lampen um den gesamten Bereich herum.</p>
         </div>
     </div>
 </div>
@@ -432,11 +446,22 @@ function updateCustomColors() {
     var c4 = document.getElementById('candleColor4').value;
     document.getElementById('adventWreathCustomColors').value = c1 + ',' + c2 + ',' + c3 + ',' + c4;
 }
+function updateLedBorderColors() {
+    var c1 = document.getElementById('ledColor1').value;
+    var c2 = document.getElementById('ledColor2').value;
+    var c3 = document.getElementById('ledColor3').value;
+    var c4 = document.getElementById('ledColor4').value;
+    document.getElementById('ledBorderColors').value = c1 + ',' + c2 + ',' + c3 + ',' + c4;
+}
 document.addEventListener('DOMContentLoaded', function() {
     toggleCustomColors();
     toggleTreeLightColor();
     ['candleColor1','candleColor2','candleColor3','candleColor4'].forEach(function(id) {
         document.getElementById(id).addEventListener('change', updateCustomColors);
+    });
+    ['ledColor1','ledColor2','ledColor3','ledColor4'].forEach(function(id) {
+        var elem = document.getElementById(id);
+        if (elem) elem.addEventListener('change', updateLedBorderColors);
     });
     // Open first sub-tab by default when Animationen tab is opened
     var firstSubTab = document.getElementById('SubAdventskranz');

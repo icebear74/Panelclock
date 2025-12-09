@@ -229,6 +229,9 @@ void handleConfigModules() {
     replaceAll(content, "{christmasTreeLightColor}", deviceConfig->christmasTreeLightColor.c_str());
     replaceAll(content, "{adventWreathFullscreen_checked}", deviceConfig->adventWreathFullscreen ? "checked" : "");
     replaceAll(content, "{showNewYearCountdown_checked}", deviceConfig->showNewYearCountdown ? "checked" : "");
+    replaceAll(content, "{ledBorderEnabled_checked}", deviceConfig->ledBorderEnabled ? "checked" : "");
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->ledBorderSpeedMs); replaceAll(content, "{ledBorderSpeedMs}", num_buf);
+    replaceAll(content, "{ledBorderColors}", deviceConfig->ledBorderColors.c_str());
     
     // Kamin-Konfiguration
     replaceAll(content, "{fireplaceEnabled_checked}", deviceConfig->fireplaceEnabled ? "checked" : "");
@@ -259,6 +262,23 @@ void handleConfigModules() {
     replaceAll(content, "{candleColor2}", candleColors[1].c_str());
     replaceAll(content, "{candleColor3}", candleColors[2].c_str());
     replaceAll(content, "{candleColor4}", candleColors[3].c_str());
+    
+    // Parse LED border colors for individual color pickers
+    PsramString ledColors_str = deviceConfig->ledBorderColors;
+    PsramString ledColors[4] = {"#FF0000", "#00FF00", "#0000FF", "#FFFF00"};
+    colorIdx = 0;
+    pos = 0;
+    while (colorIdx < 4 && pos < ledColors_str.length()) {
+        size_t commaPos = ledColors_str.find(',', pos);
+        if (commaPos == PsramString::npos) commaPos = ledColors_str.length();
+        ledColors[colorIdx] = ledColors_str.substr(pos, commaPos - pos);
+        pos = commaPos + 1;
+        colorIdx++;
+    }
+    replaceAll(content, "{ledColor1}", ledColors[0].c_str());
+    replaceAll(content, "{ledColor2}", ledColors[1].c_str());
+    replaceAll(content, "{ledColor3}", ledColors[2].c_str());
+    replaceAll(content, "{ledColor4}", ledColors[3].c_str());
     
     // Global scrolling configuration
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->globalScrollSpeedMs); replaceAll(content, "{globalScrollSpeedMs}", num_buf);
@@ -398,6 +418,9 @@ void handleSaveModules() {
     if (server->hasArg("christmasTreeLightColor")) deviceConfig->christmasTreeLightColor = server->arg("christmasTreeLightColor").c_str();
     deviceConfig->adventWreathFullscreen = server->hasArg("adventWreathFullscreen");
     deviceConfig->showNewYearCountdown = server->hasArg("showNewYearCountdown");
+    deviceConfig->ledBorderEnabled = server->hasArg("ledBorderEnabled");
+    if (server->hasArg("ledBorderSpeedMs")) deviceConfig->ledBorderSpeedMs = server->arg("ledBorderSpeedMs").toInt();
+    if (server->hasArg("ledBorderColors")) deviceConfig->ledBorderColors = server->arg("ledBorderColors").c_str();
     
     // Kamin-Konfiguration
     deviceConfig->fireplaceEnabled = server->hasArg("fireplaceEnabled");
