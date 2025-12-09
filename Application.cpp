@@ -152,10 +152,11 @@ void Application::begin() {
         _animationsMod->begin();
 
         // Determine effective hostname (with fallback if empty)
-        if (deviceConfig->hostname.empty()) {
+        bool hostnameEmpty = deviceConfig->hostname.empty();
+        if (hostnameEmpty) {
             Log.println("[Application] WARNUNG: Hostname ist leer. Verwende Standard-Hostname 'panelclock'.");
         }
-        const char* effectiveHostname = deviceConfig->hostname.empty() ? "panelclock" : deviceConfig->hostname.c_str();
+        const char* effectiveHostname = hostnameEmpty ? "panelclock" : deviceConfig->hostname.c_str();
         
         // Set WiFi hostname
         WiFi.setHostname(effectiveHostname);
@@ -165,7 +166,7 @@ void Application::begin() {
         if (!MDNS.begin(effectiveHostname)) {
             Log.printf("[Application] FEHLER: mDNS-Start mit Hostname '%s' fehlgeschlagen!\n", effectiveHostname);
             displayStatus("mDNS Fehler!");
-            delay(2000);
+            delay(2000); // Allow user to see error message on display
         } else {
             Log.printf("[Application] mDNS gestartet: %s.local\n", effectiveHostname);
         }
