@@ -1537,8 +1537,12 @@ void AnimationsModule::drawFireplace() {
     uint16_t brickDark = rgb565(br, bg, bb);
     uint16_t brickLight = rgb565(min(255, br + 60), min(255, bg + 40), min(255, bb + 40));
     
-    // Kamin-Dimensionen - LINKSBÜNDIG positioniert
-    int fireplaceWidth = (int)(110 * scaleX);  // Etwas schmaler für Platz rechts
+    // Layout-Planung: Werkzeuge links, Kamin Mitte-Links, Holzlager rechts
+    int toolsWidth = (int)(15 * scaleX);  // Platz für Werkzeuge links
+    int fireplaceWidth = (int)(110 * scaleX);
+    int woodStorageSpace = canvasW - toolsWidth - fireplaceWidth - (int)(6 * scaleX);  // Restlicher Platz rechts
+    
+    // Kamin-Dimensionen
     int fireplaceHeight = (int)(48 * effectiveScaleY);
     int simsHeight = (int)(8 * effectiveScaleY);
     int simsOverhang = (int)(8 * scaleX);
@@ -1546,11 +1550,66 @@ void AnimationsModule::drawFireplace() {
     int openingHeight = (int)(35 * effectiveScaleY);
     
     int baseY = canvasH;
-    // LINKSBÜNDIG: Kamin startet bei x=10 statt zentriert
-    int fireplaceLeftEdge = (int)(10 * scaleX);
+    // Kamin positionieren: nach den Werkzeugen
+    int fireplaceLeftEdge = toolsWidth + (int)(3 * scaleX);
     int fireX = fireplaceLeftEdge;
     int fireY = baseY - fireplaceHeight;
     int centerX = fireX + fireplaceWidth / 2;  // Zentriert innerhalb des Kamins
+    
+    // ===== KAMINWERKZEUGE LINKS VOM KAMIN =====
+    // Werkzeuge links platzieren für schönere Symmetrie
+    int toolsX = (int)(3 * scaleX);
+    uint16_t toolColor = rgb565(70, 70, 70);      // Metall
+    uint16_t toolDark = rgb565(40, 40, 40);       // Dunkleres Metall
+    uint16_t handleColor = rgb565(100, 70, 40);   // Holzgriff
+    uint16_t brassColor = rgb565(180, 150, 50);   // Messing-Akzent
+    
+    int toolsBaseY = baseY;
+    int toolHeight = (int)(42 * effectiveScaleY);
+    
+    // Schürhaken (poker) - links
+    int pokerX = toolsX + (int)(3 * scaleX);
+    int pokerY = toolsBaseY - toolHeight;
+    
+    // Stiel mit Schattierung
+    _currentCanvas->drawLine(pokerX, pokerY, pokerX, toolsBaseY - (int)(8 * effectiveScaleY), toolColor);
+    _currentCanvas->drawLine(pokerX + 1, pokerY, pokerX + 1, toolsBaseY - (int)(8 * effectiveScaleY), toolDark);
+    
+    // Holzgriff
+    int handleStart = toolsBaseY - (int)(8 * effectiveScaleY);
+    _currentCanvas->drawLine(pokerX, handleStart, pokerX, toolsBaseY - 2, handleColor);
+    _currentCanvas->drawLine(pokerX + 1, handleStart, pokerX + 1, toolsBaseY - 2, rgb565(80, 55, 30));
+    
+    // Haken oben (detaillierter)
+    _currentCanvas->drawLine(pokerX, pokerY, pokerX + 3, pokerY + 2, toolColor);
+    _currentCanvas->drawLine(pokerX + 3, pokerY + 2, pokerX + 3, pokerY + 5, toolColor);
+    _currentCanvas->drawPixel(pokerX + 1, pokerY + 1, toolDark);
+    
+    // Kleiner Messing-Ring am Griff
+    _currentCanvas->drawPixel(pokerX, handleStart + (int)(3 * effectiveScaleY), brassColor);
+    
+    // Schaufel/Kelle - rechts vom Schürhaken
+    int shovelX = toolsX + (int)(9 * scaleX);
+    int shovelY = toolsBaseY - toolHeight + (int)(3 * effectiveScaleY);
+    
+    // Stiel
+    _currentCanvas->drawLine(shovelX, shovelY, shovelX, toolsBaseY - (int)(8 * effectiveScaleY), toolColor);
+    _currentCanvas->drawLine(shovelX + 1, shovelY, shovelX + 1, toolsBaseY - (int)(8 * effectiveScaleY), toolDark);
+    
+    // Holzgriff
+    _currentCanvas->drawLine(shovelX, handleStart, shovelX, toolsBaseY - 2, handleColor);
+    _currentCanvas->drawLine(shovelX + 1, handleStart, shovelX + 1, toolsBaseY - 2, rgb565(80, 55, 30));
+    
+    // Schaufelblatt (größer und detaillierter)
+    int bladeW = (int)(6 * scaleX);
+    int bladeH = (int)(5 * effectiveScaleY);
+    _currentCanvas->fillRect(shovelX - bladeW/2, shovelY, bladeW, bladeH, toolColor);
+    _currentCanvas->drawRect(shovelX - bladeW/2, shovelY, bladeW, bladeH, toolDark);
+    // Highlight auf der Schaufel
+    _currentCanvas->drawLine(shovelX - 1, shovelY + 1, shovelX - 1, shovelY + bladeH - 1, rgb565(100, 100, 100));
+    
+    // Messing-Ring
+    _currentCanvas->drawPixel(shovelX, handleStart + (int)(3 * effectiveScaleY), brassColor);
     
     // ===== KAMINSIMS (oben) - schöner mit Profil =====
     int simsY = fireY - simsHeight;
@@ -1665,7 +1724,7 @@ void AnimationsModule::drawFireplace() {
     drawFireplaceFlames(openingX + openingWidth/2, baseY - 2, openingWidth - 10, openingHeight - 5);
     
     // ===== HOLZLAGER RECHTS UNTER DEM KAMINSIMS =====
-    // Bereich rechts vom Kamin für gestapelte Holzscheite - jetzt besser genutzt
+    // Bereich rechts vom Kamin für gestapelte Holzscheite
     int woodStorageX = fireX + fireplaceWidth + (int)(3 * scaleX);
     int woodStorageMaxX = canvasW - (int)(3 * scaleX);  // Fast bis zum rechten Rand
     int woodStorageWidth = woodStorageMaxX - woodStorageX;
@@ -1773,64 +1832,6 @@ void AnimationsModule::drawFireplace() {
                 }
             }
         }
-    }
-    
-    // ===== KAMINWERKZEUGE RECHTS NEBEN DEM HOLZLAGER =====
-    // Werkzeuge rechts neben dem Holz platzieren statt links vom Kamin
-    int toolsX = woodStorageMaxX - (int)(12 * scaleX);
-    
-    if (toolsX > woodStorageX + storageLogLength + 5) {
-        uint16_t toolColor = rgb565(70, 70, 70);      // Metall
-        uint16_t toolDark = rgb565(40, 40, 40);       // Dunkleres Metall
-        uint16_t handleColor = rgb565(100, 70, 40);   // Holzgriff
-        uint16_t brassColor = rgb565(180, 150, 50);   // Messing-Akzent
-        
-        int toolsBaseY = baseY;
-        int toolHeight = (int)(40 * effectiveScaleY);
-        
-        // Schürhaken (poker)
-        int pokerX = toolsX + (int)(2 * scaleX);
-        int pokerY = toolsBaseY - toolHeight;
-        
-        // Stiel mit Schattierung
-        _currentCanvas->drawLine(pokerX, pokerY, pokerX, toolsBaseY - (int)(8 * effectiveScaleY), toolColor);
-        _currentCanvas->drawLine(pokerX + 1, pokerY, pokerX + 1, toolsBaseY - (int)(8 * effectiveScaleY), toolDark);
-        
-        // Holzgriff
-        int handleStart = toolsBaseY - (int)(8 * effectiveScaleY);
-        _currentCanvas->drawLine(pokerX, handleStart, pokerX, toolsBaseY - 2, handleColor);
-        _currentCanvas->drawLine(pokerX + 1, handleStart, pokerX + 1, toolsBaseY - 2, rgb565(80, 55, 30));
-        
-        // Haken oben (detaillierter)
-        _currentCanvas->drawLine(pokerX, pokerY, pokerX + 3, pokerY + 2, toolColor);
-        _currentCanvas->drawLine(pokerX + 3, pokerY + 2, pokerX + 3, pokerY + 5, toolColor);
-        _currentCanvas->drawPixel(pokerX + 1, pokerY + 1, toolDark);
-        
-        // Kleiner Messing-Ring am Griff
-        _currentCanvas->drawPixel(pokerX, handleStart + (int)(3 * effectiveScaleY), brassColor);
-        
-        // Schaufel/Kelle
-        int shovelX = toolsX + (int)(7 * scaleX);
-        int shovelY = toolsBaseY - toolHeight + (int)(3 * effectiveScaleY);
-        
-        // Stiel
-        _currentCanvas->drawLine(shovelX, shovelY, shovelX, toolsBaseY - (int)(8 * effectiveScaleY), toolColor);
-        _currentCanvas->drawLine(shovelX + 1, shovelY, shovelX + 1, toolsBaseY - (int)(8 * effectiveScaleY), toolDark);
-        
-        // Holzgriff
-        _currentCanvas->drawLine(shovelX, handleStart, shovelX, toolsBaseY - 2, handleColor);
-        _currentCanvas->drawLine(shovelX + 1, handleStart, shovelX + 1, toolsBaseY - 2, rgb565(80, 55, 30));
-        
-        // Schaufelblatt (größer und detaillierter)
-        int bladeW = (int)(6 * scaleX);
-        int bladeH = (int)(5 * effectiveScaleY);
-        _currentCanvas->fillRect(shovelX - bladeW/2, shovelY, bladeW, bladeH, toolColor);
-        _currentCanvas->drawRect(shovelX - bladeW/2, shovelY, bladeW, bladeH, toolDark);
-        // Highlight auf der Schaufel
-        _currentCanvas->drawLine(shovelX - 1, shovelY + 1, shovelX - 1, shovelY + bladeH - 1, rgb565(100, 100, 100));
-        
-        // Messing-Ring
-        _currentCanvas->drawPixel(shovelX, handleStart + (int)(3 * effectiveScaleY), brassColor);
     }
     
     // Strümpfe am Kaminsims
