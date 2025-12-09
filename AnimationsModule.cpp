@@ -1672,10 +1672,11 @@ void AnimationsModule::drawFireplace() {
     _currentCanvas->fillRect(openingX, openingY, openingWidth, openingHeight, rgb565(0, 0, 0));
     
     // ===== HOLZSCHEITE IM KAMIN - ZUERST zeichnen =====
-    uint16_t woodOuter = rgb565(101, 67, 33);   // Rinde außen
-    uint16_t woodInner = rgb565(180, 140, 90);  // Holz innen (heller)
-    uint16_t woodDark = rgb565(60, 40, 20);     // Schatten
-    uint16_t woodRing = rgb565(140, 100, 60);   // Jahresringe
+    // Farben angepasst für 5-bit RGB565 Farbtiefe (deutlichere Unterschiede)
+    uint16_t woodOuter = rgb565(96, 64, 32);    // Rinde außen - dunkleres Braun
+    uint16_t woodInner = rgb565(192, 144, 96);  // Holz innen - heller, mehr Kontrast
+    uint16_t woodDark = rgb565(48, 32, 16);     // Schatten - deutlich dunkler
+    uint16_t woodRing = rgb565(144, 96, 64);    // Jahresringe - mittlerer Ton
     
     int logY = baseY - 3;
     int logRadius = (int)(4 * effectiveScaleY);
@@ -1733,12 +1734,13 @@ void AnimationsModule::drawFireplace() {
     int storageLogRadius = (int)(3.5 * effectiveScaleY);
     int storageLogLength = (int)(22 * scaleX);  // Längere Scheite
     
-    // Variationen für realistischeres Holz
+    // Variationen für realistischeres Holz - angepasst für 5-bit RGB565 Farbtiefe
+    // Deutlichere Farbunterschiede für bessere Sichtbarkeit
     uint16_t woodVariants[] = {
-        rgb565(101, 67, 33),   // Dunkler
-        rgb565(110, 75, 40),   // Standard
-        rgb565(95, 62, 30),    // Noch dunkler
-        rgb565(105, 70, 35)    // Mittel
+        rgb565(96, 64, 32),    // Dunkel
+        rgb565(128, 88, 48),   // Mittel-Dunkel  
+        rgb565(160, 112, 64),  // Mittel-Hell
+        rgb565(112, 72, 40)    // Mittel
     };
     
     // UNTERE LAGE: Horizontal gestapelt (4-5 Scheite nebeneinander)
@@ -2240,48 +2242,37 @@ void AnimationsModule::drawLedBorder() {
         numColors = 4;
     }
     
-    // Zeichne 1-Pixel breiten Rahmen
-    // Der Rahmen "läuft" mit 4 Phasen
+    // Zeichne jedes einzelne Pixel des Rahmens mit Farbzyklus
+    // LED1=Farbe1, LED2=Farbe2, LED3=Farbe3, LED4=Farbe4, dann wiederholen
+    // Animation: Phase verschiebt, welche Farbe an welcher Position ist
     
-    // Gesamtumfang des Rahmens
-    int perimeterTop = canvasW;
-    int perimeterRight = canvasH;
-    int perimeterBottom = canvasW;
-    int perimeterLeft = canvasH;
-    int totalPerimeter = perimeterTop + perimeterRight + perimeterBottom + perimeterLeft;
+    int pixelIndex = 0;
     
-    // Anzahl der LEDs basierend auf Umfang (alle 3-4 Pixel eine LED für gute Sichtbarkeit)
-    const int LED_SPACING_PIXELS = 3;  // Abstand zwischen LEDs in Pixeln
-    int numLeds = totalPerimeter / LED_SPACING_PIXELS;
+    // Obere Kante (links nach rechts)
+    for (int x = 0; x < canvasW; x++) {
+        int colorIdx = (pixelIndex + _ledBorderPhase) % numColors;
+        _currentCanvas->drawPixel(x, 0, ledColors[colorIdx]);
+        pixelIndex++;
+    }
     
-    // Zeichne LEDs entlang des Rahmens
-    for (int i = 0; i < numLeds; i++) {
-        // Berechne Farbindex basierend auf Phase und Position
-        int colorIdx = (i + _ledBorderPhase) % numColors;
-        uint16_t color = ledColors[colorIdx];
-        
-        // Berechne Position entlang des Umfangs
-        int pos = (i * totalPerimeter) / numLeds;
-        int x, y;
-        
-        if (pos < perimeterTop) {
-            // Obere Kante (links nach rechts)
-            x = pos;
-            y = 0;
-        } else if (pos < perimeterTop + perimeterRight) {
-            // Rechte Kante (oben nach unten)
-            x = canvasW - 1;
-            y = pos - perimeterTop;
-        } else if (pos < perimeterTop + perimeterRight + perimeterBottom) {
-            // Untere Kante (rechts nach links)
-            x = canvasW - 1 - (pos - perimeterTop - perimeterRight);
-            y = canvasH - 1;
-        } else {
-            // Linke Kante (unten nach oben)
-            x = 0;
-            y = canvasH - 1 - (pos - perimeterTop - perimeterRight - perimeterBottom);
-        }
-        
-        _currentCanvas->drawPixel(x, y, color);
+    // Rechte Kante (oben nach unten) - ohne Eckpixel
+    for (int y = 1; y < canvasH; y++) {
+        int colorIdx = (pixelIndex + _ledBorderPhase) % numColors;
+        _currentCanvas->drawPixel(canvasW - 1, y, ledColors[colorIdx]);
+        pixelIndex++;
+    }
+    
+    // Untere Kante (rechts nach links) - ohne Eckpixel
+    for (int x = canvasW - 2; x >= 0; x--) {
+        int colorIdx = (pixelIndex + _ledBorderPhase) % numColors;
+        _currentCanvas->drawPixel(x, canvasH - 1, ledColors[colorIdx]);
+        pixelIndex++;
+    }
+    
+    // Linke Kante (unten nach oben) - ohne Eckpixel
+    for (int y = canvasH - 2; y > 0; y--) {
+        int colorIdx = (pixelIndex + _ledBorderPhase) % numColors;
+        _currentCanvas->drawPixel(0, y, ledColors[colorIdx]);
+        pixelIndex++;
     }
 }
