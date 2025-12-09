@@ -1157,6 +1157,32 @@ document.getElementById('uploadForm').addEventListener('submit', function(e) {
     const xhr = new XMLHttpRequest();
     let uploadCompleted = false;
     
+    // Function to show success message with countdown and auto-reload
+    function showSuccessAndReload() {
+        progressBar.style.backgroundColor = '#4CAF50';
+        
+        let countdown = 10;
+        statusMessage.innerHTML = '<strong>Upload erfolgreich!</strong><br>Ger&auml;t wird neu gestartet...<br>Seite wird in <span id="countdown">10</span> Sekunden automatisch neu geladen.';
+        statusMessage.style.color = '#4CAF50';
+        statusMessage.style.fontSize = '16px';
+        
+        // Update countdown every second
+        const countdownInterval = setInterval(function() {
+            countdown--;
+            const countdownElement = document.getElementById('countdown');
+            if (countdownElement && countdown > 0) {
+                countdownElement.textContent = countdown;
+            } else {
+                clearInterval(countdownInterval);
+            }
+        }, 1000);
+        
+        // Reload page after 10 seconds
+        setTimeout(function() {
+            window.location.href = '/';
+        }, 10000);
+    }
+    
     xhr.upload.addEventListener('progress', function(e) {
         if (e.lengthComputable) {
             const percentComplete = Math.round((e.loaded / e.total) * 100);
@@ -1171,29 +1197,7 @@ document.getElementById('uploadForm').addEventListener('submit', function(e) {
             uploadCompleted = true;
             progressBar.style.width = '100%';
             progressBar.textContent = '100%';
-            progressBar.style.backgroundColor = '#4CAF50';
-            
-            let countdown = 10;
-            statusMessage.innerHTML = '<strong>Upload erfolgreich!</strong><br>Ger&auml;t wird neu gestartet...<br>Seite wird in <span id="countdown">10</span> Sekunden automatisch neu geladen.';
-            statusMessage.style.color = '#4CAF50';
-            statusMessage.style.fontSize = '16px';
-            
-            // Update countdown every second
-            const countdownInterval = setInterval(function() {
-                countdown--;
-                const countdownElement = document.getElementById('countdown');
-                if (countdownElement) {
-                    countdownElement.textContent = countdown;
-                }
-                if (countdown <= 0) {
-                    clearInterval(countdownInterval);
-                }
-            }, 1000);
-            
-            // Reload page after 10 seconds
-            setTimeout(function() {
-                window.location.href = '/';
-            }, 10000);
+            showSuccessAndReload();
         } else {
             progressBar.style.backgroundColor = '#f44336';
             statusMessage.textContent = 'Fehler beim Upload: ' + xhr.responseText;
@@ -1205,28 +1209,7 @@ document.getElementById('uploadForm').addEventListener('submit', function(e) {
     xhr.addEventListener('error', function() {
         // If upload completed successfully but connection lost (device rebooting), show success message
         if (uploadCompleted) {
-            progressBar.style.backgroundColor = '#4CAF50';
-            
-            let countdown = 10;
-            statusMessage.innerHTML = '<strong>Upload erfolgreich!</strong><br>Ger&auml;t wird neu gestartet...<br>Seite wird in <span id="countdown">10</span> Sekunden automatisch neu geladen.';
-            statusMessage.style.color = '#4CAF50';
-            statusMessage.style.fontSize = '16px';
-            
-            // Update countdown every second
-            const countdownInterval = setInterval(function() {
-                countdown--;
-                const countdownElement = document.getElementById('countdown');
-                if (countdownElement) {
-                    countdownElement.textContent = countdown;
-                }
-                if (countdown <= 0) {
-                    clearInterval(countdownInterval);
-                }
-            }, 1000);
-            
-            setTimeout(function() {
-                window.location.href = '/';
-            }, 10000);
+            showSuccessAndReload();
         } else {
             progressBar.style.backgroundColor = '#f44336';
             statusMessage.textContent = 'Netzwerkfehler beim Upload';
