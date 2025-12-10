@@ -635,6 +635,18 @@ bool TankerkoenigModule::getPriceFromCache(const PsramString& stationId, float& 
 void TankerkoenigModule::cleanupOldPriceCacheEntries() {
     if (!_deviceConfig) return;
     
+    // Parse currently configured station IDs
+    PsramVector<PsramString> current_id_list;
+    if (!station_ids.empty()) {
+        PsramString temp_ids = station_ids;
+        char* strtok_ctx;
+        char* id_token = strtok_r((char*)temp_ids.c_str(), ",", &strtok_ctx);
+        while(id_token != nullptr) { 
+            current_id_list.push_back(id_token); 
+            id_token = strtok_r(nullptr, ",", &strtok_ctx); 
+        }
+    }
+    
     time_t now_utc; 
     time(&now_utc);
     time_t cutoff_time = now_utc - (_deviceConfig->movingAverageDays * 86400L);
@@ -642,10 +654,24 @@ void TankerkoenigModule::cleanupOldPriceCacheEntries() {
     size_t original_size = _lastPriceCache.size();
     _lastPriceCache.erase(
         std::remove_if(_lastPriceCache.begin(), _lastPriceCache.end(),
-            [cutoff_time](const LastPriceCache& entry) { 
-                // Remove entries that are either invalid (timestamp == 0) 
-                // OR older than the configured number of days
-                return entry.timestamp == 0 || entry.timestamp < cutoff_time; 
+            [&current_id_list, cutoff_time](const LastPriceCache& entry) { 
+                // Remove entries with invalid timestamp
+                if (entry.timestamp == 0) return true;
+                
+                // Check if station is in current configuration
+                bool is_configured = false;
+                for (const auto& id : current_id_list) {
+                    if (entry.stationId == id) {
+                        is_configured = true;
+                        break;
+                    }
+                }
+                
+                // Remove if not configured OR (configured but older than retention period)
+                if (!is_configured) return true;
+                if (entry.timestamp < cutoff_time) return true;
+                
+                return false;
             }),
         _lastPriceCache.end()
     );
