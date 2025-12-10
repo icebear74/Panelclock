@@ -633,10 +633,20 @@ bool TankerkoenigModule::getPriceFromCache(const PsramString& stationId, float& 
 }
 
 void TankerkoenigModule::cleanupOldPriceCacheEntries() {
+    if (!_deviceConfig) return;
+    
+    time_t now_utc; 
+    time(&now_utc);
+    time_t cutoff_time = now_utc - (_deviceConfig->movingAverageDays * 86400L);
+    
     size_t original_size = _lastPriceCache.size();
     _lastPriceCache.erase(
         std::remove_if(_lastPriceCache.begin(), _lastPriceCache.end(),
-            [](const LastPriceCache& entry) { return entry.timestamp == 0; }),
+            [cutoff_time](const LastPriceCache& entry) { 
+                // Remove entries that are either invalid (timestamp == 0) 
+                // OR older than the configured number of days
+                return entry.timestamp == 0 || (entry.timestamp > 0 && entry.timestamp < cutoff_time); 
+            }),
         _lastPriceCache.end()
     );
     if (_lastPriceCache.size() < original_size) { savePriceCache(); }
