@@ -6,8 +6,11 @@
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 #include <WiFi.h>
+#include <Update.h>
 #include "MemoryLogger.hpp"
 #include "MultiLogger.hpp"
+#include "PsramUtils.hpp"
+#include "Version.hpp"
 
 // PSRAM Allocator for ArduinoJson (same pattern as ThemeParkModule and WeatherModule)
 struct SpiRamAllocator : ArduinoJson::Allocator {
@@ -40,7 +43,13 @@ void applyLiveConfig();
 void handleRoot() {
     if (!server) return;
     PsramString page = (const char*)FPSTR(HTML_PAGE_HEADER);
-    page += (const char*)FPSTR(HTML_INDEX);
+    PsramString content = (const char*)FPSTR(HTML_INDEX);
+    
+    // Add version information
+    PsramString version = PANELCLOCK_VERSION;
+    replaceAll(content, PsramString("{version}"), version);
+    
+    page += content;
     page += (const char*)FPSTR(HTML_PAGE_FOOTER);
     server->send(200, "text/html", page.c_str());
 }
@@ -1085,6 +1094,69 @@ void handleThemeParksList() {
         Log.println("[ThemePark] TIMEOUT waiting for API response");
         server->send(504, "application/json", "{\"ok\":false, \"message\":\"Timeout waiting for API response\"}");
         vSemaphoreDelete(sem);
+    }
+}
+
+// =============================================================================
+// Firmware Update Handlers
+// =============================================================================
+
+void handleFirmwarePage() {
+    if (!server) return;
+    PsramString page = (const char*)FPSTR(HTML_PAGE_HEADER);
+    page += (const char*)FPSTR(HTML_FIRMWARE_UPDATE);
+    page += (const char*)FPSTR(HTML_PAGE_FOOTER);
+    server->send(200, "text/html", page.c_str());
+}
+
+void handleFirmwareUpload() {
+    if (!server) return;
+    
+    HTTPUpload& upload = server->upload();
+    static size_t uploadSize = 0;
+    
+    if (upload.status == UPLOAD_FILE_START) {
+        uploadSize = 0;
+        
+        Log.printf("[FirmwareUpdate] Update Start: %s\n", upload.filename.c_str());
+        Log.printf("[FirmwareUpdate] Free PSRAM before update: %u bytes\n", psramFree());
+        
+        // Start update - use UPDATE_SIZE_UNKNOWN to auto-detect size
+        // The Update library will use PSRAM internally for buffering when available
+        if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
+            Update.printError(Serial);
+            server->send(500, "text/plain", "Update begin failed");
+            return;
+        }
+    } else if (upload.status == UPLOAD_FILE_WRITE) {
+        // Write data to update partition
+        // The Update library handles buffering internally, using PSRAM when available
+        if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+            Update.printError(Serial);
+            server->send(500, "text/plain", "Update write failed");
+            return;
+        }
+        uploadSize += upload.currentSize;
+        
+        // Log progress every 100KB
+        if ((uploadSize / 102400) > ((uploadSize - upload.currentSize) / 102400)) {
+            Log.printf("[FirmwareUpdate] Progress: %u bytes\n", uploadSize);
+        }
+    } else if (upload.status == UPLOAD_FILE_END) {
+        if (Update.end(true)) {
+            Log.printf("[FirmwareUpdate] Update Success: %u bytes\n", uploadSize);
+            Log.printf("[FirmwareUpdate] Free PSRAM after update: %u bytes\n", psramFree());
+            server->send(200, "text/plain", "Update successful! Rebooting...");
+            delay(1000);
+            ESP.restart();
+        } else {
+            Update.printError(Serial);
+            server->send(500, "text/plain", "Update end failed");
+        }
+    } else if (upload.status == UPLOAD_FILE_ABORTED) {
+        Update.end();
+        Log.println("[FirmwareUpdate] Update aborted");
+        server->send(500, "text/plain", "Update aborted");
     }
 }
 
