@@ -1,0 +1,1 @@
+sed -i -E 's/(#define[[:space:]]+PANELCLOCK_VERSION[[:space:]]+"[0-9]+.[0-9]+.[0-9]+-)[A-Za-z0-9]+(".*)/\1'"$(git rev-parse HEAD)"'\2/' Version.hpp
