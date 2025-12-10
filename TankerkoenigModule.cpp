@@ -828,8 +828,7 @@ void TankerkoenigModule::updatePriceStatistics(const PsramString& stationId, flo
 void TankerkoenigModule::trimPriceStatistics(StationPriceHistory& history) {
     if (!_deviceConfig) return;
     time_t now_utc; time(&now_utc);
-    // Calculate cutoff: keep only the last movingAverageDays days (not including today would be movingAverageDays-1)
-    // To keep exactly movingAverageDays entries including today, cutoff should be movingAverageDays days ago
+    // Calculate cutoff date: movingAverageDays ago from today
     time_t cutoff_epoch = now_utc - (_deviceConfig->movingAverageDays * 86400L);
     
     time_t cutoff_local = timeConverter.toLocal(cutoff_epoch);
@@ -841,9 +840,9 @@ void TankerkoenigModule::trimPriceStatistics(StationPriceHistory& history) {
 
     // Remove entries older than or equal to cutoff date
     // Example: If movingAverageDays=31 and today is Dec 10:
-    //   cutoff_epoch = Dec 10 - 31 days = Nov 9
-    //   Remove all entries <= Nov 9 (including Nov 9)
-    //   Keep entries from Nov 10 to Dec 10 = exactly 31 days
+    //   cutoff_date = Nov 9 (31 days before Dec 10)
+    //   Remove all entries with date <= Nov 9
+    //   Keep entries from Nov 10 through Dec 10 = exactly 31 days
     history.dailyStats.erase(
         std::remove_if(history.dailyStats.begin(), history.dailyStats.end(), 
             [&](const DailyPriceStats& stats) { return stats.date <= cutoff_date_str; }), 
