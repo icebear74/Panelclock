@@ -127,13 +127,14 @@ void AnimationsModule::shuffleTreeElements() {
         if (yOffset > treeHeight - 6) yOffset = treeHeight - 6;
         _shuffledOrnamentY[i] = yOffset;
         
-        // X position (left/right)
+        // X position (left/right) - constrain within tree boundaries
         int maxWidth;
         int layer1Height = (int)(18 * scale);
         int layer2Height = (int)(18 * scale);
         int layer1Width = (int)(28 * scale);
         int layer2Width = (int)(22 * scale);
         int layer3Width = (int)(16 * scale);
+        int ornamentRadius = 2 + (seed / 17) % 3;  // Radius for boundary calculation
         
         if (yOffset < layer1Height) {
             float progress = (float)yOffset / layer1Height;
@@ -146,6 +147,8 @@ void AnimationsModule::shuffleTreeElements() {
             maxWidth = (int)(layer3Width * (1.0f - progress * 0.6f) * 0.8f);
         }
         
+        // Reduce maxWidth by ornament radius to keep ornament fully inside tree
+        maxWidth -= ornamentRadius;
         if (maxWidth < 2) maxWidth = 2;
         int xRange = maxWidth * 2;
         int xPos = seed % xRange;
@@ -158,9 +161,8 @@ void AnimationsModule::shuffleTreeElements() {
         // Random color index (0-7)
         _shuffledOrnamentColors[i] = seed % 8;
         
-        // Random size
-        _shuffledOrnamentSizes[i] = 2 + (seed % 2);
-        if (scale > 1.2) _shuffledOrnamentSizes[i] = 2 + (seed % 3);
+        // Random size - same as calculated radius above
+        _shuffledOrnamentSizes[i] = ornamentRadius;
     }
     
     // Shuffle light positions
@@ -177,7 +179,9 @@ void AnimationsModule::shuffleTreeElements() {
         _shuffledLightY[i] = lightY;
         
         // Random X position within tree width at that Y
+        // Reduce width by light size (2px) to keep light center inside tree
         int maxLightWidth = (int)(28 * scale * (1.0f - (float)lightY / treeHeight * 0.7f));
+        maxLightWidth -= 2;  // Account for light size
         if (maxLightWidth < 2) maxLightWidth = 2;
         int lightX = ((seed / 7) % (maxLightWidth * 2)) - maxLightWidth;
         _shuffledLightX[i] = lightX;
@@ -533,16 +537,11 @@ void AnimationsModule::tick() {
         needsUpdate = true;
     }
     
-    // LED-Rahmen-Animation with smooth color fading
+    // LED-Rahmen-Animation - simple phase rotation (no blending to avoid pulsing effect)
     unsigned long ledBorderSpeed = config ? (unsigned long)config->ledBorderSpeedMs : 100;
     if (now - _lastLedBorderUpdate > ledBorderSpeed) {
         _lastLedBorderUpdate = now;
-        // Increment sub-phase for smooth transitions (0-255)
-        _ledBorderSubPhase = (_ledBorderSubPhase + 16) % 256;  // 16 steps = smooth but visible
-        // Advance main phase when sub-phase wraps (every 16 increments)
-        if (_ledBorderSubPhase == 0) {
-            _ledBorderPhase = (_ledBorderPhase + 1) % 4;  // 4 main phases
-        }
+        _ledBorderPhase = (_ledBorderPhase + 1) % 4;  // Simple 4-phase rotation
         needsUpdate = true;
     }
     
@@ -588,8 +587,12 @@ void AnimationsModule::draw() {
     if (_showFireplace) {
         drawFireplace();
     } else if (_showTree) {
-        // Mische Kugeln und Lichter bei jeder neuen Anzeige für Variation
-        shuffleTreeElements();
+        // Mische Kugeln und Lichter nur EINMAL bei neuer Anzeige, nicht bei jedem Tick
+        unsigned long now = millis();
+        if (_lastTreeDisplay == 0 || (now - _lastTreeDisplay) > 60000) {  // Neue Anzeige oder >60s her
+            shuffleTreeElements();
+            _lastTreeDisplay = now;
+        }
         
         drawChristmasTree();
         drawSnowflakes();
@@ -1613,10 +1616,11 @@ void AnimationsModule::drawFireplace() {
     
     // Use precise mantel dimensions from PROGMEM analysis
     // Mantel shelf: X=43 to X=158 (116 pixels wide), center at X=101
-    int mantelLeftEdge = (int)(43 * scaleX);
-    int mantelRightEdge = (int)(158 * scaleX);
-    int mantelWidth = mantelRightEdge - mantelLeftEdge;  // Exact 116-pixel width scaled
-    float mantelCenterRatio = 101.0f / 192.0f;  // 52.6% from left edge
+    // Extended mantel dimensions: +10px left and +10px right from original
+    int mantelLeftEdge = (int)(33 * scaleX);   // Was 43, now 33 (-10px)
+    int mantelRightEdge = (int)(168 * scaleX);  // Was 158, now 168 (+10px)
+    int mantelWidth = mantelRightEdge - mantelLeftEdge;  // 136-pixel width scaled (was 116)
+    float mantelCenterRatio = 101.0f / 192.0f;  // 52.6% from left edge (clock position unchanged)
     int mantelCenterX = (int)(canvasW * mantelCenterRatio);
     
     // Draw decorations ON the mantel
@@ -1673,38 +1677,67 @@ void AnimationsModule::drawFireplaceFlames(int x, int y, int width, int height) 
             break;
     }
     
-    // ===== HAUPTFEUER - Ein zusammenhängender Feuerbereich =====
+    // ===== HAUPTFEUER - Ein zusammenhängender Feuerbereich mit mehr Animation =====
     // Von unten nach oben mit abnehmender Breite und Dichte
     for (int fy = 0; fy < height; fy++) {
         float yProgress = (float)fy / height;  // 0 = unten, 1 = oben
         
-        // Breite nimmt nach oben ab (organische Form)
-        float widthFactor = (1.0f - yProgress * yProgress) * 0.9f + 0.1f;
+        // Breite nimmt nach oben ab (organische Form) mit stärkerer Verjüngung oben
+        float widthFactor;
+        if (yProgress < 0.5f) {
+            // Untere Hälfte: sanfte Verjüngung
+            widthFactor = (1.0f - yProgress * 0.3f) * 0.95f;
+        } else {
+            // Obere Hälfte: stärkere Verjüngung für spitzere Flammen
+            widthFactor = (1.0f - yProgress) * 0.9f + 0.1f;
+        }
         int lineWidth = (int)(width / 2 * widthFactor);
         
-        // Wellenbewegung für natürlicheren Look
-        int waveOffset = (int)(sin((fy + _fireplaceFlamePhase * 2) * 0.5f) * 3);
+        // Mehrere Wellenebenen für komplexere Bewegung
+        float wave1 = sin((fy * 0.3f + _fireplaceFlamePhase * 0.4f) * 0.5f);
+        float wave2 = sin((fy * 0.5f - _fireplaceFlamePhase * 0.3f) * 0.7f);
+        int waveOffset = (int)((wave1 * 2 + wave2 * 1.5f));
+        
+        // Zusätzliches Flackern im oberen Bereich
+        int upperFlicker = 0;
+        if (yProgress > 0.6f) {
+            upperFlicker = ((_fireplaceFlamePhase + fy) % 5) - 2;
+        }
         
         for (int fx = -lineWidth; fx <= lineWidth; fx++) {
             uint32_t seed = simpleRandom(fx * 23 + fy * 47 + _fireplaceFlamePhase * 5);
             
-            // Dichte nimmt nach oben ab
-            float density = 1.0f - yProgress * 0.7f;
+            // Dichte nimmt nach oben stärker ab für luftigere Flammen
+            float density;
+            if (yProgress < 0.5f) {
+                density = 1.0f - yProgress * 0.4f;  // Dichter unten
+            } else {
+                density = 0.8f - (yProgress - 0.5f) * 1.2f;  // Luftiger oben
+            }
             if ((seed % 100) > density * 100) continue;
             
-            // Position mit leichtem Flackern
+            // Position mit variablem Flackern (stärker oben)
             int flickerX = ((seed / 7) % 3) - 1;
-            int px = x + fx + waveOffset + flickerX;
+            if (yProgress > 0.5f) {
+                flickerX += ((seed / 13) % 3) - 1;  // Mehr Bewegung oben
+            }
+            int px = x + fx + waveOffset + flickerX + upperFlicker;
             int py = y - fy;
             
-            // Farbe: innen heller (Kern), außen dunkler
+            // Farbe: innen heller (Kern), außen dunkler, oben dunkler
             float distFromCenter = abs(fx) / (float)(lineWidth + 1);
-            int baseColorIdx = (int)(yProgress * 4);  // Oben dunkler
+            int baseColorIdx = (int)(yProgress * 4.5f);  // Oben dunkler
             int colorIdx = baseColorIdx + (int)(distFromCenter * 2);
+            
+            // Im oberen Bereich: zusätzliche Farbvariation für dynamischeren Look
+            if (yProgress > 0.6f) {
+                colorIdx += ((seed + _fireplaceFlamePhase) % 3);
+            }
+            
             if (colorIdx > 5) colorIdx = 5;
             if (colorIdx < 0) colorIdx = 0;
             
-            // Kern in der Mitte (nur unten)
+            // Heller Kern in der Mitte (nur unten)
             if (abs(fx) < 3 && fy < height / 3) {
                 colorIdx = max(0, colorIdx - 2);
             }
@@ -1715,32 +1748,50 @@ void AnimationsModule::drawFireplaceFlames(int x, int y, int width, int height) 
         }
     }
     
-    // ===== FLAMMENSPITZEN (verzweigte Flammen oben - verbunden mit Hauptfeuer) =====
-    int numTips = 4 + (_fireplaceFlamePhase % 2);
+    // ===== FLAMMENSPITZEN (verzweigte Flammen oben mit mehr Dynamik) =====
+    int numTips = 5 + (_fireplaceFlamePhase % 3);  // 5-7 Spitzen für reichhaltigeres Feuer
     for (int t = 0; t < numTips; t++) {
         uint32_t seed = simpleRandom(t * 67 + _fireplaceFlamePhase * 11);
         
-        // Position der Flammenspitze - startet wo das Hauptfeuer aufhört (y - height * 0.7)
-        // So dass sie im oberen Bereich des Hauptfeuers beginnt und darüber hinausragt
-        int tipBaseX = x - width/4 + (seed % (width / 2));
-        int tipStartY = (int)(y - height * 0.65);  // Startet im oberen Drittel des Hauptfeuers
-        int tipHeight = 4 + (seed % 6);
-        int tipWidth = 1 + (seed % 2);
+        // Position der Flammenspitze - verteilt über die Breite
+        int tipBaseX = x - width/3 + (seed % ((width * 2) / 3));
+        int tipStartY = (int)(y - height * 0.6);  // Startet etwas höher
+        int tipHeight = 5 + (seed % 8);  // Längere Spitzen (5-12 Pixel)
+        int tipWidth = 1 + (seed % 3);   // Variablere Breite (1-3)
+        
+        // Wellige Bewegung für die Spitze
+        float tipWave = sin((t * 0.8f + _fireplaceFlamePhase * 0.5f) * 0.6f) * 2;
         
         // Flammenspitze zeichnen (von unten nach oben)
         for (int i = 0; i < tipHeight; i++) {
             float progress = (float)i / tipHeight;
-            int currentWidth = (int)(tipWidth * (1.0f - progress * 0.8f));
-            int flickerX = ((seed + i * 3 + _fireplaceFlamePhase * 2) % 3) - 1;
+            int currentWidth = (int)(tipWidth * (1.0f - progress * 0.9f) + 0.5f);
+            
+            // Mehr Flackern an den Spitzen
+            int flickerX = ((seed + i * 3 + _fireplaceFlamePhase * 2) % 5) - 2;
+            flickerX += (int)(tipWave * (1.0f - progress));
             
             for (int dx = -currentWidth; dx <= currentWidth; dx++) {
-                // Farbe: beginnt mit Hauptfeuer-Farbe (Mitte) und wird nach oben dunkler
-                int colorIdx = 1 + (int)(progress * 3);
+                // Farbe: beginnt heller und wird nach oben dunkler
+                int colorIdx = (int)(progress * 4.5f);
+                
+                // Zufällige Farbvariation für lebhaftere Spitzen
+                if ((seed + i) % 3 == 0) {
+                    colorIdx += 1;
+                }
+                
                 if (colorIdx > 5) colorIdx = 5;
+                if (colorIdx < 0) colorIdx = 0;
+                
                 int px = tipBaseX + dx + flickerX;
                 int py = tipStartY - i;
-                if (px >= x - width/2 && px <= x + width/2 && py >= 0) {
-                    _currentCanvas->drawPixel(px, py, flameColors[colorIdx]);
+                
+                // Spitzen können etwas über die normale Breite hinausgehen
+                if (px >= x - width/2 - 3 && px <= x + width/2 + 3 && py >= 0) {
+                    // Manche Pixel auslassen für luftigere Spitzen
+                    if ((seed + i + dx) % 4 != 0 || progress < 0.6f) {
+                        _currentCanvas->drawPixel(px, py, flameColors[colorIdx]);
+                    }
                 }
             }
         }
@@ -2126,46 +2177,37 @@ void AnimationsModule::drawLedBorder() {
         numColors = 4;
     }
     
-    // Zeichne jedes einzelne Pixel des Rahmens mit sanftem Farbübergang
+    // Zeichne jedes einzelne Pixel des Rahmens mit einfacher Farbrotation
     // LED1=Farbe1, LED2=Farbe2, LED3=Farbe3, LED4=Farbe4, dann wiederholen
-    // Animation: Phase verschiebt mit sanften Übergängen zwischen Farben
+    // Animation: Phase verschiebt die Farben um den Rahmen
     
     int pixelIndex = 0;
-    int blend = _ledBorderSubPhase / 16;  // 0-15 for smooth blending (16 steps per color)
     
     // Obere Kante (links nach rechts)
     for (int x = 0; x < canvasW; x++) {
-        int colorIdx1 = (pixelIndex + _ledBorderPhase) % numColors;
-        int colorIdx2 = (pixelIndex + _ledBorderPhase + 1) % numColors;
-        uint16_t blendedColor = blendRGB565(ledColors[colorIdx1], ledColors[colorIdx2], blend);
-        _currentCanvas->drawPixel(x, 0, blendedColor);
+        int colorIdx = (pixelIndex + _ledBorderPhase) % numColors;
+        _currentCanvas->drawPixel(x, 0, ledColors[colorIdx]);
         pixelIndex++;
     }
     
     // Rechte Kante (oben nach unten) - ohne Eckpixel
     for (int y = 1; y < canvasH; y++) {
-        int colorIdx1 = (pixelIndex + _ledBorderPhase) % numColors;
-        int colorIdx2 = (pixelIndex + _ledBorderPhase + 1) % numColors;
-        uint16_t blendedColor = blendRGB565(ledColors[colorIdx1], ledColors[colorIdx2], blend);
-        _currentCanvas->drawPixel(canvasW - 1, y, blendedColor);
+        int colorIdx = (pixelIndex + _ledBorderPhase) % numColors;
+        _currentCanvas->drawPixel(canvasW - 1, y, ledColors[colorIdx]);
         pixelIndex++;
     }
     
     // Untere Kante (rechts nach links) - ohne Eckpixel
     for (int x = canvasW - 2; x >= 0; x--) {
-        int colorIdx1 = (pixelIndex + _ledBorderPhase) % numColors;
-        int colorIdx2 = (pixelIndex + _ledBorderPhase + 1) % numColors;
-        uint16_t blendedColor = blendRGB565(ledColors[colorIdx1], ledColors[colorIdx2], blend);
-        _currentCanvas->drawPixel(x, canvasH - 1, blendedColor);
+        int colorIdx = (pixelIndex + _ledBorderPhase) % numColors;
+        _currentCanvas->drawPixel(x, canvasH - 1, ledColors[colorIdx]);
         pixelIndex++;
     }
     
     // Linke Kante (unten nach oben) - ohne Eckpixel
     for (int y = canvasH - 2; y > 0; y--) {
-        int colorIdx1 = (pixelIndex + _ledBorderPhase) % numColors;
-        int colorIdx2 = (pixelIndex + _ledBorderPhase + 1) % numColors;
-        uint16_t blendedColor = blendRGB565(ledColors[colorIdx1], ledColors[colorIdx2], blend);
-        _currentCanvas->drawPixel(0, y, blendedColor);
+        int colorIdx = (pixelIndex + _ledBorderPhase) % numColors;
+        _currentCanvas->drawPixel(0, y, ledColors[colorIdx]);
         pixelIndex++;
     }
 }
