@@ -1874,132 +1874,186 @@ void AnimationsModule::drawMantleDecorations(int simsY, int simsWidth, int cente
     if (decoCount == 0) return;
     
     // Positionen: bei showClock bis zu 4 (2 links + 2 rechts), sonst bis zu 5
+    // Neue Dekoration-Typen: 0=Kerze, 1=Buch, 2=Vase, 3=Teekanne, 4=Bilderrahmen
     int positions[5];
     int decoTypes[5];
     
     if (showClock) {
-        // Mit Uhr: bis zu 4 Dekorationen (2 links + 2 rechts)
+        // Mit Uhr (mittig): bis zu 4 Dekorationen (2 links + 2 rechts)
         if (decoCount == 1) {
             positions[0] = centerX - simsWidth/3;
-            decoTypes[0] = 0;  // Blumenvase
+            decoTypes[0] = 0;  // Kerze
         } else if (decoCount == 2) {
             positions[0] = centerX - simsWidth/3;
             positions[1] = centerX + simsWidth/3;
-            decoTypes[0] = 0;  // Blumenvase
-            decoTypes[1] = 2;  // Bilderrahmen
+            decoTypes[0] = 2;  // Vase
+            decoTypes[1] = 0;  // Kerze
         } else if (decoCount == 3) {
             positions[0] = centerX - simsWidth/2.5;
-            positions[1] = centerX - simsWidth/5;
+            positions[1] = centerX - simsWidth/6;
             positions[2] = centerX + simsWidth/3;
-            decoTypes[0] = 0;  // Blumenvase
-            decoTypes[1] = 1;  // Schneekugel
-            decoTypes[2] = 2;  // Bilderrahmen
+            decoTypes[0] = 2;  // Vase
+            decoTypes[1] = 1;  // Buch
+            decoTypes[2] = 0;  // Kerze
         } else {  // decoCount >= 4
             positions[0] = centerX - simsWidth/2.5;
-            positions[1] = centerX - simsWidth/5;
-            positions[2] = centerX + simsWidth/5;
+            positions[1] = centerX - simsWidth/6;
+            positions[2] = centerX + simsWidth/6;
             positions[3] = centerX + simsWidth/2.5;
-            decoTypes[0] = 0;  // Blumenvase
-            decoTypes[1] = 1;  // Schneekugel
-            decoTypes[2] = 1;  // Schneekugel
-            decoTypes[3] = 2;  // Bilderrahmen
+            decoTypes[0] = 2;  // Vase
+            decoTypes[1] = 1;  // Buch
+            decoTypes[2] = 3;  // Teekanne
+            decoTypes[3] = 4;  // Bilderrahmen
         }
     } else {
         // Ohne Uhr: bis zu 5 Dekorationen
         if (decoCount == 1) {
             positions[0] = centerX;
-            decoTypes[0] = 0;
+            decoTypes[0] = 0;  // Kerze
         } else if (decoCount == 2) {
             positions[0] = centerX - simsWidth/3;
             positions[1] = centerX + simsWidth/3;
-            decoTypes[0] = 0;
-            decoTypes[1] = 2;
+            decoTypes[0] = 2;  // Vase
+            decoTypes[1] = 0;  // Kerze
         } else if (decoCount == 3) {
             positions[0] = centerX - simsWidth/3;
             positions[1] = centerX;
             positions[2] = centerX + simsWidth/3;
-            decoTypes[0] = 0;
-            decoTypes[1] = 1;
-            decoTypes[2] = 2;
+            decoTypes[0] = 2;  // Vase
+            decoTypes[1] = 0;  // Kerze (mittig)
+            decoTypes[2] = 4;  // Bilderrahmen
         } else if (decoCount == 4) {
             positions[0] = centerX - simsWidth/2.5;
             positions[1] = centerX - simsWidth/6;
             positions[2] = centerX + simsWidth/6;
             positions[3] = centerX + simsWidth/2.5;
-            decoTypes[0] = 0;
-            decoTypes[1] = 1;
-            decoTypes[2] = 1;
-            decoTypes[3] = 2;
+            decoTypes[0] = 2;  // Vase
+            decoTypes[1] = 1;  // Buch
+            decoTypes[2] = 3;  // Teekanne
+            decoTypes[3] = 0;  // Kerze
         } else {  // decoCount == 5
             positions[0] = centerX - simsWidth/2.5;
             positions[1] = centerX - simsWidth/6;
             positions[2] = centerX;
             positions[3] = centerX + simsWidth/6;
             positions[4] = centerX + simsWidth/2.5;
-            decoTypes[0] = 0;
-            decoTypes[1] = 1;
-            decoTypes[2] = 2;
-            decoTypes[3] = 1;
-            decoTypes[4] = 0;
+            decoTypes[0] = 2;  // Vase
+            decoTypes[1] = 1;  // Buch
+            decoTypes[2] = 0;  // Kerze (mittig)
+            decoTypes[3] = 3;  // Teekanne
+            decoTypes[4] = 4;  // Bilderrahmen
         }
     }
     
     // Verschiedene Dekorationen zeichnen
+    // Typen: 0=Kerze, 1=Buch, 2=Vase, 3=Teekanne, 4=Bilderrahmen
     for (int i = 0; i < decoCount; i++) {
         int cx = positions[i];
         int cy = simsY - 1;  // Direkt auf dem Sims
         int decoType = decoTypes[i];
         
         if (decoType == 0) {
-            // Blumenvase mit Blumen
-            uint16_t vaseColor = rgb565(80, 60, 40);
-            uint16_t flowerColors[] = {rgb565(255, 100, 100), rgb565(255, 200, 100), rgb565(255, 150, 200)};
+            // Kerze mit Flamme
+            uint16_t candleColor = rgb565(240, 220, 180);
+            uint16_t wickColor = rgb565(40, 40, 40);
+            uint16_t flameColor = rgb565(255, 180, 50);
+            uint16_t flameGlow = rgb565(255, 220, 100);
             
-            // Vase
-            int vaseH = (int)(8 * scale);
-            int vaseW = (int)(4 * scale);
-            _currentCanvas->fillRect(cx - vaseW/2, cy - vaseH, vaseW, vaseH, vaseColor);
-            _currentCanvas->drawRect(cx - vaseW/2, cy - vaseH, vaseW, vaseH, rgb565(50, 40, 30));
+            int candleH = (int)(9 * scale);
+            int candleW = (int)(3 * scale);
+            
+            // Kerze
+            _currentCanvas->fillRect(cx - candleW/2, cy - candleH, candleW, candleH, candleColor);
+            _currentCanvas->drawRect(cx - candleW/2, cy - candleH, candleW, candleH, rgb565(200, 180, 140));
+            
+            // Docht
+            _currentCanvas->drawLine(cx, cy - candleH, cx, cy - candleH - 2, wickColor);
+            
+            // Flamme (animiert)
+            int flameFlicker = (_fireplaceFlamePhase + i * 13) % 3 - 1;
+            int flameCy = cy - candleH - 4 + flameFlicker;
+            _currentCanvas->fillCircle(cx, flameCy, 2, flameGlow);
+            _currentCanvas->fillCircle(cx, flameCy - 1, 1, flameColor);
+            
+        } else if (decoType == 1) {
+            // Bücherstapel
+            uint16_t bookColors[] = {rgb565(139, 69, 19), rgb565(178, 34, 34), rgb565(46, 82, 124)};
+            
+            int bookW = (int)(6 * scale);
+            int bookH = (int)(3 * scale);
+            
+            // 3 gestapelte Bücher
+            for (int b = 0; b < 3; b++) {
+                int bookY = cy - bookH * (b + 1);
+                _currentCanvas->fillRect(cx - bookW/2, bookY, bookW, bookH, bookColors[b % 3]);
+                _currentCanvas->drawRect(cx - bookW/2, bookY, bookW, bookH, rgb565(80, 50, 30));
+                // Buchrücken-Details
+                _currentCanvas->drawLine(cx - bookW/2 + 1, bookY + 1, cx - bookW/2 + 1, bookY + bookH - 2, rgb565(220, 200, 180));
+            }
+            
+        } else if (decoType == 2) {
+            // Vase mit Blumen
+            uint16_t vaseColor = rgb565(100, 80, 120);
+            uint16_t flowerColors[] = {rgb565(255, 100, 150), rgb565(255, 200, 100), rgb565(150, 100, 255)};
+            
+            int vaseH = (int)(7 * scale);
+            int vaseW = (int)(5 * scale);
+            
+            // Vase (bauchige Form)
+            _currentCanvas->fillRect(cx - vaseW/2 + 1, cy - vaseH, vaseW - 2, vaseH, vaseColor);
+            _currentCanvas->fillRect(cx - vaseW/2, cy - vaseH + 2, vaseW, vaseH - 3, vaseColor);
+            _currentCanvas->drawRect(cx - vaseW/2, cy - vaseH + 2, vaseW, vaseH - 3, rgb565(70, 50, 90));
             
             // Blumen
             for (int f = 0; f < 3; f++) {
                 int fx = cx + (f - 1) * 2;
-                int fy = cy - vaseH - 3 - f;
+                int fy = cy - vaseH - 2 - f;
                 _currentCanvas->fillCircle(fx, fy, 2, flowerColors[f % 3]);
-                _currentCanvas->drawLine(fx, fy + 2, fx, cy - vaseH + 1, rgb565(50, 100, 50));
+                _currentCanvas->drawLine(fx, fy + 2, fx, cy - vaseH + 1, rgb565(50, 120, 50));
             }
-        } else if (decoType == 1) {
-            // Schneekugel
-            uint16_t baseColor = rgb565(60, 60, 60);
-            uint16_t glassColor = rgb565(180, 200, 220);
             
-            int globeR = (int)(5 * scale);
-            // Basis
-            _currentCanvas->fillRect(cx - globeR, cy - 3, globeR * 2, 3, baseColor);
-            // Glasmugel
-            _currentCanvas->fillCircle(cx, cy - 3 - globeR, globeR, glassColor);
-            // Kleiner Tannenbaum drin
-            _currentCanvas->fillTriangle(cx, cy - 3 - globeR - 3, cx - 2, cy - 3 - 2, cx + 2, cy - 3 - 2, rgb565(0, 100, 50));
-            // Schneeflocken
-            uint32_t seed = simpleRandom(_fireplaceFlamePhase + i * 17);
-            for (int s = 0; s < 3; s++) {
-                int sx = cx - globeR/2 + (seed % globeR);
-                int sy = cy - 3 - globeR/2 - (seed / 7 % globeR);
-                _currentCanvas->drawPixel(sx, sy, rgb565(255, 255, 255));
-                seed = simpleRandom(seed);
-            }
-        } else {
+        } else if (decoType == 3) {
+            // Teekanne
+            uint16_t potColor = rgb565(180, 160, 140);
+            uint16_t metalColor = rgb565(150, 140, 130);
+            
+            int potH = (int)(6 * scale);
+            int potW = (int)(6 * scale);
+            
+            // Kannenkörper
+            _currentCanvas->fillRect(cx - potW/2, cy - potH, potW, potH, potColor);
+            _currentCanvas->drawRect(cx - potW/2, cy - potH, potW, potH, metalColor);
+            
+            // Deckel
+            _currentCanvas->fillRect(cx - potW/2 - 1, cy - potH - 2, potW + 2, 2, metalColor);
+            _currentCanvas->fillCircle(cx, cy - potH - 3, 1, metalColor);
+            
+            // Griff
+            _currentCanvas->drawLine(cx + potW/2, cy - potH + 2, cx + potW/2 + 2, cy - potH + 3, metalColor);
+            _currentCanvas->drawLine(cx + potW/2 + 2, cy - potH + 3, cx + potW/2 + 2, cy - 3, metalColor);
+            
+            // Ausguss
+            _currentCanvas->drawLine(cx - potW/2, cy - potH + 2, cx - potW/2 - 1, cy - potH + 1, metalColor);
+            
+        } else {  // decoType == 4
             // Bilderrahmen
             uint16_t frameColor = rgb565(139, 90, 43);
             uint16_t pictureColor = rgb565(200, 180, 150);
             
-            int frameW = (int)(8 * scale);
-            int frameH = (int)(10 * scale);
+            int frameW = (int)(7 * scale);
+            int frameH = (int)(9 * scale);
+            
+            // Rahmen
             _currentCanvas->fillRect(cx - frameW/2, cy - frameH, frameW, frameH, frameColor);
             _currentCanvas->fillRect(cx - frameW/2 + 1, cy - frameH + 1, frameW - 2, frameH - 2, pictureColor);
-            // Kleines Motiv (Haus)
-            _currentCanvas->fillRect(cx - 2, cy - frameH + 4, 4, 4, rgb565(180, 100, 80));
-            _currentCanvas->fillTriangle(cx - 3, cy - frameH + 4, cx, cy - frameH + 1, cx + 3, cy - frameH + 4, rgb565(150, 80, 60));
+            
+            // Motiv (Landschaft)
+            // Himmel
+            _currentCanvas->fillRect(cx - frameW/2 + 2, cy - frameH + 2, frameW - 4, frameH/2 - 2, rgb565(150, 180, 220));
+            // Berg
+            _currentCanvas->fillTriangle(cx - 2, cy - frameH/2, cx, cy - frameH + 3, cx + 2, cy - frameH/2, rgb565(100, 100, 120));
+            // Boden
+            _currentCanvas->fillRect(cx - frameW/2 + 2, cy - frameH/2, frameW - 4, frameH/2 - 2, rgb565(100, 150, 80));
         }
     }
 }
