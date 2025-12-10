@@ -635,24 +635,24 @@ bool TankerkoenigModule::getPriceFromCache(const PsramString& stationId, float& 
 void TankerkoenigModule::cleanupOldPriceCacheEntries() {
     if (!_deviceConfig) return;
     
-    // Parse currently configured station IDs (before taking mutex to avoid holding it during parsing)
-    PsramVector<PsramString> current_id_list;
-    PsramString temp_ids = station_ids;  // Copy member variable
-    if (!temp_ids.empty()) {
-        char* strtok_ctx;
-        char* id_token = strtok_r((char*)temp_ids.c_str(), ",", &strtok_ctx);
-        while(id_token != nullptr) { 
-            current_id_list.push_back(id_token); 
-            id_token = strtok_r(nullptr, ",", &strtok_ctx); 
-        }
-    }
-    
     time_t now_utc; 
     time(&now_utc);
     time_t cutoff_time = now_utc - (_deviceConfig->movingAverageDays * 86400L);
     
-    // Protect _lastPriceCache access with mutex
+    // Protect both station_ids read and _lastPriceCache access with mutex
     if (xSemaphoreTake(dataMutex, portMAX_DELAY) == pdTRUE) {
+        // Parse currently configured station IDs while holding mutex
+        PsramVector<PsramString> current_id_list;
+        PsramString temp_ids = station_ids;  // Copy member variable
+        if (!temp_ids.empty()) {
+            char* strtok_ctx;
+            char* id_token = strtok_r((char*)temp_ids.c_str(), ",", &strtok_ctx);
+            while(id_token != nullptr) { 
+                current_id_list.push_back(id_token); 
+                id_token = strtok_r(nullptr, ",", &strtok_ctx); 
+            }
+        }
+        
         size_t original_size = _lastPriceCache.size();
         _lastPriceCache.erase(
             std::remove_if(_lastPriceCache.begin(), _lastPriceCache.end(),
