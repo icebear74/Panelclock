@@ -185,14 +185,12 @@ bool AnimationsModule::isHolidaySeason() {
 }
 
 bool AnimationsModule::isFireplaceSeason() {
+    // Prüfe nur ob das Kamin-Feature aktiviert ist
+    // Die Nachtmodus-Prüfung erfolgt später bei der Anzeige-Entscheidung
     if (!config || !config->fireplaceEnabled) return false;
     
-    // Wenn Nachtmodus aktiviert ist, prüfe ob es aktuell Nacht ist
-    if (config->fireplaceNightModeOnly) {
-        return TimeUtilities::isNightTime();
-    }
-    
-    // Sonst ist der Kamin immer aktiv (wenn enabled)
+    // Kamin ist immer "in Season" wenn aktiviert
+    // (unabhängig von der Tageszeit)
     return true;
 }
 
@@ -336,6 +334,11 @@ void AnimationsModule::periodicTick() {
             bool treeActive = config->christmasTreeEnabled && isChristmasSeason();
             bool fireplaceActive = config->fireplaceEnabled && isFireplaceSeason();
             
+            // Prüfe Nachtmodus für Kamin
+            if (fireplaceActive && config->fireplaceNightModeOnly && !TimeUtilities::isNightTime()) {
+                fireplaceActive = false;
+            }
+            
             int activeCount = (wreathActive ? 1 : 0) + (treeActive ? 1 : 0) + (fireplaceActive ? 1 : 0);
             int modeIndex = _displayCounter % activeCount;
             
@@ -359,7 +362,12 @@ void AnimationsModule::periodicTick() {
             _showFireplace = false;
         } else if (mode == ChristmasDisplayMode::Fireplace) {
             _showTree = false;
-            _showFireplace = true;
+            // Prüfe Nachtmodus für Kamin
+            if (config->fireplaceNightModeOnly && !TimeUtilities::isNightTime()) {
+                _showFireplace = false;  // Nicht anzeigen wenn Nachtmodus aktiv und es ist Tag
+            } else {
+                _showFireplace = true;
+            }
         } else {
             _showTree = false;
             _showFireplace = false;
