@@ -1522,225 +1522,65 @@ void AnimationsModule::timeIsUp() {
 
 // ============== KAMIN ZEICHENFUNKTIONEN ==============
 
-// Fireplace pixel array - 64x64 base design (will be scaled)
-// This represents the fireplace structure without fire/decorations
-// Format: Each value represents a color index in the palette
-static const uint8_t FIREPLACE_BITMAP_64x64[64 * 64] PROGMEM = {
-    // This would be a large array - instead we'll use procedural drawing
-    // but structured to closely match the reference image
-};
+#include "fireplace_bitmap.h"
 
 void AnimationsModule::drawFireplace() {
     int canvasW = _currentCanvas->width();
     int canvasH = _currentCanvas->height();
     
-    // Color palette matching reference image more closely
-    uint16_t COL_WALL = rgb565(210, 210, 210);      // Light wall
-    uint16_t COL_FLOOR = rgb565(160, 160, 160);     // Floor tiles
-    uint16_t COL_FLOOR_GROUT = rgb565(120, 120, 120); // Grout lines
-    uint16_t COL_MANTEL_WOOD = rgb565(139, 109, 78); // Mantel wood
-    uint16_t COL_MANTEL_SHADOW = rgb565(100, 80, 60); // Mantel shadow
-    uint16_t COL_STONE_LIGHT = rgb565(200, 200, 200); // Light stone
-    uint16_t COL_STONE_MED = rgb565(160, 160, 160);   // Medium stone
-    uint16_t COL_STONE_DARK = rgb565(100, 100, 100);  // Dark stone/grout
-    uint16_t COL_FIREPLACE_INSIDE = rgb565(20, 20, 20); // Dark interior
-    uint16_t COL_METAL_DARK = rgb565(50, 50, 50);    // Dark metal
-    uint16_t COL_METAL_LIGHT = rgb565(120, 120, 120); // Light metal
-    uint16_t COL_WOOD_DARK = rgb565(80, 60, 40);     // Dark wood/bark
-    uint16_t COL_WOOD_LIGHT = rgb565(220, 190, 150); // Light wood interior
+    // Calculate scaling factors
+    // Base bitmap is 192x64, we want to scale it to fit the canvas
+    float scaleX = canvasW / (float)FIREPLACE_BMP_WIDTH;
+    float scaleY = canvasH / 96.0f;  // Target height is 96 (64 for fireplace + 32 for decorations)
     
-    // Override with config colors
-    if (config && config->fireplaceBrickColor.length() > 0) {
-        uint16_t customBrick = hexToRgb565(config->fireplaceBrickColor.c_str());
-        COL_STONE_LIGHT = customBrick;
-        // Derive darker shades
-        uint8_t r = ((customBrick >> 11) & 0x1F) * 8;
-        uint8_t g = ((customBrick >> 5) & 0x3F) * 4;
-        uint8_t b = (customBrick & 0x1F) * 8;
-        COL_STONE_MED = rgb565(max(0, r - 30), max(0, g - 30), max(0, b - 30));
-        COL_STONE_DARK = rgb565(max(0, r - 60), max(0, g - 60), max(0, b - 60));
-    }
-    if (config && config->fireplaceBgColor.length() > 0) {
-        COL_WALL = hexToRgb565(config->fireplaceBgColor.c_str());
-    }
+    // Calculate the fireplace area (bottom 64 pixels scaled)
+    int fireplaceHeight = (int)(FIREPLACE_BMP_HEIGHT * scaleY);
+    int fireplaceY = canvasH - fireplaceHeight;
     
-    // Scaling factors
-    float scaleX = canvasW / 192.0f;
-    float scaleY = canvasH / 96.0f;
-    
-    // === BACKGROUND ===
-    _currentCanvas->fillScreen(COL_WALL);
-    
-    // === FLOOR (bottom ~12% of screen) ===
-    int floorY = canvasH - (int)(12 * scaleY);
-    _currentCanvas->fillRect(0, floorY, canvasW, canvasH - floorY, COL_FLOOR);
-    
-    // Floor tile pattern (horizontal lines every 4 pixels)
-    for (int y = floorY; y < canvasH; y += max(3, (int)(4 * scaleY))) {
-        _currentCanvas->drawLine(0, y, canvasW, y, COL_FLOOR_GROUT);
-    }
-    // Vertical lines for perspective
-    for (int x = 15; x < canvasW; x += max(15, (int)(20 * scaleX))) {
-        int dy = (int)(8 * scaleY);
-        _currentCanvas->drawLine(x, floorY, x - dy, canvasH, COL_FLOOR_GROUT);
-    }
-    
-    // === FIREPLACE STRUCTURE (center) ===
-    int fp_x = (int)(66 * scaleX);
-    int fp_y = (int)(20 * scaleY);
-    int fp_w = (int)(60 * scaleX);
-    int fp_h = (int)(40 * scaleY);
-    
-    // Main stone structure
-    _currentCanvas->fillRect(fp_x, fp_y, fp_w, fp_h, COL_STONE_MED);
-    
-    // Draw detailed brick pattern
-    int brickH = max(3, (int)(5 * scaleY));
-    int brickW = max(5, (int)(8 * scaleX));
-    for (int by = 0; by < fp_h; by += brickH) {
-        int offset = ((by / brickH) % 2) * (brickW / 2);
-        // Horizontal mortar line
-        _currentCanvas->drawLine(fp_x, fp_y + by, fp_x + fp_w, fp_y + by, COL_STONE_DARK);
-        // Vertical mortar lines (offset every other row)
-        for (int bx = -brickW; bx < fp_w + brickW; bx += brickW) {
-            int x = fp_x + bx + offset;
-            if (x >= fp_x && x < fp_x + fp_w) {
-                for (int dy = 0; dy < min(brickH, fp_h - by); dy++) {
-                    _currentCanvas->drawPixel(x, fp_y + by + dy, COL_STONE_DARK);
-                }
-            }
-        }
-        // Add highlight to some bricks
-        if ((by / brickH) % 3 == 0) {
-            for (int bx = 0; bx < fp_w; bx += brickW) {
-                int x = fp_x + bx + offset + 2;
-                if (x < fp_x + fp_w - 2) {
-                    _currentCanvas->drawPixel(x, fp_y + by + 2, COL_STONE_LIGHT);
-                }
+    // Draw the fireplace bitmap
+    // We'll scale it by drawing each source pixel as a scaled rectangle
+    for (int srcY = 0; srcY < FIREPLACE_BMP_HEIGHT; srcY++) {
+        int destY = fireplaceY + (int)(srcY * scaleY);
+        int destHeight = max(1, (int)((srcY + 1) * scaleY) - (int)(srcY * scaleY));
+        
+        for (int srcX = 0; srcX < FIREPLACE_BMP_WIDTH; srcX++) {
+            int destX = (int)(srcX * scaleX);
+            int destWidth = max(1, (int)((srcX + 1) * scaleX) - (int)(srcX * scaleX));
+            
+            // Read pixel from PROGMEM
+            int pixelIndex = srcY * FIREPLACE_BMP_WIDTH + srcX;
+            uint16_t color = pgm_read_word(&FIREPLACE_BITMAP_192x64[pixelIndex]);
+            
+            // Draw scaled pixel
+            if (destWidth == 1 && destHeight == 1) {
+                _currentCanvas->drawPixel(destX, destY, color);
+            } else {
+                _currentCanvas->fillRect(destX, destY, destWidth, destHeight, color);
             }
         }
     }
     
-    // === FIREPLACE OPENING ===
-    int opening_margin = (int)(10 * scaleX);
-    int opening_top = (int)(10 * scaleY);
-    int opening_x = fp_x + opening_margin;
-    int opening_y = fp_y + opening_top;
-    int opening_w = fp_w - 2 * opening_margin;
-    int opening_h = fp_h - opening_top;
+    // === FIRE ANIMATION ===
+    // Find the fireplace opening in the bitmap (approximately centered)
+    // Based on the reference image, the opening is roughly at x:75-115, y:35-60
+    int fireX = (int)(95 * scaleX);  // Center of opening
+    int fireY = canvasH - (int)(10 * scaleY);  // Bottom of opening
+    int fireW = (int)(35 * scaleX);  // Width of fire
+    int fireH = (int)(25 * scaleY);  // Height of fire
     
-    _currentCanvas->fillRect(opening_x, opening_y, opening_w, opening_h, COL_FIREPLACE_INSIDE);
+    drawFireplaceFlames(fireX, fireY, fireW, fireH);
     
-    // Inner stone edge (darker)
-    _currentCanvas->drawRect(opening_x, opening_y, opening_w, opening_h, COL_STONE_DARK);
-    _currentCanvas->drawRect(opening_x + 1, opening_y + 1, opening_w - 2, opening_h - 2, rgb565(30, 30, 30));
+    // === MANTEL DECORATIONS ===
+    // The mantel shelf is at approximately y=20 in the source image
+    int mantelY = fireplaceY + (int)(20 * scaleY);
+    int mantelCenterX = canvasW / 2;
+    int mantelWidth = (int)(80 * scaleX);  // Approx width of mantel
     
-    // === METAL GRATE ===
-    int grate_y = opening_y + opening_h - (int)(4 * scaleY);
-    int grate_spacing = max(4, (int)(6 * scaleX));
-    _currentCanvas->drawLine(opening_x + 3, grate_y, opening_x + opening_w - 3, grate_y, COL_METAL_LIGHT);
-    _currentCanvas->drawLine(opening_x + 3, grate_y + 1, opening_x + opening_w - 3, grate_y + 1, COL_METAL_DARK);
-    // Vertical grate bars
-    for (int gx = opening_x + grate_spacing; gx < opening_x + opening_w; gx += grate_spacing) {
-        _currentCanvas->drawLine(gx, grate_y - 2, gx, grate_y + 1, COL_METAL_DARK);
-    }
+    // Draw stockings
+    drawStockings(mantelY, mantelWidth, mantelCenterX);
     
-    // === MANTEL SHELF ===
-    int mantel_y = fp_y - (int)(4 * scaleY);
-    int mantel_h = (int)(4 * scaleY);
-    int mantel_overhang = (int)(6 * scaleX);
-    
-    // Main shelf (light wood on top)
-    _currentCanvas->fillRect(fp_x - mantel_overhang, mantel_y, fp_w + 2 * mantel_overhang, mantel_h, COL_MANTEL_WOOD);
-    // Top highlight
-    _currentCanvas->drawLine(fp_x - mantel_overhang, mantel_y, fp_x + fp_w + mantel_overhang, mantel_y, 
-                            rgb565(min(255, ((COL_MANTEL_WOOD >> 11) & 0x1F) * 8 + 40), 
-                                   min(255, ((COL_MANTEL_WOOD >> 5) & 0x3F) * 4 + 30),
-                                   min(255, (COL_MANTEL_WOOD & 0x1F) * 8 + 30)));
-    // Bottom shadow
-    _currentCanvas->drawLine(fp_x - mantel_overhang, fp_y, fp_x + fp_w + mantel_overhang, fp_y, COL_MANTEL_SHADOW);
-    _currentCanvas->drawLine(fp_x - mantel_overhang, fp_y - 1, fp_x + fp_w + mantel_overhang, fp_y - 1, COL_MANTEL_SHADOW);
-    
-    // === WOOD STORAGE (left) ===
-    int wood_x = (int)(18 * scaleX);
-    int wood_y = (int)(26 * scaleY);
-    int wood_w = (int)(26 * scaleX);
-    int wood_h = (int)(32 * scaleY);
-    
-    // Metal frame
-    _currentCanvas->drawRect(wood_x, wood_y, wood_w, wood_h, COL_METAL_DARK);
-    _currentCanvas->drawRect(wood_x + 1, wood_y + 1, wood_w - 2, wood_h - 2, COL_METAL_LIGHT);
-    
-    // Stacked logs
-    int log_r = max(2, (int)(2.5 * scaleY));
-    int log_spacing = max(4, (int)(5 * scaleY));
-    for (int ly = wood_y + wood_h - 5; ly > wood_y + 3; ly -= log_spacing) {
-        for (int lx = wood_x + 5; lx < wood_x + wood_w - 5; lx += log_spacing) {
-            // Log with bark
-            _currentCanvas->fillCircle(lx, ly, log_r, COL_WOOD_DARK);
-            // Cut surface
-            if (log_r > 1) {
-                _currentCanvas->fillCircle(lx, ly, log_r - 1, COL_WOOD_LIGHT);
-                _currentCanvas->drawPixel(lx, ly, COL_WOOD_DARK); // Center ring
-            }
-        }
-    }
-    
-    // === TOOL STAND (right) ===
-    int tool_x = (int)(155 * scaleX);
-    int tool_y = (int)(24 * scaleY);
-    int tool_h = (int)(32 * scaleY);
-    
-    // Main pole
-    for (int i = 0; i < 2; i++) {
-        _currentCanvas->drawLine(tool_x + i, tool_y, tool_x + i, tool_y + tool_h, COL_METAL_DARK);
-    }
-    
-    // Base
-    _currentCanvas->drawLine(tool_x - 4, tool_y + tool_h, tool_x + 5, tool_y + tool_h, COL_METAL_DARK);
-    _currentCanvas->drawLine(tool_x - 4, tool_y + tool_h - 1, tool_x + 5, tool_y + tool_h - 1, COL_METAL_LIGHT);
-    
-    // Top hook bar
-    _currentCanvas->drawLine(tool_x - 5, tool_y + 2, tool_x + 6, tool_y + 2, COL_METAL_DARK);
-    _currentCanvas->drawLine(tool_x - 5, tool_y + 3, tool_x + 6, tool_y + 3, COL_METAL_LIGHT);
-    
-    // Tool 1: Poker (left)
-    int poker_x = tool_x - 4;
-    int poker_len = (int)(18 * scaleY);
-    _currentCanvas->drawLine(poker_x, tool_y + 3, poker_x, tool_y + poker_len, COL_METAL_DARK);
-    // Hook at bottom
-    _currentCanvas->fillRect(poker_x - 1, tool_y + poker_len, 3, max(2, (int)(3 * scaleY)), COL_METAL_LIGHT);
-    
-    // Tool 2: Shovel (center-left)
-    int shovel_x = tool_x - 2;
-    _currentCanvas->drawLine(shovel_x, tool_y + 4, shovel_x, tool_y + poker_len - 2, COL_METAL_DARK);
-    int shovel_blade_y = tool_y + poker_len - 2;
-    _currentCanvas->fillRect(shovel_x - 2, shovel_blade_y, 4, max(2, (int)(4 * scaleY)), COL_METAL_LIGHT);
-    _currentCanvas->drawRect(shovel_x - 2, shovel_blade_y, 4, max(2, (int)(4 * scaleY)), COL_METAL_DARK);
-    
-    // Tool 3: Brush (center-right)
-    int brush_x = tool_x + 2;
-    _currentCanvas->drawLine(brush_x, tool_y + 5, brush_x, tool_y + poker_len - 1, COL_METAL_DARK);
-    int brush_y = tool_y + poker_len - 1;
-    // Bristles
-    _currentCanvas->drawLine(brush_x - 2, brush_y, brush_x + 2, brush_y, COL_METAL_DARK);
-    _currentCanvas->drawLine(brush_x - 2, brush_y + 1, brush_x - 1, brush_y + 3, COL_METAL_DARK);
-    _currentCanvas->drawLine(brush_x + 2, brush_y + 1, brush_x + 1, brush_y + 3, COL_METAL_DARK);
-    
-    // Tool 4: Tongs (right)
-    int tongs_x = tool_x + 4;
-    _currentCanvas->drawLine(tongs_x, tool_y + 6, tongs_x, tool_y + poker_len, COL_METAL_DARK);
-    // Tongs grip
-    _currentCanvas->drawLine(tongs_x - 2, tool_y + poker_len + 1, tongs_x, tool_y + poker_len + 3, COL_METAL_DARK);
-    _currentCanvas->drawLine(tongs_x + 2, tool_y + poker_len + 1, tongs_x, tool_y + poker_len + 3, COL_METAL_DARK);
-    
-    // === FIRE ===
-    drawFireplaceFlames(opening_x + opening_w / 2, opening_y + opening_h - 2, 
-                       opening_w - 4, opening_h - 8);
-    
-    // === DECORATIONS ===
-    drawStockings(mantel_y, fp_w + 2 * mantel_overhang, fp_x + fp_w / 2);
-    drawMantleDecorations(mantel_y, fp_w + 2 * mantel_overhang, fp_x + fp_w / 2, scaleY);
+    // Draw decorations (clock, vase, etc.) on the mantel
+    drawMantleDecorations(mantelY, mantelWidth, mantelCenterX, scaleY);
 }
 
 void AnimationsModule::drawFireplaceFlames(int x, int y, int width, int height) {
