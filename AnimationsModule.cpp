@@ -1563,8 +1563,8 @@ void AnimationsModule::drawFireplace() {
     // === FIRE ANIMATION ===
     // The black fireplace opening (Brennraum) is 65x33 pixels
     // Located at approximately x: 64-128 (center ~96), y: 24-56 in source image
-    // User adjustments: +5 pixels wider to the right, +3 pixels to the right
-    int fireSourceX = 67;  // Left edge moved 3 pixels right (was 64, now 64+3=67)
+    // User adjustments: +5 pixels wider to the right, +3 pixels to the right, +2 pixels to the right
+    int fireSourceX = 69;  // Left edge moved 5 pixels right total (was 64, now 64+3+2=69)
     int fireSourceY = 24;  // Top edge of black opening in source
     int fireSourceW = 70;  // Width of opening (65 + 5 pixels wider to the right)
     int fireSourceH = 33;  // Height of opening
@@ -1591,8 +1591,8 @@ void AnimationsModule::drawFireplace() {
     drawMantleDecorations(mantelY, mantelWidth, mantelCenterX, scaleY);
     
     // Draw stockings hanging FROM the front edge of the mantel
-    // User adjustments: initially 8 pixels higher, now +7 more = 15 pixels higher total
-    int stockingHangY = fireplaceY + (int)(1 * scaleY);  // 15 pixels higher (was 16, now 16-15=1)
+    // User adjustments: initially 8 pixels higher, +7 more, +2 more = 17 pixels higher total
+    int stockingHangY = fireplaceY + (int)(-1 * scaleY);  // 17 pixels higher (was 16, now 16-17=-1)
     drawStockings(stockingHangY, mantelWidth, mantelCenterX);
 }
 
@@ -1806,9 +1806,9 @@ void AnimationsModule::drawMantleDecorations(int simsY, int simsWidth, int cente
     int decoCount = config ? config->fireplaceCandleCount : 2;
     if (decoCount < 0) decoCount = 0;
     
-    // Wenn Uhr aktiv: max 2 Dekorationen (links + rechts)
-    // Wenn Uhr aus: max 3 Dekorationen
-    int maxDeco = showClock ? 2 : 3;
+    // Wenn Uhr aktiv: max 4 Dekorationen (2 links + 2 rechts)
+    // Wenn Uhr aus: max 5 Dekorationen
+    int maxDeco = showClock ? 4 : 5;
     if (decoCount > maxDeco) decoCount = maxDeco;
     
     // ===== ANALOGE UHR IN DER MITTE =====
@@ -1873,17 +1873,39 @@ void AnimationsModule::drawMantleDecorations(int simsY, int simsWidth, int cente
     // ===== DEKORATIONEN LINKS UND RECHTS =====
     if (decoCount == 0) return;
     
-    // Positionen: bei showClock nur links/rechts, sonst auch Mitte möglich
-    int positions[3];
-    int decoTypes[3];
+    // Positionen: bei showClock bis zu 4 (2 links + 2 rechts), sonst bis zu 5
+    int positions[5];
+    int decoTypes[5];
     
     if (showClock) {
-        // Nur links und rechts
-        positions[0] = centerX - simsWidth/3;
-        positions[1] = centerX + simsWidth/3;
-        decoTypes[0] = 0;  // Blumenvase
-        decoTypes[1] = 2;  // Bilderrahmen
+        // Mit Uhr: bis zu 4 Dekorationen (2 links + 2 rechts)
+        if (decoCount == 1) {
+            positions[0] = centerX - simsWidth/3;
+            decoTypes[0] = 0;  // Blumenvase
+        } else if (decoCount == 2) {
+            positions[0] = centerX - simsWidth/3;
+            positions[1] = centerX + simsWidth/3;
+            decoTypes[0] = 0;  // Blumenvase
+            decoTypes[1] = 2;  // Bilderrahmen
+        } else if (decoCount == 3) {
+            positions[0] = centerX - simsWidth/2.5;
+            positions[1] = centerX - simsWidth/5;
+            positions[2] = centerX + simsWidth/3;
+            decoTypes[0] = 0;  // Blumenvase
+            decoTypes[1] = 1;  // Schneekugel
+            decoTypes[2] = 2;  // Bilderrahmen
+        } else {  // decoCount >= 4
+            positions[0] = centerX - simsWidth/2.5;
+            positions[1] = centerX - simsWidth/5;
+            positions[2] = centerX + simsWidth/5;
+            positions[3] = centerX + simsWidth/2.5;
+            decoTypes[0] = 0;  // Blumenvase
+            decoTypes[1] = 1;  // Schneekugel
+            decoTypes[2] = 1;  // Schneekugel
+            decoTypes[3] = 2;  // Bilderrahmen
+        }
     } else {
+        // Ohne Uhr: bis zu 5 Dekorationen
         if (decoCount == 1) {
             positions[0] = centerX;
             decoTypes[0] = 0;
@@ -1892,13 +1914,33 @@ void AnimationsModule::drawMantleDecorations(int simsY, int simsWidth, int cente
             positions[1] = centerX + simsWidth/3;
             decoTypes[0] = 0;
             decoTypes[1] = 2;
-        } else {
+        } else if (decoCount == 3) {
             positions[0] = centerX - simsWidth/3;
             positions[1] = centerX;
             positions[2] = centerX + simsWidth/3;
             decoTypes[0] = 0;
             decoTypes[1] = 1;
             decoTypes[2] = 2;
+        } else if (decoCount == 4) {
+            positions[0] = centerX - simsWidth/2.5;
+            positions[1] = centerX - simsWidth/6;
+            positions[2] = centerX + simsWidth/6;
+            positions[3] = centerX + simsWidth/2.5;
+            decoTypes[0] = 0;
+            decoTypes[1] = 1;
+            decoTypes[2] = 1;
+            decoTypes[3] = 2;
+        } else {  // decoCount == 5
+            positions[0] = centerX - simsWidth/2.5;
+            positions[1] = centerX - simsWidth/6;
+            positions[2] = centerX;
+            positions[3] = centerX + simsWidth/6;
+            positions[4] = centerX + simsWidth/2.5;
+            decoTypes[0] = 0;
+            decoTypes[1] = 1;
+            decoTypes[2] = 2;
+            decoTypes[3] = 1;
+            decoTypes[4] = 0;
         }
     }
     
