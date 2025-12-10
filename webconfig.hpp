@@ -205,6 +205,8 @@ struct DeviceConfig {
     PsramString christmasTreeLightColor = "#FFD700";
     /// @brief Weihnachtsbaum: Anzahl der Lichter (5-30)
     int christmasTreeLightCount = 18;
+    /// @brief Weihnachtsbaum: Anzahl der Kugeln (8-20)
+    int christmasTreeOrnamentCount = 12;
     /// @brief Weihnachtsbaum: Anzahl der Geschenke (0-10)
     int christmasTreeGiftCount = 5;
     /// @brief Adventskranz/Weihnachtsbaum: Fullscreen-Modus (0=Teilbereich 192x66, 1=Vollbild 192x96)

@@ -98,6 +98,16 @@ private:
     
     // Wechsel zwischen Kranz, Baum und Kamin
     int _displayMode = 0;  // 0=Kranz, 1=Baum, 2=Kamin
+    
+    // Baum-Randomisierung
+    unsigned long _lastTreeDisplay = 0;
+    bool _treeOrnamentsNeedRegeneration = true;
+    int _shuffledOrnamentY[30];      // Max 30 Ornamente (mehr als genug)
+    int _shuffledOrnamentX[30];
+    uint8_t _shuffledOrnamentColors[30];
+    uint8_t _shuffledOrnamentSizes[30];
+    int _shuffledLightY[30];         // Max 30 Lichter
+    int _shuffledLightX[30];
     bool _showTree = false;
     bool _showFireplace = false;
     int _displayCounter = 0;
@@ -182,6 +192,11 @@ private:
      * @brief Mischt die Kerzenreihenfolge neu
      */
     void shuffleCandleOrder();
+
+    /**
+     * @brief Mischt Kugeln und Lichter am Weihnachtsbaum für Variation
+     */
+    void shuffleTreeElements();
 
     /**
      * @brief Zeichnet den Adventskranz mit Tannengrün.

@@ -136,6 +136,7 @@ void loadDeviceConfig() {
                 deviceConfig->christmasTreeLightMode = doc["christmasTreeLightMode"] | 0;
                 deviceConfig->christmasTreeLightColor = doc["christmasTreeLightColor"] | "#FFD700";
                 deviceConfig->christmasTreeLightCount = doc["christmasTreeLightCount"] | 18;
+                deviceConfig->christmasTreeOrnamentCount = doc["christmasTreeOrnamentCount"] | 12;
                 deviceConfig->christmasTreeGiftCount = doc["christmasTreeGiftCount"] | 5;
                 deviceConfig->adventWreathFullscreen = doc["adventWreathFullscreen"] | false;
                 deviceConfig->showNewYearCountdown = doc["showNewYearCountdown"] | true;
@@ -277,6 +278,7 @@ void saveDeviceConfig() {
     doc["christmasTreeLightMode"] = deviceConfig->christmasTreeLightMode;
     doc["christmasTreeLightColor"] = deviceConfig->christmasTreeLightColor.c_str();
     doc["christmasTreeLightCount"] = deviceConfig->christmasTreeLightCount;
+    doc["christmasTreeOrnamentCount"] = deviceConfig->christmasTreeOrnamentCount;
     doc["christmasTreeGiftCount"] = deviceConfig->christmasTreeGiftCount;
     doc["adventWreathFullscreen"] = deviceConfig->adventWreathFullscreen;
     doc["showNewYearCountdown"] = deviceConfig->showNewYearCountdown;

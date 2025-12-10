@@ -73,6 +73,97 @@ void AnimationsModule::shuffleCandleOrder() {
     _lastOrderSeed = seed;
 }
 
+void AnimationsModule::shuffleTreeElements() {
+    time_t now_utc;
+    time(&now_utc);
+    uint32_t seed = (uint32_t)now_utc + millis();
+    
+    int canvasH = _currentCanvas->height();
+    int canvasW = _currentCanvas->width();
+    int centerX = canvasW / 2;
+    float scale = canvasH / 66.0f;
+    
+    int baseY = canvasH - 4;
+    int trunkHeight = (int)(10 * scale);
+    int treeHeight = (int)(54 * scale);
+    int treeBaseY = baseY - trunkHeight + 2;
+    
+    // Hole konfigurierte Anzahl oder verwende Standard
+    int ornamentCount = config ? config->christmasTreeOrnamentCount : 12;
+    if (ornamentCount < 8) ornamentCount = 8;
+    if (ornamentCount > 20) ornamentCount = 20;
+    if (scale > 1.2) ornamentCount += 4;  // Mehr bei Fullscreen
+    
+    // Shuffle ornament positions
+    for (int i = 0; i < ornamentCount && i < 30; i++) {
+        seed = simpleRandom(seed + i * 137);
+        
+        // Y position (height on tree)
+        float t = (float)i / ornamentCount;
+        float yFraction = 0.4f * t + 0.6f * (t * t);
+        int yOffset = 3 + (int)(yFraction * (treeHeight - 10));
+        yOffset += (seed % 8) - 4;
+        if (yOffset < 4) yOffset = 4;
+        if (yOffset > treeHeight - 6) yOffset = treeHeight - 6;
+        _shuffledOrnamentY[i] = yOffset;
+        
+        // X position (left/right)
+        int maxWidth;
+        int layer1Height = (int)(18 * scale);
+        int layer2Height = (int)(18 * scale);
+        int layer1Width = (int)(28 * scale);
+        int layer2Width = (int)(22 * scale);
+        int layer3Width = (int)(16 * scale);
+        
+        if (yOffset < layer1Height) {
+            float progress = (float)yOffset / layer1Height;
+            maxWidth = (int)(layer1Width * (1.0f - progress * 0.5f) * 0.85f);
+        } else if (yOffset < layer1Height + layer2Height - (int)(4 * scale)) {
+            float progress = (float)(yOffset - layer1Height + (int)(4 * scale)) / layer2Height;
+            maxWidth = (int)(layer2Width * (1.0f - progress * 0.5f) * 0.85f);
+        } else {
+            float progress = (float)(yOffset - layer1Height - layer2Height + (int)(14 * scale)) / (layer3Width + 4);
+            maxWidth = (int)(layer3Width * (1.0f - progress * 0.6f) * 0.8f);
+        }
+        
+        if (maxWidth < 2) maxWidth = 2;
+        int xRange = maxWidth * 2;
+        int xPos = seed % xRange;
+        if (i % 2 == 0) {
+            _shuffledOrnamentX[i] = -maxWidth + (xPos / 2);
+        } else {
+            _shuffledOrnamentX[i] = -maxWidth + xRange/2 + (xPos / 2);
+        }
+        
+        // Random color index (0-7)
+        _shuffledOrnamentColors[i] = seed % 8;
+        
+        // Random size
+        _shuffledOrnamentSizes[i] = 2 + (seed % 2);
+        if (scale > 1.2) _shuffledOrnamentSizes[i] = 2 + (seed % 3);
+    }
+    
+    // Shuffle light positions
+    int lightCount = config ? config->christmasTreeLightCount : 18;
+    if (lightCount < 5) lightCount = 5;
+    if (lightCount > 30) lightCount = 30;
+    
+    for (int i = 0; i < lightCount && i < 30; i++) {
+        seed = simpleRandom(seed + i * 211);
+        
+        // Random Y position throughout tree
+        int lightY = (seed % treeHeight);
+        if (lightY < 4) lightY = 4;
+        _shuffledLightY[i] = lightY;
+        
+        // Random X position within tree width at that Y
+        int maxLightWidth = (int)(28 * scale * (1.0f - (float)lightY / treeHeight * 0.7f));
+        if (maxLightWidth < 2) maxLightWidth = 2;
+        int lightX = ((seed / 7) % (maxLightWidth * 2)) - maxLightWidth;
+        _shuffledLightX[i] = lightX;
+    }
+}
+
 bool AnimationsModule::isAdventSeason() {
     time_t now_utc;
     time(&now_utc);
@@ -472,12 +563,8 @@ void AnimationsModule::draw() {
     if (_showFireplace) {
         drawFireplace();
     } else if (_showTree) {
-        // Regeneriere Kugeln/Lichter wenn der Baum neu angezeigt wird
-        unsigned long now = millis();
-        if (now - _lastTreeDisplay > 1000) {  // Mindestens 1 Sekunde seit letzter Anzeige
-            _treeOrnamentsNeedRegeneration = true;
-            _lastTreeDisplay = now;
-        }
+        // Mische Kugeln und Lichter bei jeder neuen Anzeige für Variation
+        shuffleTreeElements();
         
         drawChristmasTree();
         drawSnowflakes();
@@ -655,70 +742,20 @@ void AnimationsModule::drawTreeOrnaments(int centerX, int baseY, float scale) {
         rgb565(100, 200, 255),  // Hellblau
         rgb565(220, 220, 220)   // Silber
     };
-    int numColors = 8;
     
-    // Skalierte Kugelpositionen
-    int numOrnaments = scale > 1.2 ? 16 : 12;  // Mehr Kugeln bei Fullscreen
+    // Hole konfigurierte Anzahl oder verwende Standard
+    int numOrnaments = config ? config->christmasTreeOrnamentCount : 12;
+    if (numOrnaments < 8) numOrnaments = 8;
+    if (numOrnaments > 20) numOrnaments = 20;
+    if (scale > 1.2) numOrnaments += 4;  // Mehr bei Fullscreen
     
-    // Baumhöhe und Schichten (müssen mit drawNaturalTree übereinstimmen)
-    int treeHeight = (int)(54 * scale);
-    int layer1Height = (int)(18 * scale);
-    int layer2Height = (int)(18 * scale);
-    int layer1Width = (int)(28 * scale);
-    int layer2Width = (int)(22 * scale);
-    int layer3Width = (int)(16 * scale);
-    
-    // Verbesserte Verteilung - nutzt den gesamten Baum besser aus
-    // Mehr unten, aber auch oben sollten einige sein
-    for (int i = 0; i < numOrnaments; i++) {
-        uint32_t seed = simpleRandom(i * 157 + 789);
+    // Verwende gemischte Positionen aus shuffleTreeElements()
+    for (int i = 0; i < numOrnaments && i < 30; i++) {
+        int ox = centerX + _shuffledOrnamentX[i];
+        int oy = baseY - _shuffledOrnamentY[i];
+        int radius = _shuffledOrnamentSizes[i];
+        uint16_t color = ornamentColors[_shuffledOrnamentColors[i] % 8];
         
-        // Y-Position: Bessere Verteilung mit weniger extremer Konzentration unten
-        // Mische linear (0.4) und quadratisch (0.6) für ausgewogenere Verteilung
-        // Linear verteilt gleichmäßig, quadratisch konzentriert nach unten
-        float t = (float)i / numOrnaments;  // 0.0 bis 1.0
-        const float LINEAR_WEIGHT = 0.4f;    // 40% gleichmäßige Verteilung
-        const float QUADRATIC_WEIGHT = 0.6f; // 60% Konzentration nach unten
-        float yFraction = LINEAR_WEIGHT * t + QUADRATIC_WEIGHT * (t * t);
-        int yOffset = 3 + (int)(yFraction * (treeHeight - 10));
-        yOffset += (seed % 8) - 4;  // Mehr Variation für natürlicheres Aussehen
-        if (yOffset < 4) yOffset = 4;
-        if (yOffset > treeHeight - 6) yOffset = treeHeight - 6;
-        
-        // Berechne maximale Breite an dieser Y-Position (nutze mehr vom verfügbaren Raum)
-        int maxWidth;
-        if (yOffset < layer1Height) {
-            float progress = (float)yOffset / layer1Height;
-            // Erhöhe von 0.7f auf 0.85f um mehr vom Rand zu nutzen
-            maxWidth = (int)(layer1Width * (1.0f - progress * 0.5f) * 0.85f);
-        } else if (yOffset < layer1Height + layer2Height - (int)(4 * scale)) {
-            float progress = (float)(yOffset - layer1Height + (int)(4 * scale)) / layer2Height;
-            maxWidth = (int)(layer2Width * (1.0f - progress * 0.5f) * 0.85f);
-        } else {
-            float progress = (float)(yOffset - layer1Height - layer2Height + (int)(14 * scale)) / (layer3Width + 4);
-            maxWidth = (int)(layer3Width * (1.0f - progress * 0.6f) * 0.8f);
-        }
-        
-        if (maxWidth < 2) maxWidth = 2;
-        
-        // X-Position: Bessere Nutzung der Ränder
-        int xRange = maxWidth * 2;  // Voller Bereich nutzen
-        int ox;
-        // Verwende mehr Variation und nutze Ränder besser
-        int xPos = seed % xRange;
-        if (i % 2 == 0) {
-            // Linke Seite - gehe näher an den Rand
-            ox = centerX - maxWidth + (xPos / 2);
-        } else {
-            // Rechte Seite - gehe näher an den Rand
-            ox = centerX - maxWidth + xRange/2 + (xPos / 2);
-        }
-        
-        int oy = baseY - yOffset;
-        int radius = 2 + (seed % 2);
-        if (scale > 1.2) radius = 2 + (seed % 3);
-        
-        uint16_t color = ornamentColors[seed % numColors];
         drawOrnament(ox, oy, radius, color);
     }
 }
@@ -748,6 +785,8 @@ void AnimationsModule::drawTreeLights() {
         fixedColor = hexToRgb565(config->christmasTreeLightColor.c_str());
     }
     
+    // Verwende gemischte Positionen aus shuffleTreeElements()
+    
     uint16_t lightColors[] = {
         rgb565(255, 255, 100),  // Gelb
         rgb565(255, 100, 100),  // Rot
@@ -767,62 +806,20 @@ void AnimationsModule::drawTreeLights() {
     int layer3Width = (int)(16 * scale);
     int treeHeight = layer1Height + layer2Height - (int)(4 * scale) + layer3Height - (int)(10 * scale);
     
-    // Lichter über den Baum verteilt - bessere Verteilung über die gesamte Baumfläche
-    for (int i = 0; i < lightCount; i++) {
-        // Berechne Position basierend auf Index
-        uint32_t seed = simpleRandom(i * 67 + 321);
-        
-        // Y-Position: Verbesserte Verteilung - mehr unten, aber ganzer Baum wird genutzt
-        // Mische linear (0.3) und quadratisch (0.7) für ausgewogenere Verteilung
-        float t = (float)i / lightCount;  // 0.0 bis 1.0
-        const float LINEAR_WEIGHT = 0.3f;    // 30% gleichmäßige Verteilung
-        const float QUADRATIC_WEIGHT = 0.7f; // 70% Konzentration nach unten
-        float yFraction = LINEAR_WEIGHT * t + QUADRATIC_WEIGHT * (t * t);
-        int ySection = (int)(yFraction * treeHeight);
-        int yOffset = ySection + (seed % 8) - 4;  // Mehr Variation
-        if (yOffset < 2) yOffset = 2;
-        if (yOffset > treeHeight - 4) yOffset = treeHeight - 4;
-        
-        int lightY = treeBaseY - yOffset;
-        
-        // X-Position abhängig von Y (nutze mehr vom verfügbaren Raum)
-        int maxX;
-        if (yOffset < layer1Height) {
-            float progress = (float)yOffset / layer1Height;
-            // Erhöhe von 0.65f auf 0.8f um mehr vom Rand zu nutzen
-            maxX = (int)(layer1Width * (1.0f - progress * 0.5f) * 0.8f);
-        } else if (yOffset < layer1Height + layer2Height - (int)(4 * scale)) {
-            float progress = (float)(yOffset - layer1Height + (int)(4 * scale)) / layer2Height;
-            maxX = (int)(layer2Width * (1.0f - progress * 0.5f) * 0.8f);
-        } else {
-            float progress = (float)(yOffset - layer1Height - layer2Height + (int)(14 * scale)) / layer3Height;
-            maxX = (int)(layer3Width * (1.0f - progress * 0.7f) * 0.75f);
-        }
-        
-        if (maxX < 2) maxX = 2;
-        
-        // Bessere X-Verteilung - nutzt die Ränder besser
-        int lightX;
-        seed = simpleRandom(seed + i);
-        int xRange = maxX * 2;
-        int xPos = seed % xRange;
-        
-        if (i % 2 == 0) {
-            // Linke Seite - gehe näher an den Rand
-            lightX = centerX - maxX + (xPos / 2);
-        } else {
-            // Rechte Seite
-            lightX = centerX - maxX + xRange/2 + (xPos / 2);
-        }
+    // Verwende gemischte Positionen aus shuffleTreeElements()
+    // Lichter über den Baum verteilt
+    for (int i = 0; i < lightCount && i < 30; i++) {
+        int lightY = treeBaseY - _shuffledLightY[i];
+        int lightX = centerX + _shuffledLightX[i];
         
         // Blinken basierend auf Phase
-        seed = simpleRandom(seed + i * 11);
+        uint32_t seed = simpleRandom(i * 11 + _shuffledLightX[i]);
         bool isOn = ((i + _treeLightPhase + (seed % 3)) % 4) < 2;
         
         if (isOn) {
             uint16_t color;
             if (lightMode == 1) {
-                // Feste Farbe mit leichter Variation
+                // Feste Farbe
                 color = fixedColor;
             } else {
                 // Zufällige Farbe
@@ -1953,11 +1950,9 @@ void AnimationsModule::drawMantleDecorations(int simsY, int simsWidth, int cente
         int decoType = decoTypes[i];
         
         if (decoType == 0) {
-            // Kerze mit Flamme
+            // Kerze mit Flamme (wie Adventskranz)
             uint16_t candleColor = rgb565(240, 220, 180);
             uint16_t wickColor = rgb565(40, 40, 40);
-            uint16_t flameColor = rgb565(255, 180, 50);
-            uint16_t flameGlow = rgb565(255, 220, 100);
             
             int candleH = (int)(9 * scale);
             int candleW = (int)(3 * scale);
@@ -1969,11 +1964,8 @@ void AnimationsModule::drawMantleDecorations(int simsY, int simsWidth, int cente
             // Docht
             _currentCanvas->drawLine(cx, cy - candleH, cx, cy - candleH - 2, wickColor);
             
-            // Flamme (animiert)
-            int flameFlicker = (_fireplaceFlamePhase + i * 13) % 3 - 1;
-            int flameCy = cy - candleH - 4 + flameFlicker;
-            _currentCanvas->fillCircle(cx, flameCy, 2, flameGlow);
-            _currentCanvas->fillCircle(cx, flameCy - 1, 1, flameColor);
+            // Flamme - verwende gleiche Methode wie Adventskranz für realistische Animation
+            drawCandleFlame(cx, cy - candleH - 3, _fireplaceFlamePhase + i * 13);
             
         } else if (decoType == 1) {
             // Bücherstapel
