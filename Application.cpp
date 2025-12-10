@@ -14,6 +14,7 @@
 #include "MultiLogger.hpp"
 #include "PanelStreamer.hpp"
 #include "AnimationsModule.hpp"
+#include "Version.hpp"
 
 // --- Konstanten ---
 constexpr uint16_t OTA_PORT = 3232; // Standard ArduinoOTA port
@@ -100,6 +101,15 @@ void Application::begin() {
     if (!_panelManager->begin()) {
         while(true) { delay(1000); }
     }
+    
+    // Show version on startup
+    char versionMsg[64];
+    snprintf(versionMsg, sizeof(versionMsg), "Panelclock\nv%s", PANELCLOCK_VERSION);
+    _panelManager->displayStatus(versionMsg);
+    Log.printf("[Application] Panelclock Version %s (Build: %s %s)\n", 
+               PANELCLOCK_VERSION, PANELCLOCK_BUILD_DATE, PANELCLOCK_BUILD_TIME);
+    delay(2000);
+    
     _panelManager->displayStatus("Systemstart...");
 
     connectionManager = new ConnectionManager(*deviceConfig);
@@ -110,7 +120,7 @@ void Application::begin() {
     dnsServer = new DNSServer();
     server = new WebServer(80);
 
-    _panelManager->displayStatus("Erstelle Module...");
+    _panelManager->displayStatus("Module werden\nerstellt...");
     _clockMod = new ClockModule(*_panelManager->getU8g2(), *_panelManager->getCanvasTime(), *timeConverter);
     
     _tankerkoenigMod = new TankerkoenigModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, TIME_AREA_H, webClient, deviceConfig);
@@ -136,12 +146,14 @@ void Application::begin() {
     _panelManager->registerModule(_themeParkMod);
     _panelManager->registerModule(_animationsMod);
 
+    _panelManager->displayStatus("Verbinde zu\nWLAN...");
     if (connectionManager->begin()) {
         portalRunning = false;
         LOG_MEMORY_DETAILED("Nach WiFi & NTP");
         BaseType_t app_core = xPortGetCoreID();
         BaseType_t network_core = (app_core == 0) ? 1 : 0;
         
+        _panelManager->displayStatus("Starte\nNetzwerkmodule...");
         mwaveSensorModule->begin();
         _tankerkoenigMod->begin();
         webClient->begin();
@@ -162,6 +174,7 @@ void Application::begin() {
         WiFi.setHostname(effectiveHostname);
         
         // Initialize mDNS - required for OTA discovery in Arduino IDE
+        _panelManager->displayStatus("Starte mDNS...");
         Log.println("[Application] Starte mDNS...");
         if (!MDNS.begin(effectiveHostname)) {
             Log.printf("[Application] FEHLER: mDNS-Start mit Hostname '%s' fehlgeschlagen!\n", effectiveHostname);
@@ -169,9 +182,14 @@ void Application::begin() {
             delay(2000); // Allow user to see error message on display
         } else {
             Log.printf("[Application] mDNS gestartet: %s.local\n", effectiveHostname);
+            char mdnsMsg[64];
+            snprintf(mdnsMsg, sizeof(mdnsMsg), "mDNS: %s.local", effectiveHostname);
+            _panelManager->displayStatus(mdnsMsg);
+            delay(1000);
         }
         
         // Configure OTA with same hostname as mDNS
+        _panelManager->displayStatus("Konfiguriere\nOTA-Update...");
         if (!deviceConfig->otaPassword.empty()) ArduinoOTA.setPassword(deviceConfig->otaPassword.c_str());
         ArduinoOTA.setHostname(effectiveHostname);
         
@@ -182,27 +200,35 @@ void Application::begin() {
         MDNS.addService("arduino", "tcp", OTA_PORT);
         
         // Initialize BackupManager before web server setup
+        _panelManager->displayStatus("Initialisiere\nBackup-System...");
         backupManager = new BackupManager(this);
         backupManager->begin();
         Log.println("[Application] BackupManager initialized");
         
+        _panelManager->displayStatus("Starte\nWebserver...");
         setupWebServer(portalRunning);
         
         // Initialize Panel Streamer after WiFi is connected
+        _panelManager->displayStatus("Starte\nPanel-Streamer...");
         _panelStreamer = new PanelStreamer(_panelManager);
         _panelStreamer->begin();
         Log.println("[Application] PanelStreamer initialized and started");
         
     } else {
         portalRunning = true;
+        _panelManager->displayStatus("WLAN nicht\nverbunden!");
+        delay(1500);
+        _panelManager->displayStatus("Starte\nKonfig-Portal...");
         WiFi.softAP("Panelclock-Setup");
         mwaveSensorModule->begin();
         
         // Initialize BackupManager also in AP mode for recovery
+        _panelManager->displayStatus("Initialisiere\nBackup-System...");
         backupManager = new BackupManager(this);
         backupManager->begin();
         Log.println("[Application] BackupManager initialized (AP mode)");
         
+        _panelManager->displayStatus("Starte\nWebserver...");
         setupWebServer(portalRunning);
     }
     LOG_MEMORY_STRATEGIC("Nach Netzwerk-Stack Init");
@@ -222,7 +248,9 @@ void Application::begin() {
     _themeParkMod->onUpdate(redrawCb);
     _animationsMod->onUpdate(redrawCb);
 
-    _panelManager->displayStatus("Startvorgang\nabgeschlossen.");
+    char completionMsg[64];
+    snprintf(completionMsg, sizeof(completionMsg), "Start komplett!\nv%s", PANELCLOCK_VERSION);
+    _panelManager->displayStatus(completionMsg);
     delay(2000);
     LOG_MEMORY_STRATEGIC("Application: Ende");
 }

@@ -52,6 +52,12 @@ void setupWebServer(bool portalMode) {
     server->on("/api/backup/restore", HTTP_POST, handleBackupRestore);
     server->on("/api/backup/list", HTTP_GET, handleBackupList);
     
+    // Firmware update routes
+    server->on("/firmware", HTTP_GET, handleFirmwarePage);
+    server->on("/update", HTTP_POST, []() {
+        // Empty lambda - response handled by handleFirmwareUpload
+    }, handleFirmwareUpload);
+    
     // Debug routes
     server->on("/debug", HTTP_GET, handleDebugData);
     server->on("/debug/station", HTTP_GET, handleDebugStationHistory);
