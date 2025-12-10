@@ -839,9 +839,11 @@ void TankerkoenigModule::trimPriceStatistics(StationPriceHistory& history) {
     char cutoff_date_str_buf[11]; strftime(cutoff_date_str_buf, sizeof(cutoff_date_str_buf), "%Y-%m-%d", &cutoff_tm);
     PsramString cutoff_date_str(cutoff_date_str_buf);
 
-    // Remove entries strictly older than cutoff (keep entries >= cutoff)
-    // This keeps movingAverageDays + 1 entries (cutoff day + movingAverageDays days after)
-    // To keep exactly movingAverageDays entries, we need to use <= instead of <
+    // Remove entries older than or equal to cutoff date
+    // Example: If movingAverageDays=31 and today is Dec 10:
+    //   cutoff_epoch = Dec 10 - 31 days = Nov 9
+    //   Remove all entries <= Nov 9 (including Nov 9)
+    //   Keep entries from Nov 10 to Dec 10 = exactly 31 days
     history.dailyStats.erase(
         std::remove_if(history.dailyStats.begin(), history.dailyStats.end(), 
             [&](const DailyPriceStats& stats) { return stats.date <= cutoff_date_str; }), 
