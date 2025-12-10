@@ -635,10 +635,10 @@ bool TankerkoenigModule::getPriceFromCache(const PsramString& stationId, float& 
 void TankerkoenigModule::cleanupOldPriceCacheEntries() {
     if (!_deviceConfig) return;
     
-    // Parse currently configured station IDs
+    // Parse currently configured station IDs (before taking mutex to avoid holding it during parsing)
     PsramVector<PsramString> current_id_list;
-    if (!station_ids.empty()) {
-        PsramString temp_ids = station_ids;
+    PsramString temp_ids = station_ids;  // Copy member variable
+    if (!temp_ids.empty()) {
         char* strtok_ctx;
         char* id_token = strtok_r((char*)temp_ids.c_str(), ",", &strtok_ctx);
         while(id_token != nullptr) { 
@@ -651,31 +651,41 @@ void TankerkoenigModule::cleanupOldPriceCacheEntries() {
     time(&now_utc);
     time_t cutoff_time = now_utc - (_deviceConfig->movingAverageDays * 86400L);
     
-    size_t original_size = _lastPriceCache.size();
-    _lastPriceCache.erase(
-        std::remove_if(_lastPriceCache.begin(), _lastPriceCache.end(),
-            [&current_id_list, cutoff_time](const LastPriceCache& entry) { 
-                // Remove entries with invalid timestamp
-                if (entry.timestamp == 0) return true;
-                
-                // Check if station is in current configuration
-                bool is_configured = false;
-                for (const auto& id : current_id_list) {
-                    if (entry.stationId == id) {
-                        is_configured = true;
-                        break;
+    // Protect _lastPriceCache access with mutex
+    if (xSemaphoreTake(dataMutex, portMAX_DELAY) == pdTRUE) {
+        size_t original_size = _lastPriceCache.size();
+        _lastPriceCache.erase(
+            std::remove_if(_lastPriceCache.begin(), _lastPriceCache.end(),
+                [&current_id_list, cutoff_time](const LastPriceCache& entry) { 
+                    // Remove entries with invalid timestamp
+                    if (entry.timestamp == 0) return true;
+                    
+                    // Check if station is in current configuration
+                    bool is_configured = false;
+                    for (const auto& id : current_id_list) {
+                        if (entry.stationId == id) {
+                            is_configured = true;
+                            break;
+                        }
                     }
-                }
-                
-                // Remove if not configured OR (configured but older than retention period)
-                if (!is_configured) return true;
-                if (entry.timestamp < cutoff_time) return true;
-                
-                return false;
-            }),
-        _lastPriceCache.end()
-    );
-    if (_lastPriceCache.size() < original_size) { savePriceCache(); }
+                    
+                    // Remove if not configured OR (configured but older than retention period)
+                    if (!is_configured) return true;
+                    if (entry.timestamp < cutoff_time) return true;
+                    
+                    return false;
+                }),
+            _lastPriceCache.end()
+        );
+        
+        bool changed = (_lastPriceCache.size() < original_size);
+        xSemaphoreGive(dataMutex);
+        
+        // Save outside mutex to avoid holding it during file I/O
+        if (changed) { 
+            savePriceCache(); 
+        }
+    }
 }
 
 PriceTrend TankerkoenigModule::calculateTrend(const PsramVector<float>& x_values, const PsramVector<float>& y_values) {
