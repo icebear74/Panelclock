@@ -300,7 +300,7 @@ private:
     /**
      * @brief Zeichnet Strümpfe am Kaminsims
      */
-    void drawStockings(int simsY, int simsWidth, int centerX);
+    void drawStockings(int simsY, int simsWidth, int centerX, int leftEdge);
 
     /**
      * @brief Zeichnet dekorative Gegenstände auf dem Kaminsims

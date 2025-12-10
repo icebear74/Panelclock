@@ -1576,13 +1576,23 @@ void AnimationsModule::drawFireplace() {
     drawFireplaceFlames(fireX, fireY, fireW, fireH);
     
     // === MANTEL DECORATIONS ===
-    // The brown mantel shelf (Sims) is at approximately y=10-15 in the source image
+    // The brown mantel shelf (Sims) dimensions from PROGMEM array analysis:
+    // - Y position: 9-10 (light brown top edge)
+    // - X range: 43 to 158 (116 pixels wide)
+    // - Center: X=101 (52.6% from left edge)
+    
     // Decorations should be placed ON TOP of this brown shelf
     // User adjustments: initially 8 pixels higher, now +3 more = 11 pixels higher total
     int mantelSourceY = 1;  // 11 pixels higher (was 12, now 12-11=1)
     int mantelY = fireplaceY + (int)(mantelSourceY * scaleY);
-    int mantelCenterX = canvasW / 2;
-    int mantelWidth = (int)(100 * scaleX);  // Width of mantel area
+    
+    // Use precise mantel dimensions from PROGMEM analysis
+    // Mantel shelf: X=43 to X=158 (116 pixels wide), center at X=101
+    int mantelLeftEdge = (int)(43 * scaleX);
+    int mantelRightEdge = (int)(158 * scaleX);
+    int mantelWidth = mantelRightEdge - mantelLeftEdge;  // Exact 116-pixel width scaled
+    float mantelCenterRatio = 101.0f / 192.0f;  // 52.6% from left edge
+    int mantelCenterX = (int)(canvasW * mantelCenterRatio);
     
     // Draw decorations ON the mantel
     drawMantleDecorations(mantelY, mantelWidth, mantelCenterX, scaleY);
@@ -1590,7 +1600,7 @@ void AnimationsModule::drawFireplace() {
     // Draw stockings hanging FROM the front edge of the mantel
     // User adjustments: initially 8 pixels higher, +7 more, +2 more = 17 pixels higher total
     int stockingHangY = fireplaceY + (int)(-1 * scaleY);  // 17 pixels higher (was 16, now 16-17=-1)
-    drawStockings(stockingHangY, mantelWidth, mantelCenterX);
+    drawStockings(stockingHangY, mantelWidth, mantelCenterX, mantelLeftEdge);
 }
 
 void AnimationsModule::drawFireplaceFlames(int x, int y, int width, int height) {
@@ -1759,7 +1769,7 @@ void AnimationsModule::drawFireplaceFlames(int x, int y, int width, int height) 
     }
 }
 
-void AnimationsModule::drawStockings(int simsY, int simsWidth, int centerX) {
+void AnimationsModule::drawStockings(int simsY, int simsWidth, int centerX, int leftEdge) {
     int stockingCount = config ? config->fireplaceStockingCount : 3;
     if (stockingCount < 0) stockingCount = 0;
     if (stockingCount > 5) stockingCount = 5;
@@ -1774,12 +1784,20 @@ void AnimationsModule::drawStockings(int simsY, int simsWidth, int centerX) {
         rgb565(0, 100, 200)     // Blau
     };
     
-    int spacing = simsWidth / (stockingCount + 1);
     int stockingH = 18;
     int stockingW = 8;
     
+    // Calculate spacing to distribute across exact mantel width
+    // Total width needed for all stockings
+    int totalStockingWidth = stockingCount * stockingW;
+    // Remaining space for gaps
+    int remainingSpace = simsWidth - totalStockingWidth;
+    // Space between stockings (including edges)
+    int spacing = remainingSpace / (stockingCount + 1);
+    
     for (int i = 0; i < stockingCount; i++) {
-        int sx = centerX - simsWidth/2 + spacing * (i + 1) - stockingW/2;
+        // Position from left edge of mantel, not from center
+        int sx = leftEdge + spacing * (i + 1) + stockingW * i;
         int sy = simsY + 2;
         
         uint16_t color = stockingColors[i % 5];
