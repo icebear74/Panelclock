@@ -123,10 +123,6 @@ private:
     bool _snowflakesInitialized = false;
     unsigned long _lastSnowflakeUpdate = 0;
     
-    // Tree ornament regeneration
-    unsigned long _lastTreeDisplay = 0;
-    bool _treeOrnamentsNeedRegeneration = true;
-    
     // Zufällige Kerzenreihenfolge für jeden Durchgang
     int _candleOrder[4] = {0, 1, 2, 3};
     uint32_t _lastOrderSeed = 0;
