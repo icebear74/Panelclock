@@ -297,30 +297,12 @@ private:
      */
     bool isFireplaceSeason();
     
-    /**
-     * @brief Zeichnet den Kaminrahmen mit Stein/Ziegelmuster
-     */
-    void drawFireplaceFrame(int x, int y, int width, int height, uint16_t brickColor, uint16_t brickDark);
-    
-    /**
-     * @brief Zeichnet den Kaminsims mit 3D-Profil
-     */
-    void drawFireplaceMantel(int x, int y, int width, int height, uint16_t color, uint16_t lightColor, uint16_t darkColor);
-    
-    /**
-     * @brief Zeichnet Holzscheite im Kamin
-     */
-    void drawFireplaceLogs(int x, int y, int width, float scale);
-    
-    /**
-     * @brief Zeichnet Kaminwerkzeuge (Schürhaken, Schaufel)
-     */
-    void drawFireplaceTools(int x, int y, int height, float scale);
-    
-    /**
-     * @brief Zeichnet Holzlager neben dem Kamin
-     */
-    void drawWoodStorage(int x, int y, int width, int height, float scale);
+    // Obsolete helper methods - no longer used after procedural fireplace rewrite
+    // void drawFireplaceFrame(int x, int y, int width, int height, uint16_t brickColor, uint16_t brickDark);
+    // void drawFireplaceMantel(int x, int y, int width, int height, uint16_t color, uint16_t lightColor, uint16_t darkColor);
+    // void drawFireplaceLogs(int x, int y, int width, float scale);
+    // void drawFireplaceTools(int x, int y, int height, float scale);
+    // void drawWoodStorage(int x, int y, int width, int height, float scale);
 
     /**
      * @brief Konvertiert RGB zu RGB565.

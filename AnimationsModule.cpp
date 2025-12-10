@@ -1526,94 +1526,172 @@ void AnimationsModule::drawFireplace() {
     int canvasW = _currentCanvas->width();
     int canvasH = _currentCanvas->height();
     
-    // Optimierte Skalierung für maximale Bildschirmnutzung
-    // Bei 192x96 (Fullscreen): scaleX = 1.0, scaleY = 1.0
-    // Bei 192x66 (Normal): scaleX = 1.0, scaleY = 0.69
-    float scaleX = canvasW / 192.0f;
-    float scaleY = canvasH / 96.0f;  // Optimiert für Fullscreen (96px Höhe)
+    // Farbpalette basierend auf Referenz (angepasst an RGB565)
+    uint16_t COL_BG_WALL = rgb565(206, 206, 206);  // Helles Steingrau (Wand)
+    uint16_t COL_FLOOR = rgb565(156, 156, 156);     // Dunklerer Boden
+    uint16_t COL_MANTEL = rgb565(140, 112, 80);     // Mittelbraunes Holz (Sims)
+    uint16_t COL_STONE = rgb565(189, 189, 189);     // Heller Stein (Kaminumrandung)
+    uint16_t COL_STONE_DARK = rgb565(120, 120, 120); // Dunkler Stein (Fugen)
+    uint16_t COL_VOID = rgb565(16, 16, 16);         // Fast Schwarz (Kamin-Inneres)
+    uint16_t COL_METAL = rgb565(64, 64, 64);        // Dunkles Metall
+    uint16_t COL_LOG_BARK = rgb565(82, 64, 42);     // Dunkles Holz (Rinde)
+    uint16_t COL_LOG_CUT = rgb565(229, 196, 160);   // Helles Schnitt-Holz
     
-    // Kaminfarbe aus Config oder Standard
-    uint16_t brickColor = rgb565(139, 69, 19);  // Standard: Braun
+    // Konfigurierbare Farben überschreiben
     if (config && config->fireplaceBrickColor.length() > 0) {
-        brickColor = hexToRgb565(config->fireplaceBrickColor.c_str());
+        COL_STONE = hexToRgb565(config->fireplaceBrickColor.c_str());
+    }
+    if (config && config->fireplaceBgColor.length() > 0) {
+        COL_BG_WALL = hexToRgb565(config->fireplaceBgColor.c_str());
     }
     
-    // Dunklere und hellere Versionen für Schattierung
-    uint8_t br = ((brickColor >> 11) & 0x1F) * 8;
-    uint8_t bg = ((brickColor >> 5) & 0x3F) * 4;
-    uint8_t bb = (brickColor & 0x1F) * 8;
-    uint16_t brickDark = rgb565(max(0, br - 40), max(0, bg - 40), max(0, bb - 40));
-    uint16_t brickLight = rgb565(min(255, br + 60), min(255, bg + 40), min(255, bb + 40));
+    // 1. Grundierung (Wand)
+    _currentCanvas->fillScreen(COL_BG_WALL);
     
-    // Layout-Planung: Werkzeuge links, Kamin Mitte-Links, Holzlager rechts
-    // Optimiert um den vollen Bildschirm zu nutzen
-    int toolsWidth = (int)(20 * scaleX);  // Mehr Platz für Werkzeuge
-    int fireplaceWidth = (int)(115 * scaleX);  // Breiterer Kamin
-    int woodStorageSpace = canvasW - toolsWidth - fireplaceWidth - (int)(5 * scaleX);
+    // 2. Bodenplatte (untere Pixel - skaliert)
+    int floorHeight = max(8, canvasH / 12);
+    _currentCanvas->fillRect(0, canvasH - floorHeight, canvasW, floorHeight, COL_FLOOR);
     
-    // Kamin-Dimensionen - optimiert für volle Höhennutzung (96px)
-    int fireplaceHeight = (int)(70 * scaleY);  // Höherer Kamin (von 48 auf 70)
-    int simsHeight = (int)(10 * scaleY);  // Größerer Sims (von 8 auf 10)
-    int simsOverhang = (int)(10 * scaleX);  // Mehr Überhang
-    int openingWidth = (int)(75 * scaleX);  // Breitere Öffnung (von 65 auf 75)
-    int openingHeight = (int)(50 * scaleY);  // Höhere Öffnung (von 35 auf 50)
+    // Boden-Fugen für Perspektive
+    for (int x = 20; x < canvasW; x += 40) {
+        int y1 = canvasH - floorHeight;
+        int y2 = canvasH;
+        _currentCanvas->drawLine(x, y1, x - 10, y2, COL_STONE_DARK);
+    }
     
-    int baseY = canvasH;
-    int fireplaceLeftEdge = toolsWidth + (int)(3 * scaleX);
-    int fireX = fireplaceLeftEdge;
-    int fireY = baseY - fireplaceHeight;
-    int centerX = fireX + fireplaceWidth / 2;
+    // --- KAMIN (Mitte) ---
+    // Skalierung: Referenz ist 192x64, wir haben canvasW x canvasH
+    float scaleX = canvasW / 192.0f;
+    float scaleY = canvasH / 96.0f;
     
-    // ===== KAMINWERKZEUGE LINKS VOM KAMIN =====
-    int toolsX = (int)(4 * scaleX);
-    int toolHeight = (int)(62 * scaleY);  // Höhere Werkzeuge für bessere Proportion
-    drawFireplaceTools(toolsX, baseY, toolHeight, scaleY);
+    int fp_x = (int)(66 * scaleX);
+    int fp_y = (int)(22 * scaleY);
+    int fp_w = (int)(60 * scaleX);
+    int fp_h = (int)(34 * scaleY);
     
-    // ===== KAMINSIMS (oben) =====
-    int simsY = fireY - simsHeight;
-    int simsWidth = fireplaceWidth + simsOverhang * 2;
-    int simsX = fireX - simsOverhang;
-    drawFireplaceMantel(simsX, simsY, simsWidth, simsHeight, brickLight, 
-                        rgb565(min(255, br + 100), min(255, bg + 80), min(255, bb + 80)),
-                        brickDark);
+    // Kaminumrandung (Stein) - mit Ziegelmuster
+    _currentCanvas->fillRect(fp_x, fp_y, fp_w, fp_h, COL_STONE);
     
-    // ===== KAMIN-RAHMEN (links und rechts) =====
-    int frameWidth = (fireplaceWidth - openingWidth) / 2;
+    // Ziegelmuster zeichnen
+    int brickH = max(4, (int)(6 * scaleY));
+    int brickW = max(6, (int)(10 * scaleX));
+    for (int row = 0; row < fp_h / brickH; row++) {
+        int rowY = fp_y + row * brickH;
+        int offset = (row % 2) * (brickW / 2);
+        // Horizontale Fuge
+        _currentCanvas->drawLine(fp_x, rowY, fp_x + fp_w, rowY, COL_STONE_DARK);
+        // Vertikale Fugen
+        for (int col = 0; col < (fp_w / brickW) + 2; col++) {
+            int colX = fp_x + col * brickW + offset;
+            if (colX >= fp_x && colX < fp_x + fp_w) {
+                _currentCanvas->drawLine(colX, rowY, colX, rowY + brickH - 1, COL_STONE_DARK);
+            }
+        }
+    }
     
-    // Linker Rahmen
-    drawFireplaceFrame(fireX, fireY, frameWidth, fireplaceHeight, brickColor, brickDark);
+    // Das schwarze Loch (Feuerraum)
+    int holeMargin = max(6, (int)(10 * scaleX));
+    int holeTop = max(6, (int)(10 * scaleY));
+    _currentCanvas->fillRect(fp_x + holeMargin, fp_y + holeTop, 
+                            fp_w - 2 * holeMargin, fp_h - holeTop, COL_VOID);
     
-    // Rechter Rahmen
-    int rightFrameX = fireX + frameWidth + openingWidth;
-    drawFireplaceFrame(rightFrameX, fireY, frameWidth, fireplaceHeight, brickColor, brickDark);
+    // Kamin-Sims (Holzbrett oben)
+    int simsOverhang = max(3, (int)(4 * scaleX));
+    int simsH = max(2, (int)(3 * scaleY));
+    _currentCanvas->fillRect(fp_x - simsOverhang, fp_y - simsH, 
+                            fp_w + 2 * simsOverhang, simsH, COL_MANTEL);
+    // Sims-Schatten für 3D-Effekt
+    _currentCanvas->drawLine(fp_x - simsOverhang, fp_y, 
+                            fp_x + fp_w + simsOverhang, fp_y, 
+                            rgb565(90, 72, 50));
     
-    // ===== KAMIN-ÖFFNUNG (SCHWARZ) =====
-    int openingX = fireX + frameWidth;
-    int openingY = baseY - openingHeight;
-    _currentCanvas->fillRect(openingX, openingY, openingWidth, openingHeight, rgb565(0, 0, 0));
+    // Feuerrost (im schwarzen Loch)
+    int grate_y = fp_y + fp_h - max(3, (int)(4 * scaleY));
+    int grate_x1 = fp_x + holeMargin + 5;
+    int grate_x2 = fp_x + fp_w - holeMargin - 5;
+    _currentCanvas->drawLine(grate_x1, grate_y, grate_x2, grate_y, COL_METAL);
+    // Gitterstäbe
+    for (int i = 0; i < 6; i++) {
+        int barX = grate_x1 + (grate_x2 - grate_x1) * i / 5;
+        _currentCanvas->drawLine(barX, grate_y - 2, barX, grate_y, COL_METAL);
+    }
     
-    // Innenrand der Öffnung (dunklerer Stein für Tiefe)
-    uint16_t innerStone = rgb565(60, 40, 30);
-    _currentCanvas->drawRect(openingX, openingY, openingWidth, openingHeight, innerStone);
-    _currentCanvas->drawRect(openingX + 1, openingY + 1, openingWidth - 2, openingHeight - 2, rgb565(40, 25, 20));
+    // --- HOLZLAGER (Links) ---
+    int log_x = (int)(20 * scaleX);
+    int log_y = (int)(28 * scaleY);
+    int log_w = (int)(24 * scaleX);
+    int log_h = (int)(28 * scaleY);
     
-    // ===== HOLZSCHEITE IM KAMIN =====
-    drawFireplaceLogs(openingX, baseY, openingWidth, scaleY);
+    // Metallrahmen
+    _currentCanvas->drawRect(log_x, log_y, log_w, log_h, COL_METAL);
+    _currentCanvas->drawRect(log_x + 1, log_y + 1, log_w - 2, log_h - 2, COL_METAL);
     
-    // ===== FEUER =====
-    drawFireplaceFlames(openingX + openingWidth/2, baseY - 2, openingWidth - 10, openingHeight - 5);
+    // Holzscheite stapeln
+    int logRadius = max(2, (int)(2 * scaleY));
+    int spacing = max(4, (int)(5 * scaleY));
+    for (int ly = log_y + log_h - 4; ly > log_y + 2; ly -= spacing) {
+        for (int lx = log_x + 4; lx < log_x + log_w - 3; lx += spacing) {
+            _currentCanvas->fillCircle(lx, ly, logRadius, COL_LOG_BARK);
+            _currentCanvas->drawPixel(lx, ly, COL_LOG_CUT);
+            if (logRadius > 1) {
+                _currentCanvas->drawPixel(lx - 1, ly, COL_LOG_CUT);
+                _currentCanvas->drawPixel(lx, ly - 1, COL_LOG_CUT);
+            }
+        }
+    }
     
-    // ===== HOLZLAGER RECHTS =====
-    int woodStorageX = fireX + fireplaceWidth + (int)(4 * scaleX);
-    int woodStorageMaxX = canvasW - (int)(3 * scaleX);
-    int woodStorageWidth = woodStorageMaxX - woodStorageX;
-    drawWoodStorage(woodStorageX, baseY, woodStorageWidth, fireplaceHeight, scaleY);
+    // --- KAMINWERKZEUGE (Rechts) ---
+    int tool_x = (int)(160 * scaleX);
+    int tool_y = (int)(26 * scaleY);
+    int tool_h = (int)(28 * scaleY);
     
-    // ===== STRÜMPFE AM KAMINSIMS =====
-    drawStockings(simsY, simsWidth, centerX);
+    // Ständer (Mittelstange)
+    _currentCanvas->drawLine(tool_x, tool_y, tool_x, tool_y + tool_h, COL_METAL);
+    _currentCanvas->drawLine(tool_x + 1, tool_y, tool_x + 1, tool_y + tool_h, COL_METAL);
     
-    // ===== DEKORATIONEN AUF DEM KAMINSIMS =====
-    drawMantleDecorations(simsY, simsWidth, centerX, scaleY);
+    // Fuß des Ständers
+    _currentCanvas->drawLine(tool_x - 4, tool_y + tool_h, tool_x + 4, tool_y + tool_h, COL_METAL);
+    _currentCanvas->drawLine(tool_x - 4, tool_y + tool_h - 1, tool_x + 4, tool_y + tool_h - 1, COL_METAL);
+    
+    // Aufhängung oben
+    _currentCanvas->drawLine(tool_x - 4, tool_y + 2, tool_x + 4, tool_y + 2, COL_METAL);
+    
+    // Werkzeug 1: Schaufel (links)
+    int tool1_x = tool_x - 3;
+    _currentCanvas->drawLine(tool1_x, tool_y + 2, tool1_x, tool_y + (int)(20 * scaleY), COL_METAL);
+    int blade_y = tool_y + (int)(20 * scaleY);
+    _currentCanvas->fillRect(tool1_x - 1, blade_y, 3, max(3, (int)(4 * scaleY)), COL_METAL);
+    
+    // Werkzeug 2: Besen (rechts)
+    int tool2_x = tool_x + 3;
+    _currentCanvas->drawLine(tool2_x, tool_y + 2, tool2_x, tool_y + (int)(20 * scaleY), COL_METAL);
+    int brush_y = tool_y + (int)(20 * scaleY);
+    // Borsten
+    _currentCanvas->drawLine(tool2_x - 1, brush_y, tool2_x + 1, brush_y, COL_METAL);
+    _currentCanvas->drawLine(tool2_x - 1, brush_y, tool2_x - 2, brush_y + 3, COL_METAL);
+    _currentCanvas->drawLine(tool2_x + 1, brush_y, tool2_x + 2, brush_y + 3, COL_METAL);
+    
+    // Werkzeug 3: Zange (mitte)
+    int tool3_x = tool_x;
+    int tool3_y = tool_y + (int)(8 * scaleY);
+    _currentCanvas->drawLine(tool3_x, tool3_y, tool3_x, tool3_y + (int)(16 * scaleY), COL_METAL);
+    // Zange Greifer
+    int grip_y = tool3_y + (int)(16 * scaleY);
+    _currentCanvas->drawLine(tool3_x - 2, grip_y, tool3_x, grip_y + 2, COL_METAL);
+    _currentCanvas->drawLine(tool3_x + 2, grip_y, tool3_x, grip_y + 2, COL_METAL);
+    
+    // --- FEUER zeichnen ---
+    int fire_x = fp_x + fp_w / 2;
+    int fire_y = fp_y + fp_h - 2;
+    int fire_w = fp_w - 2 * holeMargin - 10;
+    int fire_h = fp_h - holeTop - 5;
+    drawFireplaceFlames(fire_x, fire_y, fire_w, fire_h);
+    
+    // --- STRÜMPFE AM KAMINSIMS (optional) ---
+    drawStockings(fp_y - simsH, fp_w + 2 * simsOverhang, fp_x + fp_w / 2);
+    
+    // --- DEKORATIONEN AUF DEM KAMINSIMS (optional) ---
+    drawMantleDecorations(fp_y - simsH, fp_w + 2 * simsOverhang, fp_x + fp_w / 2, scaleY);
 }
 
 void AnimationsModule::drawFireplaceFlames(int x, int y, int width, int height) {
@@ -2050,8 +2128,11 @@ void AnimationsModule::drawLedBorder() {
     }
 }
 
-// ========== IMPROVED FIREPLACE HELPER METHODS ==========
+// ========== OBSOLETE HELPER METHODS - CAN BE REMOVED ==========
+// These methods were replaced by the new procedural fireplace implementation
+// Keeping them commented out for reference
 
+/*
 void AnimationsModule::drawFireplaceFrame(int x, int y, int width, int height, uint16_t brickColor, uint16_t brickDark) {
     // Zeichne Kaminrahmen mit detailliertem Ziegelmuster
     _currentCanvas->fillRect(x, y, width, height, brickColor);
@@ -2320,3 +2401,4 @@ void AnimationsModule::drawWoodStorage(int x, int y, int width, int height, floa
         }
     }
 }
+*/
