@@ -21,6 +21,26 @@ uint16_t AnimationsModule::hexToRgb565(const char* hex) {
     return rgb565(r, g, b);
 }
 
+// Hilfsfunktion zum Mischen zweier RGB565-Farben
+uint16_t AnimationsModule::blendRGB565(uint16_t color1, uint16_t color2, int blend) {
+    // Extract RGB components from RGB565
+    uint8_t r1 = (color1 >> 11) & 0x1F;
+    uint8_t g1 = (color1 >> 5) & 0x3F;
+    uint8_t b1 = color1 & 0x1F;
+    
+    uint8_t r2 = (color2 >> 11) & 0x1F;
+    uint8_t g2 = (color2 >> 5) & 0x3F;
+    uint8_t b2 = color2 & 0x1F;
+    
+    // Linear interpolation (blend is 0-15)
+    uint8_t r = r1 + ((r2 - r1) * blend) / 16;
+    uint8_t g = g1 + ((g2 - g1) * blend) / 16;
+    uint8_t b = b1 + ((b2 - b1) * blend) / 16;
+    
+    // Repack into RGB565
+    return (r << 11) | (g << 5) | b;
+}
+
 // Einfacher Pseudo-Zufallsgenerator
 uint32_t AnimationsModule::simpleRandom(uint32_t seed) {
     seed = seed * 1103515245 + 12345;
@@ -513,11 +533,16 @@ void AnimationsModule::tick() {
         needsUpdate = true;
     }
     
-    // LED-Rahmen-Animation
+    // LED-Rahmen-Animation with smooth color fading
     unsigned long ledBorderSpeed = config ? (unsigned long)config->ledBorderSpeedMs : 100;
     if (now - _lastLedBorderUpdate > ledBorderSpeed) {
         _lastLedBorderUpdate = now;
-        _ledBorderPhase = (_ledBorderPhase + 1) % 4;  // 4 Phasen
+        // Increment sub-phase for smooth transitions (0-255)
+        _ledBorderSubPhase = (_ledBorderSubPhase + 16) % 256;  // 16 steps = smooth but visible
+        // Advance main phase when sub-phase wraps (every 16 increments)
+        if (_ledBorderSubPhase == 0) {
+            _ledBorderPhase = (_ledBorderPhase + 1) % 4;  // 4 main phases
+        }
         needsUpdate = true;
     }
     
@@ -1840,7 +1865,7 @@ void AnimationsModule::drawMantleDecorations(int simsY, int simsWidth, int cente
         
         int clockCx = centerX;
         int clockCy = simsY - 1;  // Auf dem Sims stehend
-        int clockR = (int)(10 * scale);  // Radius - optimale Größe für Sichtbarkeit und Platz
+        int clockR = (int)(13 * scale);  // Radius +3px (diameter +6px) for better visibility
         
         // Uhren-Basis/Gehäuse
         uint16_t caseColor = rgb565(60, 45, 30);
@@ -2101,37 +2126,46 @@ void AnimationsModule::drawLedBorder() {
         numColors = 4;
     }
     
-    // Zeichne jedes einzelne Pixel des Rahmens mit Farbzyklus
+    // Zeichne jedes einzelne Pixel des Rahmens mit sanftem Farbübergang
     // LED1=Farbe1, LED2=Farbe2, LED3=Farbe3, LED4=Farbe4, dann wiederholen
-    // Animation: Phase verschiebt, welche Farbe an welcher Position ist
+    // Animation: Phase verschiebt mit sanften Übergängen zwischen Farben
     
     int pixelIndex = 0;
+    int blend = _ledBorderSubPhase / 16;  // 0-15 for smooth blending (16 steps per color)
     
     // Obere Kante (links nach rechts)
     for (int x = 0; x < canvasW; x++) {
-        int colorIdx = (pixelIndex + _ledBorderPhase) % numColors;
-        _currentCanvas->drawPixel(x, 0, ledColors[colorIdx]);
+        int colorIdx1 = (pixelIndex + _ledBorderPhase) % numColors;
+        int colorIdx2 = (pixelIndex + _ledBorderPhase + 1) % numColors;
+        uint16_t blendedColor = blendRGB565(ledColors[colorIdx1], ledColors[colorIdx2], blend);
+        _currentCanvas->drawPixel(x, 0, blendedColor);
         pixelIndex++;
     }
     
     // Rechte Kante (oben nach unten) - ohne Eckpixel
     for (int y = 1; y < canvasH; y++) {
-        int colorIdx = (pixelIndex + _ledBorderPhase) % numColors;
-        _currentCanvas->drawPixel(canvasW - 1, y, ledColors[colorIdx]);
+        int colorIdx1 = (pixelIndex + _ledBorderPhase) % numColors;
+        int colorIdx2 = (pixelIndex + _ledBorderPhase + 1) % numColors;
+        uint16_t blendedColor = blendRGB565(ledColors[colorIdx1], ledColors[colorIdx2], blend);
+        _currentCanvas->drawPixel(canvasW - 1, y, blendedColor);
         pixelIndex++;
     }
     
     // Untere Kante (rechts nach links) - ohne Eckpixel
     for (int x = canvasW - 2; x >= 0; x--) {
-        int colorIdx = (pixelIndex + _ledBorderPhase) % numColors;
-        _currentCanvas->drawPixel(x, canvasH - 1, ledColors[colorIdx]);
+        int colorIdx1 = (pixelIndex + _ledBorderPhase) % numColors;
+        int colorIdx2 = (pixelIndex + _ledBorderPhase + 1) % numColors;
+        uint16_t blendedColor = blendRGB565(ledColors[colorIdx1], ledColors[colorIdx2], blend);
+        _currentCanvas->drawPixel(x, canvasH - 1, blendedColor);
         pixelIndex++;
     }
     
     // Linke Kante (unten nach oben) - ohne Eckpixel
     for (int y = canvasH - 2; y > 0; y--) {
-        int colorIdx = (pixelIndex + _ledBorderPhase) % numColors;
-        _currentCanvas->drawPixel(0, y, ledColors[colorIdx]);
+        int colorIdx1 = (pixelIndex + _ledBorderPhase) % numColors;
+        int colorIdx2 = (pixelIndex + _ledBorderPhase + 1) % numColors;
+        uint16_t blendedColor = blendRGB565(ledColors[colorIdx1], ledColors[colorIdx2], blend);
+        _currentCanvas->drawPixel(0, y, blendedColor);
         pixelIndex++;
     }
 }

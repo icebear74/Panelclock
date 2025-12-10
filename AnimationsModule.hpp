@@ -138,6 +138,7 @@ private:
     int _flamePhase = 0;
     int _treeLightPhase = 0;
     int _ledBorderPhase = 0;
+    int _ledBorderSubPhase = 0;  // 0-255 for smooth color transitions
     
     // Konfigurierbare Parameter (Defaults)
     unsigned long _displayDurationMs = 15000;  // 15 Sekunden
@@ -323,6 +324,15 @@ private:
      * @brief Konvertiert RGB zu RGB565.
      */
     static uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b);
+
+    /**
+     * @brief Blends two RGB565 colors
+     * @param color1 First RGB565 color
+     * @param color2 Second RGB565 color  
+     * @param blend Blend amount (0-15, where 0=color1, 15=color2)
+     * @return Blended RGB565 color
+     */
+    static uint16_t blendRGB565(uint16_t color1, uint16_t color2, int blend);
 
     /**
      * @brief Konvertiert Hex-Farbstring zu RGB565.
