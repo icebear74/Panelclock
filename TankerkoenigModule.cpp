@@ -645,7 +645,7 @@ void TankerkoenigModule::cleanupOldPriceCacheEntries() {
             [cutoff_time](const LastPriceCache& entry) { 
                 // Remove entries that are either invalid (timestamp == 0) 
                 // OR older than the configured number of days
-                return entry.timestamp == 0 || (entry.timestamp > 0 && entry.timestamp < cutoff_time); 
+                return entry.timestamp == 0 || entry.timestamp < cutoff_time; 
             }),
         _lastPriceCache.end()
     );
