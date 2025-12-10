@@ -1561,26 +1561,37 @@ void AnimationsModule::drawFireplace() {
     }
     
     // === FIRE ANIMATION ===
-    // Find the fireplace opening in the bitmap (approximately centered)
-    // Based on the reference image, the opening is roughly at x:75-115, y:35-60
-    int fireX = (int)(95 * scaleX);  // Center of opening
-    int fireY = canvasH - (int)(10 * scaleY);  // Bottom of opening
-    int fireW = (int)(35 * scaleX);  // Width of fire
-    int fireH = (int)(25 * scaleY);  // Height of fire
+    // The black fireplace opening (Brennraum) is 65x33 pixels
+    // Located at approximately x: 64-128 (center ~96), y: 24-56 in source image
+    // User specified: 65 width x 33 height
+    int fireSourceX = 64;  // Left edge of black opening in source
+    int fireSourceY = 24;  // Top edge of black opening in source
+    int fireSourceW = 65;  // Width of opening
+    int fireSourceH = 33;  // Height of opening
+    
+    // Scale to canvas coordinates
+    int fireX = (int)((fireSourceX + fireSourceW / 2) * scaleX);  // Center X
+    int fireY = fireplaceY + (int)((fireSourceY + fireSourceH) * scaleY) - 2;  // Bottom Y
+    int fireW = (int)(fireSourceW * scaleX) - 8;  // Width (slightly smaller for margins)
+    int fireH = (int)(fireSourceH * scaleY) - 4;  // Height (slightly smaller for margins)
     
     drawFireplaceFlames(fireX, fireY, fireW, fireH);
     
     // === MANTEL DECORATIONS ===
-    // The mantel shelf is at approximately y=20 in the source image
-    int mantelY = fireplaceY + (int)(20 * scaleY);
+    // The brown mantel shelf (Sims) is at approximately y=10-15 in the source image
+    // Decorations should be placed ON TOP of this brown shelf
+    int mantelSourceY = 12;  // Middle of brown mantel in source
+    int mantelY = fireplaceY + (int)(mantelSourceY * scaleY);
     int mantelCenterX = canvasW / 2;
-    int mantelWidth = (int)(80 * scaleX);  // Approx width of mantel
+    int mantelWidth = (int)(100 * scaleX);  // Width of mantel area
     
-    // Draw stockings
-    drawStockings(mantelY, mantelWidth, mantelCenterX);
-    
-    // Draw decorations (clock, vase, etc.) on the mantel
+    // Draw decorations ON the mantel (not hanging from it yet)
     drawMantleDecorations(mantelY, mantelWidth, mantelCenterX, scaleY);
+    
+    // Draw stockings hanging FROM the front edge of the mantel
+    // Stockings hang down from the bottom edge of the brown shelf (around y=16 in source)
+    int stockingHangY = fireplaceY + (int)(16 * scaleY);
+    drawStockings(stockingHangY, mantelWidth, mantelCenterX);
 }
 
 void AnimationsModule::drawFireplaceFlames(int x, int y, int width, int height) {
