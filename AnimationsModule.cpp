@@ -1563,14 +1563,13 @@ void AnimationsModule::drawFireplace() {
     // === FIRE ANIMATION ===
     // The black fireplace opening (Brennraum) is 65x33 pixels
     // Located at approximately x: 64-128 (center ~96), y: 24-56 in source image
-    // User specified: 65 width x 33 height, +5 pixels wider to the right
-    int fireSourceX = 64;  // Left edge of black opening in source
+    // User adjustments: +5 pixels wider to the right, +3 pixels to the right
+    int fireSourceX = 67;  // Left edge moved 3 pixels right (was 64, now 64+3=67)
     int fireSourceY = 24;  // Top edge of black opening in source
     int fireSourceW = 70;  // Width of opening (65 + 5 pixels wider to the right)
     int fireSourceH = 33;  // Height of opening
     
     // Scale to canvas coordinates
-    // Keep left edge fixed, extend to the right
     int fireLeftX = (int)(fireSourceX * scaleX);  // Left edge X
     int fireY = fireplaceY + (int)((fireSourceY + fireSourceH) * scaleY) - 2;  // Bottom Y
     int fireW = (int)(fireSourceW * scaleX) - 8;  // Width (scaled + extended)
@@ -1582,8 +1581,8 @@ void AnimationsModule::drawFireplace() {
     // === MANTEL DECORATIONS ===
     // The brown mantel shelf (Sims) is at approximately y=10-15 in the source image
     // Decorations should be placed ON TOP of this brown shelf
-    // User requested: 8 pixels higher
-    int mantelSourceY = 4;  // 8 pixels higher (was 12, now 12-8=4)
+    // User adjustments: initially 8 pixels higher, now +3 more = 11 pixels higher total
+    int mantelSourceY = 1;  // 11 pixels higher (was 12, now 12-11=1)
     int mantelY = fireplaceY + (int)(mantelSourceY * scaleY);
     int mantelCenterX = canvasW / 2;
     int mantelWidth = (int)(100 * scaleX);  // Width of mantel area
@@ -1592,8 +1591,8 @@ void AnimationsModule::drawFireplace() {
     drawMantleDecorations(mantelY, mantelWidth, mantelCenterX, scaleY);
     
     // Draw stockings hanging FROM the front edge of the mantel
-    // User requested: 8 pixels higher
-    int stockingHangY = fireplaceY + (int)(8 * scaleY);  // 8 pixels higher (was 16, now 16-8=8)
+    // User adjustments: initially 8 pixels higher, now +7 more = 15 pixels higher total
+    int stockingHangY = fireplaceY + (int)(1 * scaleY);  // 15 pixels higher (was 16, now 16-15=1)
     drawStockings(stockingHangY, mantelWidth, mantelCenterX);
 }
 
