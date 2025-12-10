@@ -1518,11 +1518,11 @@ void AnimationsModule::drawFireplace() {
     int canvasW = _currentCanvas->width();
     int canvasH = _currentCanvas->height();
     
-    // Skalierung: X-Achse stärker als Y-Achse für breiteres Bild
+    // Optimierte Skalierung für maximale Bildschirmnutzung
+    // Bei 192x96 (Fullscreen): scaleX = 1.0, scaleY = 1.0
+    // Bei 192x66 (Normal): scaleX = 1.0, scaleY = 0.69
     float scaleX = canvasW / 192.0f;
-    float scaleY = canvasH / 66.0f;
-    // Begrenzte Höhenskalierung, damit der Kamin nicht zu hoch wird
-    float effectiveScaleY = min(scaleY, 1.0f + (scaleY - 1.0f) * 0.5f);
+    float scaleY = canvasH / 96.0f;  // Optimiert für Fullscreen (96px Höhe)
     
     // Kaminfarbe aus Config oder Standard
     uint16_t brickColor = rgb565(139, 69, 19);  // Standard: Braun
@@ -1538,16 +1538,17 @@ void AnimationsModule::drawFireplace() {
     uint16_t brickLight = rgb565(min(255, br + 60), min(255, bg + 40), min(255, bb + 40));
     
     // Layout-Planung: Werkzeuge links, Kamin Mitte-Links, Holzlager rechts
-    int toolsWidth = (int)(15 * scaleX);
-    int fireplaceWidth = (int)(110 * scaleX);
-    int woodStorageSpace = canvasW - toolsWidth - fireplaceWidth - (int)(6 * scaleX);
+    // Optimiert um den vollen Bildschirm zu nutzen
+    int toolsWidth = (int)(20 * scaleX);  // Mehr Platz für Werkzeuge
+    int fireplaceWidth = (int)(115 * scaleX);  // Breiterer Kamin
+    int woodStorageSpace = canvasW - toolsWidth - fireplaceWidth - (int)(5 * scaleX);
     
-    // Kamin-Dimensionen
-    int fireplaceHeight = (int)(48 * effectiveScaleY);
-    int simsHeight = (int)(8 * effectiveScaleY);
-    int simsOverhang = (int)(8 * scaleX);
-    int openingWidth = (int)(65 * scaleX);
-    int openingHeight = (int)(35 * effectiveScaleY);
+    // Kamin-Dimensionen - optimiert für volle Höhennutzung (96px)
+    int fireplaceHeight = (int)(70 * scaleY);  // Höherer Kamin (von 48 auf 70)
+    int simsHeight = (int)(10 * scaleY);  // Größerer Sims (von 8 auf 10)
+    int simsOverhang = (int)(10 * scaleX);  // Mehr Überhang
+    int openingWidth = (int)(75 * scaleX);  // Breitere Öffnung (von 65 auf 75)
+    int openingHeight = (int)(50 * scaleY);  // Höhere Öffnung (von 35 auf 50)
     
     int baseY = canvasH;
     int fireplaceLeftEdge = toolsWidth + (int)(3 * scaleX);
@@ -1556,9 +1557,9 @@ void AnimationsModule::drawFireplace() {
     int centerX = fireX + fireplaceWidth / 2;
     
     // ===== KAMINWERKZEUGE LINKS VOM KAMIN =====
-    int toolsX = (int)(3 * scaleX);
-    int toolHeight = (int)(42 * effectiveScaleY);
-    drawFireplaceTools(toolsX, baseY, toolHeight, effectiveScaleY);
+    int toolsX = (int)(4 * scaleX);
+    int toolHeight = (int)(62 * scaleY);  // Höhere Werkzeuge für bessere Proportion
+    drawFireplaceTools(toolsX, baseY, toolHeight, scaleY);
     
     // ===== KAMINSIMS (oben) =====
     int simsY = fireY - simsHeight;
@@ -1589,22 +1590,22 @@ void AnimationsModule::drawFireplace() {
     _currentCanvas->drawRect(openingX + 1, openingY + 1, openingWidth - 2, openingHeight - 2, rgb565(40, 25, 20));
     
     // ===== HOLZSCHEITE IM KAMIN =====
-    drawFireplaceLogs(openingX, baseY, openingWidth, effectiveScaleY);
+    drawFireplaceLogs(openingX, baseY, openingWidth, scaleY);
     
     // ===== FEUER =====
     drawFireplaceFlames(openingX + openingWidth/2, baseY - 2, openingWidth - 10, openingHeight - 5);
     
     // ===== HOLZLAGER RECHTS =====
-    int woodStorageX = fireX + fireplaceWidth + (int)(3 * scaleX);
+    int woodStorageX = fireX + fireplaceWidth + (int)(4 * scaleX);
     int woodStorageMaxX = canvasW - (int)(3 * scaleX);
     int woodStorageWidth = woodStorageMaxX - woodStorageX;
-    drawWoodStorage(woodStorageX, baseY, woodStorageWidth, fireplaceHeight, effectiveScaleY);
+    drawWoodStorage(woodStorageX, baseY, woodStorageWidth, fireplaceHeight, scaleY);
     
     // ===== STRÜMPFE AM KAMINSIMS =====
     drawStockings(simsY, simsWidth, centerX);
     
     // ===== DEKORATIONEN AUF DEM KAMINSIMS =====
-    drawMantleDecorations(simsY, simsWidth, centerX, effectiveScaleY);
+    drawMantleDecorations(simsY, simsWidth, centerX, scaleY);
 }
 
 void AnimationsModule::drawFireplaceFlames(int x, int y, int width, int height) {
