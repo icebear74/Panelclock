@@ -633,13 +633,59 @@ bool TankerkoenigModule::getPriceFromCache(const PsramString& stationId, float& 
 }
 
 void TankerkoenigModule::cleanupOldPriceCacheEntries() {
-    size_t original_size = _lastPriceCache.size();
-    _lastPriceCache.erase(
-        std::remove_if(_lastPriceCache.begin(), _lastPriceCache.end(),
-            [](const LastPriceCache& entry) { return entry.timestamp == 0; }),
-        _lastPriceCache.end()
-    );
-    if (_lastPriceCache.size() < original_size) { savePriceCache(); }
+    if (!_deviceConfig) return;
+    
+    time_t now_utc; 
+    time(&now_utc);
+    time_t cutoff_time = now_utc - (_deviceConfig->movingAverageDays * 86400L);
+    
+    // Protect both station_ids read and _lastPriceCache access with mutex
+    if (xSemaphoreTake(dataMutex, portMAX_DELAY) == pdTRUE) {
+        // Parse currently configured station IDs while holding mutex
+        PsramVector<PsramString> current_id_list;
+        PsramString temp_ids = station_ids;  // Copy member variable
+        if (!temp_ids.empty()) {
+            char* strtok_ctx;
+            char* id_token = strtok_r((char*)temp_ids.c_str(), ",", &strtok_ctx);
+            while(id_token != nullptr) { 
+                current_id_list.push_back(id_token); 
+                id_token = strtok_r(nullptr, ",", &strtok_ctx); 
+            }
+        }
+        
+        size_t original_size = _lastPriceCache.size();
+        _lastPriceCache.erase(
+            std::remove_if(_lastPriceCache.begin(), _lastPriceCache.end(),
+                [&current_id_list, cutoff_time](const LastPriceCache& entry) { 
+                    // Remove entries with invalid timestamp
+                    if (entry.timestamp == 0) return true;
+                    
+                    // Check if station is in current configuration
+                    bool is_configured = false;
+                    for (const auto& id : current_id_list) {
+                        if (entry.stationId == id) {
+                            is_configured = true;
+                            break;
+                        }
+                    }
+                    
+                    // Remove if not configured OR (configured but older than retention period)
+                    if (!is_configured) return true;
+                    if (entry.timestamp < cutoff_time) return true;
+                    
+                    return false;
+                }),
+            _lastPriceCache.end()
+        );
+        
+        bool changed = (_lastPriceCache.size() < original_size);
+        xSemaphoreGive(dataMutex);
+        
+        // Save outside mutex to avoid holding it during file I/O
+        if (changed) { 
+            savePriceCache(); 
+        }
+    }
 }
 
 PriceTrend TankerkoenigModule::calculateTrend(const PsramVector<float>& x_values, const PsramVector<float>& y_values) {
@@ -782,6 +828,7 @@ void TankerkoenigModule::updatePriceStatistics(const PsramString& stationId, flo
 void TankerkoenigModule::trimPriceStatistics(StationPriceHistory& history) {
     if (!_deviceConfig) return;
     time_t now_utc; time(&now_utc);
+    // Calculate cutoff date: movingAverageDays ago from today
     time_t cutoff_epoch = now_utc - (_deviceConfig->movingAverageDays * 86400L);
     
     time_t cutoff_local = timeConverter.toLocal(cutoff_epoch);
@@ -791,9 +838,14 @@ void TankerkoenigModule::trimPriceStatistics(StationPriceHistory& history) {
     char cutoff_date_str_buf[11]; strftime(cutoff_date_str_buf, sizeof(cutoff_date_str_buf), "%Y-%m-%d", &cutoff_tm);
     PsramString cutoff_date_str(cutoff_date_str_buf);
 
+    // Remove entries older than or equal to cutoff date
+    // Example: If movingAverageDays=31 and today is Dec 10:
+    //   cutoff_date = Nov 9 (31 days before Dec 10)
+    //   Remove all entries with date <= Nov 9
+    //   Keep entries from Nov 10 through Dec 10 = exactly 31 days
     history.dailyStats.erase(
         std::remove_if(history.dailyStats.begin(), history.dailyStats.end(), 
-            [&](const DailyPriceStats& stats) { return stats.date < cutoff_date_str; }), 
+            [&](const DailyPriceStats& stats) { return stats.date <= cutoff_date_str; }), 
         history.dailyStats.end());
 }
 
