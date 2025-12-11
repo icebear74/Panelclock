@@ -29,12 +29,60 @@ extern GeneralTimeConverter* timeConverter;
 extern TankerkoenigModule* tankerkoenigModule;
 extern BackupManager* backupManager;
 extern ThemeParkModule* themeParkModule;
+extern FritzboxModule* fritzboxModule;
 extern bool portalRunning;
 
 // Forward declarations of global functions (declared in WebServerManager.hpp)
 void saveDeviceConfig();
 void saveHardwareConfig();
 void applyLiveConfig();
+void prepareForRestart();
+
+/**
+ * @brief Ensures all web server buffers are flushed before ESP32 restart
+ * 
+ * This function prevents race conditions where the ESP32 restarts before
+ * HTTP responses are fully transmitted to the client. It:
+ * 1. Calls prepareForRestart() to cleanly shutdown all modules
+ * 2. Flushes client output buffers
+ * 3. Processes remaining web server operations
+ * 4. Waits for client disconnect or timeout
+ * 5. Adds final delay for TCP stack completion
+ * 
+ * Should be called after server->send() and before ESP.restart()
+ * 
+ * Note: ESP32 WebServer is synchronous, so server->client() returns the
+ * client handling the current request context.
+ */
+void flushBuffersBeforeRestart() {
+    // Step 1: Clean shutdown of all modules (connections, files, data)
+    prepareForRestart();
+    
+    if (!server) return;
+    
+    // Get the client handling the current request
+    WiFiClient client = server->client();
+    if (!client) return;
+    
+    // Flush client output buffers
+    client.flush();
+    
+    // Process any remaining web server operations to ensure response is sent
+    delay(100);
+    server->handleClient();
+    
+    // Wait for all network buffers to be transmitted
+    // Keep handling client until disconnected or timeout
+    // Note: Unsigned arithmetic handles millis() wraparound correctly
+    unsigned long startWait = millis();
+    while (client.connected() && (millis() - startWait) < BUFFER_FLUSH_TIMEOUT_MS) {
+        server->handleClient();
+        delay(50);  // Check every 50ms to reduce CPU usage while ensuring timely transmission
+    }
+    
+    // Final delay to ensure TCP stack completes transmission
+    delay(500);
+}
 
 // -----------------------------
 // Implementations
@@ -103,7 +151,10 @@ void handleSaveBase() {
     page += "<h1>Gespeichert!</h1><p>Grundkonfiguration gespeichert. Das Ger&auml;t wird neu gestartet...</p><script>setTimeout(function(){ window.location.href = '/'; }, 3000);</script>";
     page += (const char*)FPSTR(HTML_PAGE_FOOTER);
     server->send(200, "text/html", page.c_str());
-    delay(1000);
+    
+    // Ensure all buffers are flushed before restarting
+    flushBuffersBeforeRestart();
+    
     ESP.restart();
 }
 
@@ -547,7 +598,10 @@ void handleSaveHardware() {
         page += "<h1>Gespeichert!</h1><p>Hardware-Konfiguration gespeichert. Das Ger&auml;t wird neu gestartet...</p><script>setTimeout(function(){ window.location.href = '/'; }, 3000);</script>";
         page += (const char*)FPSTR(HTML_PAGE_FOOTER);
         server->send(200, "text/html", page.c_str());
-        delay(1000);
+        
+        // Ensure all buffers are flushed before restarting
+        flushBuffersBeforeRestart();
+        
         ESP.restart();
     } else {
         applyLiveConfig();
@@ -958,7 +1012,10 @@ void handleBackupRestore() {
     
     if (success) {
         server->send(200, "application/json", "{\"success\":true,\"message\":\"Restore successful, rebooting...\"}");
-        delay(2000);  // Increased from 1000ms to ensure response is sent
+        
+        // Ensure all buffers are flushed before restarting
+        flushBuffersBeforeRestart();
+        
         ESP.restart();
     } else {
         server->send(500, "application/json", "{\"success\":false,\"error\":\"Restore failed\"}");
@@ -1148,8 +1205,14 @@ void handleFirmwareUpload() {
         if (Update.end(true)) {
             Log.printf("[FirmwareUpdate] Update Success: %u bytes\n", uploadSize);
             Log.printf("[FirmwareUpdate] Free PSRAM after update: %u bytes\n", psramFree());
+            
+            // Send success response
             server->send(200, "text/plain", "Update successful! Rebooting...");
-            delay(2000);
+            
+            // Ensure all buffers are flushed before restarting
+            flushBuffersBeforeRestart();
+            
+            Log.println("[FirmwareUpdate] Restarting device...");
             ESP.restart();
         } else {
             Update.printError(Serial);

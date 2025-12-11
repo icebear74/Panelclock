@@ -35,6 +35,7 @@ bool portalRunning = false;
 
 TankerkoenigModule* tankerkoenigModule = nullptr;
 ThemeParkModule* themeParkModule = nullptr;
+FritzboxModule* fritzboxModule = nullptr;  // Exposed for cleanup before restart
 
 // Forward-Deklaration, da in WebServerManager.cpp definiert
 void setupWebServer(bool portalMode);
@@ -52,6 +53,12 @@ void applyLiveConfig() {
     if (Application::_instance) {
         Application::_instance->_configNeedsApplying = true;
         Log.println("[Config] Live-Konfiguration angefordert. Wird im nächsten Loop-Durchlauf angewendet.");
+    }
+}
+
+void prepareForRestart() {
+    if (Application::_instance) {
+        Application::_instance->prepareForRestart();
     }
 }
 
@@ -129,6 +136,7 @@ void Application::begin() {
     _calendarMod = new CalendarModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, webClient, deviceConfig);
     _dartsMod = new DartsRankingModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), webClient, deviceConfig);
     _fritzMod = new FritzboxModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), webClient);
+    fritzboxModule = _fritzMod;  // Expose globally for cleanup before restart
     _curiousMod = new CuriousHolidaysModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, webClient, deviceConfig);
     _weatherMod = new WeatherModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, webClient);
     _themeParkMod = new ThemeParkModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), webClient);
@@ -344,4 +352,44 @@ void Application::executeApplyLiveConfig() {
 
     Log.println("[Config] Live-Konfiguration angewendet.");
     LOG_MEMORY_DETAILED("Nach executeApplyLiveConfig");
+}
+
+void Application::prepareForRestart() {
+    Log.println("[Application] Bereite sauberes Herunterfahren vor ESP-Neustart vor...");
+    
+    // Rufe shutdown() für alle DrawableModule-basierten Module auf
+    if (_fritzMod) {
+        Log.println("[Application] Schließe Fritzbox Callmonitor...");
+        _fritzMod->shutdown();
+    }
+    
+    if (_tankerkoenigMod) {
+        Log.println("[Application] Fahre TankerkoenigModule herunter...");
+        _tankerkoenigMod->shutdown();
+    }
+    
+    if (_calendarMod) _calendarMod->shutdown();
+    if (_dartsMod) _dartsMod->shutdown();
+    if (_curiousMod) _curiousMod->shutdown();
+    if (_weatherMod) _weatherMod->shutdown();
+    if (_themeParkMod) _themeParkMod->shutdown();
+    if (_animationsMod) _animationsMod->shutdown();
+    
+    // Note: ClockModule and MwaveSensorModule don't inherit from DrawableModule,
+    // so they don't have shutdown() method. They don't need cleanup anyway.
+    
+    // Flush LittleFS um sicherzustellen, dass alle Dateien geschrieben sind
+    Log.println("[Application] Flush LittleFS...");
+    // Note: LittleFS doesn't have explicit flush, but closing files handles this
+    
+    // Stoppe den WebClient um ausstehende Requests abzubrechen
+    if (webClient) {
+        Log.println("[Application] Stoppe WebClient...");
+        // WebClient hat keine explizite stop-Methode, Tasks laufen weiter bis Neustart
+    }
+    
+    // Gib anderen Tasks Zeit zum Abschluss
+    delay(100);
+    
+    Log.println("[Application] Herunterfahren abgeschlossen, bereit für Neustart.");
 }

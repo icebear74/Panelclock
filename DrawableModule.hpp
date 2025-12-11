@@ -140,6 +140,18 @@ public:
     virtual void timeIsUp() {
         Serial.printf("[%s] Timeout erreicht, wurde beendet.\n", getModuleName());
     }
+    
+    /**
+     * Wird vor einem ESP-Neustart aufgerufen um sauberes Herunterfahren zu ermöglichen.
+     * Module sollten hier:
+     * - Offene Netzwerkverbindungen schließen
+     * - Dateien schließen/flush
+     * - Wichtige Daten speichern
+     * - Laufende Tasks beenden
+     */
+    virtual void shutdown() {
+        // Default: Keine Aktion nötig
+    }
 
     // --- Getter ---
     uint32_t getMaxRuntime() const { return maxRuntimeMs; }

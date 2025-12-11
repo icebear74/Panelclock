@@ -20,11 +20,13 @@ public:
 
     void begin(BaseType_t core);
     void setConfig(bool isEnabled, const PsramString& ip);
+    void closeConnection();  // Close Callmonitor connection before restart
     
     // --- Implementierung der Interface-Methoden ---
     void draw() override;
     const char* getModuleName() const override { return "FritzboxModule"; }
     const char* getModuleDisplayName() const override { return "Fritzbox"; }
+    void shutdown() override;  // Clean shutdown before restart
     
     // Modul-Eigenschaften
     unsigned long getDisplayDuration() override { return 10000; } // Fallback, wird nicht genutzt
