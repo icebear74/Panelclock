@@ -28,10 +28,19 @@ extern TankerkoenigModule* tankerkoenigModule;
 class BackupManager;
 extern BackupManager* backupManager;
 
+// Forward declaration for ThemeParkModule
+class ThemeParkModule;
+extern ThemeParkModule* themeParkModule;
+
+// Forward declaration for FritzboxModule (needed for cleanup before restart)
+class FritzboxModule;
+extern FritzboxModule* fritzboxModule;
+
 // Globale Funktionen aus der .ino-Datei bekannt machen
 void saveDeviceConfig();
 void saveHardwareConfig();
 void applyLiveConfig();
+void prepareForRestart();  // Clean shutdown before ESP restart
 
 /**
  * @brief Richtet alle Routen und Handler für den Webserver ein.

@@ -32,6 +32,20 @@ void FritzboxModule::setConfig(bool isEnabled, const PsramString& ip) {
     }
 }
 
+void FritzboxModule::closeConnection() {
+    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        if (client.connected()) {
+            client.stop();
+            Log.println("[Fritzbox] Callmonitor-Verbindung vor Neustart sauber geschlossen.");
+        }
+        xSemaphoreGive(dataMutex);
+    }
+}
+
+void FritzboxModule::shutdown() {
+    closeConnection();
+}
+
 void FritzboxModule::draw() {
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) != pdTRUE) return;
 
