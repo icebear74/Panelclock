@@ -108,6 +108,14 @@ void AnimationsModule::shuffleTreeElements() {
     int treeHeight = (int)(54 * scale);
     int treeBaseY = baseY - trunkHeight + 2;
     
+    // Tree layer dimensions (used by both ornaments and lights)
+    int layer1Height = (int)(18 * scale);
+    int layer2Height = (int)(18 * scale);
+    int layer3Height = (int)(18 * scale);
+    int layer1Width = (int)(28 * scale);
+    int layer2Width = (int)(22 * scale);
+    int layer3Width = (int)(16 * scale);
+    
     // Hole konfigurierte Anzahl oder verwende Standard
     int ornamentCount = config ? config->christmasTreeOrnamentCount : 12;
     if (ornamentCount < 8) ornamentCount = 8;
@@ -129,11 +137,6 @@ void AnimationsModule::shuffleTreeElements() {
         
         // X position (left/right) - constrain within tree boundaries
         int maxWidth;
-        int layer1Height = (int)(18 * scale);
-        int layer2Height = (int)(18 * scale);
-        int layer1Width = (int)(28 * scale);
-        int layer2Width = (int)(22 * scale);
-        int layer3Width = (int)(16 * scale);
         int ornamentRadius = 2 + (seed / 17) % 3;  // Radius for boundary calculation
         
         if (yOffset < layer1Height) {
@@ -181,7 +184,6 @@ void AnimationsModule::shuffleTreeElements() {
         // Calculate proper max width based on tree layer (matching drawNaturalTree)
         int maxLightWidth;
         int layer2Top = layer1Height + layer2Height - (int)(4 * scale);
-        int layer3Height = (int)(18 * scale);
         
         if (lightY < layer1Height) {
             // Layer 1 (bottom): tapers with 0.8 factor
