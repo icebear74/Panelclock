@@ -29,22 +29,25 @@ extern GeneralTimeConverter* timeConverter;
 extern TankerkoenigModule* tankerkoenigModule;
 extern BackupManager* backupManager;
 extern ThemeParkModule* themeParkModule;
+extern FritzboxModule* fritzboxModule;
 extern bool portalRunning;
 
 // Forward declarations of global functions (declared in WebServerManager.hpp)
 void saveDeviceConfig();
 void saveHardwareConfig();
 void applyLiveConfig();
+void prepareForRestart();
 
 /**
  * @brief Ensures all web server buffers are flushed before ESP32 restart
  * 
  * This function prevents race conditions where the ESP32 restarts before
  * HTTP responses are fully transmitted to the client. It:
- * 1. Flushes client output buffers
- * 2. Processes remaining web server operations
- * 3. Waits for client disconnect or timeout
- * 4. Adds final delay for TCP stack completion
+ * 1. Calls prepareForRestart() to cleanly shutdown all modules
+ * 2. Flushes client output buffers
+ * 3. Processes remaining web server operations
+ * 4. Waits for client disconnect or timeout
+ * 5. Adds final delay for TCP stack completion
  * 
  * Should be called after server->send() and before ESP.restart()
  * 
@@ -52,6 +55,9 @@ void applyLiveConfig();
  * client handling the current request context.
  */
 void flushBuffersBeforeRestart() {
+    // Step 1: Clean shutdown of all modules (connections, files, data)
+    prepareForRestart();
+    
     if (!server) return;
     
     // Get the client handling the current request

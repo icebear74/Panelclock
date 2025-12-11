@@ -67,6 +67,17 @@ public:
      * des Displays zu erledigen.
      */
     void update();
+    
+    /**
+     * @brief Führt sauberes Herunterfahren aller Module vor ESP-Neustart durch.
+     * 
+     * Diese Methode sollte vor ESP.restart() aufgerufen werden, um:
+     * - Offene Netzwerkverbindungen zu schließen (z.B. Fritzbox Callmonitor)
+     * - Offene Dateien zu schließen und zu flushen
+     * - Wichtige Daten zu speichern
+     * - Laufende Tasks sauber zu beenden
+     */
+    void prepareForRestart();
 
     /**
      * @brief Gibt einen Zeiger auf den PanelManager zurück.
@@ -143,5 +154,13 @@ void displayStatus(const char* msg);
  * der Hauptschleife angewendet wird.
  */
 void applyLiveConfig();
+
+/**
+ * @brief Führt sauberes Herunterfahren aller Module vor ESP-Neustart durch.
+ * 
+ * Ruft die shutdown()-Methode aller Module auf, um Verbindungen zu schließen,
+ * Dateien zu flushen und wichtige Daten zu speichern.
+ */
+void prepareForRestart();
 
 #endif // APPLICATION_HPP
