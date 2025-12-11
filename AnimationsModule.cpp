@@ -178,11 +178,29 @@ void AnimationsModule::shuffleTreeElements() {
         if (lightY < 4) lightY = 4;
         _shuffledLightY[i] = lightY;
         
-        // Random X position within tree width at that Y
+        // Calculate proper max width based on tree layer (matching drawNaturalTree)
+        int maxLightWidth;
+        int layer2Top = layer1Height + layer2Height - (int)(4 * scale);
+        int layer3Height = (int)(18 * scale);
+        
+        if (lightY < layer1Height) {
+            // Layer 1 (bottom): tapers with 0.8 factor
+            float progress = (float)lightY / layer1Height;
+            maxLightWidth = (int)(layer1Width - progress * layer1Width * 0.8f);
+        } else if (lightY < layer2Top) {
+            // Layer 2 (middle): tapers with 0.9 factor
+            float progress = (float)(lightY - layer1Height) / layer2Height;
+            maxLightWidth = (int)(layer2Width - progress * layer2Width * 0.9f);
+        } else {
+            // Layer 3 (top): tapers with 0.85 factor
+            float progress = (float)(lightY - layer2Top) / layer3Height;
+            maxLightWidth = (int)(layer3Width - progress * layer3Width * 0.85f);
+        }
+        
         // Reduce width by light size (2px) to keep light center inside tree
-        int maxLightWidth = (int)(28 * scale * (1.0f - (float)lightY / treeHeight * 0.7f));
-        maxLightWidth -= 2;  // Account for light size
+        maxLightWidth -= 2;
         if (maxLightWidth < 2) maxLightWidth = 2;
+        
         int lightX = ((seed / 7) % (maxLightWidth * 2)) - maxLightWidth;
         _shuffledLightX[i] = lightX;
     }
