@@ -2,4 +2,4 @@
 /partitions.csv
 
 # Ignore version file (build artifact)
-Version.hpp
+/Version.hpp
