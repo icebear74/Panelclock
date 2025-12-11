@@ -1149,7 +1149,7 @@ void handleFirmwareUpload() {
             Log.printf("[FirmwareUpdate] Update Success: %u bytes\n", uploadSize);
             Log.printf("[FirmwareUpdate] Free PSRAM after update: %u bytes\n", psramFree());
             server->send(200, "text/plain", "Update successful! Rebooting...");
-            delay(1000);
+            delay(2000);
             ESP.restart();
         } else {
             Update.printError(Serial);

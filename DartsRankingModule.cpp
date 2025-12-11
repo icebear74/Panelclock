@@ -146,6 +146,7 @@ void DartsRankingModule::resetPaging() {
     _logicTicksSincePageSwitch = 0;
     _logicTicksSinceRankingSwitch = 0;
     _isFinished = false;
+    _expectedTicksForCurrentMode = getInternalTickDuration(_currentInternalMode);
     resetAllScrollers();  // Bei komplettem Reset beide Scroller zurücksetzen
 }
 
@@ -209,7 +210,7 @@ void DartsRankingModule::logicTick() {
         _logicTicksSincePageSwitch = 0;
     }
 
-    uint32_t currentModeTicks = getInternalTickDuration(_currentInternalMode);
+    uint32_t currentModeTicks = _expectedTicksForCurrentMode;
     if (currentModeTicks > 0 && _logicTicksSinceRankingSwitch >= currentModeTicks) {
         DartsRankingType nextMode = _currentInternalMode;
         if (_currentInternalMode == DartsRankingType::ORDER_OF_MERIT && _proTourEnabled) {
@@ -226,6 +227,7 @@ void DartsRankingModule::logicTick() {
             currentPage = 0;
             _logicTicksSincePageSwitch = 0;
             _logicTicksSinceRankingSwitch = 0;
+            _expectedTicksForCurrentMode = getInternalTickDuration(_currentInternalMode);
             resetAllScrollers();  // Bei Ranking-Typ-Wechsel beide Scroller zurücksetzen
             needsRedraw = true;
         } else {
@@ -516,6 +518,7 @@ void DartsRankingModule::clearAllData() {
 
 void DartsRankingModule::filterAndSortPlayers(DartsRankingType type) {
     auto& players_list = (type == DartsRankingType::ORDER_OF_MERIT) ? oom_players : protour_players;
+    bool isLiveFormat = (type == DartsRankingType::ORDER_OF_MERIT) ? oom_isLiveFormat : protour_isLiveFormat;
     
     std::vector<DartsPlayer, PsramAllocator<DartsPlayer>> all_players = std::move(players_list);
     players_list.clear();
@@ -536,9 +539,24 @@ void DartsRankingModule::filterAndSortPlayers(DartsRankingType type) {
         }
     }
     
-    std::sort(players_list.begin(), players_list.end(), [](const DartsPlayer& a, const DartsPlayer& b) {
-        return a.rank < b.rank;
-    });
+    // Sort players based on whether this is a live tournament
+    if (isLiveFormat) {
+        // During live tournament: participating players first, then non-participating
+        // Both groups sorted by rank
+        std::sort(players_list.begin(), players_list.end(), [](const DartsPlayer& a, const DartsPlayer& b) {
+            // If participation status differs, participating players come first
+            if (a.didParticipate != b.didParticipate) {
+                return a.didParticipate > b.didParticipate;  // true > false
+            }
+            // Within same participation group, sort by rank
+            return a.rank < b.rank;
+        });
+    } else {
+        // No live tournament: just sort by rank (original behavior)
+        std::sort(players_list.begin(), players_list.end(), [](const DartsPlayer& a, const DartsPlayer& b) {
+            return a.rank < b.rank;
+        });
+    }
 }
 
 PsramString DartsRankingModule::extractText(const char* htmlFragment, size_t maxLen) {
@@ -653,6 +671,7 @@ void DartsRankingModule::parseHtml(const char* html, size_t len, DartsRankingTyp
     auto& target_players = (type == DartsRankingType::ORDER_OF_MERIT) ? oom_players : protour_players;
     auto& target_main_title = (type == DartsRankingType::ORDER_OF_MERIT) ? oom_mainTitleText : protour_mainTitleText;
     auto& target_sub_title = (type == DartsRankingType::ORDER_OF_MERIT) ? oom_subTitleText : protour_subTitleText;
+    auto& target_isLiveFormat = (type == DartsRankingType::ORDER_OF_MERIT) ? oom_isLiveFormat : protour_isLiveFormat;
     
     std::vector<DartsPlayer, PsramAllocator<DartsPlayer>> temp_players;
     temp_players.reserve(256);
@@ -696,13 +715,15 @@ void DartsRankingModule::parseHtml(const char* html, size_t len, DartsRankingTyp
         }
     }
     
-    parseTable(html, temp_players);
+    bool isLiveFormat = false;
+    parseTable(html, temp_players, isLiveFormat);
+    target_isLiveFormat = isLiveFormat;
     target_players = std::move(temp_players);
 
     filterAndSortPlayers(type);
 }
 
-bool DartsRankingModule::parseTable(const char* html, std::vector<DartsPlayer, PsramAllocator<DartsPlayer>>& players_ref) {
+bool DartsRankingModule::parseTable(const char* html, std::vector<DartsPlayer, PsramAllocator<DartsPlayer>>& players_ref, bool& isLiveFormat) {
     const char* table_start = strstr(html, "<table");
     if (!table_start) {
         return false;
@@ -711,7 +732,7 @@ bool DartsRankingModule::parseTable(const char* html, std::vector<DartsPlayer, P
     PsramVector<PsramString> headers;
     const char* thead_start = strstr(table_start, "<thead>");
     const char* thead_end = thead_start ? strstr(thead_start, "</thead>") : nullptr;
-    bool isLiveFormat = false;
+    isLiveFormat = false;
 
     if (thead_start && thead_end) {
         const char* th_start = thead_start;

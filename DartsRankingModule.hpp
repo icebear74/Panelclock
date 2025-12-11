@@ -92,6 +92,7 @@ private:
     uint32_t _logicTicksSincePageSwitch = 0;
     uint32_t _currentTicksPerPage = 50; // 50 * 100ms = 5 Sekunden
     uint32_t _logicTicksSinceRankingSwitch = 0;
+    uint32_t _expectedTicksForCurrentMode = 0; // Cache duration at start to avoid race conditions
 
     // PixelScroller für pixelweises Scrolling
     PixelScroller* _pixelScroller = nullptr;
@@ -102,11 +103,13 @@ private:
     char* oom_mainTitleText = nullptr;
     char* oom_subTitleText = nullptr;
     std::vector<DartsPlayer, PsramAllocator<DartsPlayer>> oom_players;
+    bool oom_isLiveFormat = false;
     
     time_t protour_last_processed_update = 0;
     char* protour_mainTitleText = nullptr;
     char* protour_subTitleText = nullptr;
     std::vector<DartsPlayer, PsramAllocator<DartsPlayer>> protour_players;
+    bool protour_isLiveFormat = false;
     
     std::vector<char*, PsramAllocator<char*>> trackedPlayerNames;
     
@@ -125,7 +128,7 @@ private:
     PsramString extractText(const char* htmlFragment, size_t maxLen);
     void parsePlayerRow(const char* tr_start, const char* tr_end, const PsramVector<PsramString>& headers, DartsPlayer& player, bool isLiveFormat);
     void parseHtml(const char* html, size_t len, DartsRankingType type);
-    bool parseTable(const char* html, std::vector<DartsPlayer, PsramAllocator<DartsPlayer>>& players_ref);
+    bool parseTable(const char* html, std::vector<DartsPlayer, PsramAllocator<DartsPlayer>>& players_ref, bool& isLiveFormat);
     void resetScroll();
     void resetAllScrollers();  // Reset beider Scroller (bei Ranking-Typ-Wechsel)
     void ensureScrollPos(size_t requiredSize);
