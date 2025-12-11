@@ -103,7 +103,20 @@ void handleSaveBase() {
     page += "<h1>Gespeichert!</h1><p>Grundkonfiguration gespeichert. Das Ger&auml;t wird neu gestartet...</p><script>setTimeout(function(){ window.location.href = '/'; }, 3000);</script>";
     page += (const char*)FPSTR(HTML_PAGE_FOOTER);
     server->send(200, "text/html", page.c_str());
-    delay(1000);
+    
+    // Ensure all buffers are flushed before restarting
+    server->client().flush();
+    delay(100);
+    server->handleClient();
+    
+    // Wait for buffers to be transmitted
+    unsigned long startWait = millis();
+    while (server->client().connected() && (millis() - startWait) < 3000) {
+        server->handleClient();
+        delay(10);
+    }
+    delay(500);
+    
     ESP.restart();
 }
 
@@ -547,7 +560,20 @@ void handleSaveHardware() {
         page += "<h1>Gespeichert!</h1><p>Hardware-Konfiguration gespeichert. Das Ger&auml;t wird neu gestartet...</p><script>setTimeout(function(){ window.location.href = '/'; }, 3000);</script>";
         page += (const char*)FPSTR(HTML_PAGE_FOOTER);
         server->send(200, "text/html", page.c_str());
-        delay(1000);
+        
+        // Ensure all buffers are flushed before restarting
+        server->client().flush();
+        delay(100);
+        server->handleClient();
+        
+        // Wait for buffers to be transmitted
+        unsigned long startWait = millis();
+        while (server->client().connected() && (millis() - startWait) < 3000) {
+            server->handleClient();
+            delay(10);
+        }
+        delay(500);
+        
         ESP.restart();
     } else {
         applyLiveConfig();
@@ -958,7 +984,20 @@ void handleBackupRestore() {
     
     if (success) {
         server->send(200, "application/json", "{\"success\":true,\"message\":\"Restore successful, rebooting...\"}");
-        delay(2000);  // Increased from 1000ms to ensure response is sent
+        
+        // Ensure all buffers are flushed before restarting
+        server->client().flush();
+        delay(100);
+        server->handleClient();
+        
+        // Wait for buffers to be transmitted
+        unsigned long startWait = millis();
+        while (server->client().connected() && (millis() - startWait) < 3000) {
+            server->handleClient();
+            delay(10);
+        }
+        delay(500);
+        
         ESP.restart();
     } else {
         server->send(500, "application/json", "{\"success\":false,\"error\":\"Restore failed\"}");
@@ -1148,8 +1187,30 @@ void handleFirmwareUpload() {
         if (Update.end(true)) {
             Log.printf("[FirmwareUpdate] Update Success: %u bytes\n", uploadSize);
             Log.printf("[FirmwareUpdate] Free PSRAM after update: %u bytes\n", psramFree());
+            
+            // Send success response
             server->send(200, "text/plain", "Update successful! Rebooting...");
-            delay(2000);
+            
+            // Ensure all buffers are flushed before restarting
+            // This prevents the browser from receiving a connection error
+            server->client().flush();
+            
+            // Process any remaining web server operations to ensure response is sent
+            delay(100);
+            server->handleClient();
+            
+            // Wait for all network buffers to be transmitted
+            // Keep handling client until disconnected or timeout
+            unsigned long startWait = millis();
+            while (server->client().connected() && (millis() - startWait) < 3000) {
+                server->handleClient();
+                delay(10);
+            }
+            
+            // Final delay to ensure TCP stack completes transmission
+            delay(500);
+            
+            Log.println("[FirmwareUpdate] Restarting device...");
             ESP.restart();
         } else {
             Update.printError(Serial);
