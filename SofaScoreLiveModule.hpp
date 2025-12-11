@@ -112,6 +112,7 @@ private:
     uint32_t _logicTicksSincePageSwitch = 0;
     uint32_t _logicTicksSinceModeSwitch = 0;
     SofaScoreDisplayMode _currentMode = SofaScoreDisplayMode::DAILY_RESULTS;
+    bool _isFinished = false;
     
     // Scrolling
     PixelScroller* _nameScroller = nullptr;

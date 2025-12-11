@@ -18,7 +18,8 @@ struct SpiRamAllocator : ArduinoJson::Allocator {
 
 SofaScoreTournament::SofaScoreTournament() = default;
 
-SofaScoreTournament::SofaScoreTournament(const SofaScoreTournament& other) {
+SofaScoreTournament::SofaScoreTournament(const SofaScoreTournament& other) 
+    : id(0), name(nullptr), slug(nullptr), isEnabled(false) {
     id = other.id;
     name = other.name ? psram_strdup(other.name) : nullptr;
     slug = other.slug ? psram_strdup(other.slug) : nullptr;
@@ -67,7 +68,12 @@ SofaScoreTournament::~SofaScoreTournament() {
 
 SofaScoreMatch::SofaScoreMatch() = default;
 
-SofaScoreMatch::SofaScoreMatch(const SofaScoreMatch& other) {
+SofaScoreMatch::SofaScoreMatch(const SofaScoreMatch& other)
+    : eventId(0), homePlayerName(nullptr), awayPlayerName(nullptr),
+      homeScore(0), awayScore(0), tournamentName(nullptr),
+      status(MatchStatus::SCHEDULED), startTimestamp(0),
+      homeAverage(0.0f), awayAverage(0.0f), home180s(0), away180s(0),
+      homeCheckoutPercent(0.0f), awayCheckoutPercent(0.0f) {
     eventId = other.eventId;
     homePlayerName = other.homePlayerName ? psram_strdup(other.homePlayerName) : nullptr;
     awayPlayerName = other.awayPlayerName ? psram_strdup(other.awayPlayerName) : nullptr;
@@ -435,7 +441,7 @@ void SofaScoreLiveModule::updateLiveMatchStats() {
 void SofaScoreLiveModule::processData() {
     // Process pending tournament data
     if (tournaments_data_pending) {
-        if (xSemaphoreTake(dataMutex, portMAX_DELAY) == pdTRUE) {
+        if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(500)) == pdTRUE) {
             parseTournamentsJson(tournaments_pending_buffer, tournaments_buffer_size);
             free(tournaments_pending_buffer);
             tournaments_pending_buffer = nullptr;
@@ -447,7 +453,7 @@ void SofaScoreLiveModule::processData() {
     
     // Process pending daily events data
     if (daily_data_pending) {
-        if (xSemaphoreTake(dataMutex, portMAX_DELAY) == pdTRUE) {
+        if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(500)) == pdTRUE) {
             parseDailyEventsJson(daily_pending_buffer, daily_buffer_size);
             free(daily_pending_buffer);
             daily_pending_buffer = nullptr;
