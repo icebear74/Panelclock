@@ -1677,67 +1677,49 @@ void AnimationsModule::drawFireplaceFlames(int x, int y, int width, int height) 
             break;
     }
     
-    // ===== HAUPTFEUER - Ein zusammenhängender Feuerbereich mit mehr Animation =====
-    // Von unten nach oben mit abnehmender Breite und Dichte
+    // ===== HAUPTFEUER - Ein zusammenhängender Feuerbereich =====
+    // Von unten nach oben mit abnehmender Breite und organischer Bewegung
     for (int fy = 0; fy < height; fy++) {
         float yProgress = (float)fy / height;  // 0 = unten, 1 = oben
         
-        // Breite nimmt nach oben ab (organische Form) mit stärkerer Verjüngung oben
-        float widthFactor;
-        if (yProgress < 0.5f) {
-            // Untere Hälfte: sanfte Verjüngung
-            widthFactor = (1.0f - yProgress * 0.3f) * 0.95f;
-        } else {
-            // Obere Hälfte: stärkere Verjüngung für spitzere Flammen
-            widthFactor = (1.0f - yProgress) * 0.9f + 0.1f;
-        }
+        // Breite nimmt nach oben ab (organische Form)
+        float widthFactor = 1.0f - yProgress * 0.6f;
         int lineWidth = (int)(width / 2 * widthFactor);
+        if (lineWidth < 2) lineWidth = 2;
         
-        // Mehrere Wellenebenen für komplexere Bewegung
-        float wave1 = sin((fy * 0.3f + _fireplaceFlamePhase * 0.4f) * 0.5f);
-        float wave2 = sin((fy * 0.5f - _fireplaceFlamePhase * 0.3f) * 0.7f);
-        int waveOffset = (int)((wave1 * 2 + wave2 * 1.5f));
-        
-        // Zusätzliches Flackern im oberen Bereich
-        int upperFlicker = 0;
-        if (yProgress > 0.6f) {
-            upperFlicker = ((_fireplaceFlamePhase + fy) % 5) - 2;
-        }
+        // Wellenförmige Bewegung für organischen Look
+        float wave = sin((fy * 0.2f + _fireplaceFlamePhase * 0.3f) * 0.6f);
+        int waveOffset = (int)(wave * 2);
         
         for (int fx = -lineWidth; fx <= lineWidth; fx++) {
             uint32_t seed = simpleRandom(fx * 23 + fy * 47 + _fireplaceFlamePhase * 5);
             
-            // Dichte nimmt nach oben stärker ab für luftigere Flammen
-            float density;
-            if (yProgress < 0.5f) {
-                density = 1.0f - yProgress * 0.4f;  // Dichter unten
-            } else {
-                density = 0.8f - (yProgress - 0.5f) * 1.2f;  // Luftiger oben
-            }
-            if ((seed % 100) > density * 100) continue;
+            // Dichte: dichter unten, etwas luftiger oben aber immer zusammenhängend
+            float density = 1.0f - yProgress * 0.4f;  // Von 100% auf 60%
             
-            // Position mit variablem Flackern (stärker oben)
-            int flickerX = ((seed / 7) % 3) - 1;
-            if (yProgress > 0.5f) {
-                flickerX += ((seed / 13) % 3) - 1;  // Mehr Bewegung oben
+            // Aber: Immer einen gewissen Mindestanteil zeichnen für Zusammenhang
+            if (yProgress < 0.7f) {
+                // Untere 70%: Sehr dicht, fast komplett
+                if ((seed % 100) > 90) continue;
+            } else {
+                // Obere 30%: Etwas luftiger aber immer noch dicht genug
+                if ((seed % 100) > density * 100) continue;
             }
-            int px = x + fx + waveOffset + flickerX + upperFlicker;
+            
+            // Position mit leichtem Flackern
+            int flickerX = ((seed / 7) % 3) - 1;
+            int px = x + fx + waveOffset + flickerX;
             int py = y - fy;
             
-            // Farbe: innen heller (Kern), außen dunkler, oben dunkler
+            // Farbe: innen heller (Kern), außen dunkler, oben etwas dunkler
             float distFromCenter = abs(fx) / (float)(lineWidth + 1);
-            int baseColorIdx = (int)(yProgress * 4.5f);  // Oben dunkler
-            int colorIdx = baseColorIdx + (int)(distFromCenter * 2);
-            
-            // Im oberen Bereich: zusätzliche Farbvariation für dynamischeren Look
-            if (yProgress > 0.6f) {
-                colorIdx += ((seed + _fireplaceFlamePhase) % 3);
-            }
+            int baseColorIdx = (int)(yProgress * 3.5f);  // 0-3 basierend auf Höhe
+            int colorIdx = baseColorIdx + (int)(distFromCenter * 1.5f);
             
             if (colorIdx > 5) colorIdx = 5;
             if (colorIdx < 0) colorIdx = 0;
             
-            // Heller Kern in der Mitte (nur unten)
+            // Heller Kern in der Mitte unten
             if (abs(fx) < 3 && fy < height / 3) {
                 colorIdx = max(0, colorIdx - 2);
             }
@@ -1748,37 +1730,32 @@ void AnimationsModule::drawFireplaceFlames(int x, int y, int width, int height) 
         }
     }
     
-    // ===== FLAMMENSPITZEN (verzweigte Flammen oben mit mehr Dynamik) =====
-    int numTips = 5 + (_fireplaceFlamePhase % 3);  // 5-7 Spitzen für reichhaltigeres Feuer
+    // ===== FLAMMENSPITZEN (verzweigte Flammen oben) =====
+    int numTips = 4 + (_fireplaceFlamePhase % 2);  // 4-5 Spitzen
     for (int t = 0; t < numTips; t++) {
         uint32_t seed = simpleRandom(t * 67 + _fireplaceFlamePhase * 11);
         
         // Position der Flammenspitze - verteilt über die Breite
         int tipBaseX = x - width/3 + (seed % ((width * 2) / 3));
-        int tipStartY = (int)(y - height * 0.6);  // Startet etwas höher
-        int tipHeight = 5 + (seed % 8);  // Längere Spitzen (5-12 Pixel)
-        int tipWidth = 1 + (seed % 3);   // Variablere Breite (1-3)
+        int tipStartY = (int)(y - height * 0.75);  // Startet höher oben
+        int tipHeight = 4 + (seed % 5);  // 4-8 Pixel Spitzen
+        int tipWidth = 1 + (seed % 2);   // 1-2 Pixel breit
         
-        // Wellige Bewegung für die Spitze
-        float tipWave = sin((t * 0.8f + _fireplaceFlamePhase * 0.5f) * 0.6f) * 2;
+        // Wellige Bewegung
+        float tipWave = sin((t * 0.5f + _fireplaceFlamePhase * 0.4f) * 0.7f) * 1.5f;
         
         // Flammenspitze zeichnen (von unten nach oben)
         for (int i = 0; i < tipHeight; i++) {
             float progress = (float)i / tipHeight;
-            int currentWidth = (int)(tipWidth * (1.0f - progress * 0.9f) + 0.5f);
+            int currentWidth = (int)(tipWidth * (1.0f - progress * 0.8f) + 0.5f);
             
-            // Mehr Flackern an den Spitzen
+            // Flackern an den Spitzen
             int flickerX = ((seed + i * 3 + _fireplaceFlamePhase * 2) % 5) - 2;
-            flickerX += (int)(tipWave * (1.0f - progress));
+            flickerX += (int)(tipWave * (1.0f - progress * 0.5f));
             
             for (int dx = -currentWidth; dx <= currentWidth; dx++) {
-                // Farbe: beginnt heller und wird nach oben dunkler
-                int colorIdx = (int)(progress * 4.5f);
-                
-                // Zufällige Farbvariation für lebhaftere Spitzen
-                if ((seed + i) % 3 == 0) {
-                    colorIdx += 1;
-                }
+                // Farbe: wird nach oben dunkler
+                int colorIdx = (int)(progress * 4) + 1;
                 
                 if (colorIdx > 5) colorIdx = 5;
                 if (colorIdx < 0) colorIdx = 0;
@@ -1786,10 +1763,9 @@ void AnimationsModule::drawFireplaceFlames(int x, int y, int width, int height) 
                 int px = tipBaseX + dx + flickerX;
                 int py = tipStartY - i;
                 
-                // Spitzen können etwas über die normale Breite hinausgehen
-                if (px >= x - width/2 - 3 && px <= x + width/2 + 3 && py >= 0) {
-                    // Manche Pixel auslassen für luftigere Spitzen
-                    if ((seed + i + dx) % 4 != 0 || progress < 0.6f) {
+                if (px >= x - width/2 - 2 && px <= x + width/2 + 2 && py >= 0) {
+                    // Einige Pixel auslassen für leichte Transparenz
+                    if ((seed + i + dx) % 3 != 0 || i < tipHeight / 2) {
                         _currentCanvas->drawPixel(px, py, flameColors[colorIdx]);
                     }
                 }
