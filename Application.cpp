@@ -357,7 +357,7 @@ void Application::executeApplyLiveConfig() {
 void Application::prepareForRestart() {
     Log.println("[Application] Bereite sauberes Herunterfahren vor ESP-Neustart vor...");
     
-    // Rufe shutdown() für alle Module auf
+    // Rufe shutdown() für alle DrawableModule-basierten Module auf
     if (_fritzMod) {
         Log.println("[Application] Schließe Fritzbox Callmonitor...");
         _fritzMod->shutdown();
@@ -374,7 +374,9 @@ void Application::prepareForRestart() {
     if (_weatherMod) _weatherMod->shutdown();
     if (_themeParkMod) _themeParkMod->shutdown();
     if (_animationsMod) _animationsMod->shutdown();
-    if (_clockMod) _clockMod->shutdown();
+    
+    // Note: ClockModule and MwaveSensorModule don't inherit from DrawableModule,
+    // so they don't have shutdown() method. They don't need cleanup anyway.
     
     // Flush LittleFS um sicherzustellen, dass alle Dateien geschrieben sind
     Log.println("[Application] Flush LittleFS...");
