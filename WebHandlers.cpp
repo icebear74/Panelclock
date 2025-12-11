@@ -36,6 +36,40 @@ void saveDeviceConfig();
 void saveHardwareConfig();
 void applyLiveConfig();
 
+/**
+ * @brief Ensures all web server buffers are flushed before ESP32 restart
+ * 
+ * This function prevents race conditions where the ESP32 restarts before
+ * HTTP responses are fully transmitted to the client. It:
+ * 1. Flushes client output buffers
+ * 2. Processes remaining web server operations
+ * 3. Waits for client disconnect or timeout
+ * 4. Adds final delay for TCP stack completion
+ * 
+ * Should be called after server->send() and before ESP.restart()
+ */
+void flushBuffersBeforeRestart() {
+    if (!server) return;
+    
+    // Flush client output buffers
+    server->client().flush();
+    
+    // Process any remaining web server operations to ensure response is sent
+    delay(100);
+    server->handleClient();
+    
+    // Wait for all network buffers to be transmitted
+    // Keep handling client until disconnected or timeout
+    unsigned long startWait = millis();
+    while (server->client().connected() && (millis() - startWait) < BUFFER_FLUSH_TIMEOUT_MS) {
+        server->handleClient();
+        delay(10);
+    }
+    
+    // Final delay to ensure TCP stack completes transmission
+    delay(500);
+}
+
 // -----------------------------
 // Implementations
 // -----------------------------
@@ -105,17 +139,7 @@ void handleSaveBase() {
     server->send(200, "text/html", page.c_str());
     
     // Ensure all buffers are flushed before restarting
-    server->client().flush();
-    delay(100);
-    server->handleClient();
-    
-    // Wait for buffers to be transmitted
-    unsigned long startWait = millis();
-    while (server->client().connected() && (millis() - startWait) < 3000) {
-        server->handleClient();
-        delay(10);
-    }
-    delay(500);
+    flushBuffersBeforeRestart();
     
     ESP.restart();
 }
@@ -562,17 +586,7 @@ void handleSaveHardware() {
         server->send(200, "text/html", page.c_str());
         
         // Ensure all buffers are flushed before restarting
-        server->client().flush();
-        delay(100);
-        server->handleClient();
-        
-        // Wait for buffers to be transmitted
-        unsigned long startWait = millis();
-        while (server->client().connected() && (millis() - startWait) < 3000) {
-            server->handleClient();
-            delay(10);
-        }
-        delay(500);
+        flushBuffersBeforeRestart();
         
         ESP.restart();
     } else {
@@ -986,17 +1000,7 @@ void handleBackupRestore() {
         server->send(200, "application/json", "{\"success\":true,\"message\":\"Restore successful, rebooting...\"}");
         
         // Ensure all buffers are flushed before restarting
-        server->client().flush();
-        delay(100);
-        server->handleClient();
-        
-        // Wait for buffers to be transmitted
-        unsigned long startWait = millis();
-        while (server->client().connected() && (millis() - startWait) < 3000) {
-            server->handleClient();
-            delay(10);
-        }
-        delay(500);
+        flushBuffersBeforeRestart();
         
         ESP.restart();
     } else {
@@ -1193,22 +1197,7 @@ void handleFirmwareUpload() {
             
             // Ensure all buffers are flushed before restarting
             // This prevents the browser from receiving a connection error
-            server->client().flush();
-            
-            // Process any remaining web server operations to ensure response is sent
-            delay(100);
-            server->handleClient();
-            
-            // Wait for all network buffers to be transmitted
-            // Keep handling client until disconnected or timeout
-            unsigned long startWait = millis();
-            while (server->client().connected() && (millis() - startWait) < 3000) {
-                server->handleClient();
-                delay(10);
-            }
-            
-            // Final delay to ensure TCP stack completes transmission
-            delay(500);
+            flushBuffersBeforeRestart();
             
             Log.println("[FirmwareUpdate] Restarting device...");
             ESP.restart();

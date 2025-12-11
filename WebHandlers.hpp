@@ -1,6 +1,9 @@
 #ifndef WEB_HANDLERS_HPP
 #define WEB_HANDLERS_HPP
 
+// Timeout for waiting on buffer flushing before ESP32 restart (milliseconds)
+#define BUFFER_FLUSH_TIMEOUT_MS 3000
+
 // Prototypes for all web handlers used by setupWebServer()
 // Implementations are in WebHandlers.cpp
 
