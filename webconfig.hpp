@@ -74,6 +74,8 @@ struct DeviceConfig {
     int dartsSofascoreFetchIntervalMin = 2;
     /// @brief Die Anzeigedauer für SofaScore Live-Spiele in Sekunden.
     int dartsSofascoreDisplaySec = 20;
+    /// @brief Kommaseparierte Liste der aktivierten Turnier-IDs (leer = alle Turniere).
+    PsramString dartsSofascoreTournamentIds;
 
     /// @brief Schaltet das Fritz!Box Anrufmonitor-Modul ein/aus.
     bool fritzboxEnabled = false;

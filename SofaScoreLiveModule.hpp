@@ -1,0 +1,158 @@
+#ifndef SOFASCORE_LIVE_MODULE_HPP
+#define SOFASCORE_LIVE_MODULE_HPP
+
+#include <U8g2_for_Adafruit_GFX.h>
+#include <vector>
+#include <functional>
+#include "PsramUtils.hpp"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include "DrawableModule.hpp"
+#include "PixelScroller.hpp"
+
+class WebClientModule;
+struct DeviceConfig;
+
+// Tournament information
+struct SofaScoreTournament {
+    int id = 0;
+    char* name = nullptr;
+    char* slug = nullptr;
+    bool isEnabled = false;
+    
+    SofaScoreTournament();
+    SofaScoreTournament(const SofaScoreTournament& other);
+    SofaScoreTournament& operator=(const SofaScoreTournament& other);
+    SofaScoreTournament(SofaScoreTournament&& other) noexcept;
+    SofaScoreTournament& operator=(SofaScoreTournament&& other) noexcept;
+    ~SofaScoreTournament();
+};
+
+// Match/Event status
+enum class MatchStatus {
+    SCHEDULED,  // Not started yet
+    LIVE,       // Currently playing
+    FINISHED    // Completed
+};
+
+// Daily match result or live match
+struct SofaScoreMatch {
+    int eventId = 0;
+    char* homePlayerName = nullptr;
+    char* awayPlayerName = nullptr;
+    int homeScore = 0;  // Sets won
+    int awayScore = 0;  // Sets won
+    char* tournamentName = nullptr;
+    MatchStatus status = MatchStatus::SCHEDULED;
+    long startTimestamp = 0;
+    
+    // Statistics (for live matches)
+    float homeAverage = 0.0f;
+    float awayAverage = 0.0f;
+    int home180s = 0;
+    int away180s = 0;
+    float homeCheckoutPercent = 0.0f;
+    float awayCheckoutPercent = 0.0f;
+    
+    SofaScoreMatch();
+    SofaScoreMatch(const SofaScoreMatch& other);
+    SofaScoreMatch& operator=(const SofaScoreMatch& other);
+    SofaScoreMatch(SofaScoreMatch&& other) noexcept;
+    SofaScoreMatch& operator=(SofaScoreMatch&& other) noexcept;
+    ~SofaScoreMatch();
+};
+
+// Display mode for the module
+enum class SofaScoreDisplayMode {
+    TOURNAMENT_LIST,  // Show available tournaments
+    DAILY_RESULTS,    // Show today's results
+    LIVE_MATCH        // Show live match with stats
+};
+
+class SofaScoreLiveModule : public DrawableModule {
+public:
+    SofaScoreLiveModule(U8G2_FOR_ADAFRUIT_GFX& u8g2_ref, GFXcanvas16& canvas_ref, 
+                        WebClientModule* webClient_ptr, DeviceConfig* config);
+    ~SofaScoreLiveModule();
+
+    void onUpdate(std::function<void()> callback);
+    void setConfig(bool enabled, uint32_t fetchIntervalMinutes, unsigned long displaySec,
+                   const PsramString& enabledTournamentIds);
+    void queueData();
+    void processData();
+
+    // DrawableModule Interface
+    const char* getModuleName() const override { return "SofaScoreLiveModule"; }
+    const char* getModuleDisplayName() const override { return "Darts Live (SofaScore)"; }
+    void draw() override;
+    void tick() override;
+    void logicTick() override;
+    unsigned long getDisplayDuration() override;
+    bool isEnabled() override;
+    void resetPaging() override;
+    int getCurrentPage() const override { return _currentPage; }
+    int getTotalPages() const override { return _totalPages; }
+
+private:
+    U8G2_FOR_ADAFRUIT_GFX& u8g2;
+    GFXcanvas16& canvas;
+    WebClientModule* webClient;
+    DeviceConfig* config;
+    std::function<void()> updateCallback;
+    SemaphoreHandle_t dataMutex;
+
+    // Configuration
+    bool _enabled = false;
+    unsigned long _displayDuration = 20000;  // 20 seconds per page
+    uint32_t _currentTicksPerPage = 200;     // 200 * 100ms = 20 seconds
+    
+    // Paging
+    int _currentPage = 0;
+    int _totalPages = 1;
+    uint32_t _logicTicksSincePageSwitch = 0;
+    uint32_t _logicTicksSinceModeSwitch = 0;
+    SofaScoreDisplayMode _currentMode = SofaScoreDisplayMode::DAILY_RESULTS;
+    
+    // Scrolling
+    PixelScroller* _nameScroller = nullptr;
+    PixelScroller* _tournamentScroller = nullptr;
+    
+    // Data buffers for async fetching
+    char* tournaments_pending_buffer = nullptr;
+    size_t tournaments_buffer_size = 0;
+    volatile bool tournaments_data_pending = false;
+    time_t tournaments_last_processed_update = 0;
+    
+    char* daily_pending_buffer = nullptr;
+    size_t daily_buffer_size = 0;
+    volatile bool daily_data_pending = false;
+    time_t daily_last_processed_update = 0;
+    
+    char* live_pending_buffer = nullptr;
+    size_t live_buffer_size = 0;
+    volatile bool live_data_pending = false;
+    time_t live_last_processed_update = 0;
+    
+    // Parsed data
+    std::vector<SofaScoreTournament, PsramAllocator<SofaScoreTournament>> availableTournaments;
+    std::vector<int, PsramAllocator<int>> enabledTournamentIds;
+    std::vector<SofaScoreMatch, PsramAllocator<SofaScoreMatch>> dailyMatches;
+    std::vector<SofaScoreMatch, PsramAllocator<SofaScoreMatch>> liveMatches;
+    
+    // Helper methods
+    void clearAllData();
+    void parseTournamentsJson(const char* json, size_t len);
+    void parseDailyEventsJson(const char* json, size_t len);
+    void parseMatchStatistics(int eventId, const char* json, size_t len);
+    void updateLiveMatchStats();
+    void switchToNextMode();
+    
+    // Drawing helpers
+    void drawTournamentList();
+    void drawDailyResults();
+    void drawLiveMatch();
+    void ensureScrollSlots(size_t requiredSize);
+    uint16_t dimColor(uint16_t color);
+};
+
+#endif // SOFASCORE_LIVE_MODULE_HPP
