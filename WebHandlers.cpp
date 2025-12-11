@@ -60,6 +60,7 @@ void flushBuffersBeforeRestart() {
     
     // Wait for all network buffers to be transmitted
     // Keep handling client until disconnected or timeout
+    // Note: Unsigned arithmetic handles millis() wraparound correctly
     unsigned long startWait = millis();
     while (server->client().connected() && (millis() - startWait) < BUFFER_FLUSH_TIMEOUT_MS) {
         server->handleClient();

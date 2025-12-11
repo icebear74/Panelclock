@@ -35,4 +35,7 @@ void handleBackupRestore();
 void handleFirmwarePage();
 void handleFirmwareUpload();
 
+// Helper function to ensure buffers are flushed before ESP32 restart
+void flushBuffersBeforeRestart();
+
 #endif // WEB_HANDLERS_HPP
