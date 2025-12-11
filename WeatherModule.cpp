@@ -134,7 +134,9 @@ bool WeatherModule::isEnabled() {
 }
 
 void WeatherModule::queueData() {
-    if (!isEnabled() || !_webClient) return;
+    // Continue fetching weather data even if display is disabled
+    // This ensures sunrise/sunset times stay current for other modules (e.g., AnimationsModule night mode)
+    if (!_webClient) return;
     
     time_t now_utc = time(nullptr);
     
