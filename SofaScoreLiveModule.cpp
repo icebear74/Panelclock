@@ -399,8 +399,11 @@ void SofaScoreLiveModule::queueData() {
     
     PsramString dailyUrl = PsramString("https://api.sofascore.com/api/v1/sport/darts/scheduled-events/") + dateStr;
     
-    // Register if not already registered
-    webClient->registerResource(dailyUrl.c_str(), 60, nullptr);  // Update every 60 minutes
+    // Register only if URL changed (new day)
+    if (dailyUrl != _lastRegisteredDailyUrl) {
+        webClient->registerResource(dailyUrl.c_str(), 60, nullptr);  // Update every 60 minutes
+        _lastRegisteredDailyUrl = dailyUrl;
+    }
     
     webClient->accessResource(dailyUrl.c_str(),
         [this](const char* buffer, size_t size, time_t last_update, bool is_stale) {
@@ -426,10 +429,22 @@ void SofaScoreLiveModule::updateLiveMatchStats() {
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
         for (const auto& match : liveMatches) {
             if (match.status == MatchStatus::LIVE) {
-                char statsUrl[128];
-                snprintf(statsUrl, sizeof(statsUrl), "https://api.sofascore.com/api/v1/event/%d/statistics", match.eventId);
+                // Check if already registered
+                bool alreadyRegistered = false;
+                for (int registeredId : _registeredEventIds) {
+                    if (registeredId == match.eventId) {
+                        alreadyRegistered = true;
+                        break;
+                    }
+                }
                 
-                webClient->registerResource(statsUrl, 2, nullptr);  // Update every 2 minutes
+                if (!alreadyRegistered) {
+                    char statsUrl[128];
+                    snprintf(statsUrl, sizeof(statsUrl), "https://api.sofascore.com/api/v1/event/%d/statistics", match.eventId);
+                    
+                    webClient->registerResource(statsUrl, 2, nullptr);  // Update every 2 minutes
+                    _registeredEventIds.push_back(match.eventId);
+                }
                 
                 // Note: We'll process this in processData()
             }

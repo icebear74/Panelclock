@@ -140,6 +140,10 @@ private:
     std::vector<SofaScoreMatch, PsramAllocator<SofaScoreMatch>> dailyMatches;
     std::vector<SofaScoreMatch, PsramAllocator<SofaScoreMatch>> liveMatches;
     
+    // Track registered resources to avoid duplicate registrations
+    PsramString _lastRegisteredDailyUrl;
+    std::vector<int, PsramAllocator<int>> _registeredEventIds;
+    
     // Helper methods
     void clearAllData();
     void parseTournamentsJson(const char* json, size_t len);
