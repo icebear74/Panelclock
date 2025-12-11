@@ -92,6 +92,7 @@ private:
     uint32_t _logicTicksSincePageSwitch = 0;
     uint32_t _currentTicksPerPage = 50; // 50 * 100ms = 5 Sekunden
     uint32_t _logicTicksSinceRankingSwitch = 0;
+    uint32_t _expectedTicksForCurrentMode = 0; // Cache duration at start to avoid race conditions
 
     // PixelScroller für pixelweises Scrolling
     PixelScroller* _pixelScroller = nullptr;

@@ -146,6 +146,7 @@ void DartsRankingModule::resetPaging() {
     _logicTicksSincePageSwitch = 0;
     _logicTicksSinceRankingSwitch = 0;
     _isFinished = false;
+    _expectedTicksForCurrentMode = getInternalTickDuration(_currentInternalMode);
     resetAllScrollers();  // Bei komplettem Reset beide Scroller zurücksetzen
 }
 
@@ -209,7 +210,7 @@ void DartsRankingModule::logicTick() {
         _logicTicksSincePageSwitch = 0;
     }
 
-    uint32_t currentModeTicks = getInternalTickDuration(_currentInternalMode);
+    uint32_t currentModeTicks = _expectedTicksForCurrentMode;
     if (currentModeTicks > 0 && _logicTicksSinceRankingSwitch >= currentModeTicks) {
         DartsRankingType nextMode = _currentInternalMode;
         if (_currentInternalMode == DartsRankingType::ORDER_OF_MERIT && _proTourEnabled) {
@@ -226,6 +227,7 @@ void DartsRankingModule::logicTick() {
             currentPage = 0;
             _logicTicksSincePageSwitch = 0;
             _logicTicksSinceRankingSwitch = 0;
+            _expectedTicksForCurrentMode = getInternalTickDuration(_currentInternalMode);
             resetAllScrollers();  // Bei Ranking-Typ-Wechsel beide Scroller zurücksetzen
             needsRedraw = true;
         } else {
