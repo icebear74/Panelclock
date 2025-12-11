@@ -1677,124 +1677,88 @@ void AnimationsModule::drawFireplaceFlames(int x, int y, int width, int height) 
             break;
     }
     
-    // ===== NEUES FEUER-DESIGN: Mehrere Flammen-Säulen mit organischem Flackern =====
+    // ===== HAUPTFEUER - Based on Advent wreath candle flame algorithm =====
+    // Uses same proven algorithm as drawCandleFlame(), scaled for fireplace
+    // ONE cohesive fire mass, not separate columns
     
-    // 3-5 Haupt-Flammen-Säulen für mehr Dynamik
-    int numFlames = 3 + (_fireplaceFlamePhase % 3);  // 3-5 Flammen
+    for (int fy = 0; fy < height; fy++) {
+        float yProgress = (float)fy / height;  // 0 = bottom, 1 = top
+        
+        // Quadratic width tapering (SAME as candle flames)
+        // Creates natural curved flame shape, not pyramid
+        float widthFactor = (1.0f - yProgress * yProgress) * 0.9f + 0.1f;
+        int lineWidth = (int)(width / 2 * widthFactor);
+        
+        // Gentle wave motion (similar to candles, scaled for size)
+        int waveOffset = (int)(sin((fy + _fireplaceFlamePhase * 2) * 0.5f) * 3);
+        
+        for (int fx = -lineWidth; fx <= lineWidth; fx++) {
+            uint32_t seed = simpleRandom(fx * 23 + fy * 47 + _fireplaceFlamePhase * 5);
+            
+            // Smooth density gradient (SAME as candles)
+            float density = 1.0f - yProgress * 0.6f;  // 100% -> 40%
+            if ((seed % 100) > density * 100) continue;
+            
+            // Minimal flicker (like candles)
+            int flickerX = ((seed / 7) % 3) - 1;
+            int px = x + fx + waveOffset + flickerX;
+            int py = y - fy;
+            
+            // Color: bright core at center/bottom, darker at edges/top
+            float distFromCenter = abs(fx) / (float)(lineWidth + 1);
+            int baseColorIdx = (int)(yProgress * 4);  // Darker toward top
+            int colorIdx = baseColorIdx + (int)(distFromCenter * 2);
+            if (colorIdx > 5) colorIdx = 5;
+            if (colorIdx < 0) colorIdx = 0;
+            
+            // Bright core in middle (bottom third only)
+            if (abs(fx) < 3 && fy < height / 3) {
+                colorIdx = max(0, colorIdx - 2);
+            }
+            
+            if (px >= x - width/2 && px <= x + width/2 && py >= 0 && py < _currentCanvas->height()) {
+                _currentCanvas->drawPixel(px, py, flameColors[colorIdx]);
+            }
+        }
+    }
     
-    for (int flameIdx = 0; flameIdx < numFlames; flameIdx++) {
-        uint32_t flameSeed = simpleRandom(flameIdx * 97 + _fireplaceFlamePhase * 7);
+    // ===== FLAME TIPS (connected to main body) =====
+    int numTips = 4 + (_fireplaceFlamePhase % 2);  // 4-5 tips
+    for (int t = 0; t < numTips; t++) {
+        uint32_t seed = simpleRandom(t * 67 + _fireplaceFlamePhase * 11);
         
-        // Jede Flamme hat ihre eigene X-Position über die Breite verteilt
-        int flameBaseX = x - width/3 + (flameIdx * width * 2) / (numFlames * 3 + 1);
-        int flameWidth = width / (numFlames + 2);  // Flammen überlappen sich etwas
+        // Tip position - starts where main fire is (around 70% height)
+        int tipBaseX = x - width/4 + (seed % (width / 2));
+        int tipStartY = (int)(y - height * 0.7f);  // Start at 70% height
+        int tipHeight = 4 + (seed % 6);  // 4-9 pixels
+        int tipWidth = 1 + (seed % 2);   // 1-2 pixels
         
-        // Jede Flamme zeichnen (von unten nach oben)
-        for (int fy = 0; fy < height; fy++) {
-            float yProgress = (float)fy / height;
+        // Draw flame tip (bottom to top)
+        for (int i = 0; i < tipHeight; i++) {
+            float tipProgress = (float)i / tipHeight;
+            uint32_t tipSeed = simpleRandom(i * 41 + t * 19 + _fireplaceFlamePhase * 3);
             
-            // Flammenbreite nimmt nach oben ab - mit individuellem Charakter
-            float taper = 1.0f - yProgress * (0.7f + (flameSeed % 20) * 0.01f);  // 0.7-0.9
-            int currentWidth = (int)(flameWidth * taper * 0.5f);
-            if (currentWidth < 1) currentWidth = 1;
+            // Gentle taper
+            int currentTipWidth = max(1, (int)(tipWidth * (1.0f - tipProgress * 0.7f)));
             
-            // Wellenförmige Bewegung - jede Flamme leicht anders
-            float waveSpeed = 0.4f + (flameSeed % 10) * 0.05f;
-            float wavePhase = flameIdx * 1.2f + _fireplaceFlamePhase * waveSpeed;
-            int waveOffset = (int)(sin((fy * 0.15f + wavePhase) * 0.8f) * (3 + yProgress * 2));
+            // Minimal flicker
+            int tipFlickerX = ((tipSeed / 5) % 2);
             
-            // Zeichne diese Höhe der Flamme
-            for (int fx = -currentWidth; fx <= currentWidth; fx++) {
-                uint32_t pixelSeed = simpleRandom(fx * 29 + fy * 43 + flameIdx * 17 + _fireplaceFlamePhase * 3);
-                
-                // Dichte: Basis sehr dicht, nach oben luftiger aber organisch
-                float baseDensity = 0.95f - yProgress * 0.5f;  // 95% -> 45%
-                
-                // Zusätzliche Variation für organischen Look
-                float densityMod = (pixelSeed % 100) * 0.01f;
-                float finalDensity = baseDensity + densityMod * 0.2f - 0.1f;
-                
-                if ((pixelSeed % 100) > finalDensity * 100) continue;
-                
-                // Flackern - stärker in der Mitte und oben
-                int flickerAmount = 1 + (int)(yProgress * 2);
-                int flickerX = ((pixelSeed / 5) % (flickerAmount * 2 + 1)) - flickerAmount;
-                
-                int px = flameBaseX + fx + waveOffset + flickerX;
-                int py = y - fy;
-                
-                // Farbe: Mitte hell, Rand dunkler, oben dunkler
-                float distFromFlameCenter = abs(fx) / (float)(currentWidth + 1);
-                
-                // Basis-Farbe abhängig von Höhe
-                int baseColorIdx = (int)(yProgress * 3.5f);
-                
-                // Rand-Farbe dunkler
-                int edgeDarkening = (int)(distFromFlameCenter * 2.5f);
-                
-                int colorIdx = baseColorIdx + edgeDarkening;
-                
-                // Sehr heller Kern unten in der Mitte
-                if (distFromFlameCenter < 0.3f && yProgress < 0.3f) {
-                    colorIdx = 0;  // Hellste Farbe
-                }
-                
-                // Begrenzen
+            for (int dx = -currentTipWidth; dx <= currentTipWidth; dx++) {
+                int colorIdx = 2 + (int)(tipProgress * 3);
                 if (colorIdx > 5) colorIdx = 5;
-                if (colorIdx < 0) colorIdx = 0;
                 
-                // Zeichnen
-                if (px >= x - width/2 && px <= x + width/2 && py >= 0 && py < _currentCanvas->height()) {
+                int px = tipBaseX + dx + tipFlickerX;
+                int py = tipStartY - i;
+                
+                if (px >= x - width/2 && px <= x + width/2 && py >= 0) {
                     _currentCanvas->drawPixel(px, py, flameColors[colorIdx]);
                 }
             }
         }
-        
-        // Flammenspitze für diese Säule
-        int tipStartY = (int)(y - height * 0.8f);
-        int tipHeight = 3 + (flameSeed % 5);  // 3-7 Pixel
-        
-        for (int i = 0; i < tipHeight; i++) {
-            float progress = (float)i / tipHeight;
-            uint32_t tipSeed = simpleRandom(i * 31 + flameIdx * 19 + _fireplaceFlamePhase * 5);
-            
-            // Spitze verjüngt sich stark
-            int tipWidth = max(1, (int)((2 - progress * 1.5f)));
-            int flickerX = ((tipSeed / 3) % 5) - 2;
-            
-            for (int dx = -tipWidth; dx <= tipWidth; dx++) {
-                int colorIdx = 2 + (int)(progress * 3);
-                if (colorIdx > 5) colorIdx = 5;
-                
-                int px = flameBaseX + dx + flickerX;
-                int py = tipStartY - i;
-                
-                if (px >= x - width/2 && px <= x + width/2 && py >= 0) {
-                    // Manche Pixel auslassen für transparente Spitzen
-                    if ((tipSeed + dx) % 3 != 0) {
-                        _currentCanvas->drawPixel(px, py, flameColors[colorIdx]);
-                    }
-                }
-            }
-        }
     }
     
-    // ===== HELLER KERN am Boden =====
-    for (int cy = 0; cy < 4; cy++) {
-        int coreWidth = (width / 3) - cy * 2;
-        for (int cx = -coreWidth; cx <= coreWidth; cx++) {
-            uint32_t seed = simpleRandom(cx * 13 + cy * 37);
-            if (seed % 3 < 2) {
-                int px = x + cx;
-                int py = y - cy;
-                if (py >= 0) {
-                    _currentCanvas->drawPixel(px, py, coreColor);
-                }
-            }
-        }
-    }
-    
-    // ===== GLUT am Boden =====
+    // ===== EMBERS AT BASE =====
     uint16_t emberColors[] = {
         rgb565(255, 120, 20),
         rgb565(255, 80, 10),
@@ -1814,12 +1778,12 @@ void AnimationsModule::drawFireplaceFlames(int x, int y, int width, int height) 
         }
     }
     
-    // ===== FUNKEN =====
-    for (int i = 0; i < 6; i++) {
+    // ===== SPARKS =====
+    for (int i = 0; i < 4; i++) {  // Fewer sparks (4 instead of 6)
         uint32_t seed = simpleRandom(i * 17 + _fireplaceFlamePhase * 7);
-        if (seed % 5 == 0) {
+        if (seed % 6 == 0) {  // Less frequent
             int sparkX = x - width/3 + (seed % (width * 2 / 3));
-            int sparkY = y - height - (seed % 8);
+            int sparkY = y - height - (seed % 6);
             if (sparkY >= 0 && sparkX >= x - width/2 && sparkX <= x + width/2) {
                 _currentCanvas->drawPixel(sparkX, sparkY, flameColors[seed % 2]);
             }
