@@ -232,6 +232,7 @@ void handleConfigModules() {
     replaceAll(content, "{christmasTreeEnabled_checked}", deviceConfig->christmasTreeEnabled ? "checked" : "");
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->christmasTreeLightSpeedMs); replaceAll(content, "{christmasTreeLightSpeedMs}", num_buf);
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->christmasTreeLightCount); replaceAll(content, "{christmasTreeLightCount}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->christmasTreeOrnamentCount); replaceAll(content, "{christmasTreeOrnamentCount}", num_buf);
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->christmasTreeGiftCount); replaceAll(content, "{christmasTreeGiftCount}", num_buf);
     replaceAll(content, "{christmasTreeLightMode0_selected}", deviceConfig->christmasTreeLightMode == 0 ? "selected" : "");
     replaceAll(content, "{christmasTreeLightMode1_selected}", deviceConfig->christmasTreeLightMode == 1 ? "selected" : "");
@@ -422,6 +423,7 @@ void handleSaveModules() {
     deviceConfig->christmasTreeEnabled = server->hasArg("christmasTreeEnabled");
     if (server->hasArg("christmasTreeLightSpeedMs")) deviceConfig->christmasTreeLightSpeedMs = server->arg("christmasTreeLightSpeedMs").toInt();
     if (server->hasArg("christmasTreeLightCount")) deviceConfig->christmasTreeLightCount = server->arg("christmasTreeLightCount").toInt();
+    if (server->hasArg("christmasTreeOrnamentCount")) deviceConfig->christmasTreeOrnamentCount = server->arg("christmasTreeOrnamentCount").toInt();
     if (server->hasArg("christmasTreeGiftCount")) deviceConfig->christmasTreeGiftCount = server->arg("christmasTreeGiftCount").toInt();
     if (server->hasArg("christmasTreeLightMode")) deviceConfig->christmasTreeLightMode = server->arg("christmasTreeLightMode").toInt();
     if (server->hasArg("christmasTreeLightColor")) deviceConfig->christmasTreeLightColor = server->arg("christmasTreeLightColor").c_str();

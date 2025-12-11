@@ -98,6 +98,16 @@ private:
     
     // Wechsel zwischen Kranz, Baum und Kamin
     int _displayMode = 0;  // 0=Kranz, 1=Baum, 2=Kamin
+    
+    // Baum-Randomisierung
+    unsigned long _lastTreeDisplay = 0;
+    bool _treeOrnamentsNeedRegeneration = true;
+    int _shuffledOrnamentY[30];      // Max 30 Ornamente (mehr als genug)
+    int _shuffledOrnamentX[30];
+    uint8_t _shuffledOrnamentColors[30];
+    uint8_t _shuffledOrnamentSizes[30];
+    int _shuffledLightY[30];         // Max 30 Lichter
+    int _shuffledLightX[30];
     bool _showTree = false;
     bool _showFireplace = false;
     int _displayCounter = 0;
@@ -113,10 +123,6 @@ private:
     bool _snowflakesInitialized = false;
     unsigned long _lastSnowflakeUpdate = 0;
     
-    // Tree ornament regeneration
-    unsigned long _lastTreeDisplay = 0;
-    bool _treeOrnamentsNeedRegeneration = true;
-    
     // Zufällige Kerzenreihenfolge für jeden Durchgang
     int _candleOrder[4] = {0, 1, 2, 3};
     uint32_t _lastOrderSeed = 0;
@@ -128,6 +134,7 @@ private:
     int _flamePhase = 0;
     int _treeLightPhase = 0;
     int _ledBorderPhase = 0;
+    int _ledBorderSubPhase = 0;  // 0-255 for smooth color transitions
     
     // Konfigurierbare Parameter (Defaults)
     unsigned long _displayDurationMs = 15000;  // 15 Sekunden
@@ -182,6 +189,11 @@ private:
      * @brief Mischt die Kerzenreihenfolge neu
      */
     void shuffleCandleOrder();
+
+    /**
+     * @brief Mischt Kugeln und Lichter am Weihnachtsbaum für Variation
+     */
+    void shuffleTreeElements();
 
     /**
      * @brief Zeichnet den Adventskranz mit Tannengrün.
@@ -285,7 +297,7 @@ private:
     /**
      * @brief Zeichnet Strümpfe am Kaminsims
      */
-    void drawStockings(int simsY, int simsWidth, int centerX);
+    void drawStockings(int simsY, int simsWidth, int centerX, int leftEdge);
 
     /**
      * @brief Zeichnet dekorative Gegenstände auf dem Kaminsims
@@ -296,11 +308,27 @@ private:
      * @brief Prüft ob der Kamin in der aktuellen Saison aktiv ist
      */
     bool isFireplaceSeason();
+    
+    // Obsolete helper methods - no longer used after procedural fireplace rewrite
+    // void drawFireplaceFrame(int x, int y, int width, int height, uint16_t brickColor, uint16_t brickDark);
+    // void drawFireplaceMantel(int x, int y, int width, int height, uint16_t color, uint16_t lightColor, uint16_t darkColor);
+    // void drawFireplaceLogs(int x, int y, int width, float scale);
+    // void drawFireplaceTools(int x, int y, int height, float scale);
+    // void drawWoodStorage(int x, int y, int width, int height, float scale);
 
     /**
      * @brief Konvertiert RGB zu RGB565.
      */
     static uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b);
+
+    /**
+     * @brief Blends two RGB565 colors
+     * @param color1 First RGB565 color
+     * @param color2 Second RGB565 color  
+     * @param blend Blend amount (0-15, where 0=color1, 15=color2)
+     * @return Blended RGB565 color
+     */
+    static uint16_t blendRGB565(uint16_t color1, uint16_t color2, int blend);
 
     /**
      * @brief Konvertiert Hex-Farbstring zu RGB565.

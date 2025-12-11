@@ -356,8 +356,9 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
             <div id="treeLightColorDiv" style="display:none;">
                 <label for="christmasTreeLightColor">Feste Lichterfarbe</label><input type="color" id="christmasTreeLightColor" name="christmasTreeLightColor" value="{christmasTreeLightColor}">
             </div>
+            <label for="christmasTreeOrnamentCount">Anzahl Kugeln am Baum (8-20)</label><input type="number" id="christmasTreeOrnamentCount" name="christmasTreeOrnamentCount" value="{christmasTreeOrnamentCount}" min="8" max="20">
             
-            <p style="color:#bbb; margin-top:10px;">Der Weihnachtsbaum hat blinkende Lichter und Kugeln. Geschenke können unter dem Baum platziert werden.</p>
+            <p style="color:#bbb; margin-top:10px;">Der Weihnachtsbaum hat blinkende Lichter und Kugeln, die bei jeder Anzeige neu gemischt werden. Geschenke können unter dem Baum platziert werden.</p>
         </div>
     </div>
     
@@ -378,10 +379,10 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
             <label for="fireplaceBrickColor">Kaminfarbe</label><input type="color" id="fireplaceBrickColor" name="fireplaceBrickColor" value="{fireplaceBrickColor}">
             <label for="fireplaceStockingCount">Anzahl Str&uuml;mpfe am Kaminsims (0-5)</label><input type="number" id="fireplaceStockingCount" name="fireplaceStockingCount" value="{fireplaceStockingCount}" min="0" max="5">
             <label style="display: inline-block; margin: 10px 0;"><input type="checkbox" name="fireplaceClockEnabled" id="fireplaceClockEnabled" {fireplaceClockEnabled_checked}> Analoge Uhr auf dem Kaminsims anzeigen</label>
-            <label for="fireplaceCandleCount">Anzahl Dekoration auf dem Kaminsims (0-2 mit Uhr, 0-3 ohne)</label><input type="number" id="fireplaceCandleCount" name="fireplaceCandleCount" value="{fireplaceCandleCount}" min="0" max="3">
+            <label for="fireplaceCandleCount">Anzahl Dekoration auf dem Kaminsims (0-4 mit Uhr, 0-5 ohne)</label><input type="number" id="fireplaceCandleCount" name="fireplaceCandleCount" value="{fireplaceCandleCount}" min="0" max="5">
             <label for="fireplaceBgColor">Hintergrundfarbe Kamin</label><input type="color" id="fireplaceBgColor" name="fireplaceBgColor" value="{fireplaceBgColor}">
             
-            <p style="color:#bbb; margin-top:10px;">Der Kamin zeigt ein gem&uuml;tliches Feuer mit Str&uuml;mpfen und Dekoration (Vasen, Schneekugeln, Bilderrahmen). Im Nachtmodus erscheint er nur nach Sonnenuntergang (basierend auf Wetterdaten).</p>
+            <p style="color:#bbb; margin-top:10px;">Der Kamin zeigt ein gem&uuml;tliches Feuer mit Str&uuml;mpfen und Dekoration (Kerzen mit animierter Flamme, Bücher, Vasen, Teekanne, Bilderrahmen). Im Nachtmodus erscheint er nur nach Sonnenuntergang (basierend auf Wetterdaten).</p>
         </div>
     </div>
     

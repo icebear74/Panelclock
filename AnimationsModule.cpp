@@ -21,6 +21,26 @@ uint16_t AnimationsModule::hexToRgb565(const char* hex) {
     return rgb565(r, g, b);
 }
 
+// Hilfsfunktion zum Mischen zweier RGB565-Farben
+uint16_t AnimationsModule::blendRGB565(uint16_t color1, uint16_t color2, int blend) {
+    // Extract RGB components from RGB565
+    uint8_t r1 = (color1 >> 11) & 0x1F;
+    uint8_t g1 = (color1 >> 5) & 0x3F;
+    uint8_t b1 = color1 & 0x1F;
+    
+    uint8_t r2 = (color2 >> 11) & 0x1F;
+    uint8_t g2 = (color2 >> 5) & 0x3F;
+    uint8_t b2 = color2 & 0x1F;
+    
+    // Linear interpolation (blend is 0-15)
+    uint8_t r = r1 + ((r2 - r1) * blend) / 16;
+    uint8_t g = g1 + ((g2 - g1) * blend) / 16;
+    uint8_t b = b1 + ((b2 - b1) * blend) / 16;
+    
+    // Repack into RGB565
+    return (r << 11) | (g << 5) | b;
+}
+
 // Einfacher Pseudo-Zufallsgenerator
 uint32_t AnimationsModule::simpleRandom(uint32_t seed) {
     seed = seed * 1103515245 + 12345;
@@ -71,6 +91,119 @@ void AnimationsModule::shuffleCandleOrder() {
         _candleOrder[j] = temp;
     }
     _lastOrderSeed = seed;
+}
+
+void AnimationsModule::shuffleTreeElements() {
+    time_t now_utc;
+    time(&now_utc);
+    uint32_t seed = (uint32_t)now_utc + millis();
+    
+    int canvasH = _currentCanvas->height();
+    int canvasW = _currentCanvas->width();
+    int centerX = canvasW / 2;
+    float scale = canvasH / 66.0f;
+    
+    int baseY = canvasH - 4;
+    int trunkHeight = (int)(10 * scale);
+    int treeHeight = (int)(54 * scale);
+    int treeBaseY = baseY - trunkHeight + 2;
+    
+    // Hole konfigurierte Anzahl oder verwende Standard
+    int ornamentCount = config ? config->christmasTreeOrnamentCount : 12;
+    if (ornamentCount < 8) ornamentCount = 8;
+    if (ornamentCount > 20) ornamentCount = 20;
+    if (scale > 1.2) ornamentCount += 4;  // Mehr bei Fullscreen
+    
+    // Shuffle ornament positions
+    for (int i = 0; i < ornamentCount && i < 30; i++) {
+        seed = simpleRandom(seed + i * 137);
+        
+        // Y position (height on tree)
+        float t = (float)i / ornamentCount;
+        float yFraction = 0.4f * t + 0.6f * (t * t);
+        int yOffset = 3 + (int)(yFraction * (treeHeight - 10));
+        yOffset += (seed % 8) - 4;
+        if (yOffset < 4) yOffset = 4;
+        if (yOffset > treeHeight - 6) yOffset = treeHeight - 6;
+        _shuffledOrnamentY[i] = yOffset;
+        
+        // X position (left/right) - constrain within tree boundaries
+        int maxWidth;
+        int layer1Height = (int)(18 * scale);
+        int layer2Height = (int)(18 * scale);
+        int layer1Width = (int)(28 * scale);
+        int layer2Width = (int)(22 * scale);
+        int layer3Width = (int)(16 * scale);
+        int ornamentRadius = 2 + (seed / 17) % 3;  // Radius for boundary calculation
+        
+        if (yOffset < layer1Height) {
+            float progress = (float)yOffset / layer1Height;
+            maxWidth = (int)(layer1Width * (1.0f - progress * 0.5f) * 0.85f);
+        } else if (yOffset < layer1Height + layer2Height - (int)(4 * scale)) {
+            float progress = (float)(yOffset - layer1Height + (int)(4 * scale)) / layer2Height;
+            maxWidth = (int)(layer2Width * (1.0f - progress * 0.5f) * 0.85f);
+        } else {
+            float progress = (float)(yOffset - layer1Height - layer2Height + (int)(14 * scale)) / (layer3Width + 4);
+            maxWidth = (int)(layer3Width * (1.0f - progress * 0.6f) * 0.8f);
+        }
+        
+        // Reduce maxWidth by ornament radius to keep ornament fully inside tree
+        maxWidth -= ornamentRadius;
+        if (maxWidth < 2) maxWidth = 2;
+        int xRange = maxWidth * 2;
+        int xPos = seed % xRange;
+        if (i % 2 == 0) {
+            _shuffledOrnamentX[i] = -maxWidth + (xPos / 2);
+        } else {
+            _shuffledOrnamentX[i] = -maxWidth + xRange/2 + (xPos / 2);
+        }
+        
+        // Random color index (0-7)
+        _shuffledOrnamentColors[i] = seed % 8;
+        
+        // Random size - same as calculated radius above
+        _shuffledOrnamentSizes[i] = ornamentRadius;
+    }
+    
+    // Shuffle light positions
+    int lightCount = config ? config->christmasTreeLightCount : 18;
+    if (lightCount < 5) lightCount = 5;
+    if (lightCount > 30) lightCount = 30;
+    
+    for (int i = 0; i < lightCount && i < 30; i++) {
+        seed = simpleRandom(seed + i * 211);
+        
+        // Random Y position throughout tree
+        int lightY = (seed % treeHeight);
+        if (lightY < 4) lightY = 4;
+        _shuffledLightY[i] = lightY;
+        
+        // Calculate proper max width based on tree layer (matching drawNaturalTree)
+        int maxLightWidth;
+        int layer2Top = layer1Height + layer2Height - (int)(4 * scale);
+        int layer3Height = (int)(18 * scale);
+        
+        if (lightY < layer1Height) {
+            // Layer 1 (bottom): tapers with 0.8 factor
+            float progress = (float)lightY / layer1Height;
+            maxLightWidth = (int)(layer1Width - progress * layer1Width * 0.8f);
+        } else if (lightY < layer2Top) {
+            // Layer 2 (middle): tapers with 0.9 factor
+            float progress = (float)(lightY - layer1Height) / layer2Height;
+            maxLightWidth = (int)(layer2Width - progress * layer2Width * 0.9f);
+        } else {
+            // Layer 3 (top): tapers with 0.85 factor
+            float progress = (float)(lightY - layer2Top) / layer3Height;
+            maxLightWidth = (int)(layer3Width - progress * layer3Width * 0.85f);
+        }
+        
+        // Reduce width by light size (2px) to keep light center inside tree
+        maxLightWidth -= 2;
+        if (maxLightWidth < 2) maxLightWidth = 2;
+        
+        int lightX = ((seed / 7) % (maxLightWidth * 2)) - maxLightWidth;
+        _shuffledLightX[i] = lightX;
+    }
 }
 
 bool AnimationsModule::isAdventSeason() {
@@ -185,14 +318,12 @@ bool AnimationsModule::isHolidaySeason() {
 }
 
 bool AnimationsModule::isFireplaceSeason() {
+    // Prüfe nur ob das Kamin-Feature aktiviert ist
+    // Die Nachtmodus-Prüfung erfolgt später bei der Anzeige-Entscheidung
     if (!config || !config->fireplaceEnabled) return false;
     
-    // Wenn Nachtmodus aktiviert ist, prüfe ob es aktuell Nacht ist
-    if (config->fireplaceNightModeOnly) {
-        return TimeUtilities::isNightTime();
-    }
-    
-    // Sonst ist der Kamin immer aktiv (wenn enabled)
+    // Kamin ist immer "in Season" wenn aktiviert
+    // (unabhängig von der Tageszeit)
     return true;
 }
 
@@ -336,6 +467,11 @@ void AnimationsModule::periodicTick() {
             bool treeActive = config->christmasTreeEnabled && isChristmasSeason();
             bool fireplaceActive = config->fireplaceEnabled && isFireplaceSeason();
             
+            // Prüfe Nachtmodus für Kamin
+            if (fireplaceActive && config->fireplaceNightModeOnly && !TimeUtilities::isNightTime()) {
+                fireplaceActive = false;
+            }
+            
             int activeCount = (wreathActive ? 1 : 0) + (treeActive ? 1 : 0) + (fireplaceActive ? 1 : 0);
             int modeIndex = _displayCounter % activeCount;
             
@@ -359,7 +495,12 @@ void AnimationsModule::periodicTick() {
             _showFireplace = false;
         } else if (mode == ChristmasDisplayMode::Fireplace) {
             _showTree = false;
-            _showFireplace = true;
+            // Prüfe Nachtmodus für Kamin
+            if (config->fireplaceNightModeOnly && !TimeUtilities::isNightTime()) {
+                _showFireplace = false;  // Nicht anzeigen wenn Nachtmodus aktiv und es ist Tag
+            } else {
+                _showFireplace = true;
+            }
         } else {
             _showTree = false;
             _showFireplace = false;
@@ -414,11 +555,11 @@ void AnimationsModule::tick() {
         needsUpdate = true;
     }
     
-    // LED-Rahmen-Animation
+    // LED-Rahmen-Animation - simple phase rotation (no blending to avoid pulsing effect)
     unsigned long ledBorderSpeed = config ? (unsigned long)config->ledBorderSpeedMs : 100;
     if (now - _lastLedBorderUpdate > ledBorderSpeed) {
         _lastLedBorderUpdate = now;
-        _ledBorderPhase = (_ledBorderPhase + 1) % 4;  // 4 Phasen
+        _ledBorderPhase = (_ledBorderPhase + 1) % 4;  // Simple 4-phase rotation
         needsUpdate = true;
     }
     
@@ -464,10 +605,10 @@ void AnimationsModule::draw() {
     if (_showFireplace) {
         drawFireplace();
     } else if (_showTree) {
-        // Regeneriere Kugeln/Lichter wenn der Baum neu angezeigt wird
+        // Mische Kugeln und Lichter nur EINMAL bei neuer Anzeige, nicht bei jedem Tick
         unsigned long now = millis();
-        if (now - _lastTreeDisplay > 1000) {  // Mindestens 1 Sekunde seit letzter Anzeige
-            _treeOrnamentsNeedRegeneration = true;
+        if (_lastTreeDisplay == 0 || (now - _lastTreeDisplay) > 60000) {  // Neue Anzeige oder >60s her
+            shuffleTreeElements();
             _lastTreeDisplay = now;
         }
         
@@ -647,70 +788,20 @@ void AnimationsModule::drawTreeOrnaments(int centerX, int baseY, float scale) {
         rgb565(100, 200, 255),  // Hellblau
         rgb565(220, 220, 220)   // Silber
     };
-    int numColors = 8;
     
-    // Skalierte Kugelpositionen
-    int numOrnaments = scale > 1.2 ? 16 : 12;  // Mehr Kugeln bei Fullscreen
+    // Hole konfigurierte Anzahl oder verwende Standard
+    int numOrnaments = config ? config->christmasTreeOrnamentCount : 12;
+    if (numOrnaments < 8) numOrnaments = 8;
+    if (numOrnaments > 20) numOrnaments = 20;
+    if (scale > 1.2) numOrnaments += 4;  // Mehr bei Fullscreen
     
-    // Baumhöhe und Schichten (müssen mit drawNaturalTree übereinstimmen)
-    int treeHeight = (int)(54 * scale);
-    int layer1Height = (int)(18 * scale);
-    int layer2Height = (int)(18 * scale);
-    int layer1Width = (int)(28 * scale);
-    int layer2Width = (int)(22 * scale);
-    int layer3Width = (int)(16 * scale);
-    
-    // Verbesserte Verteilung - nutzt den gesamten Baum besser aus
-    // Mehr unten, aber auch oben sollten einige sein
-    for (int i = 0; i < numOrnaments; i++) {
-        uint32_t seed = simpleRandom(i * 157 + 789);
+    // Verwende gemischte Positionen aus shuffleTreeElements()
+    for (int i = 0; i < numOrnaments && i < 30; i++) {
+        int ox = centerX + _shuffledOrnamentX[i];
+        int oy = baseY - _shuffledOrnamentY[i];
+        int radius = _shuffledOrnamentSizes[i];
+        uint16_t color = ornamentColors[_shuffledOrnamentColors[i] % 8];
         
-        // Y-Position: Bessere Verteilung mit weniger extremer Konzentration unten
-        // Mische linear (0.4) und quadratisch (0.6) für ausgewogenere Verteilung
-        // Linear verteilt gleichmäßig, quadratisch konzentriert nach unten
-        float t = (float)i / numOrnaments;  // 0.0 bis 1.0
-        const float LINEAR_WEIGHT = 0.4f;    // 40% gleichmäßige Verteilung
-        const float QUADRATIC_WEIGHT = 0.6f; // 60% Konzentration nach unten
-        float yFraction = LINEAR_WEIGHT * t + QUADRATIC_WEIGHT * (t * t);
-        int yOffset = 3 + (int)(yFraction * (treeHeight - 10));
-        yOffset += (seed % 8) - 4;  // Mehr Variation für natürlicheres Aussehen
-        if (yOffset < 4) yOffset = 4;
-        if (yOffset > treeHeight - 6) yOffset = treeHeight - 6;
-        
-        // Berechne maximale Breite an dieser Y-Position (nutze mehr vom verfügbaren Raum)
-        int maxWidth;
-        if (yOffset < layer1Height) {
-            float progress = (float)yOffset / layer1Height;
-            // Erhöhe von 0.7f auf 0.85f um mehr vom Rand zu nutzen
-            maxWidth = (int)(layer1Width * (1.0f - progress * 0.5f) * 0.85f);
-        } else if (yOffset < layer1Height + layer2Height - (int)(4 * scale)) {
-            float progress = (float)(yOffset - layer1Height + (int)(4 * scale)) / layer2Height;
-            maxWidth = (int)(layer2Width * (1.0f - progress * 0.5f) * 0.85f);
-        } else {
-            float progress = (float)(yOffset - layer1Height - layer2Height + (int)(14 * scale)) / (layer3Width + 4);
-            maxWidth = (int)(layer3Width * (1.0f - progress * 0.6f) * 0.8f);
-        }
-        
-        if (maxWidth < 2) maxWidth = 2;
-        
-        // X-Position: Bessere Nutzung der Ränder
-        int xRange = maxWidth * 2;  // Voller Bereich nutzen
-        int ox;
-        // Verwende mehr Variation und nutze Ränder besser
-        int xPos = seed % xRange;
-        if (i % 2 == 0) {
-            // Linke Seite - gehe näher an den Rand
-            ox = centerX - maxWidth + (xPos / 2);
-        } else {
-            // Rechte Seite - gehe näher an den Rand
-            ox = centerX - maxWidth + xRange/2 + (xPos / 2);
-        }
-        
-        int oy = baseY - yOffset;
-        int radius = 2 + (seed % 2);
-        if (scale > 1.2) radius = 2 + (seed % 3);
-        
-        uint16_t color = ornamentColors[seed % numColors];
         drawOrnament(ox, oy, radius, color);
     }
 }
@@ -740,6 +831,8 @@ void AnimationsModule::drawTreeLights() {
         fixedColor = hexToRgb565(config->christmasTreeLightColor.c_str());
     }
     
+    // Verwende gemischte Positionen aus shuffleTreeElements()
+    
     uint16_t lightColors[] = {
         rgb565(255, 255, 100),  // Gelb
         rgb565(255, 100, 100),  // Rot
@@ -759,62 +852,20 @@ void AnimationsModule::drawTreeLights() {
     int layer3Width = (int)(16 * scale);
     int treeHeight = layer1Height + layer2Height - (int)(4 * scale) + layer3Height - (int)(10 * scale);
     
-    // Lichter über den Baum verteilt - bessere Verteilung über die gesamte Baumfläche
-    for (int i = 0; i < lightCount; i++) {
-        // Berechne Position basierend auf Index
-        uint32_t seed = simpleRandom(i * 67 + 321);
-        
-        // Y-Position: Verbesserte Verteilung - mehr unten, aber ganzer Baum wird genutzt
-        // Mische linear (0.3) und quadratisch (0.7) für ausgewogenere Verteilung
-        float t = (float)i / lightCount;  // 0.0 bis 1.0
-        const float LINEAR_WEIGHT = 0.3f;    // 30% gleichmäßige Verteilung
-        const float QUADRATIC_WEIGHT = 0.7f; // 70% Konzentration nach unten
-        float yFraction = LINEAR_WEIGHT * t + QUADRATIC_WEIGHT * (t * t);
-        int ySection = (int)(yFraction * treeHeight);
-        int yOffset = ySection + (seed % 8) - 4;  // Mehr Variation
-        if (yOffset < 2) yOffset = 2;
-        if (yOffset > treeHeight - 4) yOffset = treeHeight - 4;
-        
-        int lightY = treeBaseY - yOffset;
-        
-        // X-Position abhängig von Y (nutze mehr vom verfügbaren Raum)
-        int maxX;
-        if (yOffset < layer1Height) {
-            float progress = (float)yOffset / layer1Height;
-            // Erhöhe von 0.65f auf 0.8f um mehr vom Rand zu nutzen
-            maxX = (int)(layer1Width * (1.0f - progress * 0.5f) * 0.8f);
-        } else if (yOffset < layer1Height + layer2Height - (int)(4 * scale)) {
-            float progress = (float)(yOffset - layer1Height + (int)(4 * scale)) / layer2Height;
-            maxX = (int)(layer2Width * (1.0f - progress * 0.5f) * 0.8f);
-        } else {
-            float progress = (float)(yOffset - layer1Height - layer2Height + (int)(14 * scale)) / layer3Height;
-            maxX = (int)(layer3Width * (1.0f - progress * 0.7f) * 0.75f);
-        }
-        
-        if (maxX < 2) maxX = 2;
-        
-        // Bessere X-Verteilung - nutzt die Ränder besser
-        int lightX;
-        seed = simpleRandom(seed + i);
-        int xRange = maxX * 2;
-        int xPos = seed % xRange;
-        
-        if (i % 2 == 0) {
-            // Linke Seite - gehe näher an den Rand
-            lightX = centerX - maxX + (xPos / 2);
-        } else {
-            // Rechte Seite
-            lightX = centerX - maxX + xRange/2 + (xPos / 2);
-        }
+    // Verwende gemischte Positionen aus shuffleTreeElements()
+    // Lichter über den Baum verteilt
+    for (int i = 0; i < lightCount && i < 30; i++) {
+        int lightY = treeBaseY - _shuffledLightY[i];
+        int lightX = centerX + _shuffledLightX[i];
         
         // Blinken basierend auf Phase
-        seed = simpleRandom(seed + i * 11);
+        uint32_t seed = simpleRandom(i * 11 + _shuffledLightX[i]);
         bool isOn = ((i + _treeLightPhase + (seed % 3)) % 4) < 2;
         
         if (isOn) {
             uint16_t color;
             if (lightMode == 1) {
-                // Feste Farbe mit leichter Variation
+                // Feste Farbe
                 color = fixedColor;
             } else {
                 // Zufällige Farbe
@@ -1514,333 +1565,89 @@ void AnimationsModule::timeIsUp() {
 
 // ============== KAMIN ZEICHENFUNKTIONEN ==============
 
+#include "fireplace_bitmap.h"
+
 void AnimationsModule::drawFireplace() {
     int canvasW = _currentCanvas->width();
     int canvasH = _currentCanvas->height();
     
-    // Skalierung: X-Achse stärker als Y-Achse für breiteres Bild
-    float scaleX = canvasW / 192.0f;
-    float scaleY = canvasH / 66.0f;
-    // Begrenzte Höhenskalierung, damit der Kamin nicht zu hoch wird
-    float effectiveScaleY = min(scaleY, 1.0f + (scaleY - 1.0f) * 0.5f);
+    // Calculate scaling factors
+    // Base bitmap is 192x64, we want to scale it to fit the canvas
+    float scaleX = canvasW / (float)FIREPLACE_BMP_WIDTH;
+    float scaleY = canvasH / 96.0f;  // Target height is 96 (64 for fireplace + 32 for decorations)
     
-    // Kaminfarbe aus Config oder Standard
-    uint16_t brickColor = rgb565(139, 69, 19);  // Standard: Braun
-    if (config && config->fireplaceBrickColor.length() > 0) {
-        brickColor = hexToRgb565(config->fireplaceBrickColor.c_str());
-    }
+    // Calculate the fireplace area (bottom 64 pixels scaled)
+    int fireplaceHeight = (int)(FIREPLACE_BMP_HEIGHT * scaleY);
+    int fireplaceY = canvasH - fireplaceHeight;
     
-    // Dunklere Version für Schattierung
-    uint8_t br = ((brickColor >> 11) & 0x1F) * 5;
-    uint8_t bg = ((brickColor >> 5) & 0x3F) * 2;
-    uint8_t bb = (brickColor & 0x1F) * 5;
-    uint16_t brickDark = rgb565(br, bg, bb);
-    uint16_t brickLight = rgb565(min(255, br + 60), min(255, bg + 40), min(255, bb + 40));
-    
-    // Layout-Planung: Werkzeuge links, Kamin Mitte-Links, Holzlager rechts
-    int toolsWidth = (int)(15 * scaleX);  // Platz für Werkzeuge links
-    int fireplaceWidth = (int)(110 * scaleX);
-    int woodStorageSpace = canvasW - toolsWidth - fireplaceWidth - (int)(6 * scaleX);  // Restlicher Platz rechts
-    
-    // Kamin-Dimensionen
-    int fireplaceHeight = (int)(48 * effectiveScaleY);
-    int simsHeight = (int)(8 * effectiveScaleY);
-    int simsOverhang = (int)(8 * scaleX);
-    int openingWidth = (int)(65 * scaleX);
-    int openingHeight = (int)(35 * effectiveScaleY);
-    
-    int baseY = canvasH;
-    // Kamin positionieren: nach den Werkzeugen
-    int fireplaceLeftEdge = toolsWidth + (int)(3 * scaleX);
-    int fireX = fireplaceLeftEdge;
-    int fireY = baseY - fireplaceHeight;
-    int centerX = fireX + fireplaceWidth / 2;  // Zentriert innerhalb des Kamins
-    
-    // ===== KAMINWERKZEUGE LINKS VOM KAMIN =====
-    // Werkzeuge links platzieren für schönere Symmetrie
-    int toolsX = (int)(3 * scaleX);
-    uint16_t toolColor = rgb565(70, 70, 70);      // Metall
-    uint16_t toolDark = rgb565(40, 40, 40);       // Dunkleres Metall
-    uint16_t handleColor = rgb565(100, 70, 40);   // Holzgriff
-    uint16_t brassColor = rgb565(180, 150, 50);   // Messing-Akzent
-    
-    int toolsBaseY = baseY;
-    int toolHeight = (int)(42 * effectiveScaleY);
-    
-    // Schürhaken (poker) - links
-    int pokerX = toolsX + (int)(3 * scaleX);
-    int pokerY = toolsBaseY - toolHeight;
-    
-    // Stiel mit Schattierung
-    _currentCanvas->drawLine(pokerX, pokerY, pokerX, toolsBaseY - (int)(8 * effectiveScaleY), toolColor);
-    _currentCanvas->drawLine(pokerX + 1, pokerY, pokerX + 1, toolsBaseY - (int)(8 * effectiveScaleY), toolDark);
-    
-    // Holzgriff
-    int handleStart = toolsBaseY - (int)(8 * effectiveScaleY);
-    _currentCanvas->drawLine(pokerX, handleStart, pokerX, toolsBaseY - 2, handleColor);
-    _currentCanvas->drawLine(pokerX + 1, handleStart, pokerX + 1, toolsBaseY - 2, rgb565(80, 55, 30));
-    
-    // Haken oben (detaillierter)
-    _currentCanvas->drawLine(pokerX, pokerY, pokerX + 3, pokerY + 2, toolColor);
-    _currentCanvas->drawLine(pokerX + 3, pokerY + 2, pokerX + 3, pokerY + 5, toolColor);
-    _currentCanvas->drawPixel(pokerX + 1, pokerY + 1, toolDark);
-    
-    // Kleiner Messing-Ring am Griff
-    _currentCanvas->drawPixel(pokerX, handleStart + (int)(3 * effectiveScaleY), brassColor);
-    
-    // Schaufel/Kelle - rechts vom Schürhaken
-    int shovelX = toolsX + (int)(9 * scaleX);
-    int shovelY = toolsBaseY - toolHeight + (int)(3 * effectiveScaleY);
-    
-    // Stiel
-    _currentCanvas->drawLine(shovelX, shovelY, shovelX, toolsBaseY - (int)(8 * effectiveScaleY), toolColor);
-    _currentCanvas->drawLine(shovelX + 1, shovelY, shovelX + 1, toolsBaseY - (int)(8 * effectiveScaleY), toolDark);
-    
-    // Holzgriff
-    _currentCanvas->drawLine(shovelX, handleStart, shovelX, toolsBaseY - 2, handleColor);
-    _currentCanvas->drawLine(shovelX + 1, handleStart, shovelX + 1, toolsBaseY - 2, rgb565(80, 55, 30));
-    
-    // Schaufelblatt (größer und detaillierter)
-    int bladeW = (int)(6 * scaleX);
-    int bladeH = (int)(5 * effectiveScaleY);
-    _currentCanvas->fillRect(shovelX - bladeW/2, shovelY, bladeW, bladeH, toolColor);
-    _currentCanvas->drawRect(shovelX - bladeW/2, shovelY, bladeW, bladeH, toolDark);
-    // Highlight auf der Schaufel
-    _currentCanvas->drawLine(shovelX - 1, shovelY + 1, shovelX - 1, shovelY + bladeH - 1, rgb565(100, 100, 100));
-    
-    // Messing-Ring
-    _currentCanvas->drawPixel(shovelX, handleStart + (int)(3 * effectiveScaleY), brassColor);
-    
-    // ===== KAMINSIMS (oben) - schöner mit Profil =====
-    int simsY = fireY - simsHeight;
-    int simsWidth = fireplaceWidth + simsOverhang * 2;
-    int simsX = fireX - simsOverhang;
-    
-    // Sims-Profil: Unterteil (dicker)
-    int simsLower = (int)(simsHeight * 0.6);
-    int simsUpper = simsHeight - simsLower;
-    
-    // Obere schmale Leiste
-    _currentCanvas->fillRect(simsX + 2, simsY, simsWidth - 4, simsUpper, brickLight);
-    // Untere breitere Basis
-    _currentCanvas->fillRect(simsX, simsY + simsUpper, simsWidth, simsLower, brickLight);
-    
-    // Schatten und Kanten für 3D-Effekt
-    _currentCanvas->drawLine(simsX, simsY + simsUpper, simsX + simsWidth, simsY + simsUpper, brickDark);
-    _currentCanvas->drawLine(simsX, simsY + simsHeight - 1, simsX + simsWidth, simsY + simsHeight - 1, brickDark);
-    _currentCanvas->drawLine(simsX + 2, simsY, simsX + simsWidth - 2, simsY, rgb565(min(255, br + 100), min(255, bg + 80), min(255, bb + 80)));
-    
-    // Dekrative Linie auf dem Sims
-    uint16_t decoColor = rgb565(min(255, br + 40), min(255, bg + 30), min(255, bb + 30));
-    _currentCanvas->drawLine(simsX + 4, simsY + simsUpper + simsLower/2, simsX + simsWidth - 4, simsY + simsUpper + simsLower/2, decoColor);
-    
-    // Kamin-Rahmen (links)
-    int frameWidth = (fireplaceWidth - openingWidth) / 2;
-    _currentCanvas->fillRect(fireX, fireY, frameWidth, fireplaceHeight, brickColor);
-    // Ziegel-Muster links
-    for (int row = 0; row < fireplaceHeight / 6; row++) {
-        int y = fireY + row * 6;
-        int offset = (row % 2) * 4;
-        for (int col = 0; col < frameWidth / 8 + 1; col++) {
-            int x = fireX + col * 8 + offset;
-            if (x < fireX + frameWidth) {
-                _currentCanvas->drawLine(x, y, x, y + 5, brickDark);
-            }
-        }
-        _currentCanvas->drawLine(fireX, y, fireX + frameWidth, y, brickDark);
-    }
-    
-    // Kamin-Rahmen (rechts)
-    int rightFrameX = fireX + frameWidth + openingWidth;
-    _currentCanvas->fillRect(rightFrameX, fireY, frameWidth, fireplaceHeight, brickColor);
-    // Ziegel-Muster rechts
-    for (int row = 0; row < fireplaceHeight / 6; row++) {
-        int y = fireY + row * 6;
-        int offset = (row % 2) * 4;
-        for (int col = 0; col < frameWidth / 8 + 1; col++) {
-            int x = rightFrameX + col * 8 + offset;
-            if (x < rightFrameX + frameWidth) {
-                _currentCanvas->drawLine(x, y, x, y + 5, brickDark);
-            }
-        }
-        _currentCanvas->drawLine(rightFrameX, y, rightFrameX + frameWidth, y, brickDark);
-    }
-    
-    // Kamin-Öffnung (SCHWARZ)
-    int openingX = fireX + frameWidth;
-    int openingY = baseY - openingHeight;
-    _currentCanvas->fillRect(openingX, openingY, openingWidth, openingHeight, rgb565(0, 0, 0));
-    
-    // ===== HOLZSCHEITE IM KAMIN - ZUERST zeichnen =====
-    // Farben angepasst für 5-bit RGB565 Farbtiefe (deutlichere Unterschiede)
-    uint16_t woodOuter = rgb565(96, 64, 32);    // Rinde außen - dunkleres Braun
-    uint16_t woodInner = rgb565(192, 144, 96);  // Holz innen - heller, mehr Kontrast
-    uint16_t woodDark = rgb565(48, 32, 16);     // Schatten - deutlich dunkler
-    uint16_t woodRing = rgb565(144, 96, 64);    // Jahresringe - mittlerer Ton
-    
-    int logY = baseY - 3;
-    int logRadius = (int)(4 * effectiveScaleY);
-    int logLength = (int)(28 * scaleX);
-    
-    // Linkes Scheit (schräg liegend) im Kamin
-    int log1X = openingX + 5;
-    int log1Y = logY - logRadius;
-    
-    // Körper des Scheits (zylindrisch)
-    for (int i = 0; i < logLength; i++) {
-        int x = log1X + i;
-        _currentCanvas->drawLine(x, log1Y - logRadius + 1, x, log1Y + logRadius - 1, woodOuter);
-        _currentCanvas->drawPixel(x, log1Y - logRadius, woodDark);
-        _currentCanvas->drawPixel(x, log1Y, woodRing);
-    }
-    
-    // Schnittfläche links (Kreis/Oval)
-    _currentCanvas->fillCircle(log1X, log1Y, logRadius, woodInner);
-    _currentCanvas->drawCircle(log1X, log1Y, logRadius, woodOuter);
-    if (logRadius > 2) {
-        _currentCanvas->drawCircle(log1X, log1Y, logRadius - 2, woodRing);
-    }
-    _currentCanvas->drawPixel(log1X, log1Y, woodDark);
-    
-    // Rechtes Scheit im Kamin
-    int log2X = openingX + 10;
-    int log2Y = logY - logRadius - 1;
-    
-    for (int i = 0; i < logLength - 5; i++) {
-        int x = log2X + i;
-        _currentCanvas->drawLine(x, log2Y - logRadius + 1, x, log2Y + logRadius - 1, woodOuter);
-        _currentCanvas->drawPixel(x, log2Y - logRadius, woodDark);
-        _currentCanvas->drawPixel(x, log2Y, woodRing);
-    }
-    
-    // Schnittfläche rechts
-    _currentCanvas->fillCircle(log2X + logLength - 5, log2Y, logRadius, woodInner);
-    _currentCanvas->drawCircle(log2X + logLength - 5, log2Y, logRadius, woodOuter);
-    if (logRadius > 2) {
-        _currentCanvas->drawCircle(log2X + logLength - 5, log2Y, logRadius - 2, woodRing);
-    }
-    _currentCanvas->drawPixel(log2X + logLength - 5, log2Y, woodDark);
-    
-    // ===== FEUER - NACH den Holzscheiten zeichnen =====
-    drawFireplaceFlames(openingX + openingWidth/2, baseY - 2, openingWidth - 10, openingHeight - 5);
-    
-    // ===== HOLZLAGER RECHTS UNTER DEM KAMINSIMS =====
-    // Bereich rechts vom Kamin für gestapelte Holzscheite
-    int woodStorageX = fireX + fireplaceWidth + (int)(3 * scaleX);
-    int woodStorageMaxX = canvasW - (int)(3 * scaleX);  // Fast bis zum rechten Rand
-    int woodStorageWidth = woodStorageMaxX - woodStorageX;
-    
-    // Verbesserte Holzscheite mit mehr Details
-    int storageLogRadius = (int)(3.5 * effectiveScaleY);
-    int storageLogLength = (int)(22 * scaleX);  // Längere Scheite
-    
-    // Variationen für realistischeres Holz - angepasst für 5-bit RGB565 Farbtiefe
-    // Deutlichere Farbunterschiede für bessere Sichtbarkeit
-    uint16_t woodVariants[] = {
-        rgb565(96, 64, 32),    // Dunkel
-        rgb565(128, 88, 48),   // Mittel-Dunkel  
-        rgb565(160, 112, 64),  // Mittel-Hell
-        rgb565(112, 72, 40)    // Mittel
-    };
-    
-    // UNTERE LAGE: Horizontal gestapelt (4-5 Scheite nebeneinander)
-    int numBottomLogs = min(5, woodStorageWidth / (int)(23 * scaleX));
-    for (int i = 0; i < numBottomLogs; i++) {
-        int lx = woodStorageX + (int)(i * 23 * scaleX);
-        int ly = baseY - storageLogRadius - 2;
+    // Draw the fireplace bitmap
+    // We'll scale it by drawing each source pixel as a scaled rectangle
+    for (int srcY = 0; srcY < FIREPLACE_BMP_HEIGHT; srcY++) {
+        int destY = fireplaceY + (int)(srcY * scaleY);
+        int destHeight = max(1, (int)((srcY + 1) * scaleY) - (int)(srcY * scaleY));
         
-        if (lx + storageLogLength <= woodStorageMaxX) {
-            uint16_t logColor = woodVariants[i % 4];
+        for (int srcX = 0; srcX < FIREPLACE_BMP_WIDTH; srcX++) {
+            int destX = (int)(srcX * scaleX);
+            int destWidth = max(1, (int)((srcX + 1) * scaleX) - (int)(srcX * scaleX));
             
-            // Zeichne Scheit horizontal
-            for (int j = 0; j < storageLogLength; j++) {
-                int x = lx + j;
-                _currentCanvas->drawLine(x, ly - storageLogRadius + 1, x, ly + storageLogRadius - 1, logColor);
-                // Textur: gelegentliche Risse
-                if (j % 8 == 0) {
-                    _currentCanvas->drawPixel(x, ly, woodDark);
-                }
-            }
+            // Read pixel from PROGMEM
+            int pixelIndex = srcY * FIREPLACE_BMP_WIDTH + srcX;
+            uint16_t color = pgm_read_word(&FIREPLACE_BITMAP_192x64[pixelIndex]);
             
-            // Schnittflächen mit Jahresringen
-            _currentCanvas->fillCircle(lx, ly, storageLogRadius, woodInner);
-            _currentCanvas->drawCircle(lx, ly, storageLogRadius, logColor);
-            if (storageLogRadius > 2) {
-                _currentCanvas->drawCircle(lx, ly, storageLogRadius - 2, woodRing);
-                _currentCanvas->drawPixel(lx, ly, woodDark);
-            }
-            
-            if (lx + storageLogLength <= canvasW) {
-                _currentCanvas->fillCircle(lx + storageLogLength, ly, storageLogRadius, woodInner);
-                _currentCanvas->drawCircle(lx + storageLogLength, ly, storageLogRadius, logColor);
-                if (storageLogRadius > 2) {
-                    _currentCanvas->drawCircle(lx + storageLogLength, ly, storageLogRadius - 2, woodRing);
-                }
+            // Draw scaled pixel
+            if (destWidth == 1 && destHeight == 1) {
+                _currentCanvas->drawPixel(destX, destY, color);
+            } else {
+                _currentCanvas->fillRect(destX, destY, destWidth, destHeight, color);
             }
         }
     }
     
-    // MITTLERE LAGE: Quer gestapelt (90° gedreht) - realistisches Kreuzstapeln
-    int numMiddleLogs = min(4, (woodStorageWidth - 5) / (int)(8 * scaleX));
-    int middleY = baseY - storageLogRadius * 2 - (int)(4 * effectiveScaleY);
-    for (int i = 0; i < numMiddleLogs; i++) {
-        int lx = woodStorageX + (int)((i * (storageLogLength / numMiddleLogs + 5)) * scaleX);
-        int ly = middleY;
-        
-        if (lx < woodStorageMaxX - 5) {
-            uint16_t logColor = woodVariants[(i + 1) % 4];
-            int thisLogLength = min(storageLogLength, (int)((woodStorageMaxX - lx - 5) * 0.9));
-            
-            // Zeichne Scheit vertikal (quer zur unteren Lage)
-            for (int j = 0; j < thisLogLength; j++) {
-                int x = lx + j;
-                if (x < woodStorageMaxX) {
-                    _currentCanvas->drawLine(x, ly - storageLogRadius + 1, x, ly + storageLogRadius - 1, logColor);
-                }
-            }
-            
-            // Schnittflächen
-            _currentCanvas->fillCircle(lx, ly, storageLogRadius, woodInner);
-            _currentCanvas->drawCircle(lx, ly, storageLogRadius, logColor);
-            if (storageLogRadius > 2) {
-                _currentCanvas->drawCircle(lx, ly, storageLogRadius - 2, woodRing);
-            }
-        }
-    }
+    // === FIRE ANIMATION ===
+    // The black fireplace opening (Brennraum) is 65x33 pixels
+    // Located at approximately x: 64-128 (center ~96), y: 24-56 in source image
+    // User adjustments: +5 pixels wider to the right, +3 pixels to the right, +2 pixels to the right
+    int fireSourceX = 69;  // Left edge moved 5 pixels right total (was 64, now 64+3+2=69)
+    int fireSourceY = 24;  // Top edge of black opening in source
+    int fireSourceW = 70;  // Width of opening (65 + 5 pixels wider to the right)
+    int fireSourceH = 33;  // Height of opening
     
-    // OBERE LAGE: Wieder horizontal (wie unten) - klassische Kreuzstapelung
-    int topY = baseY - storageLogRadius * 4 - (int)(8 * effectiveScaleY);
-    if (topY > simsY + simsHeight + 5) {
-        int numTopLogs = min(3, woodStorageWidth / (int)(28 * scaleX));
-        for (int i = 0; i < numTopLogs; i++) {
-            int lx = woodStorageX + (int)((i * 28 + 5) * scaleX);
-            int ly = topY;
-            
-            if (lx + storageLogLength - 8 <= woodStorageMaxX) {
-                uint16_t logColor = woodVariants[(i + 2) % 4];
-                int thisLogLength = storageLogLength - 8;
-                
-                for (int j = 0; j < thisLogLength; j++) {
-                    int x = lx + j;
-                    if (x < woodStorageMaxX) {
-                        _currentCanvas->drawLine(x, ly - storageLogRadius + 1, x, ly + storageLogRadius - 1, logColor);
-                    }
-                }
-                
-                _currentCanvas->fillCircle(lx, ly, storageLogRadius, woodInner);
-                _currentCanvas->drawCircle(lx, ly, storageLogRadius, logColor);
-                if (storageLogRadius > 2) {
-                    _currentCanvas->drawCircle(lx, ly, storageLogRadius - 2, woodRing);
-                }
-            }
-        }
-    }
+    // Scale to canvas coordinates
+    int fireLeftX = (int)(fireSourceX * scaleX);  // Left edge X
+    int fireY = fireplaceY + (int)((fireSourceY + fireSourceH) * scaleY) - 2;  // Bottom Y
+    int fireW = (int)(fireSourceW * scaleX) - 8;  // Width (scaled + extended)
+    int fireH = (int)(fireSourceH * scaleY) - 4;  // Height (slightly smaller for margins)
+    int fireX = fireLeftX + fireW / 2;  // Center X based on new width
     
-    // Strümpfe am Kaminsims
-    drawStockings(simsY, simsWidth, centerX);
+    drawFireplaceFlames(fireX, fireY, fireW, fireH);
     
-    // Dekorative Gegenstände auf dem Kaminsims (statt Kerzen)
-    drawMantleDecorations(simsY, simsWidth, centerX, effectiveScaleY);
+    // === MANTEL DECORATIONS ===
+    // The brown mantel shelf (Sims) dimensions from PROGMEM array analysis:
+    // - Y position: 9-10 (light brown top edge)
+    // - X range: 43 to 158 (116 pixels wide)
+    // - Center: X=101 (52.6% from left edge)
+    
+    // Decorations should be placed ON TOP of this brown shelf
+    // User adjustments: initially 8 pixels higher, now +3 more = 11 pixels higher total
+    int mantelSourceY = 1;  // 11 pixels higher (was 12, now 12-11=1)
+    int mantelY = fireplaceY + (int)(mantelSourceY * scaleY);
+    
+    // Use precise mantel dimensions from PROGMEM analysis
+    // Mantel shelf: X=43 to X=158 (116 pixels wide), center at X=101
+    // Extended mantel dimensions: +10px left and +10px right from original
+    int mantelLeftEdge = (int)(33 * scaleX);   // Was 43, now 33 (-10px)
+    int mantelRightEdge = (int)(168 * scaleX);  // Was 158, now 168 (+10px)
+    int mantelWidth = mantelRightEdge - mantelLeftEdge;  // 136-pixel width scaled (was 116)
+    float mantelCenterRatio = 101.0f / 192.0f;  // 52.6% from left edge (clock position unchanged)
+    int mantelCenterX = (int)(canvasW * mantelCenterRatio);
+    
+    // Draw decorations ON the mantel
+    drawMantleDecorations(mantelY, mantelWidth, mantelCenterX, scaleY);
+    
+    // Draw stockings hanging FROM the front edge of the mantel
+    // User adjustments: initially 8 pixels higher, +7 more, +2 more = 17 pixels higher total
+    int stockingHangY = fireplaceY + (int)(-1 * scaleY);  // 17 pixels higher (was 16, now 16-17=-1)
+    drawStockings(stockingHangY, mantelWidth, mantelCenterX, mantelLeftEdge);
 }
 
 void AnimationsModule::drawFireplaceFlames(int x, int y, int width, int height) {
@@ -1888,38 +1695,41 @@ void AnimationsModule::drawFireplaceFlames(int x, int y, int width, int height) 
             break;
     }
     
-    // ===== HAUPTFEUER - Ein zusammenhängender Feuerbereich =====
-    // Von unten nach oben mit abnehmender Breite und Dichte
+    // ===== HAUPTFEUER - Based on Advent wreath candle flame algorithm =====
+    // Uses same proven algorithm as drawCandleFlame(), scaled for fireplace
+    // ONE cohesive fire mass, not separate columns
+    
     for (int fy = 0; fy < height; fy++) {
-        float yProgress = (float)fy / height;  // 0 = unten, 1 = oben
+        float yProgress = (float)fy / height;  // 0 = bottom, 1 = top
         
-        // Breite nimmt nach oben ab (organische Form)
+        // Quadratic width tapering (SAME as candle flames)
+        // Creates natural curved flame shape, not pyramid
         float widthFactor = (1.0f - yProgress * yProgress) * 0.9f + 0.1f;
         int lineWidth = (int)(width / 2 * widthFactor);
         
-        // Wellenbewegung für natürlicheren Look
+        // Gentle wave motion (similar to candles, scaled for size)
         int waveOffset = (int)(sin((fy + _fireplaceFlamePhase * 2) * 0.5f) * 3);
         
         for (int fx = -lineWidth; fx <= lineWidth; fx++) {
             uint32_t seed = simpleRandom(fx * 23 + fy * 47 + _fireplaceFlamePhase * 5);
             
-            // Dichte nimmt nach oben ab
-            float density = 1.0f - yProgress * 0.7f;
+            // Smooth density gradient (SAME as candles)
+            float density = 1.0f - yProgress * 0.6f;  // 100% -> 40%
             if ((seed % 100) > density * 100) continue;
             
-            // Position mit leichtem Flackern
+            // Minimal flicker (like candles)
             int flickerX = ((seed / 7) % 3) - 1;
             int px = x + fx + waveOffset + flickerX;
             int py = y - fy;
             
-            // Farbe: innen heller (Kern), außen dunkler
+            // Color: bright core at center/bottom, darker at edges/top
             float distFromCenter = abs(fx) / (float)(lineWidth + 1);
-            int baseColorIdx = (int)(yProgress * 4);  // Oben dunkler
+            int baseColorIdx = (int)(yProgress * 4);  // Darker toward top
             int colorIdx = baseColorIdx + (int)(distFromCenter * 2);
             if (colorIdx > 5) colorIdx = 5;
             if (colorIdx < 0) colorIdx = 0;
             
-            // Kern in der Mitte (nur unten)
+            // Bright core in middle (bottom third only)
             if (abs(fx) < 3 && fy < height / 3) {
                 colorIdx = max(0, colorIdx - 2);
             }
@@ -1930,30 +1740,35 @@ void AnimationsModule::drawFireplaceFlames(int x, int y, int width, int height) 
         }
     }
     
-    // ===== FLAMMENSPITZEN (verzweigte Flammen oben - verbunden mit Hauptfeuer) =====
-    int numTips = 4 + (_fireplaceFlamePhase % 2);
+    // ===== FLAME TIPS (connected to main body) =====
+    int numTips = 4 + (_fireplaceFlamePhase % 2);  // 4-5 tips
     for (int t = 0; t < numTips; t++) {
         uint32_t seed = simpleRandom(t * 67 + _fireplaceFlamePhase * 11);
         
-        // Position der Flammenspitze - startet wo das Hauptfeuer aufhört (y - height * 0.7)
-        // So dass sie im oberen Bereich des Hauptfeuers beginnt und darüber hinausragt
+        // Tip position - starts where main fire is (around 70% height)
         int tipBaseX = x - width/4 + (seed % (width / 2));
-        int tipStartY = (int)(y - height * 0.65);  // Startet im oberen Drittel des Hauptfeuers
-        int tipHeight = 4 + (seed % 6);
-        int tipWidth = 1 + (seed % 2);
+        int tipStartY = (int)(y - height * 0.7f);  // Start at 70% height
+        int tipHeight = 4 + (seed % 6);  // 4-9 pixels
+        int tipWidth = 1 + (seed % 2);   // 1-2 pixels
         
-        // Flammenspitze zeichnen (von unten nach oben)
+        // Draw flame tip (bottom to top)
         for (int i = 0; i < tipHeight; i++) {
-            float progress = (float)i / tipHeight;
-            int currentWidth = (int)(tipWidth * (1.0f - progress * 0.8f));
-            int flickerX = ((seed + i * 3 + _fireplaceFlamePhase * 2) % 3) - 1;
+            float tipProgress = (float)i / tipHeight;
+            uint32_t tipSeed = simpleRandom(i * 41 + t * 19 + _fireplaceFlamePhase * 3);
             
-            for (int dx = -currentWidth; dx <= currentWidth; dx++) {
-                // Farbe: beginnt mit Hauptfeuer-Farbe (Mitte) und wird nach oben dunkler
-                int colorIdx = 1 + (int)(progress * 3);
+            // Gentle taper
+            int currentTipWidth = max(1, (int)(tipWidth * (1.0f - tipProgress * 0.7f)));
+            
+            // Minimal flicker
+            int tipFlickerX = ((tipSeed / 5) % 2);
+            
+            for (int dx = -currentTipWidth; dx <= currentTipWidth; dx++) {
+                int colorIdx = 2 + (int)(tipProgress * 3);
                 if (colorIdx > 5) colorIdx = 5;
-                int px = tipBaseX + dx + flickerX;
+                
+                int px = tipBaseX + dx + tipFlickerX;
                 int py = tipStartY - i;
+                
                 if (px >= x - width/2 && px <= x + width/2 && py >= 0) {
                     _currentCanvas->drawPixel(px, py, flameColors[colorIdx]);
                 }
@@ -1961,22 +1776,7 @@ void AnimationsModule::drawFireplaceFlames(int x, int y, int width, int height) 
         }
     }
     
-    // ===== HELLER KERN am Boden =====
-    for (int cy = 0; cy < 4; cy++) {
-        int coreWidth = (width / 3) - cy * 2;
-        for (int cx = -coreWidth; cx <= coreWidth; cx++) {
-            uint32_t seed = simpleRandom(cx * 13 + cy * 37);
-            if (seed % 3 < 2) {
-                int px = x + cx;
-                int py = y - cy;
-                if (py >= 0) {
-                    _currentCanvas->drawPixel(px, py, coreColor);
-                }
-            }
-        }
-    }
-    
-    // ===== GLUT am Boden =====
+    // ===== EMBERS AT BASE =====
     uint16_t emberColors[] = {
         rgb565(255, 120, 20),
         rgb565(255, 80, 10),
@@ -1996,12 +1796,12 @@ void AnimationsModule::drawFireplaceFlames(int x, int y, int width, int height) 
         }
     }
     
-    // ===== FUNKEN =====
-    for (int i = 0; i < 6; i++) {
+    // ===== SPARKS =====
+    for (int i = 0; i < 4; i++) {  // Fewer sparks (4 instead of 6)
         uint32_t seed = simpleRandom(i * 17 + _fireplaceFlamePhase * 7);
-        if (seed % 5 == 0) {
+        if (seed % 6 == 0) {  // Less frequent
             int sparkX = x - width/3 + (seed % (width * 2 / 3));
-            int sparkY = y - height - (seed % 8);
+            int sparkY = y - height - (seed % 6);
             if (sparkY >= 0 && sparkX >= x - width/2 && sparkX <= x + width/2) {
                 _currentCanvas->drawPixel(sparkX, sparkY, flameColors[seed % 2]);
             }
@@ -2009,7 +1809,7 @@ void AnimationsModule::drawFireplaceFlames(int x, int y, int width, int height) 
     }
 }
 
-void AnimationsModule::drawStockings(int simsY, int simsWidth, int centerX) {
+void AnimationsModule::drawStockings(int simsY, int simsWidth, int centerX, int leftEdge) {
     int stockingCount = config ? config->fireplaceStockingCount : 3;
     if (stockingCount < 0) stockingCount = 0;
     if (stockingCount > 5) stockingCount = 5;
@@ -2024,12 +1824,20 @@ void AnimationsModule::drawStockings(int simsY, int simsWidth, int centerX) {
         rgb565(0, 100, 200)     // Blau
     };
     
-    int spacing = simsWidth / (stockingCount + 1);
     int stockingH = 18;
     int stockingW = 8;
     
+    // Calculate spacing to distribute across exact mantel width
+    // Total width needed for all stockings
+    int totalStockingWidth = stockingCount * stockingW;
+    // Remaining space for gaps
+    int remainingSpace = simsWidth - totalStockingWidth;
+    // Space between stockings (including edges)
+    int spacing = remainingSpace / (stockingCount + 1);
+    
     for (int i = 0; i < stockingCount; i++) {
-        int sx = centerX - simsWidth/2 + spacing * (i + 1) - stockingW/2;
+        // Position from left edge of mantel, not from center
+        int sx = leftEdge + spacing * (i + 1) + stockingW * i;
         int sy = simsY + 2;
         
         uint16_t color = stockingColors[i % 5];
@@ -2053,9 +1861,9 @@ void AnimationsModule::drawMantleDecorations(int simsY, int simsWidth, int cente
     int decoCount = config ? config->fireplaceCandleCount : 2;
     if (decoCount < 0) decoCount = 0;
     
-    // Wenn Uhr aktiv: max 2 Dekorationen (links + rechts)
-    // Wenn Uhr aus: max 3 Dekorationen
-    int maxDeco = showClock ? 2 : 3;
+    // Wenn Uhr aktiv: max 4 Dekorationen (2 links + 2 rechts)
+    // Wenn Uhr aus: max 5 Dekorationen
+    int maxDeco = showClock ? 4 : 5;
     if (decoCount > maxDeco) decoCount = maxDeco;
     
     // ===== ANALOGE UHR IN DER MITTE =====
@@ -2072,7 +1880,7 @@ void AnimationsModule::drawMantleDecorations(int simsY, int simsWidth, int cente
         
         int clockCx = centerX;
         int clockCy = simsY - 1;  // Auf dem Sims stehend
-        int clockR = (int)(10 * scale);  // Radius - optimale Größe für Sichtbarkeit und Platz
+        int clockR = (int)(13 * scale);  // Radius +3px (diameter +6px) for better visibility
         
         // Uhren-Basis/Gehäuse
         uint16_t caseColor = rgb565(60, 45, 30);
@@ -2120,91 +1928,182 @@ void AnimationsModule::drawMantleDecorations(int simsY, int simsWidth, int cente
     // ===== DEKORATIONEN LINKS UND RECHTS =====
     if (decoCount == 0) return;
     
-    // Positionen: bei showClock nur links/rechts, sonst auch Mitte möglich
-    int positions[3];
-    int decoTypes[3];
+    // Positionen: bei showClock bis zu 4 (2 links + 2 rechts), sonst bis zu 5
+    // Neue Dekoration-Typen: 0=Kerze, 1=Buch, 2=Vase, 3=Teekanne, 4=Bilderrahmen
+    int positions[5];
+    int decoTypes[5];
     
     if (showClock) {
-        // Nur links und rechts
-        positions[0] = centerX - simsWidth/3;
-        positions[1] = centerX + simsWidth/3;
-        decoTypes[0] = 0;  // Blumenvase
-        decoTypes[1] = 2;  // Bilderrahmen
-    } else {
+        // Mit Uhr (mittig): bis zu 4 Dekorationen (2 links + 2 rechts)
         if (decoCount == 1) {
-            positions[0] = centerX;
-            decoTypes[0] = 0;
+            positions[0] = centerX - simsWidth/3;
+            decoTypes[0] = 0;  // Kerze
         } else if (decoCount == 2) {
             positions[0] = centerX - simsWidth/3;
             positions[1] = centerX + simsWidth/3;
-            decoTypes[0] = 0;
-            decoTypes[1] = 2;
-        } else {
+            decoTypes[0] = 2;  // Vase
+            decoTypes[1] = 0;  // Kerze
+        } else if (decoCount == 3) {
+            positions[0] = centerX - simsWidth/2.5;
+            positions[1] = centerX - simsWidth/6;
+            positions[2] = centerX + simsWidth/3;
+            decoTypes[0] = 2;  // Vase
+            decoTypes[1] = 1;  // Buch
+            decoTypes[2] = 0;  // Kerze
+        } else {  // decoCount >= 4
+            positions[0] = centerX - simsWidth/2.5;
+            positions[1] = centerX - simsWidth/6;
+            positions[2] = centerX + simsWidth/6;
+            positions[3] = centerX + simsWidth/2.5;
+            decoTypes[0] = 2;  // Vase
+            decoTypes[1] = 1;  // Buch
+            decoTypes[2] = 3;  // Teekanne
+            decoTypes[3] = 4;  // Bilderrahmen
+        }
+    } else {
+        // Ohne Uhr: bis zu 5 Dekorationen
+        if (decoCount == 1) {
+            positions[0] = centerX;
+            decoTypes[0] = 0;  // Kerze
+        } else if (decoCount == 2) {
+            positions[0] = centerX - simsWidth/3;
+            positions[1] = centerX + simsWidth/3;
+            decoTypes[0] = 2;  // Vase
+            decoTypes[1] = 0;  // Kerze
+        } else if (decoCount == 3) {
             positions[0] = centerX - simsWidth/3;
             positions[1] = centerX;
             positions[2] = centerX + simsWidth/3;
-            decoTypes[0] = 0;
-            decoTypes[1] = 1;
-            decoTypes[2] = 2;
+            decoTypes[0] = 2;  // Vase
+            decoTypes[1] = 0;  // Kerze (mittig)
+            decoTypes[2] = 4;  // Bilderrahmen
+        } else if (decoCount == 4) {
+            positions[0] = centerX - simsWidth/2.5;
+            positions[1] = centerX - simsWidth/6;
+            positions[2] = centerX + simsWidth/6;
+            positions[3] = centerX + simsWidth/2.5;
+            decoTypes[0] = 2;  // Vase
+            decoTypes[1] = 1;  // Buch
+            decoTypes[2] = 3;  // Teekanne
+            decoTypes[3] = 0;  // Kerze
+        } else {  // decoCount == 5
+            positions[0] = centerX - simsWidth/2.5;
+            positions[1] = centerX - simsWidth/6;
+            positions[2] = centerX;
+            positions[3] = centerX + simsWidth/6;
+            positions[4] = centerX + simsWidth/2.5;
+            decoTypes[0] = 2;  // Vase
+            decoTypes[1] = 1;  // Buch
+            decoTypes[2] = 0;  // Kerze (mittig)
+            decoTypes[3] = 3;  // Teekanne
+            decoTypes[4] = 4;  // Bilderrahmen
         }
     }
     
     // Verschiedene Dekorationen zeichnen
+    // Typen: 0=Kerze, 1=Buch, 2=Vase, 3=Teekanne, 4=Bilderrahmen
     for (int i = 0; i < decoCount; i++) {
         int cx = positions[i];
         int cy = simsY - 1;  // Direkt auf dem Sims
         int decoType = decoTypes[i];
         
         if (decoType == 0) {
-            // Blumenvase mit Blumen
-            uint16_t vaseColor = rgb565(80, 60, 40);
-            uint16_t flowerColors[] = {rgb565(255, 100, 100), rgb565(255, 200, 100), rgb565(255, 150, 200)};
+            // Kerze mit Flamme (wie Adventskranz)
+            uint16_t candleColor = rgb565(240, 220, 180);
+            uint16_t wickColor = rgb565(40, 40, 40);
             
-            // Vase
-            int vaseH = (int)(8 * scale);
-            int vaseW = (int)(4 * scale);
-            _currentCanvas->fillRect(cx - vaseW/2, cy - vaseH, vaseW, vaseH, vaseColor);
-            _currentCanvas->drawRect(cx - vaseW/2, cy - vaseH, vaseW, vaseH, rgb565(50, 40, 30));
+            int candleH = (int)(9 * scale);
+            int candleW = (int)(3 * scale);
+            
+            // Kerze
+            _currentCanvas->fillRect(cx - candleW/2, cy - candleH, candleW, candleH, candleColor);
+            _currentCanvas->drawRect(cx - candleW/2, cy - candleH, candleW, candleH, rgb565(200, 180, 140));
+            
+            // Docht
+            _currentCanvas->drawLine(cx, cy - candleH, cx, cy - candleH - 2, wickColor);
+            
+            // Flamme - verwende gleiche Methode wie Adventskranz für realistische Animation
+            drawCandleFlame(cx, cy - candleH - 3, _fireplaceFlamePhase + i * 13);
+            
+        } else if (decoType == 1) {
+            // Bücherstapel
+            uint16_t bookColors[] = {rgb565(139, 69, 19), rgb565(178, 34, 34), rgb565(46, 82, 124)};
+            
+            int bookW = (int)(6 * scale);
+            int bookH = (int)(3 * scale);
+            
+            // 3 gestapelte Bücher
+            for (int b = 0; b < 3; b++) {
+                int bookY = cy - bookH * (b + 1);
+                _currentCanvas->fillRect(cx - bookW/2, bookY, bookW, bookH, bookColors[b % 3]);
+                _currentCanvas->drawRect(cx - bookW/2, bookY, bookW, bookH, rgb565(80, 50, 30));
+                // Buchrücken-Details
+                _currentCanvas->drawLine(cx - bookW/2 + 1, bookY + 1, cx - bookW/2 + 1, bookY + bookH - 2, rgb565(220, 200, 180));
+            }
+            
+        } else if (decoType == 2) {
+            // Vase mit Blumen
+            uint16_t vaseColor = rgb565(100, 80, 120);
+            uint16_t flowerColors[] = {rgb565(255, 100, 150), rgb565(255, 200, 100), rgb565(150, 100, 255)};
+            
+            int vaseH = (int)(7 * scale);
+            int vaseW = (int)(5 * scale);
+            
+            // Vase (bauchige Form)
+            _currentCanvas->fillRect(cx - vaseW/2 + 1, cy - vaseH, vaseW - 2, vaseH, vaseColor);
+            _currentCanvas->fillRect(cx - vaseW/2, cy - vaseH + 2, vaseW, vaseH - 3, vaseColor);
+            _currentCanvas->drawRect(cx - vaseW/2, cy - vaseH + 2, vaseW, vaseH - 3, rgb565(70, 50, 90));
             
             // Blumen
             for (int f = 0; f < 3; f++) {
                 int fx = cx + (f - 1) * 2;
-                int fy = cy - vaseH - 3 - f;
+                int fy = cy - vaseH - 2 - f;
                 _currentCanvas->fillCircle(fx, fy, 2, flowerColors[f % 3]);
-                _currentCanvas->drawLine(fx, fy + 2, fx, cy - vaseH + 1, rgb565(50, 100, 50));
+                _currentCanvas->drawLine(fx, fy + 2, fx, cy - vaseH + 1, rgb565(50, 120, 50));
             }
-        } else if (decoType == 1) {
-            // Schneekugel
-            uint16_t baseColor = rgb565(60, 60, 60);
-            uint16_t glassColor = rgb565(180, 200, 220);
             
-            int globeR = (int)(5 * scale);
-            // Basis
-            _currentCanvas->fillRect(cx - globeR, cy - 3, globeR * 2, 3, baseColor);
-            // Glasmugel
-            _currentCanvas->fillCircle(cx, cy - 3 - globeR, globeR, glassColor);
-            // Kleiner Tannenbaum drin
-            _currentCanvas->fillTriangle(cx, cy - 3 - globeR - 3, cx - 2, cy - 3 - 2, cx + 2, cy - 3 - 2, rgb565(0, 100, 50));
-            // Schneeflocken
-            uint32_t seed = simpleRandom(_fireplaceFlamePhase + i * 17);
-            for (int s = 0; s < 3; s++) {
-                int sx = cx - globeR/2 + (seed % globeR);
-                int sy = cy - 3 - globeR/2 - (seed / 7 % globeR);
-                _currentCanvas->drawPixel(sx, sy, rgb565(255, 255, 255));
-                seed = simpleRandom(seed);
-            }
-        } else {
+        } else if (decoType == 3) {
+            // Teekanne
+            uint16_t potColor = rgb565(180, 160, 140);
+            uint16_t metalColor = rgb565(150, 140, 130);
+            
+            int potH = (int)(6 * scale);
+            int potW = (int)(6 * scale);
+            
+            // Kannenkörper
+            _currentCanvas->fillRect(cx - potW/2, cy - potH, potW, potH, potColor);
+            _currentCanvas->drawRect(cx - potW/2, cy - potH, potW, potH, metalColor);
+            
+            // Deckel
+            _currentCanvas->fillRect(cx - potW/2 - 1, cy - potH - 2, potW + 2, 2, metalColor);
+            _currentCanvas->fillCircle(cx, cy - potH - 3, 1, metalColor);
+            
+            // Griff
+            _currentCanvas->drawLine(cx + potW/2, cy - potH + 2, cx + potW/2 + 2, cy - potH + 3, metalColor);
+            _currentCanvas->drawLine(cx + potW/2 + 2, cy - potH + 3, cx + potW/2 + 2, cy - 3, metalColor);
+            
+            // Ausguss
+            _currentCanvas->drawLine(cx - potW/2, cy - potH + 2, cx - potW/2 - 1, cy - potH + 1, metalColor);
+            
+        } else {  // decoType == 4
             // Bilderrahmen
             uint16_t frameColor = rgb565(139, 90, 43);
             uint16_t pictureColor = rgb565(200, 180, 150);
             
-            int frameW = (int)(8 * scale);
-            int frameH = (int)(10 * scale);
+            int frameW = (int)(7 * scale);
+            int frameH = (int)(9 * scale);
+            
+            // Rahmen
             _currentCanvas->fillRect(cx - frameW/2, cy - frameH, frameW, frameH, frameColor);
             _currentCanvas->fillRect(cx - frameW/2 + 1, cy - frameH + 1, frameW - 2, frameH - 2, pictureColor);
-            // Kleines Motiv (Haus)
-            _currentCanvas->fillRect(cx - 2, cy - frameH + 4, 4, 4, rgb565(180, 100, 80));
-            _currentCanvas->fillTriangle(cx - 3, cy - frameH + 4, cx, cy - frameH + 1, cx + 3, cy - frameH + 4, rgb565(150, 80, 60));
+            
+            // Motiv (Landschaft)
+            // Himmel
+            _currentCanvas->fillRect(cx - frameW/2 + 2, cy - frameH + 2, frameW - 4, frameH/2 - 2, rgb565(150, 180, 220));
+            // Berg
+            _currentCanvas->fillTriangle(cx - 2, cy - frameH/2, cx, cy - frameH + 3, cx + 2, cy - frameH/2, rgb565(100, 100, 120));
+            // Boden
+            _currentCanvas->fillRect(cx - frameW/2 + 2, cy - frameH/2, frameW - 4, frameH/2 - 2, rgb565(100, 150, 80));
         }
     }
 }
@@ -2242,9 +2141,9 @@ void AnimationsModule::drawLedBorder() {
         numColors = 4;
     }
     
-    // Zeichne jedes einzelne Pixel des Rahmens mit Farbzyklus
+    // Zeichne jedes einzelne Pixel des Rahmens mit einfacher Farbrotation
     // LED1=Farbe1, LED2=Farbe2, LED3=Farbe3, LED4=Farbe4, dann wiederholen
-    // Animation: Phase verschiebt, welche Farbe an welcher Position ist
+    // Animation: Phase verschiebt die Farben um den Rahmen
     
     int pixelIndex = 0;
     
@@ -2276,3 +2175,278 @@ void AnimationsModule::drawLedBorder() {
         pixelIndex++;
     }
 }
+
+// ========== OBSOLETE HELPER METHODS - CAN BE REMOVED ==========
+// These methods were replaced by the new procedural fireplace implementation
+// Keeping them commented out for reference
+
+/*
+void AnimationsModule::drawFireplaceFrame(int x, int y, int width, int height, uint16_t brickColor, uint16_t brickDark) {
+    // Zeichne Kaminrahmen mit detailliertem Ziegelmuster
+    _currentCanvas->fillRect(x, y, width, height, brickColor);
+    
+    // Ziegel-Muster mit versetzten Reihen
+    int brickHeight = 6;
+    int brickWidth = 8;
+    
+    for (int row = 0; row < height / brickHeight; row++) {
+        int rowY = y + row * brickHeight;
+        int offset = (row % 2) * (brickWidth / 2);
+        
+        // Horizontale Fugen
+        _currentCanvas->drawLine(x, rowY, x + width, rowY, brickDark);
+        
+        // Vertikale Fugen
+        for (int col = 0; col < (width / brickWidth) + 2; col++) {
+            int colX = x + col * brickWidth + offset;
+            if (colX >= x && colX < x + width) {
+                _currentCanvas->drawLine(colX, rowY, colX, rowY + brickHeight - 1, brickDark);
+            }
+        }
+    }
+}
+
+void AnimationsModule::drawFireplaceMantel(int x, int y, int width, int height, uint16_t color, uint16_t lightColor, uint16_t darkColor) {
+    // Kaminsims mit 3D-Profil und Details
+    int upperHeight = height * 0.4;
+    int lowerHeight = height - upperHeight;
+    
+    // Oberer schmaler Teil (Leiste)
+    _currentCanvas->fillRect(x + 2, y, width - 4, upperHeight, lightColor);
+    _currentCanvas->drawLine(x + 2, y, x + width - 2, y, lightColor);  // Highlight oben
+    
+    // Unterer breiter Teil (Basis)
+    _currentCanvas->fillRect(x, y + upperHeight, width, lowerHeight, color);
+    
+    // 3D-Effekt: Schatten und Highlights
+    _currentCanvas->drawLine(x, y + upperHeight, x + width, y + upperHeight, darkColor);  // Schatten unter Leiste
+    _currentCanvas->drawLine(x, y + height - 1, x + width, y + height - 1, darkColor);    // Schatten unten
+    _currentCanvas->drawLine(x, y + upperHeight, x, y + height, darkColor);                // Linker Schatten
+    
+    // Dekorative Linien
+    int decoY = y + upperHeight + lowerHeight / 2;
+    _currentCanvas->drawLine(x + 4, decoY, x + width - 4, decoY, rgb565(
+        min(255, ((color >> 11) & 0x1F) * 8 + 40),
+        min(255, ((color >> 5) & 0x3F) * 4 + 30),
+        min(255, (color & 0x1F) * 8 + 30)
+    ));
+}
+
+void AnimationsModule::drawFireplaceLogs(int x, int y, int width, float scale) {
+    // Holzscheite im Kamin mit realistischer Darstellung
+    uint16_t woodOuter = rgb565(96, 64, 32);    // Rinde
+    uint16_t woodInner = rgb565(192, 144, 96);  // Holz innen
+    uint16_t woodDark = rgb565(48, 32, 16);     // Schatten
+    uint16_t woodRing = rgb565(144, 96, 64);    // Jahresringe
+    
+    int logRadius = (int)(4 * scale);
+    int logLength = (int)(width * 0.4);
+    
+    // Linkes Scheit (liegend)
+    int log1X = x + 5;
+    int log1Y = y - logRadius;
+    
+    // Körper des Scheits
+    for (int i = 0; i < logLength; i++) {
+        int lx = log1X + i;
+        _currentCanvas->drawLine(lx, log1Y - logRadius + 1, lx, log1Y + logRadius - 1, woodOuter);
+        _currentCanvas->drawPixel(lx, log1Y - logRadius, woodDark);
+        if (i % 3 == 0) {
+            _currentCanvas->drawPixel(lx, log1Y, woodRing);  // Textur
+        }
+    }
+    
+    // Schnittfläche links
+    _currentCanvas->fillCircle(log1X, log1Y, logRadius, woodInner);
+    _currentCanvas->drawCircle(log1X, log1Y, logRadius, woodOuter);
+    if (logRadius > 2) {
+        _currentCanvas->drawCircle(log1X, log1Y, logRadius - 2, woodRing);
+        _currentCanvas->drawPixel(log1X, log1Y, woodDark);
+    }
+    
+    // Rechtes Scheit (leicht versetzt)
+    int log2X = x + 10;
+    int log2Y = y - logRadius - 1;
+    int log2Length = logLength - 5;
+    
+    for (int i = 0; i < log2Length; i++) {
+        int lx = log2X + i;
+        _currentCanvas->drawLine(lx, log2Y - logRadius + 1, lx, log2Y + logRadius - 1, woodOuter);
+        _currentCanvas->drawPixel(lx, log2Y - logRadius, woodDark);
+        if (i % 4 == 0) {
+            _currentCanvas->drawPixel(lx, log2Y, woodRing);
+        }
+    }
+    
+    // Schnittfläche rechts (am Ende)
+    int log2EndX = log2X + log2Length;
+    _currentCanvas->fillCircle(log2EndX, log2Y, logRadius, woodInner);
+    _currentCanvas->drawCircle(log2EndX, log2Y, logRadius, woodOuter);
+    if (logRadius > 2) {
+        _currentCanvas->drawCircle(log2EndX, log2Y, logRadius - 2, woodRing);
+        _currentCanvas->drawPixel(log2EndX, log2Y, woodDark);
+    }
+}
+
+void AnimationsModule::drawFireplaceTools(int x, int y, int height, float scale) {
+    // Kaminwerkzeuge mit Details
+    uint16_t toolColor = rgb565(70, 70, 70);      // Metall
+    uint16_t toolDark = rgb565(40, 40, 40);       // Dunkleres Metall
+    uint16_t handleColor = rgb565(100, 70, 40);   // Holzgriff
+    uint16_t brassColor = rgb565(180, 150, 50);   // Messing-Akzent
+    
+    int baseY = y;
+    int toolHeight = height;
+    
+    // Schürhaken (poker) - links
+    int pokerX = x + (int)(3 * scale);
+    int pokerY = baseY - toolHeight;
+    
+    // Stiel mit Schattierung
+    _currentCanvas->drawLine(pokerX, pokerY, pokerX, baseY - (int)(8 * scale), toolColor);
+    _currentCanvas->drawLine(pokerX + 1, pokerY, pokerX + 1, baseY - (int)(8 * scale), toolDark);
+    
+    // Holzgriff
+    int handleStart = baseY - (int)(8 * scale);
+    _currentCanvas->drawLine(pokerX, handleStart, pokerX, baseY - 2, handleColor);
+    _currentCanvas->drawLine(pokerX + 1, handleStart, pokerX + 1, baseY - 2, rgb565(80, 55, 30));
+    
+    // Haken oben
+    _currentCanvas->drawLine(pokerX, pokerY, pokerX + 3, pokerY + 2, toolColor);
+    _currentCanvas->drawLine(pokerX + 3, pokerY + 2, pokerX + 3, pokerY + 5, toolColor);
+    _currentCanvas->drawPixel(pokerX + 1, pokerY + 1, toolDark);
+    
+    // Messing-Ring
+    _currentCanvas->drawPixel(pokerX, handleStart + (int)(3 * scale), brassColor);
+    
+    // Schaufel - rechts vom Schürhaken
+    int shovelX = x + (int)(9 * scale);
+    int shovelY = baseY - toolHeight + (int)(3 * scale);
+    
+    // Stiel
+    _currentCanvas->drawLine(shovelX, shovelY, shovelX, baseY - (int)(8 * scale), toolColor);
+    _currentCanvas->drawLine(shovelX + 1, shovelY, shovelX + 1, baseY - (int)(8 * scale), toolDark);
+    
+    // Holzgriff
+    _currentCanvas->drawLine(shovelX, handleStart, shovelX, baseY - 2, handleColor);
+    _currentCanvas->drawLine(shovelX + 1, handleStart, shovelX + 1, baseY - 2, rgb565(80, 55, 30));
+    
+    // Schaufelblatt
+    int bladeW = (int)(6 * scale);
+    int bladeH = (int)(5 * scale);
+    _currentCanvas->fillRect(shovelX - bladeW/2, shovelY, bladeW, bladeH, toolColor);
+    _currentCanvas->drawRect(shovelX - bladeW/2, shovelY, bladeW, bladeH, toolDark);
+    // Highlight
+    _currentCanvas->drawLine(shovelX - 1, shovelY + 1, shovelX - 1, shovelY + bladeH - 1, rgb565(100, 100, 100));
+    
+    // Messing-Ring
+    _currentCanvas->drawPixel(shovelX, handleStart + (int)(3 * scale), brassColor);
+}
+
+void AnimationsModule::drawWoodStorage(int x, int y, int width, int height, float scale) {
+    // Holzlager mit gestapelten Scheiten
+    uint16_t woodVariants[] = {
+        rgb565(96, 64, 32),    // Dunkel
+        rgb565(128, 88, 48),   // Mittel-Dunkel
+        rgb565(160, 112, 64),  // Mittel-Hell
+        rgb565(112, 72, 40)    // Mittel
+    };
+    
+    uint16_t woodInner = rgb565(192, 144, 96);
+    uint16_t woodRing = rgb565(144, 96, 64);
+    uint16_t woodDark = rgb565(48, 32, 16);
+    
+    int storageLogRadius = (int)(3.5 * scale);
+    int storageLogLength = (int)(22 * scale);
+    
+    // UNTERE LAGE: Horizontal
+    int numBottomLogs = min(5, width / (int)(23 * scale));
+    for (int i = 0; i < numBottomLogs; i++) {
+        int lx = x + (int)(i * 23 * scale);
+        int ly = y - storageLogRadius - 2;
+        
+        if (lx + storageLogLength <= x + width) {
+            uint16_t logColor = woodVariants[i % 4];
+            
+            // Scheit horizontal
+            for (int j = 0; j < storageLogLength; j++) {
+                int px = lx + j;
+                _currentCanvas->drawLine(px, ly - storageLogRadius + 1, px, ly + storageLogRadius - 1, logColor);
+                if (j % 8 == 0) {
+                    _currentCanvas->drawPixel(px, ly, woodDark);  // Textur
+                }
+            }
+            
+            // Schnittflächen
+            _currentCanvas->fillCircle(lx, ly, storageLogRadius, woodInner);
+            _currentCanvas->drawCircle(lx, ly, storageLogRadius, logColor);
+            if (storageLogRadius > 2) {
+                _currentCanvas->drawCircle(lx, ly, storageLogRadius - 2, woodRing);
+                _currentCanvas->drawPixel(lx, ly, woodDark);
+            }
+            
+            if (lx + storageLogLength <= x + width) {
+                _currentCanvas->fillCircle(lx + storageLogLength, ly, storageLogRadius, woodInner);
+                _currentCanvas->drawCircle(lx + storageLogLength, ly, storageLogRadius, logColor);
+                if (storageLogRadius > 2) {
+                    _currentCanvas->drawCircle(lx + storageLogLength, ly, storageLogRadius - 2, woodRing);
+                }
+            }
+        }
+    }
+    
+    // MITTLERE LAGE: Quer gestapelt (Kreuzstapelung)
+    int numMiddleLogs = min(4, (width - 5) / (int)(8 * scale));
+    int middleY = y - storageLogRadius * 2 - (int)(4 * scale);
+    for (int i = 0; i < numMiddleLogs; i++) {
+        int lx = x + (int)((i * (storageLogLength / numMiddleLogs + 5)) * scale);
+        int ly = middleY;
+        
+        if (lx < x + width - 5) {
+            uint16_t logColor = woodVariants[(i + 1) % 4];
+            int thisLogLength = min(storageLogLength, (int)((x + width - lx - 5) * 0.9));
+            
+            for (int j = 0; j < thisLogLength; j++) {
+                int px = lx + j;
+                if (px < x + width) {
+                    _currentCanvas->drawLine(px, ly - storageLogRadius + 1, px, ly + storageLogRadius - 1, logColor);
+                }
+            }
+            
+            _currentCanvas->fillCircle(lx, ly, storageLogRadius, woodInner);
+            _currentCanvas->drawCircle(lx, ly, storageLogRadius, logColor);
+            if (storageLogRadius > 2) {
+                _currentCanvas->drawCircle(lx, ly, storageLogRadius - 2, woodRing);
+            }
+        }
+    }
+    
+    // OBERE LAGE: Wieder horizontal
+    int topY = y - storageLogRadius * 4 - (int)(8 * scale);
+    if (topY > y - height + 5) {
+        int numTopLogs = min(3, width / (int)(28 * scale));
+        for (int i = 0; i < numTopLogs; i++) {
+            int lx = x + (int)((i * 28 + 5) * scale);
+            int ly = topY;
+            
+            if (lx + storageLogLength - 8 <= x + width) {
+                uint16_t logColor = woodVariants[(i + 2) % 4];
+                int thisLogLength = storageLogLength - 8;
+                
+                for (int j = 0; j < thisLogLength; j++) {
+                    int px = lx + j;
+                    if (px < x + width) {
+                        _currentCanvas->drawLine(px, ly - storageLogRadius + 1, px, ly + storageLogRadius - 1, logColor);
+                    }
+                }
+                
+                _currentCanvas->fillCircle(lx, ly, storageLogRadius, woodInner);
+                _currentCanvas->drawCircle(lx, ly, storageLogRadius, logColor);
+                if (storageLogRadius > 2) {
+                    _currentCanvas->drawCircle(lx, ly, storageLogRadius - 2, woodRing);
+                }
+            }
+        }
+    }
+}
+*/

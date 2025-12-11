@@ -6,7 +6,7 @@
 PanelStreamer* PanelStreamer::_instance = nullptr;
 
 // Constants for streaming
-#define PANEL_STREAM_FPS 2
+#define PANEL_STREAM_FPS 4
 #define PANEL_STREAM_INTERVAL_MS (1000 / PANEL_STREAM_FPS)
 #define MAX_CLIENTS 2
 
