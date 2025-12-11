@@ -71,7 +71,7 @@ void flushBuffersBeforeRestart() {
     unsigned long startWait = millis();
     while (client.connected() && (millis() - startWait) < BUFFER_FLUSH_TIMEOUT_MS) {
         server->handleClient();
-        delay(10);
+        delay(50);  // Check every 50ms to reduce CPU usage while ensuring timely transmission
     }
     
     // Final delay to ensure TCP stack completes transmission
@@ -1204,7 +1204,6 @@ void handleFirmwareUpload() {
             server->send(200, "text/plain", "Update successful! Rebooting...");
             
             // Ensure all buffers are flushed before restarting
-            // This prevents the browser from receiving a connection error
             flushBuffersBeforeRestart();
             
             Log.println("[FirmwareUpdate] Restarting device...");
