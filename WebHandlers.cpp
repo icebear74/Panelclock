@@ -47,12 +47,19 @@ void applyLiveConfig();
  * 4. Adds final delay for TCP stack completion
  * 
  * Should be called after server->send() and before ESP.restart()
+ * 
+ * Note: ESP32 WebServer is synchronous, so server->client() returns the
+ * client handling the current request context.
  */
 void flushBuffersBeforeRestart() {
     if (!server) return;
     
+    // Get the client handling the current request
+    WiFiClient client = server->client();
+    if (!client) return;
+    
     // Flush client output buffers
-    server->client().flush();
+    client.flush();
     
     // Process any remaining web server operations to ensure response is sent
     delay(100);
@@ -62,7 +69,7 @@ void flushBuffersBeforeRestart() {
     // Keep handling client until disconnected or timeout
     // Note: Unsigned arithmetic handles millis() wraparound correctly
     unsigned long startWait = millis();
-    while (server->client().connected() && (millis() - startWait) < BUFFER_FLUSH_TIMEOUT_MS) {
+    while (client.connected() && (millis() - startWait) < BUFFER_FLUSH_TIMEOUT_MS) {
         server->handleClient();
         delay(10);
     }
