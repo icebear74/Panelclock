@@ -291,6 +291,13 @@ void SofaScoreLiveModule::resetPaging() {
     _isFinished = false;
     if (_nameScroller) _nameScroller->reset();
     if (_tournamentScroller) _tournamentScroller->reset();
+    
+    // Release interrupt if active
+    if (_hasActiveInterrupt && _interruptUID > 0) {
+        releasePriorityEx(_interruptUID);
+        _hasActiveInterrupt = false;
+        Log.println("[SofaScore] Released interrupt on reset");
+    }
 }
 
 void SofaScoreLiveModule::tick() {
@@ -367,6 +374,13 @@ void SofaScoreLiveModule::switchToNextMode() {
         }
     } else if (_currentMode == SofaScoreDisplayMode::LIVE_MATCH) {
         _isFinished = true;  // Finish after showing live matches
+        
+        // Release interrupt if we were showing live matches via interrupt
+        if (_hasActiveInterrupt && _interruptUID > 0) {
+            releasePriorityEx(_interruptUID);
+            _hasActiveInterrupt = false;
+            Log.println("[SofaScore] Released interrupt after live matches complete");
+        }
     }
     
     _currentPage = 0;
@@ -1036,12 +1050,17 @@ void SofaScoreLiveModule::checkForLiveMatchInterrupt() {
         // Request interrupt if new live match found
         if (hasNewLiveMatch && !_hasActiveInterrupt) {
             Log.println("[SofaScore] Requesting interrupt for new live match");
-            _interruptUID = 5000;  // Unique UID for SofaScore interrupts
+            // Use event ID in UID to make it unique per match
+            _interruptUID = SOFASCORE_INTERRUPT_UID_BASE + (currentLiveEventIds.empty() ? 0 : currentLiveEventIds[0] % 1000);
             _hasActiveInterrupt = true;
             
             // Request low priority interrupt (will show next after current module)
-            if (requestPriority) {
-                requestPriority(Priority::Low, _interruptUID, _displayDuration * (liveMatches.size() > 0 ? liveMatches.size() : 1));
+            unsigned long totalDuration = _displayDuration * (liveMatches.size() > 0 ? liveMatches.size() : 1);
+            if (requestPriorityEx(Priority::Low, _interruptUID, totalDuration)) {
+                Log.printf("[SofaScore] Interrupt requested with UID %u for %lu ms\n", _interruptUID, totalDuration);
+            } else {
+                Log.println("[SofaScore] Interrupt request failed");
+                _hasActiveInterrupt = false;
             }
         }
     }

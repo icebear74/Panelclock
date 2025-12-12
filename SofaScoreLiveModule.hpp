@@ -13,6 +13,9 @@
 class WebClientModule;
 struct DeviceConfig;
 
+// UID für SofaScore Live-Match Interrupts
+#define SOFASCORE_INTERRUPT_UID_BASE 5000
+
 // Tournament information
 struct SofaScoreTournament {
     int id = 0;
