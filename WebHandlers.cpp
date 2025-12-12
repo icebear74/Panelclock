@@ -1244,9 +1244,11 @@ void handleSofascoreTournamentsList() {
                 
                 if (!error) {
                     // Parse tournaments from response
+                    // API returns: {"tournaments":[{"tournamentId":123,"name":"Name","slug":"slug"}]}
                     JsonArray tournaments = inputDoc["tournaments"].as<JsonArray>();
                     for (JsonObject tournament : tournaments) {
-                        int id = tournament["id"] | 0;
+                        // Note: API uses "tournamentId" not "id"
+                        int id = tournament["tournamentId"] | 0;
                         const char* name = tournament["name"];
                         
                         if (id > 0 && name && strlen(name) > 0) {
