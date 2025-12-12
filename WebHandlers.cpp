@@ -1194,14 +1194,13 @@ void handleSofascoreTournamentsList() {
     responseDoc["ok"] = true;
     JsonArray tournamentsArray = responseDoc.createNestedArray("tournaments");
     
-    // Track unique tournaments by ID
+    // Track unique tournaments by ID using PSRAM allocator
     std::vector<int, PsramAllocator<int>> seenTournamentIds;
-    std::vector<PsramString> tournamentNames;
+    std::vector<PsramString, PsramAllocator<PsramString>> tournamentNames;
     
     // Fetch active tournaments for next 14 days
     time_t now;
     time(&now);
-    struct tm* timeinfo = localtime(&now);
     
     for (int dayOffset = 0; dayOffset < 14; dayOffset++) {
         time_t targetTime = now + (dayOffset * 86400);
@@ -1220,6 +1219,10 @@ void handleSofascoreTournamentsList() {
         struct Result { int httpCode; PsramString payload; } result;
         result.httpCode = 0;
         SemaphoreHandle_t sem = xSemaphoreCreateBinary();
+        if (!sem) {
+            Log.println("[SofaScore] Failed to create semaphore");
+            continue;
+        }
         
         webClient->getRequest(url, headers, [&](int httpCode, const char* payload, size_t len) {
             result.httpCode = httpCode;
@@ -1229,7 +1232,9 @@ void handleSofascoreTournamentsList() {
             xSemaphoreGive(sem);
         });
         
+        bool gotResponse = false;
         if (xSemaphoreTake(sem, pdMS_TO_TICKS(10000)) == pdTRUE) {
+            gotResponse = true;
             if (result.httpCode == 200 && !result.payload.empty()) {
                 // Parse the response
                 SpiRamAllocator allocator2;
@@ -1260,20 +1265,27 @@ void handleSofascoreTournamentsList() {
                             }
                         }
                     }
+                } else {
+                    Log.printf("[SofaScore] JSON parse error for date %s: %s\n", dateStr, error.c_str());
                 }
             } else if (result.httpCode == 404 || result.httpCode == 0) {
                 // No more data available, stop fetching
-                Log.printf("[SofaScore] No tournaments found for %s, stopping\n", dateStr);
+                Log.printf("[SofaScore] No tournaments found for %s (HTTP %d), stopping\n", dateStr, result.httpCode);
                 vSemaphoreDelete(sem);
                 break;
+            } else {
+                Log.printf("[SofaScore] HTTP error for date %s: %d\n", dateStr, result.httpCode);
             }
-            vSemaphoreDelete(sem);
         } else {
-            vSemaphoreDelete(sem);
+            Log.printf("[SofaScore] Timeout fetching tournaments for date %s\n", dateStr);
         }
         
+        vSemaphoreDelete(sem);
+        
         // Small delay between requests to avoid rate limiting
-        delay(100);
+        if (gotResponse) {
+            delay(100);
+        }
     }
     
     // Build final response with collected tournaments
