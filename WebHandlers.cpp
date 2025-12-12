@@ -1198,11 +1198,11 @@ void handleSofascoreTournamentsList() {
     std::vector<int, PsramAllocator<int>> seenTournamentIds;
     std::vector<PsramString, PsramAllocator<PsramString>> tournamentNames;
     
-    // Fetch active tournaments for next 14 days
+    // Fetch active tournaments for next 3 days only (reduced from 14 to avoid blocking)
     time_t now;
     time(&now);
     
-    for (int dayOffset = 0; dayOffset < 14; dayOffset++) {
+    for (int dayOffset = 0; dayOffset < 3; dayOffset++) {
         time_t targetTime = now + (dayOffset * 86400);
         struct tm* targetDate = localtime(&targetTime);
         char dateStr[16];
@@ -1232,8 +1232,9 @@ void handleSofascoreTournamentsList() {
             xSemaphoreGive(sem);
         });
         
+        // Reduced timeout to 3 seconds to avoid blocking too long
         bool gotResponse = false;
-        if (xSemaphoreTake(sem, pdMS_TO_TICKS(10000)) == pdTRUE) {
+        if (xSemaphoreTake(sem, pdMS_TO_TICKS(3000)) == pdTRUE) {
             gotResponse = true;
             if (result.httpCode == 200 && !result.payload.empty()) {
                 // Parse the response
@@ -1282,10 +1283,9 @@ void handleSofascoreTournamentsList() {
         
         vSemaphoreDelete(sem);
         
-        // Small delay between requests to avoid rate limiting
-        if (gotResponse) {
-            delay(100);
-        }
+        // Allow other tasks to run
+        yield();
+        delay(50);
     }
     
     // Build final response with collected tournaments
