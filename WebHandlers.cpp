@@ -243,6 +243,15 @@ void handleConfigModules() {
     replaceAll(content, "{dartsOomEnabled_checked}", deviceConfig->dartsOomEnabled ? "checked" : "");
     replaceAll(content, "{dartsProTourEnabled_checked}", deviceConfig->dartsProTourEnabled ? "checked" : "");
     replaceAll(content, "{trackedDartsPlayers}", deviceConfig->trackedDartsPlayers.c_str());
+    
+    // SofaScore configuration
+    replaceAll(content, "{dartsSofascoreEnabled_checked}", deviceConfig->dartsSofascoreEnabled ? "checked" : "");
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->dartsSofascoreFetchIntervalMin); replaceAll(content, "{dartsSofascoreFetchIntervalMin}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->dartsSofascoreDisplaySec); replaceAll(content, "{dartsSofascoreDisplaySec}", num_buf);
+    replaceAll(content, "{dartsSofascoreTournamentIds}", deviceConfig->dartsSofascoreTournamentIds.c_str());
+    replaceAll(content, "{dartsSofascoreFullscreen_checked}", deviceConfig->dartsSofascoreFullscreen ? "checked" : "");
+    replaceAll(content, "{dartsSofascoreInterruptOnLive_checked}", deviceConfig->dartsSofascoreInterruptOnLive ? "checked" : "");
+    
     replaceAll(content, "{fritzboxEnabled_checked}", deviceConfig->fritzboxEnabled ? "checked" : "");
     replaceAll(content, "{fritzboxIp}", deviceConfig->fritzboxIp.c_str());
 
@@ -504,6 +513,15 @@ void handleSaveModules() {
     deviceConfig->dartsProTourEnabled = server->hasArg("dartsProTourEnabled");
     deviceConfig->dartsDisplaySec = server->arg("dartsDisplaySec").toInt();
     deviceConfig->trackedDartsPlayers = server->arg("trackedDartsPlayers").c_str();
+    
+    // SofaScore configuration
+    deviceConfig->dartsSofascoreEnabled = server->hasArg("dartsSofascoreEnabled");
+    deviceConfig->dartsSofascoreFetchIntervalMin = server->arg("dartsSofascoreFetchIntervalMin").toInt();
+    deviceConfig->dartsSofascoreDisplaySec = server->arg("dartsSofascoreDisplaySec").toInt();
+    deviceConfig->dartsSofascoreTournamentIds = server->arg("dartsSofascoreTournamentIds").c_str();
+    deviceConfig->dartsSofascoreFullscreen = server->hasArg("dartsSofascoreFullscreen");
+    deviceConfig->dartsSofascoreInterruptOnLive = server->hasArg("dartsSofascoreInterruptOnLive");
+    
     deviceConfig->fritzboxEnabled = server->hasArg("fritzboxEnabled");
     if (server->hasArg("fritzboxIp") && server->arg("fritzboxIp").length() > 0) {
         deviceConfig->fritzboxIp = server->arg("fritzboxIp").c_str();
@@ -1151,6 +1169,104 @@ void handleThemeParksList() {
         vSemaphoreDelete(sem);
     } else {
         Log.println("[ThemePark] TIMEOUT waiting for API response");
+        server->send(504, "application/json", "{\"ok\":false, \"message\":\"Timeout waiting for API response\"}");
+        vSemaphoreDelete(sem);
+    }
+}
+
+void handleSofascoreTournamentsList() {
+    if (!server || !webClient) {
+        server->send(500, "application/json", "{\"ok\":false, \"message\":\"Server or WebClient not initialized\"}");
+        return;
+    }
+    
+    Log.println("[SofaScore] handleSofascoreTournamentsList called - fetching tournaments from API");
+    
+    // Fetch tournaments list on-demand using webClient
+    PsramString url = "https://api.sofascore.com/api/v1/config/unique-tournaments/de/darts";
+    PsramString headers = "";  // No special headers needed for SofaScore API
+    
+    struct Result { int httpCode; PsramString payload; } result;
+    result.httpCode = 0;
+    SemaphoreHandle_t sem = xSemaphoreCreateBinary();
+    
+    webClient->getRequest(url, headers, [&](int httpCode, const char* payload, size_t len) {
+        Log.printf("[SofaScore] Callback received - HTTP %d, payload size: %d\n", httpCode, len);
+        result.httpCode = httpCode;
+        if (payload && len > 0) { 
+            result.payload.assign(payload, len); 
+            Log.printf("[SofaScore] Payload first 100 chars: %.100s\n", payload);
+        }
+        xSemaphoreGive(sem);
+    });
+    
+    Log.println("[SofaScore] Waiting for response (20s timeout)...");
+    
+    if (xSemaphoreTake(sem, pdMS_TO_TICKS(20000)) == pdTRUE) {
+        Log.printf("[SofaScore] Response received, HTTP code: %d\n", result.httpCode);
+        
+        if (result.httpCode == 200) {
+            // Parse the response and format it for the web interface using PSRAM allocator
+            struct SpiRamAllocator : ArduinoJson::Allocator {
+                void* allocate(size_t size) override { return ps_malloc(size); }
+                void deallocate(void* pointer) override { free(pointer); }
+                void* reallocate(void* ptr, size_t new_size) override { return ps_realloc(ptr, new_size); }
+            };
+            
+            SpiRamAllocator allocator1;
+            JsonDocument inputDoc(&allocator1);
+            DeserializationError error = deserializeJson(inputDoc, result.payload.c_str());
+            
+            if (error) {
+                Log.printf("[SofaScore] JSON parse error: %s\n", error.c_str());
+                server->send(500, "application/json", "{\"ok\":false, \"message\":\"Failed to parse API response\"}");
+                vSemaphoreDelete(sem);
+                return;
+            }
+            
+            Log.println("[SofaScore] JSON parsed successfully");
+            
+            // Build response
+            SpiRamAllocator allocator2;
+            JsonDocument responseDoc(&allocator2);
+            responseDoc["ok"] = true;
+            JsonArray tournamentsArray = responseDoc.createNestedArray("tournaments");
+            
+            // Parse tournaments from groups
+            JsonArray groups = inputDoc["groups"].as<JsonArray>();
+            for (JsonObject group : groups) {
+                JsonArray tournaments = group["uniqueTournaments"].as<JsonArray>();
+                for (JsonObject tournament : tournaments) {
+                    int id = tournament["id"] | 0;
+                    const char* name = tournament["name"];
+                    const char* slug = tournament["slug"];
+                    
+                    if (id > 0 && name && strlen(name) > 0) {
+                        JsonObject tournamentObj = tournamentsArray.createNestedObject();
+                        tournamentObj["id"] = id;
+                        tournamentObj["name"] = name;
+                        if (slug) tournamentObj["slug"] = slug;
+                        Log.printf("[SofaScore] Added tournament: %s (ID: %d)\n", name, id);
+                    }
+                }
+            }
+            
+            String response;
+            serializeJson(responseDoc, response);
+            Log.printf("[SofaScore] Sending response with %d tournaments\n", tournamentsArray.size());
+            server->send(200, "application/json", response);
+        } else {
+            Log.printf("[SofaScore] HTTP error: %d\n", result.httpCode);
+            PsramString error_msg = "{\"ok\":false, \"message\":\"API Error: HTTP ";
+            char code_buf[5];
+            snprintf(code_buf, sizeof(code_buf), "%d", result.httpCode);
+            error_msg += code_buf;
+            error_msg += "\"}";
+            server->send(result.httpCode > 0 ? result.httpCode : 500, "application/json", error_msg.c_str());
+        }
+        vSemaphoreDelete(sem);
+    } else {
+        Log.println("[SofaScore] TIMEOUT waiting for API response");
         server->send(504, "application/json", "{\"ok\":false, \"message\":\"Timeout waiting for API response\"}");
         vSemaphoreDelete(sem);
     }

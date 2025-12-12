@@ -77,7 +77,7 @@ public:
 
     void onUpdate(std::function<void()> callback);
     void setConfig(bool enabled, uint32_t fetchIntervalMinutes, unsigned long displaySec,
-                   const PsramString& enabledTournamentIds);
+                   const PsramString& enabledTournamentIds, bool fullscreen, bool interruptOnLive);
     void queueData();
     void processData();
 
@@ -87,11 +87,16 @@ public:
     void draw() override;
     void tick() override;
     void logicTick() override;
+    void periodicTick() override;
     unsigned long getDisplayDuration() override;
     bool isEnabled() override;
     void resetPaging() override;
     int getCurrentPage() const override { return _currentPage; }
     int getTotalPages() const override { return _totalPages; }
+    
+    // Fullscreen support
+    bool supportsFullscreen() const override { return true; }
+    bool wantsFullscreen() const override { return _wantsFullscreen; }
 
 private:
     U8G2_FOR_ADAFRUIT_GFX& u8g2;
@@ -103,6 +108,8 @@ private:
 
     // Configuration
     bool _enabled = false;
+    bool _wantsFullscreen = false;
+    bool _interruptOnLive = true;
     unsigned long _displayDuration = 20000;  // 20 seconds per page
     uint32_t _currentTicksPerPage = 200;     // 200 * 100ms = 20 seconds
     
@@ -113,6 +120,12 @@ private:
     uint32_t _logicTicksSinceModeSwitch = 0;
     SofaScoreDisplayMode _currentMode = SofaScoreDisplayMode::DAILY_RESULTS;
     bool _isFinished = false;
+    
+    // Interrupt management
+    bool _hasActiveInterrupt = false;
+    uint32_t _interruptUID = 0;
+    unsigned long _lastInterruptCheckTime = 0;
+    std::vector<int, PsramAllocator<int>> _previousLiveEventIds;  // Track previous live matches
     
     // Scrolling
     PixelScroller* _nameScroller = nullptr;
@@ -151,6 +164,7 @@ private:
     void parseMatchStatistics(int eventId, const char* json, size_t len);
     void updateLiveMatchStats();
     void switchToNextMode();
+    void checkForLiveMatchInterrupt();
     
     // Drawing helpers
     void drawTournamentList();

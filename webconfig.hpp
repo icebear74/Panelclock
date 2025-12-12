@@ -76,6 +76,10 @@ struct DeviceConfig {
     int dartsSofascoreDisplaySec = 20;
     /// @brief Kommaseparierte Liste der aktivierten Turnier-IDs (leer = alle Turniere).
     PsramString dartsSofascoreTournamentIds;
+    /// @brief Vollbild-Modus für SofaScore Live-Spiele aktivieren.
+    bool dartsSofascoreFullscreen = false;
+    /// @brief Live-Spiele unterbrechend anzeigen (Priority::LowPriorityInterrupt).
+    bool dartsSofascoreInterruptOnLive = true;
 
     /// @brief Schaltet das Fritz!Box Anrufmonitor-Modul ein/aus.
     bool fritzboxEnabled = false;

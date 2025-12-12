@@ -178,6 +178,25 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
         <label for="dartsDisplaySec">Anzeigedauer (Sekunden)</label><input type="number" id="dartsDisplaySec" name="dartsDisplaySec" value="{dartsDisplaySec}">
         <label for="trackedDartsPlayers">Lieblingsspieler (kommagetrennt)</label><input type="text" id="trackedDartsPlayers" name="trackedDartsPlayers" value="{trackedDartsPlayers}">
     </div>
+    <div class="group">
+        <h3>SofaScore Live-Spiele</h3>
+        <p>Zeigt Live-Darts-Spiele von SofaScore mit Statistiken (Average, 180s, Checkout%). Live-Spiele können unterbrechend angezeigt werden.</p>
+        <input type="checkbox" id="dartsSofascoreEnabled" name="dartsSofascoreEnabled" {dartsSofascoreEnabled_checked}><label for="dartsSofascoreEnabled" style="display:inline;">SofaScore Live-Spiele aktivieren</label><br>
+        <label for="dartsSofascoreFetchIntervalMin">Abrufintervall (Minuten)</label><input type="number" id="dartsSofascoreFetchIntervalMin" name="dartsSofascoreFetchIntervalMin" value="{dartsSofascoreFetchIntervalMin}" min="1">
+        <label for="dartsSofascoreDisplaySec">Anzeigedauer pro Spiel (Sekunden)</label><input type="number" id="dartsSofascoreDisplaySec" name="dartsSofascoreDisplaySec" value="{dartsSofascoreDisplaySec}" min="5">
+        
+        <label>Turniere auswählen</label>
+        <button type="button" onclick="loadSofascoreTournaments()" style="margin-bottom:10px;">Turnier-Liste laden</button>
+        <div id="sofascoreTournamentsContainer" style="max-height:300px; overflow-y:auto; border:1px solid #ccc; padding:10px; margin-bottom:10px; display:none;">
+            <div id="sofascoreTournamentsList">Lade Turniere...</div>
+        </div>
+        
+        <label for="dartsSofascoreTournamentIds">Turnier-IDs (kommagetrennt, leer = alle)</label>
+        <input type="text" id="dartsSofascoreTournamentIds" name="dartsSofascoreTournamentIds" value="{dartsSofascoreTournamentIds}" placeholder="z.B. 17,23,34">
+        
+        <input type="checkbox" id="dartsSofascoreFullscreen" name="dartsSofascoreFullscreen" {dartsSofascoreFullscreen_checked}><label for="dartsSofascoreFullscreen" style="display:inline;">Vollbild-Modus für Live-Spiele</label><br>
+        <input type="checkbox" id="dartsSofascoreInterruptOnLive" name="dartsSofascoreInterruptOnLive" {dartsSofascoreInterruptOnLive_checked}><label for="dartsSofascoreInterruptOnLive" style="display:inline;">Live-Spiele unterbrechend anzeigen</label><br>
+    </div>
 </div>
 
 <div id="Wetter" class="tabcontent">
@@ -630,6 +649,50 @@ function collectParkIds() {
         }
     }
     document.getElementById('themeParkIds').value = ids.join(',');
+}
+
+function loadSofascoreTournaments() {
+    var container = document.getElementById('sofascoreTournamentsContainer');
+    var listDiv = document.getElementById('sofascoreTournamentsList');
+    container.style.display = 'block';
+    listDiv.innerHTML = '<p>Lade Turniere...</p>';
+    
+    fetch('/api/sofascore/tournaments')
+        .then(response => response.json())
+        .then(data => {
+            if (!data.ok || !data.tournaments || data.tournaments.length === 0) {
+                listDiv.innerHTML = '<p style="color:red;">Keine Turniere gefunden.</p>';
+                return;
+            }
+            
+            var currentIds = document.getElementById('dartsSofascoreTournamentIds').value.split(',').map(s => s.trim());
+            var html = '<table style="width:100%;"><tr><th>Auswahl</th><th>Turnier-Name</th><th>ID</th></tr>';
+            data.tournaments.forEach(tournament => {
+                var checked = currentIds.includes(tournament.id.toString()) ? 'checked' : '';
+                html += '<tr>';
+                html += '<td><input type="checkbox" class="tournament-checkbox" value="' + tournament.id + '" ' + checked + ' onchange="collectTournamentIds()"></td>';
+                html += '<td>' + tournament.name + '</td>';
+                html += '<td>' + tournament.id + '</td>';
+                html += '</tr>';
+            });
+            html += '</table>';
+            listDiv.innerHTML = html;
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            listDiv.innerHTML = '<p style="color:red;">Fehler beim Laden der Turniere: ' + error.message + '</p>';
+        });
+}
+
+function collectTournamentIds() {
+    var checkboxes = document.getElementsByClassName('tournament-checkbox');
+    var ids = [];
+    for (var i = 0; i < checkboxes.length; i++) {
+        if (checkboxes[i].checked) {
+            ids.push(checkboxes[i].value);
+        }
+    }
+    document.getElementById('dartsSofascoreTournamentIds').value = ids.join(',');
 }
 
 </script>

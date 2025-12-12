@@ -21,6 +21,7 @@ void handleDebugData();
 void handleDebugStationHistory();
 void handleTankerkoenigSearchLive();
 void handleThemeParksList();
+void handleSofascoreTournamentsList();
 void handleStreamPage();
 
 // Backup handlers

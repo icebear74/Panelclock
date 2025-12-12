@@ -203,10 +203,12 @@ void SofaScoreLiveModule::onUpdate(std::function<void()> callback) {
 }
 
 void SofaScoreLiveModule::setConfig(bool enabled, uint32_t fetchIntervalMinutes, unsigned long displaySec,
-                                    const PsramString& enabledTournamentIds) {
+                                    const PsramString& enabledTournamentIds, bool fullscreen, bool interruptOnLive) {
     if (!webClient) return;
     
     this->_enabled = enabled;
+    this->_wantsFullscreen = fullscreen;
+    this->_interruptOnLive = interruptOnLive;
     this->_displayDuration = displaySec > 0 ? displaySec * 1000UL : 20000;
     _currentTicksPerPage = _displayDuration / 100;
     if (_currentTicksPerPage == 0) _currentTicksPerPage = 1;
@@ -902,6 +904,65 @@ void SofaScoreLiveModule::drawLiveMatch() {
         int msgWidth = u8g2.getUTF8Width(msg);
         u8g2.setCursor((canvas.width() - msgWidth) / 2, canvas.height() / 2);
         u8g2.print(msg);
+    }
+}
+
+void SofaScoreLiveModule::periodicTick() {
+    // Check for live matches periodically (every 30 seconds) to trigger interrupts
+    if (!_enabled || !_interruptOnLive) return;
+    
+    unsigned long now = millis();
+    if (now - _lastInterruptCheckTime < 30000) return;  // Check every 30 seconds
+    _lastInterruptCheckTime = now;
+    
+    checkForLiveMatchInterrupt();
+}
+
+void SofaScoreLiveModule::checkForLiveMatchInterrupt() {
+    if (!_interruptOnLive || liveMatches.empty()) return;
+    
+    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        // Build current list of live event IDs
+        std::vector<int, PsramAllocator<int>> currentLiveEventIds;
+        for (const auto& match : liveMatches) {
+            if (match.status == MatchStatus::LIVE) {
+                currentLiveEventIds.push_back(match.eventId);
+            }
+        }
+        
+        // Check if there are new live matches (not in previous list)
+        bool hasNewLiveMatch = false;
+        for (int currentId : currentLiveEventIds) {
+            bool foundInPrevious = false;
+            for (int previousId : _previousLiveEventIds) {
+                if (currentId == previousId) {
+                    foundInPrevious = true;
+                    break;
+                }
+            }
+            if (!foundInPrevious) {
+                hasNewLiveMatch = true;
+                Log.printf("[SofaScore] New live match detected: Event ID %d\n", currentId);
+                break;
+            }
+        }
+        
+        // Update previous list
+        _previousLiveEventIds = currentLiveEventIds;
+        
+        xSemaphoreGive(dataMutex);
+        
+        // Request interrupt if new live match found
+        if (hasNewLiveMatch && !_hasActiveInterrupt) {
+            Log.println("[SofaScore] Requesting interrupt for new live match");
+            _interruptUID = 5000;  // Unique UID for SofaScore interrupts
+            _hasActiveInterrupt = true;
+            
+            // Request low priority interrupt (will show next after current module)
+            if (requestPriority) {
+                requestPriority(Priority::Low, _interruptUID, _displayDuration * (liveMatches.size() > 0 ? liveMatches.size() : 1));
+            }
+        }
     }
 }
 
