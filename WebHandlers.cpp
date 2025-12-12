@@ -1180,96 +1180,113 @@ void handleSofascoreTournamentsList() {
         return;
     }
     
-    Log.println("[SofaScore] handleSofascoreTournamentsList called - fetching tournaments from API");
+    Log.println("[SofaScore] handleSofascoreTournamentsList called - fetching active tournaments from API");
     
-    // Fetch tournaments list on-demand using webClient
-    PsramString url = "https://api.sofascore.com/api/v1/config/unique-tournaments/de/darts";
-    PsramString headers = "";  // No special headers needed for SofaScore API
+    struct SpiRamAllocator : ArduinoJson::Allocator {
+        void* allocate(size_t size) override { return ps_malloc(size); }
+        void deallocate(void* pointer) override { free(pointer); }
+        void* reallocate(void* ptr, size_t new_size) override { return ps_realloc(ptr, new_size); }
+    };
     
-    struct Result { int httpCode; PsramString payload; } result;
-    result.httpCode = 0;
-    SemaphoreHandle_t sem = xSemaphoreCreateBinary();
+    // Build response document
+    SpiRamAllocator allocator;
+    JsonDocument responseDoc(&allocator);
+    responseDoc["ok"] = true;
+    JsonArray tournamentsArray = responseDoc.createNestedArray("tournaments");
     
-    webClient->getRequest(url, headers, [&](int httpCode, const char* payload, size_t len) {
-        Log.printf("[SofaScore] Callback received - HTTP %d, payload size: %d\n", httpCode, len);
-        result.httpCode = httpCode;
-        if (payload && len > 0) { 
-            result.payload.assign(payload, len); 
-            Log.printf("[SofaScore] Payload first 100 chars: %.100s\n", payload);
-        }
-        xSemaphoreGive(sem);
-    });
+    // Track unique tournaments by ID
+    std::vector<int, PsramAllocator<int>> seenTournamentIds;
+    std::vector<PsramString> tournamentNames;
     
-    Log.println("[SofaScore] Waiting for response (20s timeout)...");
+    // Fetch active tournaments for next 14 days
+    time_t now;
+    time(&now);
+    struct tm* timeinfo = localtime(&now);
     
-    if (xSemaphoreTake(sem, pdMS_TO_TICKS(20000)) == pdTRUE) {
-        Log.printf("[SofaScore] Response received, HTTP code: %d\n", result.httpCode);
+    for (int dayOffset = 0; dayOffset < 14; dayOffset++) {
+        time_t targetTime = now + (dayOffset * 86400);
+        struct tm* targetDate = localtime(&targetTime);
+        char dateStr[16];
+        strftime(dateStr, sizeof(dateStr), "%Y-%m-%d", targetDate);
         
-        if (result.httpCode == 200) {
-            // Parse the response and format it for the web interface using PSRAM allocator
-            struct SpiRamAllocator : ArduinoJson::Allocator {
-                void* allocate(size_t size) override { return ps_malloc(size); }
-                void deallocate(void* pointer) override { free(pointer); }
-                void* reallocate(void* ptr, size_t new_size) override { return ps_realloc(ptr, new_size); }
-            };
-            
-            SpiRamAllocator allocator1;
-            JsonDocument inputDoc(&allocator1);
-            DeserializationError error = deserializeJson(inputDoc, result.payload.c_str());
-            
-            if (error) {
-                Log.printf("[SofaScore] JSON parse error: %s\n", error.c_str());
-                server->send(500, "application/json", "{\"ok\":false, \"message\":\"Failed to parse API response\"}");
-                vSemaphoreDelete(sem);
-                return;
+        // Build URL for this date
+        char urlBuffer[128];
+        snprintf(urlBuffer, sizeof(urlBuffer), "https://api.sofascore.com/api/v1/sport/darts/active-tournaments?date=%s", dateStr);
+        PsramString url = urlBuffer;
+        PsramString headers = "";
+        
+        Log.printf("[SofaScore] Fetching tournaments for date: %s\n", dateStr);
+        
+        struct Result { int httpCode; PsramString payload; } result;
+        result.httpCode = 0;
+        SemaphoreHandle_t sem = xSemaphoreCreateBinary();
+        
+        webClient->getRequest(url, headers, [&](int httpCode, const char* payload, size_t len) {
+            result.httpCode = httpCode;
+            if (payload && len > 0) {
+                result.payload.assign(payload, len);
             }
-            
-            Log.println("[SofaScore] JSON parsed successfully");
-            
-            // Build response
-            SpiRamAllocator allocator2;
-            JsonDocument responseDoc(&allocator2);
-            responseDoc["ok"] = true;
-            JsonArray tournamentsArray = responseDoc.createNestedArray("tournaments");
-            
-            // Parse tournaments from groups
-            JsonArray groups = inputDoc["groups"].as<JsonArray>();
-            for (JsonObject group : groups) {
-                JsonArray tournaments = group["uniqueTournaments"].as<JsonArray>();
-                for (JsonObject tournament : tournaments) {
-                    int id = tournament["id"] | 0;
-                    const char* name = tournament["name"];
-                    const char* slug = tournament["slug"];
-                    
-                    if (id > 0 && name && strlen(name) > 0) {
-                        JsonObject tournamentObj = tournamentsArray.createNestedObject();
-                        tournamentObj["id"] = id;
-                        tournamentObj["name"] = name;
-                        if (slug) tournamentObj["slug"] = slug;
-                        Log.printf("[SofaScore] Added tournament: %s (ID: %d)\n", name, id);
+            xSemaphoreGive(sem);
+        });
+        
+        if (xSemaphoreTake(sem, pdMS_TO_TICKS(10000)) == pdTRUE) {
+            if (result.httpCode == 200 && !result.payload.empty()) {
+                // Parse the response
+                SpiRamAllocator allocator2;
+                JsonDocument inputDoc(&allocator2);
+                DeserializationError error = deserializeJson(inputDoc, result.payload.c_str());
+                
+                if (!error) {
+                    // Parse tournaments from response
+                    JsonArray tournaments = inputDoc["tournaments"].as<JsonArray>();
+                    for (JsonObject tournament : tournaments) {
+                        int id = tournament["id"] | 0;
+                        const char* name = tournament["name"];
+                        
+                        if (id > 0 && name && strlen(name) > 0) {
+                            // Check if we've already seen this tournament
+                            bool alreadySeen = false;
+                            for (int seenId : seenTournamentIds) {
+                                if (seenId == id) {
+                                    alreadySeen = true;
+                                    break;
+                                }
+                            }
+                            
+                            if (!alreadySeen) {
+                                seenTournamentIds.push_back(id);
+                                tournamentNames.push_back(PsramString(name));
+                                Log.printf("[SofaScore] Found new tournament: %s (ID: %d)\n", name, id);
+                            }
+                        }
                     }
                 }
+            } else if (result.httpCode == 404 || result.httpCode == 0) {
+                // No more data available, stop fetching
+                Log.printf("[SofaScore] No tournaments found for %s, stopping\n", dateStr);
+                vSemaphoreDelete(sem);
+                break;
             }
-            
-            String response;
-            serializeJson(responseDoc, response);
-            Log.printf("[SofaScore] Sending response with %d tournaments\n", tournamentsArray.size());
-            server->send(200, "application/json", response);
+            vSemaphoreDelete(sem);
         } else {
-            Log.printf("[SofaScore] HTTP error: %d\n", result.httpCode);
-            PsramString error_msg = "{\"ok\":false, \"message\":\"API Error: HTTP ";
-            char code_buf[5];
-            snprintf(code_buf, sizeof(code_buf), "%d", result.httpCode);
-            error_msg += code_buf;
-            error_msg += "\"}";
-            server->send(result.httpCode > 0 ? result.httpCode : 500, "application/json", error_msg.c_str());
+            vSemaphoreDelete(sem);
         }
-        vSemaphoreDelete(sem);
-    } else {
-        Log.println("[SofaScore] TIMEOUT waiting for API response");
-        server->send(504, "application/json", "{\"ok\":false, \"message\":\"Timeout waiting for API response\"}");
-        vSemaphoreDelete(sem);
+        
+        // Small delay between requests to avoid rate limiting
+        delay(100);
     }
+    
+    // Build final response with collected tournaments
+    for (size_t i = 0; i < seenTournamentIds.size(); i++) {
+        JsonObject tournamentObj = tournamentsArray.createNestedObject();
+        tournamentObj["id"] = seenTournamentIds[i];
+        tournamentObj["name"] = tournamentNames[i].c_str();
+    }
+    
+    String response;
+    serializeJson(responseDoc, response);
+    Log.printf("[SofaScore] Sending response with %d unique tournaments\n", tournamentsArray.size());
+    server->send(200, "application/json", response);
 }
 
 // =============================================================================

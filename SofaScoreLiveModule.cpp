@@ -246,15 +246,11 @@ void SofaScoreLiveModule::setConfig(bool enabled, uint32_t fetchIntervalMinutes,
     }
     
     if (enabled) {
-        // Register resources for fetching
-        // 1. Tournament list (fetch once per day)
-        webClient->registerResource("https://api.sofascore.com/api/v1/config/unique-tournaments/de/darts", 
-                                   1440, nullptr);  // Once per day
+        // No need to pre-register active-tournaments URL
+        // It will be fetched on-demand when needed
         
-        // 2. Daily events (fetch every hour or as configured)
-        // We'll construct today's date dynamically in queueData()
-        
-        // 3. Live match statistics will be fetched on-demand in queueData()
+        // Daily events will be fetched dynamically in queueData()
+        // Live match statistics will be fetched on-demand in queueData()
     }
     
     // Update scroll configuration
@@ -390,23 +386,7 @@ void SofaScoreLiveModule::switchToNextMode() {
 void SofaScoreLiveModule::queueData() {
     if (!webClient) return;
     
-    // 1. Fetch tournament list
-    webClient->accessResource("https://api.sofascore.com/api/v1/config/unique-tournaments/de/darts",
-        [this](const char* buffer, size_t size, time_t last_update, bool is_stale) {
-            if (buffer && size > 0 && last_update > this->tournaments_last_processed_update) {
-                if (tournaments_pending_buffer) free(tournaments_pending_buffer);
-                tournaments_pending_buffer = (char*)ps_malloc(size + 1);
-                if (tournaments_pending_buffer) {
-                    memcpy(tournaments_pending_buffer, buffer, size);
-                    tournaments_pending_buffer[size] = '\0';
-                    tournaments_buffer_size = size;
-                    tournaments_last_processed_update = last_update;
-                    tournaments_data_pending = true;
-                }
-            }
-        });
-    
-    // 2. Fetch today's events
+    // Fetch today's events
     time_t now;
     time(&now);
     struct tm* timeinfo = localtime(&now);
@@ -470,18 +450,6 @@ void SofaScoreLiveModule::updateLiveMatchStats() {
 }
 
 void SofaScoreLiveModule::processData() {
-    // Process pending tournament data
-    if (tournaments_data_pending) {
-        if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(500)) == pdTRUE) {
-            parseTournamentsJson(tournaments_pending_buffer, tournaments_buffer_size);
-            free(tournaments_pending_buffer);
-            tournaments_pending_buffer = nullptr;
-            tournaments_data_pending = false;
-            xSemaphoreGive(dataMutex);
-            if (updateCallback) updateCallback();
-        }
-    }
-    
     // Process pending daily events data
     if (daily_data_pending) {
         if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(500)) == pdTRUE) {
