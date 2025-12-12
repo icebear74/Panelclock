@@ -135,6 +135,7 @@ void Application::begin() {
     
     _calendarMod = new CalendarModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, webClient, deviceConfig);
     _dartsMod = new DartsRankingModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), webClient, deviceConfig);
+    _sofascoreMod = new SofaScoreLiveModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), webClient, deviceConfig);
     _fritzMod = new FritzboxModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), webClient);
     fritzboxModule = _fritzMod;  // Expose globally for cleanup before restart
     _curiousMod = new CuriousHolidaysModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, webClient, deviceConfig);
@@ -149,6 +150,7 @@ void Application::begin() {
     _panelManager->registerModule(_tankerkoenigMod);
     _panelManager->registerModule(_calendarMod);
     _panelManager->registerModule(_dartsMod);
+    _panelManager->registerModule(_sofascoreMod);
     _panelManager->registerModule(_curiousMod);
     _panelManager->registerModule(_weatherMod);
     _panelManager->registerModule(_themeParkMod);
@@ -250,6 +252,8 @@ void Application::begin() {
     _dartsMod->onUpdate([this](DartsRankingType type){ 
         this->_redrawRequest = true; 
     });
+    
+    _sofascoreMod->onUpdate(redrawCb);
 
     _curiousMod->onUpdate(redrawCb);
     _weatherMod->onUpdate(redrawCb);
@@ -301,6 +305,7 @@ void Application::update() {
     // KORREKTUR: Aufrufe für das Wetter-Modul hinzugefügt
     if(_tankerkoenigMod) _tankerkoenigMod->queueData();
     if(_dartsMod) _dartsMod->queueData();
+    if(_sofascoreMod) _sofascoreMod->queueData();
     if(_calendarMod) _calendarMod->queueData();
     if(_curiousMod) _curiousMod->queueData();
     if(_weatherMod) _weatherMod->queueData(); // HINZUGEFÜGT
@@ -309,6 +314,7 @@ void Application::update() {
     // KORREKTUR: Aufrufe für das Wetter-Modul hinzugefügt
     if(_tankerkoenigMod) _tankerkoenigMod->processData();
     if(_dartsMod) _dartsMod->processData();
+    if(_sofascoreMod) _sofascoreMod->processData();
     if(_calendarMod) _calendarMod->processData();
     if(_curiousMod) _curiousMod->processData();
     if(_weatherMod) _weatherMod->processData(); // HINZUGEFÜGT
@@ -344,6 +350,7 @@ void Application::executeApplyLiveConfig() {
     _calendarMod->setConfig(deviceConfig->icsUrl, deviceConfig->calendarFetchIntervalMin, deviceConfig->calendarDisplaySec, deviceConfig->globalScrollSpeedMs, deviceConfig->calendarDateColor, deviceConfig->calendarTextColor);
     _calendarMod->setUrgentParams(deviceConfig->calendarFastBlinkHours, deviceConfig->calendarUrgentThresholdHours, deviceConfig->calendarUrgentDurationSec, deviceConfig->calendarUrgentRepeatMin);
     _dartsMod->setConfig(deviceConfig->dartsOomEnabled, deviceConfig->dartsProTourEnabled, 5, deviceConfig->dartsDisplaySec, deviceConfig->trackedDartsPlayers);
+    _sofascoreMod->setConfig(deviceConfig->dartsSofascoreEnabled, deviceConfig->dartsSofascoreFetchIntervalMin, deviceConfig->dartsSofascoreDisplaySec, deviceConfig->dartsSofascoreTournamentIds);
     _fritzMod->setConfig(deviceConfig->fritzboxEnabled, deviceConfig->fritzboxIp);
     _curiousMod->setConfig();
     _weatherMod->setConfig(deviceConfig);

@@ -7,6 +7,7 @@
 #include "TankerkoenigModule.hpp"
 #include "CalendarModule.hpp"
 #include "DartsRankingModule.hpp"
+#include "SofaScoreLiveModule.hpp"
 #include "FritzboxModule.hpp"
 #include "CuriousHolidaysModule.hpp"
 #include "WeatherModule.hpp" // HINZUGEFÜGT
@@ -21,6 +22,7 @@ class ClockModule;
 class TankerkoenigModule;
 class CalendarModule;
 class DartsRankingModule;
+class SofaScoreLiveModule;
 class FritzboxModule;
 class CuriousHolidaysModule;
 class WeatherModule; // HINZUGEFÜGT
@@ -118,6 +120,8 @@ private:
     CalendarModule* _calendarMod = nullptr;
     /// @brief Zeiger auf das Darts-Ranking-Modul.
     DartsRankingModule* _dartsMod = nullptr;
+    /// @brief Zeiger auf das SofaScore Live Darts-Modul.
+    SofaScoreLiveModule* _sofascoreMod = nullptr;
     /// @brief Zeiger auf das Fritz!Box-Anrufmonitor-Modul.
     FritzboxModule* _fritzMod = nullptr;
     /// @brief Zeiger auf das kuriose Feiertage-Modul.
