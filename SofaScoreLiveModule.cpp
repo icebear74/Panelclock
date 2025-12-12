@@ -729,54 +729,96 @@ void SofaScoreLiveModule::drawDailyResults() {
             u8g2.print(match.tournamentName);
         }
         
-        // Status and score
-        u8g2.setFont(u8g2_font_profont12_tf);
-        int y = 35;
-        
-        // Status indicator
-        if (match.status == MatchStatus::LIVE) {
-            u8g2.setForegroundColor(0xF800);  // Red for live
-            u8g2.setCursor(2, y);
-            u8g2.print("LIVE");
-        } else if (match.status == MatchStatus::FINISHED) {
-            u8g2.setForegroundColor(0x07E0);  // Green for finished
-            u8g2.setCursor(2, y);
-            u8g2.print("FIN");
-        }
-        
-        // Score in center
-        u8g2.setForegroundColor(0xFFFF);
-        char scoreStr[16];
-        snprintf(scoreStr, sizeof(scoreStr), "%d : %d", match.homeScore, match.awayScore);
-        int scoreWidth = u8g2.getUTF8Width(scoreStr);
-        u8g2.setCursor((canvas.width() - scoreWidth) / 2, y + 10);
-        u8g2.print(scoreStr);
-        
-        // Player names (with scrolling if needed)
-        u8g2.setFont(u8g2_font_5x8_tf);
-        y = 55;
-        
-        if (match.homePlayerName && _nameScroller) {
-            int maxWidth = canvas.width() - 4;
-            _nameScroller->drawScrollingText(canvas, match.homePlayerName, 2, y, maxWidth, 0, 0xFFFF);
-        }
-        
-        y += 10;
-        if (match.awayPlayerName && _nameScroller) {
-            int maxWidth = canvas.width() - 4;
-            _nameScroller->drawScrollingText(canvas, match.awayPlayerName, 2, y, maxWidth, 1, 0xFFFF);
-        }
-        
         // Time (if scheduled)
-        if (match.status == MatchStatus::SCHEDULED && match.startTimestamp > 0) {
+        u8g2.setFont(u8g2_font_5x8_tf);
+        int y = 32;
+        if (match.startTimestamp > 0) {
             time_t timestamp = match.startTimestamp;
             struct tm* timeinfo = localtime(&timestamp);
             char timeStr[16];
             strftime(timeStr, sizeof(timeStr), "%H:%M", timeinfo);
             
             u8g2.setForegroundColor(0xFFE0);
-            u8g2.setCursor(canvas.width() - u8g2.getUTF8Width(timeStr) - 2, canvas.height() - 2);
+            u8g2.setCursor(2, y);
             u8g2.print(timeStr);
+        }
+        
+        // Live indicator in top right of time line
+        if (match.status == MatchStatus::LIVE) {
+            u8g2.setForegroundColor(0xF800);  // Red
+            u8g2.setCursor(canvas.width() - u8g2.getUTF8Width("(L)") - 2, y);
+            u8g2.print("(L)");
+        }
+        
+        y += 10;
+        
+        // Player names in 2-column layout
+        u8g2.setFont(u8g2_font_profont10_tf);
+        u8g2.setForegroundColor(0xFFFF);
+        
+        // Home player (left)
+        if (match.homePlayerName) {
+            const char* name = match.homePlayerName;
+            // Shorten names if needed (first initial + last name)
+            char shortName[32];
+            const char* space = strchr(name, ' ');
+            if (space && (space - name) > 0) {
+                snprintf(shortName, sizeof(shortName), "%c. %s", name[0], space + 1);
+                name = shortName;
+            }
+            u8g2.setCursor(2, y);
+            u8g2.print(name);
+        }
+        
+        // VS or dash
+        u8g2.setForegroundColor(0xAAAA);
+        const char* vs = " - ";
+        int vsWidth = u8g2.getUTF8Width(vs);
+        u8g2.setCursor((canvas.width() - vsWidth) / 2, y);
+        u8g2.print(vs);
+        
+        // Away player (right)
+        u8g2.setForegroundColor(0xFFFF);
+        if (match.awayPlayerName) {
+            const char* name = match.awayPlayerName;
+            // Shorten names if needed
+            char shortName[32];
+            const char* space = strchr(name, ' ');
+            if (space && (space - name) > 0) {
+                snprintf(shortName, sizeof(shortName), "%c. %s", name[0], space + 1);
+                name = shortName;
+            }
+            int nameWidth = u8g2.getUTF8Width(name);
+            u8g2.setCursor(canvas.width() - nameWidth - 2, y);
+            u8g2.print(name);
+        }
+        
+        y += 12;
+        
+        // Score centered
+        u8g2.setFont(u8g2_font_profont12_tf);
+        u8g2.setForegroundColor(0xFFFF);
+        char scoreStr[16];
+        snprintf(scoreStr, sizeof(scoreStr), "%d : %d", match.homeScore, match.awayScore);
+        int scoreWidth = u8g2.getUTF8Width(scoreStr);
+        u8g2.setCursor((canvas.width() - scoreWidth) / 2, y);
+        u8g2.print(scoreStr);
+        
+        // Status indicator below score
+        y += 10;
+        u8g2.setFont(u8g2_font_5x8_tf);
+        if (match.status == MatchStatus::LIVE) {
+            u8g2.setForegroundColor(0xF800);  // Red
+            const char* live = "LIVE";
+            int liveWidth = u8g2.getUTF8Width(live);
+            u8g2.setCursor((canvas.width() - liveWidth) / 2, y);
+            u8g2.print(live);
+        } else if (match.status == MatchStatus::FINISHED) {
+            u8g2.setForegroundColor(0x07E0);  // Green
+            const char* fin = "FINAL";
+            int finWidth = u8g2.getUTF8Width(fin);
+            u8g2.setCursor((canvas.width() - finWidth) / 2, y);
+            u8g2.print(fin);
         }
     } else {
         u8g2.setFont(u8g2_font_profont12_tf);
@@ -819,83 +861,122 @@ void SofaScoreLiveModule::drawLiveMatch() {
             u8g2.print(match.tournamentName);
         }
         
-        // Score
+        int y = 24;
+        
+        // Two-column layout for players
+        u8g2.setFont(u8g2_font_profont10_tf);
+        u8g2.setForegroundColor(0xFFFF);
+        
+        // Player 1 (Home) - Left column
+        if (match.homePlayerName) {
+            const char* name = match.homePlayerName;
+            // Shorten names if needed
+            char shortName[32];
+            const char* space = strchr(name, ' ');
+            if (space && (space - name) > 0) {
+                snprintf(shortName, sizeof(shortName), "%c. %s", name[0], space + 1);
+                name = shortName;
+            }
+            u8g2.setCursor(2, y);
+            u8g2.print(name);
+            
+            // Average below name
+            if (match.homeAverage > 0) {
+                u8g2.setFont(u8g2_font_5x8_tf);
+                char avgStr[16];
+                snprintf(avgStr, sizeof(avgStr), "%.1f", match.homeAverage);
+                u8g2.setCursor(2, y + 9);
+                u8g2.print(avgStr);
+            }
+        }
+        
+        // Player 2 (Away) - Right column
+        u8g2.setFont(u8g2_font_profont10_tf);
+        if (match.awayPlayerName) {
+            const char* name = match.awayPlayerName;
+            // Shorten names if needed
+            char shortName[32];
+            const char* space = strchr(name, ' ');
+            if (space && (space - name) > 0) {
+                snprintf(shortName, sizeof(shortName), "%c. %s", name[0], space + 1);
+                name = shortName;
+            }
+            int nameWidth = u8g2.getUTF8Width(name);
+            u8g2.setCursor(canvas.width() - nameWidth - 2, y);
+            u8g2.print(name);
+            
+            // Average below name
+            if (match.awayAverage > 0) {
+                u8g2.setFont(u8g2_font_5x8_tf);
+                char avgStr[16];
+                snprintf(avgStr, sizeof(avgStr), "%.1f", match.awayAverage);
+                int avgWidth = u8g2.getUTF8Width(avgStr);
+                u8g2.setCursor(canvas.width() - avgWidth - 2, y + 9);
+                u8g2.print(avgStr);
+            }
+        }
+        
+        y += 22;
+        
+        // Score centered
         u8g2.setFont(u8g2_font_profont12_tf);
         u8g2.setForegroundColor(0xFFFF);
         char scoreStr[16];
         snprintf(scoreStr, sizeof(scoreStr), "%d : %d", match.homeScore, match.awayScore);
         int scoreWidth = u8g2.getUTF8Width(scoreStr);
-        u8g2.setCursor((canvas.width() - scoreWidth) / 2, 25);
+        u8g2.setCursor((canvas.width() - scoreWidth) / 2, y);
         u8g2.print(scoreStr);
         
         u8g2.setFont(u8g2_font_5x8_tf);
-        int y = 28;
+        y += 10;
         u8g2.setCursor((canvas.width() - u8g2.getUTF8Width("Sets")) / 2, y);
         u8g2.print("Sets");
         
-        // Player names with averages
-        y = 40;
+        y += 12;
+        
+        // Statistics in 2-column layout
         u8g2.setFont(u8g2_font_5x8_tf);
         
-        // Home player
-        if (match.homePlayerName) {
-            char line[64];
-            if (match.homeAverage > 0) {
-                snprintf(line, sizeof(line), "%s (%.1f)", match.homePlayerName, match.homeAverage);
-            } else {
-                snprintf(line, sizeof(line), "%s", match.homePlayerName);
-            }
-            
-            int lineWidth = u8g2.getUTF8Width(line);
-            if (lineWidth > canvas.width() - 4) {
-                // Scroll if too long
-                _nameScroller->drawScrollingText(canvas, line, 2, y, canvas.width() - 4, 0, 0xFFFF);
-            } else {
-                u8g2.setCursor(2, y);
-                u8g2.print(line);
-            }
-        }
-        
-        y += 10;
-        
-        // Away player
-        if (match.awayPlayerName) {
-            char line[64];
-            if (match.awayAverage > 0) {
-                snprintf(line, sizeof(line), "%s (%.1f)", match.awayPlayerName, match.awayAverage);
-            } else {
-                snprintf(line, sizeof(line), "%s", match.awayPlayerName);
-            }
-            
-            int lineWidth = u8g2.getUTF8Width(line);
-            if (lineWidth > canvas.width() - 4) {
-                // Scroll if too long
-                _nameScroller->drawScrollingText(canvas, line, 2, y, canvas.width() - 4, 1, 0xFFFF);
-            } else {
-                u8g2.setCursor(2, y);
-                u8g2.print(line);
-            }
-        }
-        
-        // Statistics (180s, Checkout %)
-        y = 65;
+        // 180s
         if (match.home180s > 0 || match.away180s > 0) {
-            char stat180s[32];
-            snprintf(stat180s, sizeof(stat180s), "180s: %d | %d", match.home180s, match.away180s);
-            int statWidth = u8g2.getUTF8Width(stat180s);
+            char home180[8], away180[8];
+            snprintf(home180, sizeof(home180), "%d", match.home180s);
+            snprintf(away180, sizeof(away180), "%d", match.away180s);
+            
             u8g2.setForegroundColor(0xFFE0);  // Yellow
-            u8g2.setCursor((canvas.width() - statWidth) / 2, y);
-            u8g2.print(stat180s);
+            u8g2.setCursor(2, y);
+            u8g2.print(home180);
+            
+            const char* label = "180s";
+            int labelWidth = u8g2.getUTF8Width(label);
+            u8g2.setCursor((canvas.width() - labelWidth) / 2, y);
+            u8g2.print(label);
+            
+            int away180Width = u8g2.getUTF8Width(away180);
+            u8g2.setCursor(canvas.width() - away180Width - 2, y);
+            u8g2.print(away180);
+            
             y += 9;
         }
         
+        // Checkout %
         if (match.homeCheckoutPercent > 0 || match.awayCheckoutPercent > 0) {
-            char statCO[32];
-            snprintf(statCO, sizeof(statCO), "CO%%: %.0f | %.0f", match.homeCheckoutPercent, match.awayCheckoutPercent);
-            int statWidth = u8g2.getUTF8Width(statCO);
+            char homeCO[8], awayCO[8];
+            snprintf(homeCO, sizeof(homeCO), "%.0f%%", match.homeCheckoutPercent);
+            snprintf(awayCO, sizeof(awayCO), "%.0f%%", match.awayCheckoutPercent);
+            
             u8g2.setForegroundColor(0x07FF);  // Cyan
-            u8g2.setCursor((canvas.width() - statWidth) / 2, y);
-            u8g2.print(statCO);
+            u8g2.setCursor(2, y);
+            u8g2.print(homeCO);
+            
+            const char* label = "CO%";
+            int labelWidth = u8g2.getUTF8Width(label);
+            u8g2.setCursor((canvas.width() - labelWidth) / 2, y);
+            u8g2.print(label);
+            
+            int awayCOWidth = u8g2.getUTF8Width(awayCO);
+            u8g2.setCursor(canvas.width() - awayCOWidth - 2, y);
+            u8g2.print(awayCO);
         }
     } else {
         u8g2.setFont(u8g2_font_profont12_tf);
