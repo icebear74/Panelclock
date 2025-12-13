@@ -793,6 +793,7 @@ void SofaScoreLiveModule::drawTournamentList() {
 }
 
 void SofaScoreLiveModule::drawDailyResults() {
+    // Header with title
     u8g2.setFont(u8g2_font_profont12_tf);
     u8g2.setForegroundColor(0xFFFF);
     
@@ -820,84 +821,132 @@ void SofaScoreLiveModule::drawDailyResults() {
     
     const auto& currentGroup = _tournamentGroups[_currentTournamentIndex];
     
-    // Tournament name header
+    // Tournament name as subtitle (scrolling)
     u8g2.setFont(u8g2_font_profont10_tf);
     u8g2.setForegroundColor(0xAAAA);
     if (!currentGroup.tournamentName.empty()) {
         int tournWidth = u8g2.getUTF8Width(currentGroup.tournamentName.c_str());
-        u8g2.setCursor((_currentCanvas->width() - tournWidth) / 2, 20);
-        u8g2.print(currentGroup.tournamentName.c_str());
+        if (tournWidth > _currentCanvas->width() - 4) {
+            _tournamentScroller->setText(currentGroup.tournamentName.c_str());
+            _tournamentScroller->draw(2, 20, _currentCanvas->width() - 4);
+        } else {
+            int tournX = (_currentCanvas->width() - tournWidth) / 2;
+            u8g2.setCursor(tournX, 20);
+            u8g2.print(currentGroup.tournamentName.c_str());
+        }
     }
     
-    // Calculate matches for this page - fullscreen has more vertical space
-    // Fullscreen: 192x96 (5 matches), Normal: 192x64 (3 matches)
-    const int MATCHES_PER_PAGE = wantsFullscreen() ? 5 : 3;
+    // Calculate matches for this page
+    // Fullscreen: 192x96 allows 7 lines, Normal: 192x64 allows 5 lines
+    const int MATCHES_PER_PAGE = wantsFullscreen() ? 7 : 5;
     int startIdx = _currentTournamentPage * MATCHES_PER_PAGE;
     int endIdx = startIdx + MATCHES_PER_PAGE;
     if (endIdx > currentGroup.matchIndices.size()) endIdx = currentGroup.matchIndices.size();
     
-    int y = 28;  // Start below tournament name
+    // Layout: Time(5 chars left) | Home Player | Away Player | Score(5 chars right)
+    // Font width for u8g2_font_5x8_tf is approximately 5 pixels per char
+    const int TIME_WIDTH = 30;    // ~5 chars * 6px = 30px left side
+    const int SCORE_WIDTH = 35;   // ~5 chars for score right side
+    const int MIDDLE_START = TIME_WIDTH + 2;
+    const int MIDDLE_WIDTH = _currentCanvas->width() - TIME_WIDTH - SCORE_WIDTH - 6;
+    const int HALF_WIDTH = MIDDLE_WIDTH / 2;
+    
+    int y = 30;  // Start below tournament name
+    const int LINE_HEIGHT = wantsFullscreen() ? 9 : 10;
     u8g2.setFont(u8g2_font_5x8_tf);
+    
+    // Ensure we have enough scrollers (2 per match: home + away)
+    while (_matchScrollers.size() < MATCHES_PER_PAGE * 2) {
+        PixelScroller* scroller = new (ps_malloc(sizeof(PixelScroller))) PixelScroller(u8g2, 50);
+        PixelScrollerConfig scrollConfig;
+        scrollConfig.mode = ScrollMode::CONTINUOUS;
+        scrollConfig.pauseBetweenCyclesMs = 0;
+        scrollConfig.scrollReverse = false;
+        scrollConfig.paddingPixels = 10;
+        scroller->setConfig(scrollConfig);
+        _matchScrollers.push_back(scroller);
+    }
     
     for (int i = startIdx; i < endIdx; i++) {
         int matchIdx = currentGroup.matchIndices[i];
         if (matchIdx >= dailyMatches.size()) continue;
         
         const SofaScoreMatch& match = dailyMatches[matchIdx];
+        int scrollerIdx = (i - startIdx) * 2;  // 2 scrollers per match
         
-        // Time and status on one line
-        u8g2.setForegroundColor(0xFFE0);
-        if (match.startTimestamp > 0) {
-            time_t timestamp_utc = match.startTimestamp;
-            time_t timestamp_local = timeConverter.toLocal(timestamp_utc);
+        // LEFT: Time (5 chars fixed)
+        char timeStr[6] = "     ";
+        if (match.startTimestamp > 0 && match.status != MatchStatus::FINISHED) {
+            time_t timestamp_local = timeConverter.toLocal(match.startTimestamp);
             struct tm* timeinfo = localtime(&timestamp_local);
-            char timeStr[16];
             strftime(timeStr, sizeof(timeStr), "%H:%M", timeinfo);
-            u8g2.setCursor(2, y);
-            u8g2.print(timeStr);
-        }
-        
-        // Live/Status indicator on same line
-        if (match.status == MatchStatus::LIVE) {
-            u8g2.setForegroundColor(0xF800);  // Red
-            // Show score with legs for live matches
-            char liveScore[24];
-            if (match.homeLegs > 0 || match.awayLegs > 0) {
-                snprintf(liveScore, sizeof(liveScore), "%d:%d(%d:%d)(L)", 
-                         match.homeScore, match.awayScore, match.homeLegs, match.awayLegs);
-            } else {
-                snprintf(liveScore, sizeof(liveScore), "%d:%d(L)", match.homeScore, match.awayScore);
-            }
-            int liveWidth = u8g2.getUTF8Width(liveScore);
-            u8g2.setCursor(_currentCanvas->width() - liveWidth - 2, y);
-            u8g2.print(liveScore);
         } else if (match.status == MatchStatus::FINISHED) {
-            // Show score on right for finished matches
-            u8g2.setForegroundColor(0x07E0);  // Green
-            char scoreStr[16];
-            snprintf(scoreStr, sizeof(scoreStr), "%d:%d", match.homeScore, match.awayScore);
-            int scoreWidth = u8g2.getUTF8Width(scoreStr);
-            u8g2.setCursor(_currentCanvas->width() - scoreWidth - 2, y);
-            u8g2.print(scoreStr);
+            strcpy(timeStr, " FIN ");
+        } else if (match.status == MatchStatus::LIVE) {
+            strcpy(timeStr, "LIVE ");
         }
         
-        y += 9;
+        u8g2.setForegroundColor(match.status == MatchStatus::LIVE ? 0xF800 : 0xFFE0);
+        u8g2.setCursor(2, y);
+        u8g2.print(timeStr);
         
-        // Player names on next line
+        // MIDDLE: Player names (split in half, scrolling if needed)
         u8g2.setForegroundColor(0xFFFF);
-        if (match.homePlayerName && match.awayPlayerName) {
-            char matchLine[64];
-            // Abbreviate names for compact display
-            char homeName[20], awayName[20];
-            
-            const char* homeSpace = strchr(match.homePlayerName, ' ');
-            if (homeSpace && (homeSpace - match.homePlayerName) > 0) {
-                snprintf(homeName, sizeof(homeName), "%c.%s", match.homePlayerName[0], homeSpace + 1);
-            } else {
-                strncpy(homeName, match.homePlayerName, sizeof(homeName) - 1);
+        
+        const char* homeName = match.homePlayerName ? match.homePlayerName : "?";
+        const char* awayName = match.awayPlayerName ? match.awayPlayerName : "?";
+        
+        int homeWidth = u8g2.getUTF8Width(homeName);
+        int awayWidth = u8g2.getUTF8Width(awayName);
+        
+        // Home player (left half of middle)
+        if (homeWidth > HALF_WIDTH - 2) {
+            if (scrollerIdx < _matchScrollers.size()) {
+                _matchScrollers[scrollerIdx]->setText(homeName);
+                _matchScrollers[scrollerIdx]->draw(MIDDLE_START, y, HALF_WIDTH - 2);
             }
-            
-            const char* awaySpace = strchr(match.awayPlayerName, ' ');
+        } else {
+            u8g2.setCursor(MIDDLE_START, y);
+            u8g2.print(homeName);
+        }
+        
+        // Away player (right half of middle)
+        int awayStart = MIDDLE_START + HALF_WIDTH;
+        if (awayWidth > HALF_WIDTH - 2) {
+            if (scrollerIdx + 1 < _matchScrollers.size()) {
+                _matchScrollers[scrollerIdx + 1]->setText(awayName);
+                _matchScrollers[scrollerIdx + 1]->draw(awayStart, y, HALF_WIDTH - 2);
+            }
+        } else {
+            u8g2.setCursor(awayStart, y);
+            u8g2.print(awayName);
+        }
+        
+        // RIGHT: Score (max 5 chars fixed)
+        char scoreStr[6] = "     ";
+        if (match.status == MatchStatus::LIVE) {
+            if (match.homeLegs > 0 || match.awayLegs > 0) {
+                // Can't fit legs in 5 chars, show sets only with (L)
+                snprintf(scoreStr, sizeof(scoreStr), "%d:%dL", match.homeScore, match.awayScore);
+            } else {
+                snprintf(scoreStr, sizeof(scoreStr), "%d:%dL", match.homeScore, match.awayScore);
+            }
+            u8g2.setForegroundColor(0xF800);  // Red
+        } else if (match.status == MatchStatus::FINISHED) {
+            snprintf(scoreStr, sizeof(scoreStr), "%d:%d ", match.homeScore, match.awayScore);
+            u8g2.setForegroundColor(0x07E0);  // Green
+        } else {
+            strcpy(scoreStr, "     ");
+            u8g2.setForegroundColor(0x8410);  // Gray
+        }
+        
+        int scoreWidth = u8g2.getUTF8Width(scoreStr);
+        u8g2.setCursor(_currentCanvas->width() - scoreWidth - 2, y);
+        u8g2.print(scoreStr);
+        
+        y += LINE_HEIGHT;
+    }
+}
             if (awaySpace && (awaySpace - match.awayPlayerName) > 0) {
                 snprintf(awayName, sizeof(awayName), "%c.%s", match.awayPlayerName[0], awaySpace + 1);
             } else {
