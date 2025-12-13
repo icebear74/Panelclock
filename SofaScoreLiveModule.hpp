@@ -9,9 +9,13 @@
 #include "freertos/semphr.h"
 #include "DrawableModule.hpp"
 #include "PixelScroller.hpp"
+#include "GeneralTimeConverter.hpp"
 
 class WebClientModule;
 struct DeviceConfig;
+
+// UID für SofaScore Live-Match Interrupts
+#define SOFASCORE_INTERRUPT_UID_BASE 5000
 
 // Tournament information
 struct SofaScoreTournament {
@@ -42,6 +46,8 @@ struct SofaScoreMatch {
     char* awayPlayerName = nullptr;
     int homeScore = 0;  // Sets won
     int awayScore = 0;  // Sets won
+    int homeLegs = 0;   // Legs in current set
+    int awayLegs = 0;   // Legs in current set
     char* tournamentName = nullptr;
     MatchStatus status = MatchStatus::SCHEDULED;
     long startTimestamp = 0;
@@ -51,6 +57,12 @@ struct SofaScoreMatch {
     float awayAverage = 0.0f;
     int home180s = 0;
     int away180s = 0;
+    int homeOver140 = 0;
+    int awayOver140 = 0;
+    int homeOver100 = 0;
+    int awayOver100 = 0;
+    int homeCheckoutsOver100 = 0;
+    int awayCheckoutsOver100 = 0;
     float homeCheckoutPercent = 0.0f;
     float awayCheckoutPercent = 0.0f;
     
@@ -72,12 +84,14 @@ enum class SofaScoreDisplayMode {
 class SofaScoreLiveModule : public DrawableModule {
 public:
     SofaScoreLiveModule(U8G2_FOR_ADAFRUIT_GFX& u8g2_ref, GFXcanvas16& canvas_ref, 
+                        const GeneralTimeConverter& timeConverter_ref,
                         WebClientModule* webClient_ptr, DeviceConfig* config);
     ~SofaScoreLiveModule();
 
     void onUpdate(std::function<void()> callback);
     void setConfig(bool enabled, uint32_t fetchIntervalMinutes, unsigned long displaySec,
-                   const PsramString& enabledTournamentIds);
+                   const PsramString& enabledTournamentIds, bool fullscreen, bool interruptOnLive,
+                   uint32_t playNextMinutes);
     void queueData();
     void processData();
 
@@ -87,15 +101,23 @@ public:
     void draw() override;
     void tick() override;
     void logicTick() override;
+    void periodicTick() override;
     unsigned long getDisplayDuration() override;
     bool isEnabled() override;
     void resetPaging() override;
     int getCurrentPage() const override { return _currentPage; }
     int getTotalPages() const override { return _totalPages; }
+    
+    // Fullscreen support
+    bool supportsFullscreen() const override { return true; }
+    bool wantsFullscreen() const override { return _wantsFullscreen && _fullscreenCanvas != nullptr; }
 
 private:
     U8G2_FOR_ADAFRUIT_GFX& u8g2;
     GFXcanvas16& canvas;
+    GFXcanvas16* _fullscreenCanvas = nullptr;
+    GFXcanvas16* _currentCanvas = nullptr;  // Points to either &canvas or _fullscreenCanvas
+    const GeneralTimeConverter& timeConverter;
     WebClientModule* webClient;
     DeviceConfig* config;
     std::function<void()> updateCallback;
@@ -103,19 +125,36 @@ private:
 
     // Configuration
     bool _enabled = false;
+    bool _wantsFullscreen = false;
+    bool _interruptOnLive = true;
+    uint32_t _playNextMinutes = 0;  // 0 = disabled
     unsigned long _displayDuration = 20000;  // 20 seconds per page
     uint32_t _currentTicksPerPage = 200;     // 200 * 100ms = 20 seconds
     
     // Paging
     int _currentPage = 0;
     int _totalPages = 1;
+    int _currentTournamentIndex = 0;  // Which tournament we're currently showing
+    int _currentTournamentPage = 0;   // Which page within the current tournament
     uint32_t _logicTicksSincePageSwitch = 0;
     uint32_t _logicTicksSinceModeSwitch = 0;
     SofaScoreDisplayMode _currentMode = SofaScoreDisplayMode::DAILY_RESULTS;
     bool _isFinished = false;
     
+    // Interrupt management
+    bool _hasActiveInterrupt = false;
+    uint32_t _interruptUID = 0;
+    unsigned long _lastInterruptCheckTime = 0;
+    std::vector<int, PsramAllocator<int>> _previousLiveEventIds;  // Track previous live matches
+    
+    // PlayNext management
+    bool _hasActivePlayNext = false;
+    uint32_t _playNextUID = 0;
+    unsigned long _lastPlayNextTime = 0;
+    
     // Scrolling
     PixelScroller* _nameScroller = nullptr;
+    std::vector<PixelScroller*, PsramAllocator<PixelScroller*>> _matchScrollers;  // One scroller per match line
     PixelScroller* _tournamentScroller = nullptr;
     
     // Data buffers for async fetching
@@ -140,6 +179,17 @@ private:
     std::vector<SofaScoreMatch, PsramAllocator<SofaScoreMatch>> dailyMatches;
     std::vector<SofaScoreMatch, PsramAllocator<SofaScoreMatch>> liveMatches;
     
+    // Tournament grouping for multi-page display
+    struct TournamentGroup {
+        int tournamentId = 0;
+        PsramString tournamentName;
+        std::vector<int, PsramAllocator<int>> matchIndices;  // Indices into dailyMatches
+        int pagesNeeded = 0;  // Number of pages for this tournament
+        
+        TournamentGroup() : matchIndices(PsramAllocator<int>()) {}
+    };
+    std::vector<TournamentGroup, PsramAllocator<TournamentGroup>> _tournamentGroups;
+    
     // Track registered resources to avoid duplicate registrations
     PsramString _lastRegisteredDailyUrl;
     std::vector<int, PsramAllocator<int>> _registeredEventIds;
@@ -151,6 +201,10 @@ private:
     void parseMatchStatistics(int eventId, const char* json, size_t len);
     void updateLiveMatchStats();
     void switchToNextMode();
+    void checkForLiveMatchInterrupt();
+    void checkForPlayNext();
+    void groupMatchesByTournament();  // New: group and calculate pages
+    int calculateTotalPages();         // New: calculate total pages across all tournaments
     
     // Drawing helpers
     void drawTournamentList();

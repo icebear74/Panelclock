@@ -35,6 +35,7 @@ bool portalRunning = false;
 
 TankerkoenigModule* tankerkoenigModule = nullptr;
 ThemeParkModule* themeParkModule = nullptr;
+SofaScoreLiveModule* sofascoreMod = nullptr;
 FritzboxModule* fritzboxModule = nullptr;  // Exposed for cleanup before restart
 
 // Forward-Deklaration, da in WebServerManager.cpp definiert
@@ -135,7 +136,8 @@ void Application::begin() {
     
     _calendarMod = new CalendarModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, webClient, deviceConfig);
     _dartsMod = new DartsRankingModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), webClient, deviceConfig);
-    _sofascoreMod = new SofaScoreLiveModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), webClient, deviceConfig);
+    _sofascoreMod = new SofaScoreLiveModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, webClient, deviceConfig);
+    sofascoreMod = _sofascoreMod;  // Expose globally for web configuration
     _fritzMod = new FritzboxModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), webClient);
     fritzboxModule = _fritzMod;  // Expose globally for cleanup before restart
     _curiousMod = new CuriousHolidaysModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, webClient, deviceConfig);
@@ -350,7 +352,7 @@ void Application::executeApplyLiveConfig() {
     _calendarMod->setConfig(deviceConfig->icsUrl, deviceConfig->calendarFetchIntervalMin, deviceConfig->calendarDisplaySec, deviceConfig->globalScrollSpeedMs, deviceConfig->calendarDateColor, deviceConfig->calendarTextColor);
     _calendarMod->setUrgentParams(deviceConfig->calendarFastBlinkHours, deviceConfig->calendarUrgentThresholdHours, deviceConfig->calendarUrgentDurationSec, deviceConfig->calendarUrgentRepeatMin);
     _dartsMod->setConfig(deviceConfig->dartsOomEnabled, deviceConfig->dartsProTourEnabled, 5, deviceConfig->dartsDisplaySec, deviceConfig->trackedDartsPlayers);
-    _sofascoreMod->setConfig(deviceConfig->dartsSofascoreEnabled, deviceConfig->dartsSofascoreFetchIntervalMin, deviceConfig->dartsSofascoreDisplaySec, deviceConfig->dartsSofascoreTournamentIds);
+    _sofascoreMod->setConfig(deviceConfig->dartsSofascoreEnabled, deviceConfig->dartsSofascoreFetchIntervalMin, deviceConfig->dartsSofascoreDisplaySec, deviceConfig->dartsSofascoreTournamentIds, deviceConfig->dartsSofascoreFullscreen, deviceConfig->dartsSofascoreInterruptOnLive, deviceConfig->dartsSofascorePlayNextMinutes);
     _fritzMod->setConfig(deviceConfig->fritzboxEnabled, deviceConfig->fritzboxIp);
     _curiousMod->setConfig();
     _weatherMod->setConfig(deviceConfig);

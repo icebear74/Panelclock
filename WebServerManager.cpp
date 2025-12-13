@@ -39,6 +39,7 @@ void setupWebServer(bool portalMode) {
     server->on("/save_location", HTTP_POST, handleSaveLocation);
     server->on("/api/tankerkoenig/search", HTTP_GET, handleTankerkoenigSearchLive);
     server->on("/api/themeparks/list", HTTP_GET, handleThemeParksList);
+    server->on("/api/sofascore/tournaments", HTTP_GET, handleSofascoreTournamentsList);
     server->on("/config_hardware", HTTP_GET, handleConfigHardware);
     server->on("/save_hardware", HTTP_POST, handleSaveHardware);
     

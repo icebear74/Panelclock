@@ -64,6 +64,14 @@ void loadDeviceConfig() {
                 deviceConfig->dartsDisplaySec = doc["dartsDisplaySec"] | 30;
                 deviceConfig->trackedDartsPlayers = doc["trackedDartsPlayers"] | "";
 
+                deviceConfig->dartsSofascoreEnabled = doc["dartsSofascoreEnabled"] | false;
+                deviceConfig->dartsSofascoreFetchIntervalMin = doc["dartsSofascoreFetchIntervalMin"] | 2;
+                deviceConfig->dartsSofascoreDisplaySec = doc["dartsSofascoreDisplaySec"] | 20;
+                deviceConfig->dartsSofascoreTournamentIds = doc["dartsSofascoreTournamentIds"] | "";
+                deviceConfig->dartsSofascoreFullscreen = doc["dartsSofascoreFullscreen"] | false;
+                deviceConfig->dartsSofascoreInterruptOnLive = doc["dartsSofascoreInterruptOnLive"] | true;
+                deviceConfig->dartsSofascorePlayNextMinutes = doc["dartsSofascorePlayNextMinutes"] | 0;
+
                 deviceConfig->fritzboxEnabled = doc["fritzboxEnabled"] | false;
                 deviceConfig->fritzboxIp = doc["fritzboxIp"] | "";
                 deviceConfig->fritzboxUser = doc["fritzboxUser"] | "";
@@ -205,6 +213,14 @@ void saveDeviceConfig() {
     doc["dartsProTourEnabled"] = deviceConfig->dartsProTourEnabled;
     doc["dartsDisplaySec"] = deviceConfig->dartsDisplaySec;
     doc["trackedDartsPlayers"] = deviceConfig->trackedDartsPlayers.c_str();
+
+    doc["dartsSofascoreEnabled"] = deviceConfig->dartsSofascoreEnabled;
+    doc["dartsSofascoreFetchIntervalMin"] = deviceConfig->dartsSofascoreFetchIntervalMin;
+    doc["dartsSofascoreDisplaySec"] = deviceConfig->dartsSofascoreDisplaySec;
+    doc["dartsSofascoreTournamentIds"] = deviceConfig->dartsSofascoreTournamentIds.c_str();
+    doc["dartsSofascoreFullscreen"] = deviceConfig->dartsSofascoreFullscreen;
+    doc["dartsSofascoreInterruptOnLive"] = deviceConfig->dartsSofascoreInterruptOnLive;
+    doc["dartsSofascorePlayNextMinutes"] = deviceConfig->dartsSofascorePlayNextMinutes;
 
     doc["fritzboxEnabled"] = deviceConfig->fritzboxEnabled;
     doc["fritzboxIp"] = deviceConfig->fritzboxIp.c_str();

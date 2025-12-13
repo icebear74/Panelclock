@@ -122,6 +122,7 @@ private:
     size_t buffer_size = 0;
     time_t last_processed_update = 0;
     bool data_pending = false;
+    bool _initialCleanupDone = false;  // Track if cleanup has run after first data fetch
 
     void parseAndProcessJson(const char* buffer, size_t size);
     void drawPriceLine(int y, const char* label, float current, float min, float max, PriceTrend minTrend, PriceTrend maxTrend);
