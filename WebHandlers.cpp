@@ -1211,21 +1211,26 @@ void handleSofascoreTournamentsList() {
     }
     
     webClient->getRequest(url, headers, [&](int httpCode, const char* payload, size_t len) {
+        Log.printf("[SofaScore] Callback received - HTTP %d, payload size: %d\n", httpCode, len);
         result.httpCode = httpCode;
         if (payload && len > 0) {
             result.payload.assign(payload, len);
+            Log.printf("[SofaScore] Payload first 100 chars: %.100s\n", payload);
         }
         xSemaphoreGive(sem);
     });
     
-    // Wait for response with 5 second timeout
-    if (xSemaphoreTake(sem, pdMS_TO_TICKS(5000)) != pdTRUE) {
-        Log.println("[SofaScore] Timeout fetching tournaments");
+    Log.println("[SofaScore] Waiting for response (20s timeout)...");
+    
+    // Wait for response with 20 second timeout (same as ThemePark to avoid race conditions)
+    if (xSemaphoreTake(sem, pdMS_TO_TICKS(20000)) != pdTRUE) {
+        Log.println("[SofaScore] TIMEOUT waiting for API response");
         vSemaphoreDelete(sem);
-        server->send(504, "application/json", "{\"ok\":false, \"message\":\"Timeout fetching tournaments\"}");
+        server->send(504, "application/json", "{\"ok\":false, \"message\":\"Timeout waiting for API response\"}");
         return;
     }
     
+    Log.printf("[SofaScore] Response received, HTTP code: %d\n", result.httpCode);
     vSemaphoreDelete(sem);
     
     if (result.httpCode != 200) {
@@ -1258,6 +1263,8 @@ void handleSofascoreTournamentsList() {
         server->send(500, "application/json", "{\"ok\":false, \"message\":\"Failed to parse API response\"}");
         return;
     }
+    
+    Log.println("[SofaScore] JSON parsed successfully");
     
     // Build response
     SpiRamAllocator allocator2;
