@@ -415,9 +415,18 @@ void handleSaveModules() {
 
                 PsramVector<PsramString> final_ids;
                 PsramString temp_ids = deviceConfig->tankerkoenigStationIds;
-                char* strtok_ctx;
-                char* id_token = strtok_r((char*)temp_ids.c_str(), ",", &strtok_ctx);
-                while(id_token != nullptr) { final_ids.push_back(id_token); id_token = strtok_r(nullptr, ",", &strtok_ctx); }
+                
+                // FIX: Create a mutable copy for strtok_r to safely modify
+                char* temp_buffer = strdup(temp_ids.c_str());
+                if (temp_buffer) {
+                    char* strtok_ctx;
+                    char* id_token = strtok_r(temp_buffer, ",", &strtok_ctx);
+                    while(id_token != nullptr) { 
+                        final_ids.push_back(id_token); 
+                        id_token = strtok_r(nullptr, ",", &strtok_ctx); 
+                    }
+                    free(temp_buffer);
+                }
 
                 JsonArray oldStations = (*oldCacheDoc)["stations"];
                 for (JsonObject oldStation : oldStations) {
