@@ -148,6 +148,7 @@ private:
     
     // Scrolling
     PixelScroller* _nameScroller = nullptr;
+    std::vector<PixelScroller*, PsramAllocator<PixelScroller*>> _matchScrollers;  // One scroller per match line
     PixelScroller* _tournamentScroller = nullptr;
     
     // Data buffers for async fetching
