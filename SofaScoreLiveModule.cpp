@@ -502,7 +502,7 @@ void SofaScoreLiveModule::queueData() {
     
     // Register only if URL changed (new day)
     if (dailyUrl != _lastRegisteredDailyUrl) {
-        uint32_t fetchInterval = _config->dartsSofascoreFetchIntervalMin > 0 ? _config->dartsSofascoreFetchIntervalMin : 60;
+        uint32_t fetchInterval = config->dartsSofascoreFetchIntervalMin > 0 ? config->dartsSofascoreFetchIntervalMin : 60;
         webClient->registerResource(dailyUrl.c_str(), fetchInterval, nullptr);  // Use configured interval
         _lastRegisteredDailyUrl = dailyUrl;
         Log.printf("[SofaScore] Registered daily events: interval=%d min\n", fetchInterval);
