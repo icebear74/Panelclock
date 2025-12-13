@@ -528,7 +528,7 @@ void SofaScoreLiveModule::queueData() {
 }
 
 void SofaScoreLiveModule::updateLiveMatchStats() {
-    // For each live match, fetch updated statistics every 30 seconds
+    // For each live match, fetch updated statistics every 1 minute
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
         for (const auto& match : liveMatches) {
             if (match.status == MatchStatus::LIVE) {
@@ -550,7 +550,17 @@ void SofaScoreLiveModule::updateLiveMatchStats() {
                     Log.printf("[SofaScore] Registered live match statistics: eventId=%d (1min interval)\n", match.eventId);
                 }
                 
-                // Note: We'll process this in processData()
+                // Access the statistics data and process it
+                char statsUrl[128];
+                snprintf(statsUrl, sizeof(statsUrl), "https://api.sofascore.com/api/v1/event/%d/statistics", match.eventId);
+                
+                webClient->accessResource(statsUrl,
+                    [this, eventId = match.eventId](const char* buffer, size_t size, time_t last_update, bool is_stale) {
+                        if (buffer && size > 0) {
+                            // Parse statistics directly (we're already holding the mutex)
+                            this->parseMatchStatistics(eventId, buffer, size);
+                        }
+                    });
             }
         }
         xSemaphoreGive(dataMutex);
@@ -755,37 +765,61 @@ void SofaScoreLiveModule::parseMatchStatistics(int eventId, const char* json, si
                         const char* key = item["key"];  // Use key field for better matching
                         if (!key && !name) continue;
                         
+                        // Helper to get numeric value from either string or numeric field
+                        auto getHomeValue = [&item]() -> float {
+                            if (item["homeValue"].is<float>()) return item["homeValue"].as<float>();
+                            if (item["homeValue"].is<int>()) return item["homeValue"].as<int>();
+                            if (item["home"].is<const char*>()) return atof(item["home"].as<const char*>());
+                            return 0.0f;
+                        };
+                        auto getAwayValue = [&item]() -> float {
+                            if (item["awayValue"].is<float>()) return item["awayValue"].as<float>();
+                            if (item["awayValue"].is<int>()) return item["awayValue"].as<int>();
+                            if (item["away"].is<const char*>()) return atof(item["away"].as<const char*>());
+                            return 0.0f;
+                        };
+                        
                         // Use key field (more reliable) or fallback to name
                         if ((key && strcmp(key, "Average3Darts") == 0) || (name && strcmp(name, "Average 3 darts") == 0)) {
-                            const char* homeStr = item["home"];
-                            const char* awayStr = item["away"];
-                            if (homeStr) match.homeAverage = atof(homeStr);
-                            if (awayStr) match.awayAverage = atof(awayStr);
+                            match.homeAverage = getHomeValue();
+                            match.awayAverage = getAwayValue();
                         } else if ((key && strcmp(key, "Thrown180") == 0) || (name && strcmp(name, "Thrown 180") == 0)) {
-                            const char* homeStr = item["home"];
-                            const char* awayStr = item["away"];
-                            if (homeStr) match.home180s = atoi(homeStr);
-                            if (awayStr) match.away180s = atoi(awayStr);
+                            match.home180s = (int)getHomeValue();
+                            match.away180s = (int)getAwayValue();
                         } else if ((key && strcmp(key, "ThrownOver140") == 0) || (name && strcmp(name, "Thrown over 140") == 0)) {
-                            const char* homeStr = item["home"];
-                            const char* awayStr = item["away"];
-                            if (homeStr) match.homeOver140 = atoi(homeStr);
-                            if (awayStr) match.awayOver140 = atoi(awayStr);
+                            match.homeOver140 = (int)getHomeValue();
+                            match.awayOver140 = (int)getAwayValue();
                         } else if ((key && strcmp(key, "ThrownOver100") == 0) || (name && strcmp(name, "Thrown over 100") == 0)) {
-                            const char* homeStr = item["home"];
-                            const char* awayStr = item["away"];
-                            if (homeStr) match.homeOver100 = atoi(homeStr);
-                            if (awayStr) match.awayOver100 = atoi(awayStr);
+                            match.homeOver100 = (int)getHomeValue();
+                            match.awayOver100 = (int)getAwayValue();
                         } else if ((key && strcmp(key, "CheckoutsOver100") == 0) || (name && strcmp(name, "Checkouts over 100") == 0)) {
-                            const char* homeStr = item["home"];
-                            const char* awayStr = item["away"];
-                            if (homeStr) match.homeCheckoutsOver100 = atoi(homeStr);
-                            if (awayStr) match.awayCheckoutsOver100 = atoi(awayStr);
+                            match.homeCheckoutsOver100 = (int)getHomeValue();
+                            match.awayCheckoutsOver100 = (int)getAwayValue();
                         } else if ((key && strcmp(key, "CheckoutsAccuracy") == 0) || (name && strcmp(name, "Checkout %") == 0) || (name && strcmp(name, "Checkouts accuracy") == 0)) {
-                            const char* homeStr = item["home"];
-                            const char* awayStr = item["away"];
-                            if (homeStr) match.homeCheckoutPercent = atof(homeStr);
-                            if (awayStr) match.awayCheckoutPercent = atof(awayStr);
+                            // For checkout accuracy, extract percentage from "2/3 (37%)" format if string
+                            if (item["home"].is<const char*>()) {
+                                const char* homeStr = item["home"].as<const char*>();
+                                // Look for percentage in parentheses
+                                const char* pct = strchr(homeStr, '(');
+                                if (pct) {
+                                    match.homeCheckoutPercent = atof(pct + 1);
+                                } else {
+                                    match.homeCheckoutPercent = getHomeValue();
+                                }
+                            } else {
+                                match.homeCheckoutPercent = getHomeValue();
+                            }
+                            if (item["away"].is<const char*>()) {
+                                const char* awayStr = item["away"].as<const char*>();
+                                const char* pct = strchr(awayStr, '(');
+                                if (pct) {
+                                    match.awayCheckoutPercent = atof(pct + 1);
+                                } else {
+                                    match.awayCheckoutPercent = getAwayValue();
+                                }
+                            } else {
+                                match.awayCheckoutPercent = getAwayValue();
+                            }
                         }
                     }
                 }
@@ -1224,11 +1258,11 @@ void SofaScoreLiveModule::drawLiveMatch() {
 }
 
 void SofaScoreLiveModule::periodicTick() {
-    // Check for live matches periodically (every 30 seconds) to trigger interrupts
+    // Check for live matches periodically (every 60 seconds) to trigger interrupts
     if (!_enabled) return;
     
     unsigned long now = millis();
-    if (now - _lastInterruptCheckTime >= 30000) {
+    if (now - _lastInterruptCheckTime >= 60000) {  // Changed to 60 seconds (1 minute)
         _lastInterruptCheckTime = now;
         if (_interruptOnLive) {
             checkForLiveMatchInterrupt();
@@ -1250,6 +1284,9 @@ void SofaScoreLiveModule::checkForLiveMatchInterrupt() {
                 currentLiveEventIds.push_back(match.eventId);
             }
         }
+        
+        // Check if there are any live matches
+        bool hasLiveMatches = !currentLiveEventIds.empty();
         
         // Check if there are new live matches (not in previous list)
         bool hasNewLiveMatch = false;
@@ -1273,9 +1310,11 @@ void SofaScoreLiveModule::checkForLiveMatchInterrupt() {
         
         xSemaphoreGive(dataMutex);
         
-        // Request interrupt if new live match found
-        if (hasNewLiveMatch && !_hasActiveInterrupt) {
-            Log.println("[SofaScore] Requesting interrupt for new live match");
+        // Request interrupt if:
+        // 1. New live match found, OR
+        // 2. Live matches exist and no interrupt is currently active (periodic refresh every minute)
+        if (hasLiveMatches && (!_hasActiveInterrupt || hasNewLiveMatch)) {
+            Log.println("[SofaScore] Requesting interrupt for live match statistics");
             // Use event ID in UID to make it unique per match
             _interruptUID = SOFASCORE_INTERRUPT_UID_BASE + (currentLiveEventIds.empty() ? 0 : currentLiveEventIds[0] % 1000);
             _hasActiveInterrupt = true;
@@ -1283,7 +1322,7 @@ void SofaScoreLiveModule::checkForLiveMatchInterrupt() {
             // Request low priority interrupt (will show next after current module)
             unsigned long totalDuration = _displayDuration * (liveMatches.size() > 0 ? liveMatches.size() : 1);
             if (requestPriorityEx(Priority::Low, _interruptUID, totalDuration)) {
-                Log.printf("[SofaScore] Interrupt requested with UID %u for %lu ms\n", _interruptUID, totalDuration);
+                Log.printf("[SofaScore] Interrupt requested with UID %u for %lu ms (periodic update every minute)\n", _interruptUID, totalDuration);
             } else {
                 Log.println("[SofaScore] Interrupt request failed");
                 _hasActiveInterrupt = false;
