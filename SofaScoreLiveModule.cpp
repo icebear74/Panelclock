@@ -521,7 +521,8 @@ void SofaScoreLiveModule::parseDailyEventsJson(const char* json, size_t len) {
     
     JsonArray events = doc["events"].as<JsonArray>();
     for (JsonObject event : events) {
-        int tournamentId = event["tournament"]["uniqueTournament"]["id"] | 0;
+        // Use tournament.id (seasonal ID) to match with active-tournaments tournamentId
+        int tournamentId = event["tournament"]["id"] | 0;
         
         // Check if this tournament is enabled
         bool isEnabled = enabledTournamentIds.empty();  // If no filter, show all
