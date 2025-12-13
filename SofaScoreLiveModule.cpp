@@ -814,8 +814,9 @@ void SofaScoreLiveModule::drawDailyResults() {
         u8g2.print(currentGroup.tournamentName.c_str());
     }
     
-    // Calculate matches for this page
-    const int MATCHES_PER_PAGE = 3;
+    // Calculate matches for this page - fullscreen has more vertical space
+    // Fullscreen: 192x96 (5 matches), Normal: 192x64 (3 matches)
+    const int MATCHES_PER_PAGE = wantsFullscreen() ? 5 : 3;
     int startIdx = _currentTournamentPage * MATCHES_PER_PAGE;
     int endIdx = startIdx + MATCHES_PER_PAGE;
     if (endIdx > currentGroup.matchIndices.size()) endIdx = currentGroup.matchIndices.size();
@@ -1200,7 +1201,10 @@ void SofaScoreLiveModule::groupMatchesByTournament() {
     // NOTE: This function expects dataMutex to already be held by the caller
     _tournamentGroups.clear();
     
-    const int MATCHES_PER_PAGE = 3;
+    // Fullscreen (192x96) vs Normal (192x64) - same width, different height
+    // Fullscreen has more vertical space: 96px vs 64px = ~50% more
+    // Each match takes ~10-11px, so we can fit more in fullscreen
+    const int MATCHES_PER_PAGE = wantsFullscreen() ? 5 : 3;
     
     // Group matches by tournament
     for (size_t i = 0; i < dailyMatches.size(); i++) {
