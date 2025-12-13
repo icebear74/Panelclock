@@ -3,6 +3,7 @@
 #include "WebPages.hpp"
 #include "BackupManager.hpp"
 #include "ThemeParkModule.hpp"
+#include "SofaScoreLiveModule.hpp"
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 #include <WiFi.h>
