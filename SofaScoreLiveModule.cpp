@@ -922,15 +922,31 @@ void SofaScoreLiveModule::drawDailyResults() {
     u8g2.setFont(u8g2_font_5x8_tf);
     
     // Ensure we have enough scrollers (2 per match: home + away)
-    while (_matchScrollers.size() < MATCHES_PER_PAGE * 2) {
-        PixelScroller* scroller = new (ps_malloc(sizeof(PixelScroller))) PixelScroller(u8g2, 50);
+    size_t requiredScrollers = MATCHES_PER_PAGE * 2;
+    while (_matchScrollers.size() < requiredScrollers) {
+        void* mem = ps_malloc(sizeof(PixelScroller));
+        if (!mem) {
+            Log.printf("[SofaScore] PSRAM allocation failed for scroller! size=%d, required=%d\n", 
+                       _matchScrollers.size(), requiredScrollers);
+            break;  // Stop trying if PSRAM is full
+        }
+        PixelScroller* scroller = new (mem) PixelScroller(u8g2, 50);
         PixelScrollerConfig scrollConfig;
         scrollConfig.mode = ScrollMode::CONTINUOUS;
         scrollConfig.pauseBetweenCyclesMs = 0;
         scrollConfig.scrollReverse = false;
         scrollConfig.paddingPixels = 10;
         scroller->setConfig(scrollConfig);
+        
+        size_t oldSize = _matchScrollers.size();
         _matchScrollers.push_back(scroller);
+        if (_matchScrollers.size() == oldSize) {
+            // push_back failed (vector is full)
+            Log.println("[SofaScore] Failed to add scroller to vector!");
+            scroller->~PixelScroller();
+            free(mem);
+            break;
+        }
     }
     
     for (int i = startIdx; i < endIdx; i++) {
