@@ -826,14 +826,9 @@ void SofaScoreLiveModule::drawDailyResults() {
     u8g2.setForegroundColor(0xAAAA);
     if (!currentGroup.tournamentName.empty()) {
         int tournWidth = u8g2.getUTF8Width(currentGroup.tournamentName.c_str());
-        if (tournWidth > _currentCanvas->width() - 4) {
-            _tournamentScroller->setText(currentGroup.tournamentName.c_str());
-            _tournamentScroller->draw(2, 20, _currentCanvas->width() - 4);
-        } else {
-            int tournX = (_currentCanvas->width() - tournWidth) / 2;
-            u8g2.setCursor(tournX, 20);
-            u8g2.print(currentGroup.tournamentName.c_str());
-        }
+        int tournX = (_currentCanvas->width() - tournWidth) / 2;
+        u8g2.setCursor(tournX, 20);
+        u8g2.print(currentGroup.tournamentName.c_str());
     }
     
     // Calculate matches for this page
@@ -900,11 +895,8 @@ void SofaScoreLiveModule::drawDailyResults() {
         int awayWidth = u8g2.getUTF8Width(awayName);
         
         // Home player (left half of middle)
-        if (homeWidth > HALF_WIDTH - 2) {
-            if (scrollerIdx < _matchScrollers.size()) {
-                _matchScrollers[scrollerIdx]->setText(homeName);
-                _matchScrollers[scrollerIdx]->draw(MIDDLE_START, y, HALF_WIDTH - 2);
-            }
+        if (homeWidth > HALF_WIDTH - 2 && scrollerIdx < _matchScrollers.size()) {
+            _matchScrollers[scrollerIdx]->drawScrollingText(*_currentCanvas, homeName, MIDDLE_START, y, HALF_WIDTH - 2, scrollerIdx, 0xFFFF);
         } else {
             u8g2.setCursor(MIDDLE_START, y);
             u8g2.print(homeName);
@@ -912,11 +904,8 @@ void SofaScoreLiveModule::drawDailyResults() {
         
         // Away player (right half of middle)
         int awayStart = MIDDLE_START + HALF_WIDTH;
-        if (awayWidth > HALF_WIDTH - 2) {
-            if (scrollerIdx + 1 < _matchScrollers.size()) {
-                _matchScrollers[scrollerIdx + 1]->setText(awayName);
-                _matchScrollers[scrollerIdx + 1]->draw(awayStart, y, HALF_WIDTH - 2);
-            }
+        if (awayWidth > HALF_WIDTH - 2 && scrollerIdx + 1 < _matchScrollers.size()) {
+            _matchScrollers[scrollerIdx + 1]->drawScrollingText(*_currentCanvas, awayName, awayStart, y, HALF_WIDTH - 2, scrollerIdx + 1, 0xFFFF);
         } else {
             u8g2.setCursor(awayStart, y);
             u8g2.print(awayName);
@@ -945,20 +934,6 @@ void SofaScoreLiveModule::drawDailyResults() {
         u8g2.print(scoreStr);
         
         y += LINE_HEIGHT;
-    }
-}
-            if (awaySpace && (awaySpace - match.awayPlayerName) > 0) {
-                snprintf(awayName, sizeof(awayName), "%c.%s", match.awayPlayerName[0], awaySpace + 1);
-            } else {
-                strncpy(awayName, match.awayPlayerName, sizeof(awayName) - 1);
-            }
-            
-            snprintf(matchLine, sizeof(matchLine), "%s - %s", homeName, awayName);
-            u8g2.setCursor(2, y);
-            u8g2.print(matchLine);
-        }
-        
-        y += 11;  // Space between matches
     }
 }
 
