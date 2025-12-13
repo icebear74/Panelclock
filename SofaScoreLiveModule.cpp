@@ -164,8 +164,10 @@ SofaScoreMatch::~SofaScoreMatch() {
 // --- SofaScoreLiveModule Implementation ---
 
 SofaScoreLiveModule::SofaScoreLiveModule(U8G2_FOR_ADAFRUIT_GFX& u8g2_ref, GFXcanvas16& canvas_ref,
+                                         const GeneralTimeConverter& timeConverter_ref,
                                          WebClientModule* webClient_ptr, DeviceConfig* config)
-    : u8g2(u8g2_ref), canvas(canvas_ref), webClient(webClient_ptr), config(config) {
+    : u8g2(u8g2_ref), canvas(canvas_ref), timeConverter(timeConverter_ref), 
+      webClient(webClient_ptr), config(config) {
     dataMutex = xSemaphoreCreateMutex();
     
     // Create pixel scrollers
@@ -716,8 +718,9 @@ void SofaScoreLiveModule::drawDailyResults() {
         u8g2.setFont(u8g2_font_5x8_tf);
         int y = 32;
         if (match.startTimestamp > 0) {
-            time_t timestamp = match.startTimestamp;
-            struct tm* timeinfo = localtime(&timestamp);
+            time_t timestamp_utc = match.startTimestamp;
+            time_t timestamp_local = timeConverter.toLocal(timestamp_utc);
+            struct tm* timeinfo = localtime(&timestamp_local);
             char timeStr[16];
             strftime(timeStr, sizeof(timeStr), "%H:%M", timeinfo);
             

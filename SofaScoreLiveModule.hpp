@@ -9,6 +9,7 @@
 #include "freertos/semphr.h"
 #include "DrawableModule.hpp"
 #include "PixelScroller.hpp"
+#include "GeneralTimeConverter.hpp"
 
 class WebClientModule;
 struct DeviceConfig;
@@ -75,6 +76,7 @@ enum class SofaScoreDisplayMode {
 class SofaScoreLiveModule : public DrawableModule {
 public:
     SofaScoreLiveModule(U8G2_FOR_ADAFRUIT_GFX& u8g2_ref, GFXcanvas16& canvas_ref, 
+                        const GeneralTimeConverter& timeConverter_ref,
                         WebClientModule* webClient_ptr, DeviceConfig* config);
     ~SofaScoreLiveModule();
 
@@ -104,6 +106,7 @@ public:
 private:
     U8G2_FOR_ADAFRUIT_GFX& u8g2;
     GFXcanvas16& canvas;
+    const GeneralTimeConverter& timeConverter;
     WebClientModule* webClient;
     DeviceConfig* config;
     std::function<void()> updateCallback;
