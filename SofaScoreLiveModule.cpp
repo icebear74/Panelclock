@@ -802,10 +802,12 @@ void SofaScoreLiveModule::parseMatchStatistics(int eventId, const char* json, si
                             if (item["home"].is<const char*>()) {
                                 const char* homeStr = item["home"].as<const char*>();
                                 // Look for percentage in parentheses like "2/3 (37%)"
-                                const char* pct = strchr(homeStr, '(');
-                                if (pct && strchr(pct, ')')) {
+                                const char* openParen = strchr(homeStr, '(');
+                                const char* closeParen = openParen ? strchr(openParen, ')') : nullptr;
+                                if (openParen && closeParen && closeParen > openParen + 1) {
                                     // Skip '(' and parse the number
-                                    match.homeCheckoutPercent = atof(pct + 1);
+                                    float parsed = atof(openParen + 1);
+                                    match.homeCheckoutPercent = parsed > 0.0f ? parsed : getHomeValue();
                                 } else {
                                     match.homeCheckoutPercent = getHomeValue();
                                 }
@@ -814,10 +816,12 @@ void SofaScoreLiveModule::parseMatchStatistics(int eventId, const char* json, si
                             }
                             if (item["away"].is<const char*>()) {
                                 const char* awayStr = item["away"].as<const char*>();
-                                const char* pct = strchr(awayStr, '(');
-                                if (pct && strchr(pct, ')')) {
+                                const char* openParen = strchr(awayStr, '(');
+                                const char* closeParen = openParen ? strchr(openParen, ')') : nullptr;
+                                if (openParen && closeParen && closeParen > openParen + 1) {
                                     // Skip '(' and parse the number
-                                    match.awayCheckoutPercent = atof(pct + 1);
+                                    float parsed = atof(openParen + 1);
+                                    match.awayCheckoutPercent = parsed > 0.0f ? parsed : getAwayValue();
                                 } else {
                                     match.awayCheckoutPercent = getAwayValue();
                                 }
