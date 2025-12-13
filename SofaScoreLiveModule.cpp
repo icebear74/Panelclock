@@ -593,8 +593,21 @@ void SofaScoreLiveModule::parseDailyEventsJson(const char* json, size_t len) {
     dailyMatches.clear();
     liveMatches.clear();
     
+    // Get today's time for comparison using GeneralTimeConverter
+    time_t now = time(nullptr);
+    time_t nowLocal = timeConverter.toLocal(now);
+    
     JsonArray events = doc["events"].as<JsonArray>();
     for (JsonObject event : events) {
+        // Check match timestamp - filter to TODAY only using GeneralTimeConverter
+        time_t matchTimestamp = event["startTimestamp"] | 0;
+        time_t matchLocal = timeConverter.toLocal(matchTimestamp);
+        
+        // Use isSameDay to check if match is today
+        if (!timeConverter.isSameDay(nowLocal, matchLocal)) {
+            continue;  // Skip matches not happening today
+        }
+        
         // Use tournament.id (seasonal ID) to match with active-tournaments tournamentId
         int tournamentId = event["tournament"]["id"] | 0;
         
@@ -670,7 +683,10 @@ void SofaScoreLiveModule::parseDailyEventsJson(const char* json, size_t len) {
         dailyMatches.push_back(std::move(match));
     }
     
-    Log.printf("[SofaScore] Parsed %d daily matches (%d live)\n", dailyMatches.size(), liveMatches.size());
+    Log.printf("[SofaScore] Parsed %d daily matches (%d live) - filtered to TODAY only\n", dailyMatches.size(), liveMatches.size());
+    
+    // Re-group matches by tournament after parsing (to update page counts and skip empty tournaments)
+    groupMatchesByTournament();
 }
 
 void SofaScoreLiveModule::parseMatchStatistics(int eventId, const char* json, size_t len) {
@@ -1242,8 +1258,10 @@ void SofaScoreLiveModule::groupMatchesByTournament() {
     
     // Fullscreen (192x96) vs Normal (192x64) - same width, different height
     // Fullscreen has more vertical space: 96px vs 64px = ~50% more
-    // Each match takes ~10-11px, so we can fit more in fullscreen
-    const int MATCHES_PER_PAGE = wantsFullscreen() ? 5 : 3;
+    // Each match takes ~10-11px height
+    // Fullscreen: 7 matches per page (96px / ~13px per match line)
+    // Normal: 5 matches per page (64px / ~12px per match line)
+    const int MATCHES_PER_PAGE = wantsFullscreen() ? 7 : 5;
     
     // Group matches by tournament
     for (size_t i = 0; i < dailyMatches.size(); i++) {
@@ -1273,14 +1291,21 @@ void SofaScoreLiveModule::groupMatchesByTournament() {
         group->matchIndices.push_back(i);
     }
     
-    // Calculate pages needed for each tournament
-    for (auto& group : _tournamentGroups) {
-        int matchCount = group.matchIndices.size();
-        group.pagesNeeded = (matchCount + MATCHES_PER_PAGE - 1) / MATCHES_PER_PAGE;  // Ceiling division
-        if (group.pagesNeeded < 1) group.pagesNeeded = 1;
+    // Calculate pages needed for each tournament and remove empty tournaments
+    auto it = _tournamentGroups.begin();
+    while (it != _tournamentGroups.end()) {
+        int matchCount = it->matchIndices.size();
+        if (matchCount == 0) {
+            // Skip tournaments with no matches today
+            it = _tournamentGroups.erase(it);
+        } else {
+            it->pagesNeeded = (matchCount + MATCHES_PER_PAGE - 1) / MATCHES_PER_PAGE;  // Ceiling division
+            if (it->pagesNeeded < 1) it->pagesNeeded = 1;
+            ++it;
+        }
     }
     
-    Log.printf("[SofaScore] Grouped into %d tournaments\n", _tournamentGroups.size());
+    Log.printf("[SofaScore] Grouped into %d tournaments (skipped empty)\n", _tournamentGroups.size());
     for (const auto& group : _tournamentGroups) {
         Log.printf("  - %s: %d matches, %d pages\n", 
                    group.tournamentName.c_str(), group.matchIndices.size(), group.pagesNeeded);
