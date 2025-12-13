@@ -862,8 +862,11 @@ void SofaScoreLiveModule::drawDailyResults() {
     const int MIDDLE_WIDTH = _currentCanvas->width() - TIME_WIDTH - SCORE_WIDTH - 6;
     const int HALF_WIDTH = MIDDLE_WIDTH / 2;
     
-    int y = 30;  // Start below tournament name
-    const int LINE_HEIGHT = wantsFullscreen() ? 9 : 10;
+    // Adjust line height and starting position based on screen size
+    // Normal (64px): header ~18px, need to fit 5 matches of 8px each = 40px + spacing
+    // Fullscreen (96px): header ~22px, need to fit 7 matches of 8px each = 56px + spacing
+    int y = wantsFullscreen() ? 28 : 22;  // Start below tournament name
+    const int LINE_HEIGHT = wantsFullscreen() ? 10 : 8;
     u8g2.setFont(u8g2_font_5x8_tf);
     
     // Ensure we have enough scrollers (2 per match: home + away)
