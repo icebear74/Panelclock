@@ -139,26 +139,45 @@ void TankerkoenigModule::setConfig(const PsramString& apiKey, const PsramString&
     if (xSemaphoreTake(dataMutex, portMAX_DELAY) == pdTRUE) {
         PsramVector<PsramString> current_id_list;
         PsramString temp_ids = station_ids;
-        char* strtok_ctx;
-        char* id_token = strtok_r((char*)temp_ids.c_str(), ",", &strtok_ctx);
-        while(id_token != nullptr) { current_id_list.push_back(id_token); id_token = strtok_r(nullptr, ",", &strtok_ctx); }
-
-        auto remove_by_id = [&](const auto& entry){
-            for(const auto& id : current_id_list) { if (entry.stationId == id) return false; }
-            return true;
-        };
-
-        size_t original_stats_size = price_statistics.size();
-        price_statistics.erase(std::remove_if(price_statistics.begin(), price_statistics.end(), remove_by_id), price_statistics.end());
-        if(price_statistics.size() < original_stats_size) {
-            #if TANKERKOENIG_SAVE_HISTORY
-            savePriceStatistics();
-            #endif
+        
+        // FIX: Create a mutable copy for strtok_r to safely modify
+        char* temp_buffer = strdup(temp_ids.c_str());
+        if (temp_buffer) {
+            char* strtok_ctx;
+            char* id_token = strtok_r(temp_buffer, ",", &strtok_ctx);
+            while(id_token != nullptr) { 
+                current_id_list.push_back(id_token); 
+                id_token = strtok_r(nullptr, ",", &strtok_ctx); 
+            }
+            free(temp_buffer);
         }
 
-        size_t original_cache_size = _lastPriceCache.size();
-        _lastPriceCache.erase(std::remove_if(_lastPriceCache.begin(), _lastPriceCache.end(), remove_by_id), _lastPriceCache.end());
-        if(_lastPriceCache.size() < original_cache_size) savePriceCache();
+        // SAFETY: Only remove data if we successfully parsed station IDs
+        // This prevents accidental deletion of all data if parsing fails
+        if (!temp_ids.empty() && current_id_list.empty()) {
+            Log.println("[TankerkoenigModule] WARNING: Failed to parse station IDs, skipping cleanup to prevent data loss!");
+        } else {
+            auto remove_by_id = [&](const auto& entry){
+                for(const auto& id : current_id_list) { if (entry.stationId == id) return false; }
+                return true;
+            };
+
+            size_t original_stats_size = price_statistics.size();
+            price_statistics.erase(std::remove_if(price_statistics.begin(), price_statistics.end(), remove_by_id), price_statistics.end());
+            if(price_statistics.size() < original_stats_size) {
+                Log.printf("[TankerkoenigModule] Removed %d station histories no longer in config\n", original_stats_size - price_statistics.size());
+                #if TANKERKOENIG_SAVE_HISTORY
+                savePriceStatistics();
+                #endif
+            }
+
+            size_t original_cache_size = _lastPriceCache.size();
+            _lastPriceCache.erase(std::remove_if(_lastPriceCache.begin(), _lastPriceCache.end(), remove_by_id), _lastPriceCache.end());
+            if(_lastPriceCache.size() < original_cache_size) {
+                Log.printf("[TankerkoenigModule] Removed %d price cache entries no longer in config\n", original_cache_size - _lastPriceCache.size());
+                savePriceCache();
+            }
+        }
         
         // Reload station cache to pick up any new stations from web search
         loadStationCache();
@@ -186,7 +205,10 @@ void TankerkoenigModule::begin() {
     
     loadStationCache();
     loadPriceCache();
-    cleanupOldPriceCacheEntries();
+    
+    // SAFETY: Do NOT run cleanup at boot - wait for first data fetch to ensure time is synced
+    // cleanupOldPriceCacheEntries() will be called during first data update
+    Log.println("[TankerkoenigModule] Cleanup verzögert bis nach erster Datenaktualisierung (Zeit-Sync-Schutz)");
 }
 
 void TankerkoenigModule::onUpdate(std::function<void()> callback) {
@@ -234,9 +256,18 @@ void TankerkoenigModule::parseAndProcessJson(const char* buffer, size_t size) {
         JsonObject prices = doc["prices"];
         PsramVector<PsramString> id_list;
         PsramString temp_ids = station_ids;
-        char* strtok_ctx;
-        char* id_token = strtok_r((char*)temp_ids.c_str(), ",", &strtok_ctx);
-        while(id_token != nullptr) { id_list.push_back(id_token); id_token = strtok_r(nullptr, ",", &strtok_ctx); }
+        
+        // FIX: Create a mutable copy for strtok_r to safely modify
+        char* temp_buffer = strdup(temp_ids.c_str());
+        if (temp_buffer) {
+            char* strtok_ctx;
+            char* id_token = strtok_r(temp_buffer, ",", &strtok_ctx);
+            while(id_token != nullptr) { 
+                id_list.push_back(id_token); 
+                id_token = strtok_r(nullptr, ",", &strtok_ctx); 
+            }
+            free(temp_buffer);
+        }
 
         _trendStatusCache.clear();
         for (const auto& id : id_list) {
@@ -291,6 +322,13 @@ void TankerkoenigModule::parseAndProcessJson(const char* buffer, size_t size) {
             }
         }
         station_data_list = new_station_data_list;
+        
+        // Run initial cleanup after first successful data fetch (ensures time is synced)
+        if (!_initialCleanupDone) {
+            _initialCleanupDone = true;
+            Log.println("[TankerkoenigModule] Führe initiales Cleanup durch (nach erster Datenaktualisierung)");
+            cleanupOldPriceCacheEntries();
+        }
     } else { Log.printf("[TankerkoenigModule] JSON-Parsing-Fehler: %s\n", error.c_str()); }
 }
 
@@ -637,6 +675,33 @@ void TankerkoenigModule::cleanupOldPriceCacheEntries() {
     
     time_t now_utc; 
     time(&now_utc);
+    
+    // SAFETY CHECK 1: Validate system time is reasonable (after year 2020)
+    // Unix timestamp for 2020-01-01 00:00:00 UTC = 1577836800
+    const time_t MIN_VALID_TIME = 1577836800;
+    if (now_utc < MIN_VALID_TIME) {
+        Log.printf("[TankerkoenigModule] SAFETY: Cleanup aborted - system time appears invalid (before 2020): %ld\n", now_utc);
+        return;
+    }
+    
+    // SAFETY CHECK 2: If we have historical data, ensure current time is not older than the newest data
+    // This protects against clock drift backwards or incorrect NTP sync
+    time_t newest_data_timestamp = 0;
+    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        for (const auto& entry : _lastPriceCache) {
+            if (entry.timestamp > newest_data_timestamp) {
+                newest_data_timestamp = entry.timestamp;
+            }
+        }
+        xSemaphoreGive(dataMutex);
+    }
+    
+    if (newest_data_timestamp > 0 && now_utc < newest_data_timestamp) {
+        Log.printf("[TankerkoenigModule] SAFETY: Cleanup aborted - system time (%ld) is older than newest data (%ld)\n", 
+                   now_utc, newest_data_timestamp);
+        return;
+    }
+    
     time_t cutoff_time = now_utc - (_deviceConfig->movingAverageDays * 86400L);
     
     // Protect both station_ids read and _lastPriceCache access with mutex
@@ -645,12 +710,24 @@ void TankerkoenigModule::cleanupOldPriceCacheEntries() {
         PsramVector<PsramString> current_id_list;
         PsramString temp_ids = station_ids;  // Copy member variable
         if (!temp_ids.empty()) {
-            char* strtok_ctx;
-            char* id_token = strtok_r((char*)temp_ids.c_str(), ",", &strtok_ctx);
-            while(id_token != nullptr) { 
-                current_id_list.push_back(id_token); 
-                id_token = strtok_r(nullptr, ",", &strtok_ctx); 
+            // FIX: Create a mutable copy for strtok_r to safely modify
+            char* temp_buffer = strdup(temp_ids.c_str());
+            if (temp_buffer) {
+                char* strtok_ctx;
+                char* id_token = strtok_r(temp_buffer, ",", &strtok_ctx);
+                while(id_token != nullptr) { 
+                    current_id_list.push_back(id_token); 
+                    id_token = strtok_r(nullptr, ",", &strtok_ctx); 
+                }
+                free(temp_buffer);
             }
+        }
+        
+        // SAFETY: Only cleanup if we successfully parsed station IDs
+        if (!temp_ids.empty() && current_id_list.empty()) {
+            Log.println("[TankerkoenigModule] WARNING: Failed to parse station IDs in cleanup, skipping to prevent data loss!");
+            xSemaphoreGive(dataMutex);
+            return;
         }
         
         size_t original_size = _lastPriceCache.size();
@@ -683,6 +760,7 @@ void TankerkoenigModule::cleanupOldPriceCacheEntries() {
         
         // Save outside mutex to avoid holding it during file I/O
         if (changed) { 
+            Log.printf("[TankerkoenigModule] Cleaned up %d old price cache entries\n", original_size - _lastPriceCache.size());
             savePriceCache(); 
         }
     }
@@ -827,7 +905,43 @@ void TankerkoenigModule::updatePriceStatistics(const PsramString& stationId, flo
 
 void TankerkoenigModule::trimPriceStatistics(StationPriceHistory& history) {
     if (!_deviceConfig) return;
-    time_t now_utc; time(&now_utc);
+    
+    time_t now_utc; 
+    time(&now_utc);
+    
+    // SAFETY CHECK: Validate system time is reasonable (after year 2020)
+    const time_t MIN_VALID_TIME = 1577836800; // 2020-01-01 00:00:00 UTC
+    if (now_utc < MIN_VALID_TIME) {
+        Log.printf("[TankerkoenigModule] SAFETY: Trim aborted - system time appears invalid (before 2020): %ld\n", now_utc);
+        return;
+    }
+    
+    // SAFETY CHECK: If we have historical data, check that current time is not suspiciously old
+    // compared to the data we have
+    if (!history.dailyStats.empty()) {
+        // Get the most recent date in history
+        PsramString newest_date;
+        for (const auto& stats : history.dailyStats) {
+            if (stats.date > newest_date) {
+                newest_date = stats.date;
+            }
+        }
+        
+        // Convert current time to local date string
+        time_t now_local = timeConverter.toLocal(now_utc);
+        struct tm now_tm;
+        gmtime_r(&now_local, &now_tm);
+        char now_date_str[11];
+        strftime(now_date_str, sizeof(now_date_str), "%Y-%m-%d", &now_tm);
+        
+        // If current date is older than newest data date, abort
+        if (PsramString(now_date_str) < newest_date) {
+            Log.printf("[TankerkoenigModule] SAFETY: Trim aborted - current date (%s) is older than newest data (%s)\n",
+                       now_date_str, newest_date.c_str());
+            return;
+        }
+    }
+    
     // Calculate cutoff date: movingAverageDays ago from today
     time_t cutoff_epoch = now_utc - (_deviceConfig->movingAverageDays * 86400L);
     
@@ -835,9 +949,12 @@ void TankerkoenigModule::trimPriceStatistics(StationPriceHistory& history) {
     struct tm cutoff_tm; 
     gmtime_r(&cutoff_local, &cutoff_tm);
 
-    char cutoff_date_str_buf[11]; strftime(cutoff_date_str_buf, sizeof(cutoff_date_str_buf), "%Y-%m-%d", &cutoff_tm);
+    char cutoff_date_str_buf[11]; 
+    strftime(cutoff_date_str_buf, sizeof(cutoff_date_str_buf), "%Y-%m-%d", &cutoff_tm);
     PsramString cutoff_date_str(cutoff_date_str_buf);
 
+    size_t original_count = history.dailyStats.size();
+    
     // Remove entries older than or equal to cutoff date
     // Example: If movingAverageDays=31 and today is Dec 10:
     //   cutoff_date = Nov 9 (31 days before Dec 10)
@@ -847,6 +964,11 @@ void TankerkoenigModule::trimPriceStatistics(StationPriceHistory& history) {
         std::remove_if(history.dailyStats.begin(), history.dailyStats.end(), 
             [&](const DailyPriceStats& stats) { return stats.date <= cutoff_date_str; }), 
         history.dailyStats.end());
+    
+    if (history.dailyStats.size() < original_count) {
+        Log.printf("[TankerkoenigModule] Trimmed %d old statistics entries (cutoff: %s)\n", 
+                   original_count - history.dailyStats.size(), cutoff_date_str.c_str());
+    }
 }
 
 void TankerkoenigModule::trimAllPriceStatistics() {
