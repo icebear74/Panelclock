@@ -70,7 +70,7 @@ SofaScoreMatch::SofaScoreMatch() = default;
 
 SofaScoreMatch::SofaScoreMatch(const SofaScoreMatch& other)
     : eventId(0), homePlayerName(nullptr), awayPlayerName(nullptr),
-      homeScore(0), awayScore(0), tournamentName(nullptr),
+      homeScore(0), awayScore(0), homeLegs(0), awayLegs(0), tournamentName(nullptr),
       status(MatchStatus::SCHEDULED), startTimestamp(0),
       homeAverage(0.0f), awayAverage(0.0f), home180s(0), away180s(0),
       homeCheckoutPercent(0.0f), awayCheckoutPercent(0.0f) {
@@ -79,6 +79,8 @@ SofaScoreMatch::SofaScoreMatch(const SofaScoreMatch& other)
     awayPlayerName = other.awayPlayerName ? psram_strdup(other.awayPlayerName) : nullptr;
     homeScore = other.homeScore;
     awayScore = other.awayScore;
+    homeLegs = other.homeLegs;
+    awayLegs = other.awayLegs;
     tournamentName = other.tournamentName ? psram_strdup(other.tournamentName) : nullptr;
     status = other.status;
     startTimestamp = other.startTimestamp;
@@ -98,6 +100,8 @@ SofaScoreMatch& SofaScoreMatch::operator=(const SofaScoreMatch& other) {
         awayPlayerName = other.awayPlayerName ? psram_strdup(other.awayPlayerName) : nullptr;
         homeScore = other.homeScore;
         awayScore = other.awayScore;
+        homeLegs = other.homeLegs;
+        awayLegs = other.awayLegs;
         tournamentName = other.tournamentName ? psram_strdup(other.tournamentName) : nullptr;
         status = other.status;
         startTimestamp = other.startTimestamp;
@@ -117,6 +121,8 @@ SofaScoreMatch::SofaScoreMatch(SofaScoreMatch&& other) noexcept {
     awayPlayerName = other.awayPlayerName;
     homeScore = other.homeScore;
     awayScore = other.awayScore;
+    homeLegs = other.homeLegs;
+    awayLegs = other.awayLegs;
     tournamentName = other.tournamentName;
     status = other.status;
     startTimestamp = other.startTimestamp;
@@ -139,6 +145,8 @@ SofaScoreMatch& SofaScoreMatch::operator=(SofaScoreMatch&& other) noexcept {
         awayPlayerName = other.awayPlayerName;
         homeScore = other.homeScore;
         awayScore = other.awayScore;
+        homeLegs = other.homeLegs;
+        awayLegs = other.awayLegs;
         tournamentName = other.tournamentName;
         status = other.status;
         startTimestamp = other.startTimestamp;
@@ -606,10 +614,17 @@ void SofaScoreLiveModule::parseDailyEventsJson(const char* json, size_t len) {
         SofaScoreMatch match;
         match.eventId = event["id"] | 0;
         
-        const char* homeName = event["homeTeam"]["name"];
+        // Use shortName if available, otherwise fall back to name
+        const char* homeName = event["homeTeam"]["shortName"];
+        if (!homeName || strlen(homeName) == 0) {
+            homeName = event["homeTeam"]["name"];
+        }
         if (homeName) match.homePlayerName = psram_strdup(homeName);
         
-        const char* awayName = event["awayTeam"]["name"];
+        const char* awayName = event["awayTeam"]["shortName"];
+        if (!awayName || strlen(awayName) == 0) {
+            awayName = event["awayTeam"]["name"];
+        }
         if (awayName) match.awayPlayerName = psram_strdup(awayName);
         
         JsonObject homeScore = event["homeScore"];
