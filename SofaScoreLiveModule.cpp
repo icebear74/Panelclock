@@ -73,6 +73,8 @@ SofaScoreMatch::SofaScoreMatch(const SofaScoreMatch& other)
       homeScore(0), awayScore(0), homeLegs(0), awayLegs(0), tournamentName(nullptr),
       status(MatchStatus::SCHEDULED), startTimestamp(0),
       homeAverage(0.0f), awayAverage(0.0f), home180s(0), away180s(0),
+      homeOver140(0), awayOver140(0), homeOver100(0), awayOver100(0),
+      homeCheckoutsOver100(0), awayCheckoutsOver100(0),
       homeCheckoutPercent(0.0f), awayCheckoutPercent(0.0f) {
     eventId = other.eventId;
     homePlayerName = other.homePlayerName ? psram_strdup(other.homePlayerName) : nullptr;
@@ -88,6 +90,12 @@ SofaScoreMatch::SofaScoreMatch(const SofaScoreMatch& other)
     awayAverage = other.awayAverage;
     home180s = other.home180s;
     away180s = other.away180s;
+    homeOver140 = other.homeOver140;
+    awayOver140 = other.awayOver140;
+    homeOver100 = other.homeOver100;
+    awayOver100 = other.awayOver100;
+    homeCheckoutsOver100 = other.homeCheckoutsOver100;
+    awayCheckoutsOver100 = other.awayCheckoutsOver100;
     homeCheckoutPercent = other.homeCheckoutPercent;
     awayCheckoutPercent = other.awayCheckoutPercent;
 }
@@ -109,6 +117,12 @@ SofaScoreMatch& SofaScoreMatch::operator=(const SofaScoreMatch& other) {
         awayAverage = other.awayAverage;
         home180s = other.home180s;
         away180s = other.away180s;
+        homeOver140 = other.homeOver140;
+        awayOver140 = other.awayOver140;
+        homeOver100 = other.homeOver100;
+        awayOver100 = other.awayOver100;
+        homeCheckoutsOver100 = other.homeCheckoutsOver100;
+        awayCheckoutsOver100 = other.awayCheckoutsOver100;
         homeCheckoutPercent = other.homeCheckoutPercent;
         awayCheckoutPercent = other.awayCheckoutPercent;
     }
@@ -130,6 +144,12 @@ SofaScoreMatch::SofaScoreMatch(SofaScoreMatch&& other) noexcept {
     awayAverage = other.awayAverage;
     home180s = other.home180s;
     away180s = other.away180s;
+    homeOver140 = other.homeOver140;
+    awayOver140 = other.awayOver140;
+    homeOver100 = other.homeOver100;
+    awayOver100 = other.awayOver100;
+    homeCheckoutsOver100 = other.homeCheckoutsOver100;
+    awayCheckoutsOver100 = other.awayCheckoutsOver100;
     homeCheckoutPercent = other.homeCheckoutPercent;
     awayCheckoutPercent = other.awayCheckoutPercent;
     other.homePlayerName = nullptr;
@@ -154,6 +174,12 @@ SofaScoreMatch& SofaScoreMatch::operator=(SofaScoreMatch&& other) noexcept {
         awayAverage = other.awayAverage;
         home180s = other.home180s;
         away180s = other.away180s;
+        homeOver140 = other.homeOver140;
+        awayOver140 = other.awayOver140;
+        homeOver100 = other.homeOver100;
+        awayOver100 = other.awayOver100;
+        homeCheckoutsOver100 = other.homeCheckoutsOver100;
+        awayCheckoutsOver100 = other.awayCheckoutsOver100;
         homeCheckoutPercent = other.homeCheckoutPercent;
         awayCheckoutPercent = other.awayCheckoutPercent;
         other.homePlayerName = nullptr;
@@ -476,8 +502,10 @@ void SofaScoreLiveModule::queueData() {
     
     // Register only if URL changed (new day)
     if (dailyUrl != _lastRegisteredDailyUrl) {
-        webClient->registerResource(dailyUrl.c_str(), 60, nullptr);  // Update every 60 minutes
+        uint32_t fetchInterval = _config->dartsSofascoreFetchIntervalMin > 0 ? _config->dartsSofascoreFetchIntervalMin : 60;
+        webClient->registerResource(dailyUrl.c_str(), fetchInterval, nullptr);  // Use configured interval
         _lastRegisteredDailyUrl = dailyUrl;
+        Log.printf("[SofaScore] Registered daily events: interval=%d min\n", fetchInterval);
     }
     
     webClient->accessResource(dailyUrl.c_str(),
@@ -517,9 +545,9 @@ void SofaScoreLiveModule::updateLiveMatchStats() {
                     char statsUrl[128];
                     snprintf(statsUrl, sizeof(statsUrl), "https://api.sofascore.com/api/v1/event/%d/statistics", match.eventId);
                     
-                    webClient->registerResource(statsUrl, 0.5, nullptr);  // Update every 30 seconds (0.5 minutes)
+                    webClient->registerResource(statsUrl, 1, nullptr);  // Update every 1 minute (minimum supported)
                     _registeredEventIds.push_back(match.eventId);
-                    Log.printf("[SofaScore] Registered live match statistics: eventId=%d (30s interval)\n", match.eventId);
+                    Log.printf("[SofaScore] Registered live match statistics: eventId=%d (1min interval)\n", match.eventId);
                 }
                 
                 // Note: We'll process this in processData()
@@ -718,19 +746,36 @@ void SofaScoreLiveModule::parseMatchStatistics(int eventId, const char* json, si
                     JsonArray items = group["statisticsItems"].as<JsonArray>();
                     for (JsonObject item : items) {
                         const char* name = item["name"];
-                        if (!name) continue;
+                        const char* key = item["key"];  // Use key field for better matching
+                        if (!key && !name) continue;
                         
-                        if (strcmp(name, "Average") == 0) {
+                        // Use key field (more reliable) or fallback to name
+                        if ((key && strcmp(key, "Average3Darts") == 0) || (name && strcmp(name, "Average 3 darts") == 0)) {
                             const char* homeStr = item["home"];
                             const char* awayStr = item["away"];
                             if (homeStr) match.homeAverage = atof(homeStr);
                             if (awayStr) match.awayAverage = atof(awayStr);
-                        } else if (strcmp(name, "180s") == 0) {
+                        } else if ((key && strcmp(key, "Thrown180") == 0) || (name && strcmp(name, "Thrown 180") == 0)) {
                             const char* homeStr = item["home"];
                             const char* awayStr = item["away"];
                             if (homeStr) match.home180s = atoi(homeStr);
                             if (awayStr) match.away180s = atoi(awayStr);
-                        } else if (strcmp(name, "Checkout %") == 0 || strcmp(name, "Checkout percentage") == 0) {
+                        } else if ((key && strcmp(key, "ThrownOver140") == 0) || (name && strcmp(name, "Thrown over 140") == 0)) {
+                            const char* homeStr = item["home"];
+                            const char* awayStr = item["away"];
+                            if (homeStr) match.homeOver140 = atoi(homeStr);
+                            if (awayStr) match.awayOver140 = atoi(awayStr);
+                        } else if ((key && strcmp(key, "ThrownOver100") == 0) || (name && strcmp(name, "Thrown over 100") == 0)) {
+                            const char* homeStr = item["home"];
+                            const char* awayStr = item["away"];
+                            if (homeStr) match.homeOver100 = atoi(homeStr);
+                            if (awayStr) match.awayOver100 = atoi(awayStr);
+                        } else if ((key && strcmp(key, "CheckoutsOver100") == 0) || (name && strcmp(name, "Checkouts over 100") == 0)) {
+                            const char* homeStr = item["home"];
+                            const char* awayStr = item["away"];
+                            if (homeStr) match.homeCheckoutsOver100 = atoi(homeStr);
+                            if (awayStr) match.awayCheckoutsOver100 = atoi(awayStr);
+                        } else if ((key && strcmp(key, "CheckoutsAccuracy") == 0) || (name && strcmp(name, "Checkout %") == 0) || (name && strcmp(name, "Checkouts accuracy") == 0)) {
                             const char* homeStr = item["home"];
                             const char* awayStr = item["away"];
                             if (homeStr) match.homeCheckoutPercent = atof(homeStr);
@@ -869,10 +914,11 @@ void SofaScoreLiveModule::drawDailyResults() {
     const int HALF_WIDTH = MIDDLE_WIDTH / 2;
     
     // Adjust line height and starting position based on screen size
-    // Normal (64px): header ~18px, need to fit 5 matches of 8px each = 40px + spacing
-    // Fullscreen (96px): header ~22px, need to fit 7 matches of 8px each = 56px + spacing
-    int y = wantsFullscreen() ? 28 : 22;  // Start below tournament name
-    const int LINE_HEIGHT = wantsFullscreen() ? 10 : 8;
+    // Y-coordinates are BOTTOM-aligned for u8g2
+    // Normal (64px): header ~20px, need to fit 5 matches of 8px each
+    // Fullscreen (96px): header ~24px, need to fit 7 matches of 9px each
+    int y = wantsFullscreen() ? 33 : 30;  // Start below tournament name (bottom-aligned)
+    const int LINE_HEIGHT = wantsFullscreen() ? 9 : 8;
     u8g2.setFont(u8g2_font_5x8_tf);
     
     // Ensure we have enough scrollers (2 per match: home + away)
@@ -996,22 +1042,14 @@ void SofaScoreLiveModule::drawLiveMatch() {
         
         int y = 24;
         
-        // Two-column layout for players
+        // Two-column layout for players (use shortName directly from JSON)
         u8g2.setFont(u8g2_font_profont10_tf);
         u8g2.setForegroundColor(0xFFFF);
         
-        // Player 1 (Home) - Left column
+        // Player 1 (Home) - Left column - use shortName as-is
         if (match.homePlayerName) {
-            const char* name = match.homePlayerName;
-            // Shorten names if needed
-            char shortName[32];
-            const char* space = strchr(name, ' ');
-            if (space && (space - name) > 0) {
-                snprintf(shortName, sizeof(shortName), "%c. %s", name[0], space + 1);
-                name = shortName;
-            }
             u8g2.setCursor(2, y);
-            u8g2.print(name);
+            u8g2.print(match.homePlayerName);
             
             // Average below name
             if (match.homeAverage > 0) {
@@ -1023,20 +1061,12 @@ void SofaScoreLiveModule::drawLiveMatch() {
             }
         }
         
-        // Player 2 (Away) - Right column
+        // Player 2 (Away) - Right column - use shortName as-is
         u8g2.setFont(u8g2_font_profont10_tf);
         if (match.awayPlayerName) {
-            const char* name = match.awayPlayerName;
-            // Shorten names if needed
-            char shortName[32];
-            const char* space = strchr(name, ' ');
-            if (space && (space - name) > 0) {
-                snprintf(shortName, sizeof(shortName), "%c. %s", name[0], space + 1);
-                name = shortName;
-            }
-            int nameWidth = u8g2.getUTF8Width(name);
+            int nameWidth = u8g2.getUTF8Width(match.awayPlayerName);
             u8g2.setCursor(_currentCanvas->width() - nameWidth - 2, y);
-            u8g2.print(name);
+            u8g2.print(match.awayPlayerName);
             
             // Average below name
             if (match.awayAverage > 0) {
@@ -1072,51 +1102,94 @@ void SofaScoreLiveModule::drawLiveMatch() {
         u8g2.setCursor((_currentCanvas->width() - u8g2.getUTF8Width(scoreLabel)) / 2, y);
         u8g2.print(scoreLabel);
         
-        y += 12;
+        y += 10;
         
-        // Statistics in 2-column layout
-        u8g2.setFont(u8g2_font_5x8_tf);
-        
-        // 180s
-        if (match.home180s > 0 || match.away180s > 0) {
-            char home180[8], away180[8];
-            snprintf(home180, sizeof(home180), "%d", match.home180s);
-            snprintf(away180, sizeof(away180), "%d", match.away180s);
+        // Statistics table (only on fullscreen)
+        if (wantsFullscreen()) {
+            u8g2.setFont(u8g2_font_5x8_tf);
             
-            u8g2.setForegroundColor(0xFFE0);  // Yellow
+            // Headers: "Home" centered at left, "Stat" centered, "Away" centered at right
+            u8g2.setForegroundColor(0xAAAA);
+            u8g2.setCursor(10, y);
+            u8g2.print("Home");
+            u8g2.setCursor(_currentCanvas->width() / 2 - 10, y);
+            u8g2.print("Stat");
+            u8g2.setCursor(_currentCanvas->width() - 30, y);
+            u8g2.print("Away");
+            y += 8;
+            
+            // Row 1: Average
+            u8g2.setForegroundColor(0xFFFF);
+            char homeVal[12], awayVal[12];
+            snprintf(homeVal, sizeof(homeVal), "%.1f", match.homeAverage);
+            snprintf(awayVal, sizeof(awayVal), "%.1f", match.awayAverage);
             u8g2.setCursor(2, y);
-            u8g2.print(home180);
+            u8g2.print(homeVal);
+            u8g2.setCursor(_currentCanvas->width() / 2 - 10, y);
+            u8g2.print("Avg");
+            int awayWidth = u8g2.getUTF8Width(awayVal);
+            u8g2.setCursor(_currentCanvas->width() - awayWidth - 2, y);
+            u8g2.print(awayVal);
+            y += 8;
             
-            const char* label = "180s";
-            int labelWidth = u8g2.getUTF8Width(label);
-            u8g2.setCursor((_currentCanvas->width() - labelWidth) / 2, y);
-            u8g2.print(label);
-            
-            int away180Width = u8g2.getUTF8Width(away180);
-            u8g2.setCursor(_currentCanvas->width() - away180Width - 2, y);
-            u8g2.print(away180);
-            
-            y += 9;
-        }
-        
-        // Checkout %
-        if (match.homeCheckoutPercent > 0 || match.awayCheckoutPercent > 0) {
-            char homeCO[8], awayCO[8];
-            snprintf(homeCO, sizeof(homeCO), "%.0f%%", match.homeCheckoutPercent);
-            snprintf(awayCO, sizeof(awayCO), "%.0f%%", match.awayCheckoutPercent);
-            
-            u8g2.setForegroundColor(0x07FF);  // Cyan
+            // Row 2: 180s
+            snprintf(homeVal, sizeof(homeVal), "%d", match.home180s);
+            snprintf(awayVal, sizeof(awayVal), "%d", match.away180s);
             u8g2.setCursor(2, y);
-            u8g2.print(homeCO);
+            u8g2.print(homeVal);
+            u8g2.setCursor(_currentCanvas->width() / 2 - 10, y);
+            u8g2.print("180");
+            awayWidth = u8g2.getUTF8Width(awayVal);
+            u8g2.setCursor(_currentCanvas->width() - awayWidth - 2, y);
+            u8g2.print(awayVal);
+            y += 8;
             
-            const char* label = "CO%";
-            int labelWidth = u8g2.getUTF8Width(label);
-            u8g2.setCursor((_currentCanvas->width() - labelWidth) / 2, y);
-            u8g2.print(label);
+            // Row 3: Over 140
+            snprintf(homeVal, sizeof(homeVal), "%d", match.homeOver140);
+            snprintf(awayVal, sizeof(awayVal), "%d", match.awayOver140);
+            u8g2.setCursor(2, y);
+            u8g2.print(homeVal);
+            u8g2.setCursor(_currentCanvas->width() / 2 - 12, y);
+            u8g2.print(">140");
+            awayWidth = u8g2.getUTF8Width(awayVal);
+            u8g2.setCursor(_currentCanvas->width() - awayWidth - 2, y);
+            u8g2.print(awayVal);
+            y += 8;
             
-            int awayCOWidth = u8g2.getUTF8Width(awayCO);
-            u8g2.setCursor(_currentCanvas->width() - awayCOWidth - 2, y);
-            u8g2.print(awayCO);
+            // Row 4: Over 100
+            snprintf(homeVal, sizeof(homeVal), "%d", match.homeOver100);
+            snprintf(awayVal, sizeof(awayVal), "%d", match.awayOver100);
+            u8g2.setCursor(2, y);
+            u8g2.print(homeVal);
+            u8g2.setCursor(_currentCanvas->width() / 2 - 12, y);
+            u8g2.print(">100");
+            awayWidth = u8g2.getUTF8Width(awayVal);
+            u8g2.setCursor(_currentCanvas->width() - awayWidth - 2, y);
+            u8g2.print(awayVal);
+            y += 8;
+            
+            // Row 5: Checkouts > 100
+            snprintf(homeVal, sizeof(homeVal), "%d", match.homeCheckoutsOver100);
+            snprintf(awayVal, sizeof(awayVal), "%d", match.awayCheckoutsOver100);
+            u8g2.setCursor(2, y);
+            u8g2.print(homeVal);
+            u8g2.setCursor(_currentCanvas->width() / 2 - 12, y);
+            u8g2.print("CO>100");
+            awayWidth = u8g2.getUTF8Width(awayVal);
+            u8g2.setCursor(_currentCanvas->width() - awayWidth - 2, y);
+            u8g2.print(awayVal);
+            y += 8;
+            
+            // Row 6: Checkout Accuracy
+            snprintf(homeVal, sizeof(homeVal), "%.0f%%", match.homeCheckoutPercent);
+            snprintf(awayVal, sizeof(awayVal), "%.0f%%", match.awayCheckoutPercent);
+            u8g2.setCursor(2, y);
+            u8g2.print(homeVal);
+            u8g2.setCursor(_currentCanvas->width() / 2 - 10, y);
+            u8g2.print("CO%");
+            awayWidth = u8g2.getUTF8Width(awayVal);
+            u8g2.setCursor(_currentCanvas->width() - awayWidth - 2, y);
+            u8g2.print(awayVal);
         }
     } else {
         u8g2.setFont(u8g2_font_profont12_tf);

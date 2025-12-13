@@ -57,6 +57,12 @@ struct SofaScoreMatch {
     float awayAverage = 0.0f;
     int home180s = 0;
     int away180s = 0;
+    int homeOver140 = 0;
+    int awayOver140 = 0;
+    int homeOver100 = 0;
+    int awayOver100 = 0;
+    int homeCheckoutsOver100 = 0;
+    int awayCheckoutsOver100 = 0;
     float homeCheckoutPercent = 0.0f;
     float awayCheckoutPercent = 0.0f;
     
