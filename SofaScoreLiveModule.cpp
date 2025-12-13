@@ -205,15 +205,20 @@ void SofaScoreLiveModule::onUpdate(std::function<void()> callback) {
 }
 
 void SofaScoreLiveModule::setConfig(bool enabled, uint32_t fetchIntervalMinutes, unsigned long displaySec,
-                                    const PsramString& enabledTournamentIds, bool fullscreen, bool interruptOnLive) {
+                                    const PsramString& enabledTournamentIds, bool fullscreen, bool interruptOnLive,
+                                    uint32_t playNextMinutes) {
     if (!webClient) return;
     
     this->_enabled = enabled;
     this->_wantsFullscreen = fullscreen;
     this->_interruptOnLive = interruptOnLive;
+    this->_playNextMinutes = playNextMinutes;
     this->_displayDuration = displaySec > 0 ? displaySec * 1000UL : 20000;
     _currentTicksPerPage = _displayDuration / 100;
     if (_currentTicksPerPage == 0) _currentTicksPerPage = 1;
+    
+    Log.printf("[SofaScore] Config updated: enabled=%d, fetch=%d min, display=%d sec, fullscreen=%d, interrupt=%d, playNext=%d min\n",
+               enabled, fetchIntervalMinutes, displaySec, fullscreen, interruptOnLive, playNextMinutes);
     
     // Parse enabled tournament IDs
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
@@ -295,6 +300,13 @@ void SofaScoreLiveModule::resetPaging() {
         releasePriorityEx(_interruptUID);
         _hasActiveInterrupt = false;
         Log.println("[SofaScore] Released interrupt on reset");
+    }
+    
+    // Release PlayNext if active
+    if (_hasActivePlayNext && _playNextUID > 0) {
+        releasePriorityEx(_playNextUID);
+        _hasActivePlayNext = false;
+        Log.println("[SofaScore] Released PlayNext on reset");
     }
 }
 
@@ -423,7 +435,7 @@ void SofaScoreLiveModule::queueData() {
 }
 
 void SofaScoreLiveModule::updateLiveMatchStats() {
-    // For each live match, fetch updated statistics
+    // For each live match, fetch updated statistics every 30 seconds
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
         for (const auto& match : liveMatches) {
             if (match.status == MatchStatus::LIVE) {
@@ -440,8 +452,9 @@ void SofaScoreLiveModule::updateLiveMatchStats() {
                     char statsUrl[128];
                     snprintf(statsUrl, sizeof(statsUrl), "https://api.sofascore.com/api/v1/event/%d/statistics", match.eventId);
                     
-                    webClient->registerResource(statsUrl, 2, nullptr);  // Update every 2 minutes
+                    webClient->registerResource(statsUrl, 0.5, nullptr);  // Update every 30 seconds (0.5 minutes)
                     _registeredEventIds.push_back(match.eventId);
+                    Log.printf("[SofaScore] Registered live match statistics: eventId=%d (30s interval)\n", match.eventId);
                 }
                 
                 // Note: We'll process this in processData()
@@ -976,13 +989,18 @@ void SofaScoreLiveModule::drawLiveMatch() {
 
 void SofaScoreLiveModule::periodicTick() {
     // Check for live matches periodically (every 30 seconds) to trigger interrupts
-    if (!_enabled || !_interruptOnLive) return;
+    if (!_enabled) return;
     
     unsigned long now = millis();
-    if (now - _lastInterruptCheckTime < 30000) return;  // Check every 30 seconds
-    _lastInterruptCheckTime = now;
+    if (now - _lastInterruptCheckTime >= 30000) {
+        _lastInterruptCheckTime = now;
+        if (_interruptOnLive) {
+            checkForLiveMatchInterrupt();
+        }
+    }
     
-    checkForLiveMatchInterrupt();
+    // Check for PlayNext display
+    checkForPlayNext();
 }
 
 void SofaScoreLiveModule::checkForLiveMatchInterrupt() {
@@ -1033,6 +1051,49 @@ void SofaScoreLiveModule::checkForLiveMatchInterrupt() {
             } else {
                 Log.println("[SofaScore] Interrupt request failed");
                 _hasActiveInterrupt = false;
+            }
+        }
+    }
+}
+
+void SofaScoreLiveModule::checkForPlayNext() {
+    if (!_enabled || _playNextMinutes == 0) return;
+    if (_hasActivePlayNext) return;  // Already showing PlayNext
+    
+    unsigned long now = millis();
+    unsigned long intervalMs = (unsigned long)_playNextMinutes * 60000UL;
+    
+    // Check if enough time has passed since last PlayNext
+    if (now - _lastPlayNextTime < intervalMs) return;
+    
+    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        // Check if we have upcoming matches to show
+        bool hasUpcomingMatches = false;
+        for (const auto& match : dailyMatches) {
+            if (match.status == MatchStatus::SCHEDULED) {
+                hasUpcomingMatches = true;
+                break;
+            }
+        }
+        
+        xSemaphoreGive(dataMutex);
+        
+        if (hasUpcomingMatches) {
+            _lastPlayNextTime = now;
+            
+            // Generate unique UID for this PlayNext request
+            _playNextUID = SOFASCORE_INTERRUPT_UID_BASE + 500 + ((now / 1000) % 500);
+            _hasActivePlayNext = true;
+            
+            // Calculate duration based on number of upcoming matches
+            unsigned long totalDuration = _displayDuration * (dailyMatches.size() > 0 ? dailyMatches.size() : 1);
+            
+            if (requestPriorityEx(Priority::PlayNext, _playNextUID, totalDuration)) {
+                Log.printf("[SofaScore] PlayNext requested: UID=%u, duration=%lu ms, interval=%d min\n", 
+                           _playNextUID, totalDuration, _playNextMinutes);
+            } else {
+                Log.println("[SofaScore] PlayNext request failed");
+                _hasActivePlayNext = false;
             }
         }
     }

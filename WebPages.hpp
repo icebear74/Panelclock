@@ -196,6 +196,7 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
         
         <input type="checkbox" id="dartsSofascoreFullscreen" name="dartsSofascoreFullscreen" {dartsSofascoreFullscreen_checked}><label for="dartsSofascoreFullscreen" style="display:inline;">Vollbild-Modus für Live-Spiele</label><br>
         <input type="checkbox" id="dartsSofascoreInterruptOnLive" name="dartsSofascoreInterruptOnLive" {dartsSofascoreInterruptOnLive_checked}><label for="dartsSofascoreInterruptOnLive" style="display:inline;">Live-Spiele unterbrechend anzeigen</label><br>
+        <label for="dartsSofascorePlayNextMinutes">PlayNext-Intervall (Minuten, 0=aus):</label> <input type="number" id="dartsSofascorePlayNextMinutes" name="dartsSofascorePlayNextMinutes" value="{dartsSofascorePlayNextMinutes}" min="0" max="1440" style="width:60px;"><br>
     </div>
 </div>
 

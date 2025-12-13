@@ -80,6 +80,8 @@ struct DeviceConfig {
     bool dartsSofascoreFullscreen = false;
     /// @brief Live-Spiele unterbrechend anzeigen (Priority::LowPriorityInterrupt).
     bool dartsSofascoreInterruptOnLive = true;
+    /// @brief Kommende Spiele als PlayNext anzeigen (in Minuten, 0 = deaktiviert).
+    int dartsSofascorePlayNextMinutes = 0;
 
     /// @brief Schaltet das Fritz!Box Anrufmonitor-Modul ein/aus.
     bool fritzboxEnabled = false;

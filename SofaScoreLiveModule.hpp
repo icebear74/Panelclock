@@ -82,7 +82,8 @@ public:
 
     void onUpdate(std::function<void()> callback);
     void setConfig(bool enabled, uint32_t fetchIntervalMinutes, unsigned long displaySec,
-                   const PsramString& enabledTournamentIds, bool fullscreen, bool interruptOnLive);
+                   const PsramString& enabledTournamentIds, bool fullscreen, bool interruptOnLive,
+                   uint32_t playNextMinutes);
     void queueData();
     void processData();
 
@@ -116,6 +117,7 @@ private:
     bool _enabled = false;
     bool _wantsFullscreen = false;
     bool _interruptOnLive = true;
+    uint32_t _playNextMinutes = 0;  // 0 = disabled
     unsigned long _displayDuration = 20000;  // 20 seconds per page
     uint32_t _currentTicksPerPage = 200;     // 200 * 100ms = 20 seconds
     
@@ -132,6 +134,11 @@ private:
     uint32_t _interruptUID = 0;
     unsigned long _lastInterruptCheckTime = 0;
     std::vector<int, PsramAllocator<int>> _previousLiveEventIds;  // Track previous live matches
+    
+    // PlayNext management
+    bool _hasActivePlayNext = false;
+    uint32_t _playNextUID = 0;
+    unsigned long _lastPlayNextTime = 0;
     
     // Scrolling
     PixelScroller* _nameScroller = nullptr;
@@ -171,6 +178,7 @@ private:
     void updateLiveMatchStats();
     void switchToNextMode();
     void checkForLiveMatchInterrupt();
+    void checkForPlayNext();
     
     // Drawing helpers
     void drawTournamentList();
