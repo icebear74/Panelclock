@@ -393,6 +393,13 @@ void SofaScoreLiveModule::switchToNextMode() {
         }
     }
     
+    // Release PlayNext when finishing cycle
+    if (_isFinished && _hasActivePlayNext && _playNextUID > 0) {
+        releasePriorityEx(_playNextUID);
+        _hasActivePlayNext = false;
+        Log.println("[SofaScore] Released PlayNext after cycle complete");
+    }
+    
     _currentPage = 0;
     _logicTicksSinceModeSwitch = 0;
 }
@@ -1067,30 +1074,30 @@ void SofaScoreLiveModule::checkForPlayNext() {
     if (now - _lastPlayNextTime < intervalMs) return;
     
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-        // Check if we have upcoming matches to show
-        bool hasUpcomingMatches = false;
+        // Count upcoming matches to show
+        int upcomingCount = 0;
         for (const auto& match : dailyMatches) {
             if (match.status == MatchStatus::SCHEDULED) {
-                hasUpcomingMatches = true;
-                break;
+                upcomingCount++;
             }
         }
         
         xSemaphoreGive(dataMutex);
         
-        if (hasUpcomingMatches) {
+        if (upcomingCount > 0) {
             _lastPlayNextTime = now;
             
-            // Generate unique UID for this PlayNext request
-            _playNextUID = SOFASCORE_INTERRUPT_UID_BASE + 500 + ((now / 1000) % 500);
+            // Use static UID for PlayNext (not time-based to avoid conflicts)
+            _playNextUID = SOFASCORE_INTERRUPT_UID_BASE + 999;
             _hasActivePlayNext = true;
             
-            // Calculate duration based on number of upcoming matches
-            unsigned long totalDuration = _displayDuration * (dailyMatches.size() > 0 ? dailyMatches.size() : 1);
+            // Calculate duration: display duration per upcoming match (max 5 to avoid too long)
+            int matchesToShow = (upcomingCount > 5) ? 5 : upcomingCount;
+            unsigned long totalDuration = _displayDuration * matchesToShow;
             
             if (requestPriorityEx(Priority::PlayNext, _playNextUID, totalDuration)) {
-                Log.printf("[SofaScore] PlayNext requested: UID=%u, duration=%lu ms, interval=%d min\n", 
-                           _playNextUID, totalDuration, _playNextMinutes);
+                Log.printf("[SofaScore] PlayNext requested: UID=%u, duration=%lu ms (%d matches), interval=%d min\n", 
+                           _playNextUID, totalDuration, matchesToShow, _playNextMinutes);
             } else {
                 Log.println("[SofaScore] PlayNext request failed");
                 _hasActivePlayNext = false;
