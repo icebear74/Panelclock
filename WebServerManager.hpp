@@ -32,6 +32,10 @@ extern BackupManager* backupManager;
 class ThemeParkModule;
 extern ThemeParkModule* themeParkModule;
 
+// Forward declaration for SofaScoreLiveModule
+class SofaScoreLiveModule;
+extern SofaScoreLiveModule* sofascoreMod;
+
 // Forward declaration for FritzboxModule (needed for cleanup before restart)
 class FritzboxModule;
 extern FritzboxModule* fritzboxModule;
