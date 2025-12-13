@@ -288,6 +288,8 @@ unsigned long SofaScoreLiveModule::getDisplayDuration() {
 
 void SofaScoreLiveModule::resetPaging() {
     _currentPage = 0;
+    _currentTournamentIndex = 0;
+    _currentTournamentPage = 0;
     _currentMode = SofaScoreDisplayMode::DAILY_RESULTS;
     _logicTicksSincePageSwitch = 0;
     _logicTicksSinceModeSwitch = 0;
@@ -334,27 +336,68 @@ void SofaScoreLiveModule::logicTick() {
     // Page switching within current mode
     if (_logicTicksSincePageSwitch >= _currentTicksPerPage) {
         if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-            // Calculate total pages based on current mode
-            int calculatedTotalPages = 1;
+            bool needsModeSwitch = false;
             
             switch (_currentMode) {
                 case SofaScoreDisplayMode::DAILY_RESULTS:
-                    calculatedTotalPages = dailyMatches.size() > 0 ? dailyMatches.size() : 1;
+                    // Group matches by tournament and calculate pages
+                    groupMatchesByTournament();
+                    _totalPages = calculateTotalPages();
+                    
+                    if (_tournamentGroups.empty()) {
+                        _currentPage = 0;
+                        _currentTournamentIndex = 0;
+                        _currentTournamentPage = 0;
+                        needsModeSwitch = true;
+                    } else {
+                        // Advance to next page within current tournament
+                        _currentTournamentPage++;
+                        
+                        if (_currentTournamentIndex < _tournamentGroups.size()) {
+                            const auto& currentGroup = _tournamentGroups[_currentTournamentIndex];
+                            
+                            if (_currentTournamentPage >= currentGroup.pagesNeeded) {
+                                // Move to next tournament
+                                _currentTournamentPage = 0;
+                                _currentTournamentIndex++;
+                                
+                                // If no more tournaments, switch mode
+                                if (_currentTournamentIndex >= _tournamentGroups.size()) {
+                                    _currentTournamentIndex = 0;
+                                    _currentTournamentPage = 0;
+                                    needsModeSwitch = true;
+                                }
+                            }
+                        } else {
+                            needsModeSwitch = true;
+                        }
+                        
+                        // Calculate absolute current page for display
+                        _currentPage = 0;
+                        for (int i = 0; i < _currentTournamentIndex && i < _tournamentGroups.size(); i++) {
+                            _currentPage += _tournamentGroups[i].pagesNeeded;
+                        }
+                        _currentPage += _currentTournamentPage;
+                    }
                     break;
+                    
                 case SofaScoreDisplayMode::LIVE_MATCH:
-                    calculatedTotalPages = liveMatches.size() > 0 ? liveMatches.size() : 1;
+                    _totalPages = liveMatches.size() > 0 ? liveMatches.size() : 1;
+                    _currentPage++;
+                    if (_currentPage >= _totalPages) {
+                        _currentPage = 0;
+                        needsModeSwitch = true;
+                    }
                     break;
+                    
                 case SofaScoreDisplayMode::TOURNAMENT_LIST:
-                    calculatedTotalPages = 1;  // Tournament list is single page
+                    _totalPages = 1;
+                    _currentPage = 0;
+                    needsModeSwitch = true;
                     break;
             }
             
-            _totalPages = calculatedTotalPages;
-            
-            _currentPage++;
-            if (_currentPage >= _totalPages) {
-                _currentPage = 0;
-                // After showing all pages in current mode, switch mode
+            if (needsModeSwitch) {
                 switchToNextMode();
             }
             
@@ -722,116 +765,97 @@ void SofaScoreLiveModule::drawDailyResults() {
     u8g2.setCursor(canvas.width() - pageInfoWidth - 2, 8);
     u8g2.print(pageInfo);
     
-    if (_currentPage < dailyMatches.size()) {
-        const SofaScoreMatch& match = dailyMatches[_currentPage];
+    if (_tournamentGroups.empty() || _currentTournamentIndex >= _tournamentGroups.size()) {
+        u8g2.setFont(u8g2_font_profont12_tf);
+        const char* msg = "No matches today";
+        int msgWidth = u8g2.getUTF8Width(msg);
+        u8g2.setCursor((canvas.width() - msgWidth) / 2, canvas.height() / 2);
+        u8g2.print(msg);
+        return;
+    }
+    
+    const auto& currentGroup = _tournamentGroups[_currentTournamentIndex];
+    
+    // Tournament name header
+    u8g2.setFont(u8g2_font_profont10_tf);
+    u8g2.setForegroundColor(0xAAAA);
+    if (!currentGroup.tournamentName.empty()) {
+        int tournWidth = u8g2.getUTF8Width(currentGroup.tournamentName.c_str());
+        u8g2.setCursor((canvas.width() - tournWidth) / 2, 20);
+        u8g2.print(currentGroup.tournamentName.c_str());
+    }
+    
+    // Calculate matches for this page
+    const int MATCHES_PER_PAGE = 3;
+    int startIdx = _currentTournamentPage * MATCHES_PER_PAGE;
+    int endIdx = startIdx + MATCHES_PER_PAGE;
+    if (endIdx > currentGroup.matchIndices.size()) endIdx = currentGroup.matchIndices.size();
+    
+    int y = 28;  // Start below tournament name
+    u8g2.setFont(u8g2_font_5x8_tf);
+    
+    for (int i = startIdx; i < endIdx; i++) {
+        int matchIdx = currentGroup.matchIndices[i];
+        if (matchIdx >= dailyMatches.size()) continue;
         
-        // Tournament name
-        u8g2.setFont(u8g2_font_profont10_tf);
-        u8g2.setForegroundColor(0xAAAA);
-        if (match.tournamentName) {
-            int tournWidth = u8g2.getUTF8Width(match.tournamentName);
-            u8g2.setCursor((canvas.width() - tournWidth) / 2, 20);
-            u8g2.print(match.tournamentName);
-        }
+        const SofaScoreMatch& match = dailyMatches[matchIdx];
         
-        // Time (if scheduled)
-        u8g2.setFont(u8g2_font_5x8_tf);
-        int y = 32;
+        // Time and status on one line
+        u8g2.setForegroundColor(0xFFE0);
         if (match.startTimestamp > 0) {
             time_t timestamp_utc = match.startTimestamp;
             time_t timestamp_local = timeConverter.toLocal(timestamp_utc);
             struct tm* timeinfo = localtime(&timestamp_local);
             char timeStr[16];
             strftime(timeStr, sizeof(timeStr), "%H:%M", timeinfo);
-            
-            u8g2.setForegroundColor(0xFFE0);
             u8g2.setCursor(2, y);
             u8g2.print(timeStr);
         }
         
-        // Live indicator in top right of time line
+        // Live/Status indicator on same line
         if (match.status == MatchStatus::LIVE) {
             u8g2.setForegroundColor(0xF800);  // Red
             u8g2.setCursor(canvas.width() - u8g2.getUTF8Width("(L)") - 2, y);
             u8g2.print("(L)");
-        }
-        
-        y += 10;
-        
-        // Player names in 2-column layout
-        u8g2.setFont(u8g2_font_profont10_tf);
-        u8g2.setForegroundColor(0xFFFF);
-        
-        // Home player (left)
-        if (match.homePlayerName) {
-            const char* name = match.homePlayerName;
-            // Shorten names if needed (first initial + last name)
-            char shortName[32];
-            const char* space = strchr(name, ' ');
-            if (space && (space - name) > 0) {
-                snprintf(shortName, sizeof(shortName), "%c. %s", name[0], space + 1);
-                name = shortName;
-            }
-            u8g2.setCursor(2, y);
-            u8g2.print(name);
-        }
-        
-        // VS or dash
-        u8g2.setForegroundColor(0xAAAA);
-        const char* vs = " - ";
-        int vsWidth = u8g2.getUTF8Width(vs);
-        u8g2.setCursor((canvas.width() - vsWidth) / 2, y);
-        u8g2.print(vs);
-        
-        // Away player (right)
-        u8g2.setForegroundColor(0xFFFF);
-        if (match.awayPlayerName) {
-            const char* name = match.awayPlayerName;
-            // Shorten names if needed
-            char shortName[32];
-            const char* space = strchr(name, ' ');
-            if (space && (space - name) > 0) {
-                snprintf(shortName, sizeof(shortName), "%c. %s", name[0], space + 1);
-                name = shortName;
-            }
-            int nameWidth = u8g2.getUTF8Width(name);
-            u8g2.setCursor(canvas.width() - nameWidth - 2, y);
-            u8g2.print(name);
-        }
-        
-        y += 12;
-        
-        // Score centered
-        u8g2.setFont(u8g2_font_profont12_tf);
-        u8g2.setForegroundColor(0xFFFF);
-        char scoreStr[16];
-        snprintf(scoreStr, sizeof(scoreStr), "%d : %d", match.homeScore, match.awayScore);
-        int scoreWidth = u8g2.getUTF8Width(scoreStr);
-        u8g2.setCursor((canvas.width() - scoreWidth) / 2, y);
-        u8g2.print(scoreStr);
-        
-        // Status indicator below score
-        y += 10;
-        u8g2.setFont(u8g2_font_5x8_tf);
-        if (match.status == MatchStatus::LIVE) {
-            u8g2.setForegroundColor(0xF800);  // Red
-            const char* live = "LIVE";
-            int liveWidth = u8g2.getUTF8Width(live);
-            u8g2.setCursor((canvas.width() - liveWidth) / 2, y);
-            u8g2.print(live);
         } else if (match.status == MatchStatus::FINISHED) {
+            // Show score on right for finished matches
             u8g2.setForegroundColor(0x07E0);  // Green
-            const char* fin = "FINAL";
-            int finWidth = u8g2.getUTF8Width(fin);
-            u8g2.setCursor((canvas.width() - finWidth) / 2, y);
-            u8g2.print(fin);
+            char scoreStr[16];
+            snprintf(scoreStr, sizeof(scoreStr), "%d:%d", match.homeScore, match.awayScore);
+            int scoreWidth = u8g2.getUTF8Width(scoreStr);
+            u8g2.setCursor(canvas.width() - scoreWidth - 2, y);
+            u8g2.print(scoreStr);
         }
-    } else {
-        u8g2.setFont(u8g2_font_profont12_tf);
-        const char* msg = "No matches today";
-        int msgWidth = u8g2.getUTF8Width(msg);
-        u8g2.setCursor((canvas.width() - msgWidth) / 2, canvas.height() / 2);
-        u8g2.print(msg);
+        
+        y += 9;
+        
+        // Player names on next line
+        u8g2.setForegroundColor(0xFFFF);
+        if (match.homePlayerName && match.awayPlayerName) {
+            char matchLine[64];
+            // Abbreviate names for compact display
+            char homeName[20], awayName[20];
+            
+            const char* homeSpace = strchr(match.homePlayerName, ' ');
+            if (homeSpace && (homeSpace - match.homePlayerName) > 0) {
+                snprintf(homeName, sizeof(homeName), "%c.%s", match.homePlayerName[0], homeSpace + 1);
+            } else {
+                strncpy(homeName, match.homePlayerName, sizeof(homeName) - 1);
+            }
+            
+            const char* awaySpace = strchr(match.awayPlayerName, ' ');
+            if (awaySpace && (awaySpace - match.awayPlayerName) > 0) {
+                snprintf(awayName, sizeof(awayName), "%c.%s", match.awayPlayerName[0], awaySpace + 1);
+            } else {
+                strncpy(awayName, match.awayPlayerName, sizeof(awayName) - 1);
+            }
+            
+            snprintf(matchLine, sizeof(matchLine), "%s - %s", homeName, awayName);
+            u8g2.setCursor(2, y);
+            u8g2.print(matchLine);
+        }
+        
+        y += 11;  // Space between matches
     }
 }
 
@@ -1125,4 +1149,61 @@ uint16_t SofaScoreLiveModule::dimColor(uint16_t color) {
     uint8_t b = color & 0x1F;
     r >>= 1; g >>= 1; b >>= 1;
     return (r << 11) | (g << 5) | b;
+}
+
+void SofaScoreLiveModule::groupMatchesByTournament() {
+    // NOTE: This function expects dataMutex to already be held by the caller
+    _tournamentGroups.clear();
+    
+    const int MATCHES_PER_PAGE = 3;
+    
+    // Group matches by tournament
+    for (size_t i = 0; i < dailyMatches.size(); i++) {
+        const auto& match = dailyMatches[i];
+        
+        // Find or create tournament group
+        TournamentGroup* group = nullptr;
+        for (auto& tg : _tournamentGroups) {
+            // Match by tournament name (could also use ID if available)
+            if (match.tournamentName && tg.tournamentName == match.tournamentName) {
+                group = &tg;
+                break;
+            }
+        }
+        
+        if (!group) {
+            // Create new group
+            TournamentGroup newGroup;
+            if (match.tournamentName) {
+                newGroup.tournamentName = match.tournamentName;
+            }
+            _tournamentGroups.push_back(newGroup);
+            group = &_tournamentGroups.back();
+        }
+        
+        // Add match index to group
+        group->matchIndices.push_back(i);
+    }
+    
+    // Calculate pages needed for each tournament
+    for (auto& group : _tournamentGroups) {
+        int matchCount = group.matchIndices.size();
+        group.pagesNeeded = (matchCount + MATCHES_PER_PAGE - 1) / MATCHES_PER_PAGE;  // Ceiling division
+        if (group.pagesNeeded < 1) group.pagesNeeded = 1;
+    }
+    
+    Log.printf("[SofaScore] Grouped into %d tournaments\n", _tournamentGroups.size());
+    for (const auto& group : _tournamentGroups) {
+        Log.printf("  - %s: %d matches, %d pages\n", 
+                   group.tournamentName.c_str(), group.matchIndices.size(), group.pagesNeeded);
+    }
+}
+
+int SofaScoreLiveModule::calculateTotalPages() {
+    // NOTE: This function expects dataMutex to already be held by the caller
+    int total = 0;
+    for (const auto& group : _tournamentGroups) {
+        total += group.pagesNeeded;
+    }
+    return total > 0 ? total : 1;
 }

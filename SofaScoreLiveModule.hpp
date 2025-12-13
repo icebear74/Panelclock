@@ -124,6 +124,8 @@ private:
     // Paging
     int _currentPage = 0;
     int _totalPages = 1;
+    int _currentTournamentIndex = 0;  // Which tournament we're currently showing
+    int _currentTournamentPage = 0;   // Which page within the current tournament
     uint32_t _logicTicksSincePageSwitch = 0;
     uint32_t _logicTicksSinceModeSwitch = 0;
     SofaScoreDisplayMode _currentMode = SofaScoreDisplayMode::DAILY_RESULTS;
@@ -166,6 +168,17 @@ private:
     std::vector<SofaScoreMatch, PsramAllocator<SofaScoreMatch>> dailyMatches;
     std::vector<SofaScoreMatch, PsramAllocator<SofaScoreMatch>> liveMatches;
     
+    // Tournament grouping for multi-page display
+    struct TournamentGroup {
+        int tournamentId = 0;
+        PsramString tournamentName;
+        std::vector<int, PsramAllocator<int>> matchIndices;  // Indices into dailyMatches
+        int pagesNeeded = 0;  // Number of pages for this tournament
+        
+        TournamentGroup() : matchIndices(PsramAllocator<int>()) {}
+    };
+    std::vector<TournamentGroup, PsramAllocator<TournamentGroup>> _tournamentGroups;
+    
     // Track registered resources to avoid duplicate registrations
     PsramString _lastRegisteredDailyUrl;
     std::vector<int, PsramAllocator<int>> _registeredEventIds;
@@ -179,6 +192,8 @@ private:
     void switchToNextMode();
     void checkForLiveMatchInterrupt();
     void checkForPlayNext();
+    void groupMatchesByTournament();  // New: group and calculate pages
+    int calculateTotalPages();         // New: calculate total pages across all tournaments
     
     // Drawing helpers
     void drawTournamentList();
