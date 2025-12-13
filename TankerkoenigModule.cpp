@@ -686,14 +686,12 @@ void TankerkoenigModule::cleanupOldPriceCacheEntries() {
     
     // SAFETY CHECK 2: If we have historical data, ensure current time is not older than the newest data
     // This protects against clock drift backwards or incorrect NTP sync
+    // NOTE: Mutex is already held by caller (parseAndProcessJson)
     time_t newest_data_timestamp = 0;
-    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        for (const auto& entry : _lastPriceCache) {
-            if (entry.timestamp > newest_data_timestamp) {
-                newest_data_timestamp = entry.timestamp;
-            }
+    for (const auto& entry : _lastPriceCache) {
+        if (entry.timestamp > newest_data_timestamp) {
+            newest_data_timestamp = entry.timestamp;
         }
-        xSemaphoreGive(dataMutex);
     }
     
     if (newest_data_timestamp > 0 && now_utc < newest_data_timestamp) {
@@ -704,65 +702,62 @@ void TankerkoenigModule::cleanupOldPriceCacheEntries() {
     
     time_t cutoff_time = now_utc - (_deviceConfig->movingAverageDays * 86400L);
     
-    // Protect both station_ids read and _lastPriceCache access with mutex
-    if (xSemaphoreTake(dataMutex, portMAX_DELAY) == pdTRUE) {
-        // Parse currently configured station IDs while holding mutex
-        PsramVector<PsramString> current_id_list;
-        PsramString temp_ids = station_ids;  // Copy member variable
-        if (!temp_ids.empty()) {
-            // FIX: Create a mutable copy for strtok_r to safely modify
-            char* temp_buffer = strdup(temp_ids.c_str());
-            if (temp_buffer) {
-                char* strtok_ctx;
-                char* id_token = strtok_r(temp_buffer, ",", &strtok_ctx);
-                while(id_token != nullptr) { 
-                    current_id_list.push_back(id_token); 
-                    id_token = strtok_r(nullptr, ",", &strtok_ctx); 
-                }
-                free(temp_buffer);
+    // NOTE: Mutex is already held by caller (parseAndProcessJson)
+    // Parse currently configured station IDs
+    PsramVector<PsramString> current_id_list;
+    PsramString temp_ids = station_ids;  // Copy member variable
+    if (!temp_ids.empty()) {
+        // FIX: Create a mutable copy for strtok_r to safely modify
+        char* temp_buffer = strdup(temp_ids.c_str());
+        if (temp_buffer) {
+            char* strtok_ctx;
+            char* id_token = strtok_r(temp_buffer, ",", &strtok_ctx);
+            while(id_token != nullptr) { 
+                current_id_list.push_back(id_token); 
+                id_token = strtok_r(nullptr, ",", &strtok_ctx); 
             }
+            free(temp_buffer);
         }
-        
-        // SAFETY: Only cleanup if we successfully parsed station IDs
-        if (!temp_ids.empty() && current_id_list.empty()) {
-            Log.println("[TankerkoenigModule] WARNING: Failed to parse station IDs in cleanup, skipping to prevent data loss!");
-            xSemaphoreGive(dataMutex);
-            return;
-        }
-        
-        size_t original_size = _lastPriceCache.size();
-        _lastPriceCache.erase(
-            std::remove_if(_lastPriceCache.begin(), _lastPriceCache.end(),
-                [&current_id_list, cutoff_time](const LastPriceCache& entry) { 
-                    // Remove entries with invalid timestamp
-                    if (entry.timestamp == 0) return true;
-                    
-                    // Check if station is in current configuration
-                    bool is_configured = false;
-                    for (const auto& id : current_id_list) {
-                        if (entry.stationId == id) {
-                            is_configured = true;
-                            break;
-                        }
+    }
+    
+    // SAFETY: Only cleanup if we successfully parsed station IDs
+    if (!temp_ids.empty() && current_id_list.empty()) {
+        Log.println("[TankerkoenigModule] WARNING: Failed to parse station IDs in cleanup, skipping to prevent data loss!");
+        return;
+    }
+    
+    size_t original_size = _lastPriceCache.size();
+    _lastPriceCache.erase(
+        std::remove_if(_lastPriceCache.begin(), _lastPriceCache.end(),
+            [&current_id_list, cutoff_time](const LastPriceCache& entry) { 
+                // Remove entries with invalid timestamp
+                if (entry.timestamp == 0) return true;
+                
+                // Check if station is in current configuration
+                bool is_configured = false;
+                for (const auto& id : current_id_list) {
+                    if (entry.stationId == id) {
+                        is_configured = true;
+                        break;
                     }
-                    
-                    // Remove if not configured OR (configured but older than retention period)
-                    if (!is_configured) return true;
-                    if (entry.timestamp < cutoff_time) return true;
-                    
-                    return false;
-                }),
-            _lastPriceCache.end()
-        );
-        
-        bool changed = (_lastPriceCache.size() < original_size);
-        xSemaphoreGive(dataMutex);
-        
-        // Save outside mutex to avoid holding it during file I/O
-        if (changed) { 
-            Log.printf("[TankerkoenigModule] Cleaned up %d old price cache entries\n", original_size - _lastPriceCache.size());
-            savePriceCache(); 
-        }
+                }
+                
+                // Remove if not configured OR (configured but older than retention period)
+                if (!is_configured) return true;
+                if (entry.timestamp < cutoff_time) return true;
+                
+                return false;
+            }),
+        _lastPriceCache.end()
+    );
+    
+    bool changed = (_lastPriceCache.size() < original_size);
+    
+    // Save cache if entries were removed
+    // NOTE: savePriceCache() must be called while mutex is held because it accesses _lastPriceCache
+    if (changed) { 
+        Log.printf("[TankerkoenigModule] Cleanup entfernt %d alte Cache-Einträge\n", original_size - _lastPriceCache.size());
+        savePriceCache(); 
     }
 }
 
