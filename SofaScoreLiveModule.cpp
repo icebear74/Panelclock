@@ -614,11 +614,24 @@ void SofaScoreLiveModule::parseDailyEventsJson(const char* json, size_t len) {
         JsonObject homeScore = event["homeScore"];
         if (!homeScore.isNull()) {
             match.homeScore = homeScore["current"] | 0;
+            // Parse legs from period scores (period1 = set 1, period2 = set 2, etc.)
+            // For live matches, find the current set being played
+            if (homeScore["period1"].is<int>()) match.homeLegs = homeScore["period1"] | 0;
+            if (homeScore["period2"].is<int>()) match.homeLegs = homeScore["period2"] | 0;
+            if (homeScore["period3"].is<int>()) match.homeLegs = homeScore["period3"] | 0;
+            if (homeScore["period4"].is<int>()) match.homeLegs = homeScore["period4"] | 0;
+            if (homeScore["period5"].is<int>()) match.homeLegs = homeScore["period5"] | 0;
         }
         
         JsonObject awayScore = event["awayScore"];
         if (!awayScore.isNull()) {
             match.awayScore = awayScore["current"] | 0;
+            // Parse legs from period scores
+            if (awayScore["period1"].is<int>()) match.awayLegs = awayScore["period1"] | 0;
+            if (awayScore["period2"].is<int>()) match.awayLegs = awayScore["period2"] | 0;
+            if (awayScore["period3"].is<int>()) match.awayLegs = awayScore["period3"] | 0;
+            if (awayScore["period4"].is<int>()) match.awayLegs = awayScore["period4"] | 0;
+            if (awayScore["period5"].is<int>()) match.awayLegs = awayScore["period5"] | 0;
         }
         
         const char* tournamentName = event["tournament"]["name"];
@@ -815,8 +828,17 @@ void SofaScoreLiveModule::drawDailyResults() {
         // Live/Status indicator on same line
         if (match.status == MatchStatus::LIVE) {
             u8g2.setForegroundColor(0xF800);  // Red
-            u8g2.setCursor(canvas.width() - u8g2.getUTF8Width("(L)") - 2, y);
-            u8g2.print("(L)");
+            // Show score with legs for live matches
+            char liveScore[24];
+            if (match.homeLegs > 0 || match.awayLegs > 0) {
+                snprintf(liveScore, sizeof(liveScore), "%d:%d(%d:%d)(L)", 
+                         match.homeScore, match.awayScore, match.homeLegs, match.awayLegs);
+            } else {
+                snprintf(liveScore, sizeof(liveScore), "%d:%d(L)", match.homeScore, match.awayScore);
+            }
+            int liveWidth = u8g2.getUTF8Width(liveScore);
+            u8g2.setCursor(canvas.width() - liveWidth - 2, y);
+            u8g2.print(liveScore);
         } else if (match.status == MatchStatus::FINISHED) {
             // Show score on right for finished matches
             u8g2.setForegroundColor(0x07E0);  // Green
@@ -951,16 +973,23 @@ void SofaScoreLiveModule::drawLiveMatch() {
         // Score centered
         u8g2.setFont(u8g2_font_profont12_tf);
         u8g2.setForegroundColor(0xFFFF);
-        char scoreStr[16];
-        snprintf(scoreStr, sizeof(scoreStr), "%d : %d", match.homeScore, match.awayScore);
+        char scoreStr[32];
+        // Show legs in parentheses for live matches
+        if (match.status == MatchStatus::LIVE && (match.homeLegs > 0 || match.awayLegs > 0)) {
+            snprintf(scoreStr, sizeof(scoreStr), "%d:%d (%d:%d)", 
+                     match.homeScore, match.awayScore, match.homeLegs, match.awayLegs);
+        } else {
+            snprintf(scoreStr, sizeof(scoreStr), "%d : %d", match.homeScore, match.awayScore);
+        }
         int scoreWidth = u8g2.getUTF8Width(scoreStr);
         u8g2.setCursor((canvas.width() - scoreWidth) / 2, y);
         u8g2.print(scoreStr);
         
         u8g2.setFont(u8g2_font_5x8_tf);
         y += 10;
-        u8g2.setCursor((canvas.width() - u8g2.getUTF8Width("Sets")) / 2, y);
-        u8g2.print("Sets");
+        const char* scoreLabel = (match.status == MatchStatus::LIVE && (match.homeLegs > 0 || match.awayLegs > 0)) ? "Sets (Legs)" : "Sets";
+        u8g2.setCursor((canvas.width() - u8g2.getUTF8Width(scoreLabel)) / 2, y);
+        u8g2.print(scoreLabel);
         
         y += 12;
         

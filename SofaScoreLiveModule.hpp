@@ -46,6 +46,8 @@ struct SofaScoreMatch {
     char* awayPlayerName = nullptr;
     int homeScore = 0;  // Sets won
     int awayScore = 0;  // Sets won
+    int homeLegs = 0;   // Legs in current set
+    int awayLegs = 0;   // Legs in current set
     char* tournamentName = nullptr;
     MatchStatus status = MatchStatus::SCHEDULED;
     long startTimestamp = 0;
