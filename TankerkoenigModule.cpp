@@ -754,9 +754,9 @@ void TankerkoenigModule::cleanupOldPriceCacheEntries() {
     bool changed = (_lastPriceCache.size() < original_size);
     
     // Save cache if entries were removed
-    // NOTE: savePriceCache() is called while mutex is held by caller
+    // NOTE: savePriceCache() must be called while mutex is held because it accesses _lastPriceCache
     if (changed) { 
-        Log.printf("[TankerkoenigModule] Cleanup entfernte %d alte Cache-Einträge\n", original_size - _lastPriceCache.size());
+        Log.printf("[TankerkoenigModule] Cleanup entfernt %d alte Cache-Einträge\n", original_size - _lastPriceCache.size());
         savePriceCache(); 
     }
 }
