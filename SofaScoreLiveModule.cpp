@@ -166,7 +166,8 @@ SofaScoreMatch::~SofaScoreMatch() {
 SofaScoreLiveModule::SofaScoreLiveModule(U8G2_FOR_ADAFRUIT_GFX& u8g2_ref, GFXcanvas16& canvas_ref,
                                          const GeneralTimeConverter& timeConverter_ref,
                                          WebClientModule* webClient_ptr, DeviceConfig* config)
-    : u8g2(u8g2_ref), canvas(canvas_ref), timeConverter(timeConverter_ref), 
+    : u8g2(u8g2_ref), canvas(canvas_ref), _currentCanvas(&canvas_ref),
+      timeConverter(timeConverter_ref), 
       webClient(webClient_ptr), config(config) {
     dataMutex = xSemaphoreCreateMutex();
     
@@ -710,10 +711,25 @@ void SofaScoreLiveModule::parseMatchStatistics(int eventId, const char* json, si
 }
 
 void SofaScoreLiveModule::draw() {
-    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) != pdTRUE) return;
+    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+        Log.println("[SofaScore] draw() - Could not acquire mutex!");
+        return;
+    }
     
-    canvas.fillScreen(0);
-    u8g2.begin(canvas);
+    // Choose the correct canvas based on fullscreen mode
+    _currentCanvas = wantsFullscreen() ? _fullscreenCanvas : &canvas;
+    if (!_currentCanvas) {
+        Log.println("[SofaScore] draw() - No valid canvas!");
+        xSemaphoreGive(dataMutex);
+        return;
+    }
+    
+    Log.printf("[SofaScore] draw() - mode=%d, page=%d/%d, canvas=%s\n", 
+               (int)_currentMode, _currentPage + 1, _totalPages,
+               wantsFullscreen() ? "FULLSCREEN" : "NORMAL");
+    
+    _currentCanvas->fillScreen(0);
+    u8g2.begin(*_currentCanvas);
     
     switch (_currentMode) {
         case SofaScoreDisplayMode::TOURNAMENT_LIST:
@@ -736,14 +752,14 @@ void SofaScoreLiveModule::drawTournamentList() {
     
     const char* title = "Darts Tournaments";
     int titleWidth = u8g2.getUTF8Width(title);
-    u8g2.setCursor((canvas.width() - titleWidth) / 2, 10);
+    u8g2.setCursor((_currentCanvas->width() - titleWidth) / 2, 10);
     u8g2.print(title);
     
     u8g2.setFont(u8g2_font_5x8_tf);
     int y = 22;
     
     for (const auto& tournament : availableTournaments) {
-        if (y > canvas.height() - 8) break;
+        if (y > _currentCanvas->height() - 8) break;
         
         u8g2.setCursor(2, y);
         if (tournament.isEnabled) {
@@ -767,7 +783,7 @@ void SofaScoreLiveModule::drawDailyResults() {
     
     const char* title = "Today's Darts";
     int titleWidth = u8g2.getUTF8Width(title);
-    u8g2.setCursor((canvas.width() - titleWidth) / 2, 10);
+    u8g2.setCursor((_currentCanvas->width() - titleWidth) / 2, 10);
     u8g2.print(title);
     
     // Page indicator
@@ -775,14 +791,14 @@ void SofaScoreLiveModule::drawDailyResults() {
     snprintf(pageInfo, sizeof(pageInfo), "%d/%d", _currentPage + 1, _totalPages);
     u8g2.setFont(u8g2_font_profont10_tf);
     int pageInfoWidth = u8g2.getUTF8Width(pageInfo);
-    u8g2.setCursor(canvas.width() - pageInfoWidth - 2, 8);
+    u8g2.setCursor(_currentCanvas->width() - pageInfoWidth - 2, 8);
     u8g2.print(pageInfo);
     
     if (_tournamentGroups.empty() || _currentTournamentIndex >= _tournamentGroups.size()) {
         u8g2.setFont(u8g2_font_profont12_tf);
         const char* msg = "No matches today";
         int msgWidth = u8g2.getUTF8Width(msg);
-        u8g2.setCursor((canvas.width() - msgWidth) / 2, canvas.height() / 2);
+        u8g2.setCursor((_currentCanvas->width() - msgWidth) / 2, _currentCanvas->height() / 2);
         u8g2.print(msg);
         return;
     }
@@ -794,7 +810,7 @@ void SofaScoreLiveModule::drawDailyResults() {
     u8g2.setForegroundColor(0xAAAA);
     if (!currentGroup.tournamentName.empty()) {
         int tournWidth = u8g2.getUTF8Width(currentGroup.tournamentName.c_str());
-        u8g2.setCursor((canvas.width() - tournWidth) / 2, 20);
+        u8g2.setCursor((_currentCanvas->width() - tournWidth) / 2, 20);
         u8g2.print(currentGroup.tournamentName.c_str());
     }
     
@@ -837,7 +853,7 @@ void SofaScoreLiveModule::drawDailyResults() {
                 snprintf(liveScore, sizeof(liveScore), "%d:%d(L)", match.homeScore, match.awayScore);
             }
             int liveWidth = u8g2.getUTF8Width(liveScore);
-            u8g2.setCursor(canvas.width() - liveWidth - 2, y);
+            u8g2.setCursor(_currentCanvas->width() - liveWidth - 2, y);
             u8g2.print(liveScore);
         } else if (match.status == MatchStatus::FINISHED) {
             // Show score on right for finished matches
@@ -845,7 +861,7 @@ void SofaScoreLiveModule::drawDailyResults() {
             char scoreStr[16];
             snprintf(scoreStr, sizeof(scoreStr), "%d:%d", match.homeScore, match.awayScore);
             int scoreWidth = u8g2.getUTF8Width(scoreStr);
-            u8g2.setCursor(canvas.width() - scoreWidth - 2, y);
+            u8g2.setCursor(_currentCanvas->width() - scoreWidth - 2, y);
             u8g2.print(scoreStr);
         }
         
@@ -894,7 +910,7 @@ void SofaScoreLiveModule::drawLiveMatch() {
     snprintf(pageInfo, sizeof(pageInfo), "%d/%d", _currentPage + 1, _totalPages);
     u8g2.setFont(u8g2_font_profont10_tf);
     int pageInfoWidth = u8g2.getUTF8Width(pageInfo);
-    u8g2.setCursor(canvas.width() - pageInfoWidth - 2, 8);
+    u8g2.setCursor(_currentCanvas->width() - pageInfoWidth - 2, 8);
     u8g2.print(pageInfo);
     
     if (_currentPage < liveMatches.size()) {
@@ -904,11 +920,11 @@ void SofaScoreLiveModule::drawLiveMatch() {
         u8g2.setForegroundColor(0xAAAA);
         if (match.tournamentName) {
             int tournWidth = u8g2.getUTF8Width(match.tournamentName);
-            int maxTournWidth = canvas.width() - 60;
+            int maxTournWidth = _currentCanvas->width() - 60;
             if (tournWidth > maxTournWidth) {
                 u8g2.setCursor(30, 10);
             } else {
-                u8g2.setCursor((canvas.width() - tournWidth) / 2, 10);
+                u8g2.setCursor((_currentCanvas->width() - tournWidth) / 2, 10);
             }
             u8g2.print(match.tournamentName);
         }
@@ -954,7 +970,7 @@ void SofaScoreLiveModule::drawLiveMatch() {
                 name = shortName;
             }
             int nameWidth = u8g2.getUTF8Width(name);
-            u8g2.setCursor(canvas.width() - nameWidth - 2, y);
+            u8g2.setCursor(_currentCanvas->width() - nameWidth - 2, y);
             u8g2.print(name);
             
             // Average below name
@@ -963,7 +979,7 @@ void SofaScoreLiveModule::drawLiveMatch() {
                 char avgStr[16];
                 snprintf(avgStr, sizeof(avgStr), "%.1f", match.awayAverage);
                 int avgWidth = u8g2.getUTF8Width(avgStr);
-                u8g2.setCursor(canvas.width() - avgWidth - 2, y + 9);
+                u8g2.setCursor(_currentCanvas->width() - avgWidth - 2, y + 9);
                 u8g2.print(avgStr);
             }
         }
@@ -982,13 +998,13 @@ void SofaScoreLiveModule::drawLiveMatch() {
             snprintf(scoreStr, sizeof(scoreStr), "%d : %d", match.homeScore, match.awayScore);
         }
         int scoreWidth = u8g2.getUTF8Width(scoreStr);
-        u8g2.setCursor((canvas.width() - scoreWidth) / 2, y);
+        u8g2.setCursor((_currentCanvas->width() - scoreWidth) / 2, y);
         u8g2.print(scoreStr);
         
         u8g2.setFont(u8g2_font_5x8_tf);
         y += 10;
         const char* scoreLabel = (match.status == MatchStatus::LIVE && (match.homeLegs > 0 || match.awayLegs > 0)) ? "Sets (Legs)" : "Sets";
-        u8g2.setCursor((canvas.width() - u8g2.getUTF8Width(scoreLabel)) / 2, y);
+        u8g2.setCursor((_currentCanvas->width() - u8g2.getUTF8Width(scoreLabel)) / 2, y);
         u8g2.print(scoreLabel);
         
         y += 12;
@@ -1008,11 +1024,11 @@ void SofaScoreLiveModule::drawLiveMatch() {
             
             const char* label = "180s";
             int labelWidth = u8g2.getUTF8Width(label);
-            u8g2.setCursor((canvas.width() - labelWidth) / 2, y);
+            u8g2.setCursor((_currentCanvas->width() - labelWidth) / 2, y);
             u8g2.print(label);
             
             int away180Width = u8g2.getUTF8Width(away180);
-            u8g2.setCursor(canvas.width() - away180Width - 2, y);
+            u8g2.setCursor(_currentCanvas->width() - away180Width - 2, y);
             u8g2.print(away180);
             
             y += 9;
@@ -1030,11 +1046,11 @@ void SofaScoreLiveModule::drawLiveMatch() {
             
             const char* label = "CO%";
             int labelWidth = u8g2.getUTF8Width(label);
-            u8g2.setCursor((canvas.width() - labelWidth) / 2, y);
+            u8g2.setCursor((_currentCanvas->width() - labelWidth) / 2, y);
             u8g2.print(label);
             
             int awayCOWidth = u8g2.getUTF8Width(awayCO);
-            u8g2.setCursor(canvas.width() - awayCOWidth - 2, y);
+            u8g2.setCursor(_currentCanvas->width() - awayCOWidth - 2, y);
             u8g2.print(awayCO);
         }
     } else {
@@ -1042,7 +1058,7 @@ void SofaScoreLiveModule::drawLiveMatch() {
         u8g2.setForegroundColor(0xFFFF);
         const char* msg = "No live matches";
         int msgWidth = u8g2.getUTF8Width(msg);
-        u8g2.setCursor((canvas.width() - msgWidth) / 2, canvas.height() / 2);
+        u8g2.setCursor((_currentCanvas->width() - msgWidth) / 2, _currentCanvas->height() / 2);
         u8g2.print(msg);
     }
 }

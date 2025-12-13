@@ -104,11 +104,13 @@ public:
     
     // Fullscreen support
     bool supportsFullscreen() const override { return true; }
-    bool wantsFullscreen() const override { return _wantsFullscreen; }
+    bool wantsFullscreen() const override { return _wantsFullscreen && _fullscreenCanvas != nullptr; }
 
 private:
     U8G2_FOR_ADAFRUIT_GFX& u8g2;
     GFXcanvas16& canvas;
+    GFXcanvas16* _fullscreenCanvas = nullptr;
+    GFXcanvas16* _currentCanvas = nullptr;  // Points to either &canvas or _fullscreenCanvas
     const GeneralTimeConverter& timeConverter;
     WebClientModule* webClient;
     DeviceConfig* config;
