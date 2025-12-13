@@ -554,6 +554,8 @@ void SofaScoreLiveModule::updateLiveMatchStats() {
                 char statsUrl[128];
                 snprintf(statsUrl, sizeof(statsUrl), "https://api.sofascore.com/api/v1/event/%d/statistics", match.eventId);
                 
+                // Note: The callback is executed while we hold dataMutex.
+                // parseMatchStatistics() does NOT acquire dataMutex, so this is safe.
                 webClient->accessResource(statsUrl,
                     [this, eventId = match.eventId](const char* buffer, size_t size, time_t last_update, bool is_stale) {
                         if (buffer && size > 0) {
@@ -799,9 +801,10 @@ void SofaScoreLiveModule::parseMatchStatistics(int eventId, const char* json, si
                             // For checkout accuracy, extract percentage from "2/3 (37%)" format if string
                             if (item["home"].is<const char*>()) {
                                 const char* homeStr = item["home"].as<const char*>();
-                                // Look for percentage in parentheses
+                                // Look for percentage in parentheses like "2/3 (37%)"
                                 const char* pct = strchr(homeStr, '(');
-                                if (pct) {
+                                if (pct && strchr(pct, ')')) {
+                                    // Skip '(' and parse the number
                                     match.homeCheckoutPercent = atof(pct + 1);
                                 } else {
                                     match.homeCheckoutPercent = getHomeValue();
@@ -812,7 +815,8 @@ void SofaScoreLiveModule::parseMatchStatistics(int eventId, const char* json, si
                             if (item["away"].is<const char*>()) {
                                 const char* awayStr = item["away"].as<const char*>();
                                 const char* pct = strchr(awayStr, '(');
-                                if (pct) {
+                                if (pct && strchr(pct, ')')) {
+                                    // Skip '(' and parse the number
                                     match.awayCheckoutPercent = atof(pct + 1);
                                 } else {
                                     match.awayCheckoutPercent = getAwayValue();
