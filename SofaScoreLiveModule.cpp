@@ -425,35 +425,41 @@ void SofaScoreLiveModule::logicTick() {
 }
 
 void SofaScoreLiveModule::switchToNextMode() {
-    // Cycle through modes: DAILY_RESULTS -> LIVE_MATCH -> (back to DAILY_RESULTS)
-    // Skip tournament list for now (can be enabled later)
+    // Cycle through modes: DAILY_RESULTS -> LIVE_MATCH
+    // After completing all modes, set _isFinished = true so PanelManager can handle it
     
     if (_currentMode == SofaScoreDisplayMode::DAILY_RESULTS) {
         if (liveMatches.size() > 0) {
+            // Switch to live match mode
             _currentMode = SofaScoreDisplayMode::LIVE_MATCH;
+            _currentPage = 0;
+            _logicTicksSinceModeSwitch = 0;
+            Log.println("[SofaScore] Switched to LIVE_MATCH mode");
         } else {
-            _isFinished = true;  // No live matches, finish cycle
+            // No live matches - cycle is complete
+            _isFinished = true;
+            Log.println("[SofaScore] Cycle complete (no live matches)");
         }
     } else if (_currentMode == SofaScoreDisplayMode::LIVE_MATCH) {
-        _isFinished = true;  // Finish after showing live matches
+        // After showing live matches, cycle is complete
+        _isFinished = true;
         
         // Release interrupt if we were showing live matches via interrupt
         if (_hasActiveInterrupt && _interruptUID > 0) {
             releasePriorityEx(_interruptUID);
             _hasActiveInterrupt = false;
-            Log.println("[SofaScore] Released interrupt after live matches complete");
+            Log.println("[SofaScore] Released interrupt, cycle complete");
+        } else {
+            Log.println("[SofaScore] Cycle complete after live matches");
         }
     }
     
-    // Release PlayNext when finishing cycle
+    // Release PlayNext when cycle finishes
     if (_isFinished && _hasActivePlayNext && _playNextUID > 0) {
         releasePriorityEx(_playNextUID);
         _hasActivePlayNext = false;
         Log.println("[SofaScore] Released PlayNext after cycle complete");
     }
-    
-    _currentPage = 0;
-    _logicTicksSinceModeSwitch = 0;
 }
 
 void SofaScoreLiveModule::queueData() {
