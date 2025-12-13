@@ -720,7 +720,13 @@ void SofaScoreLiveModule::parseDailyEventsJson(const char* json, size_t len) {
     Log.printf("[SofaScore] Parsed %d daily matches (%d live) - filtered to TODAY only\n", dailyMatches.size(), liveMatches.size());
     
     // Re-group matches by tournament after parsing (to update page counts and skip empty tournaments)
-    groupMatchesByTournament();
+    // IMPORTANT: Must hold dataMutex when calling groupMatchesByTournament()
+    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        groupMatchesByTournament();
+        xSemaphoreGive(dataMutex);
+    } else {
+        Log.println("[SofaScore] WARNING: Could not acquire mutex for groupMatchesByTournament");
+    }
 }
 
 void SofaScoreLiveModule::parseMatchStatistics(int eventId, const char* json, size_t len) {

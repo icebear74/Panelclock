@@ -136,7 +136,7 @@ void TankerkoenigModule::setConfig(const PsramString& apiKey, const PsramString&
 
     updateFailsafeTimeout();
 
-    if (xSemaphoreTake(dataMutex, portMAX_DELAY) == pdTRUE) {
+    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
         PsramVector<PsramString> current_id_list;
         PsramString temp_ids = station_ids;
         
@@ -236,7 +236,7 @@ void TankerkoenigModule::queueData() {
 
 void TankerkoenigModule::processData() {
     if (data_pending) {
-        if (xSemaphoreTake(dataMutex, portMAX_DELAY) == pdTRUE) {
+        if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
             parseAndProcessJson(pending_buffer, buffer_size);
             free(pending_buffer);
             pending_buffer = nullptr;
