@@ -171,26 +171,50 @@ bool GeneralTimeConverter::isSameDay(time_t epoch1, time_t epoch2) const {
 
 ---
 
-### Issue #6: Tournament ID Mismatch ⚠️ TO INVESTIGATE
-**Status**: To Investigate  
-**Severity**: MEDIUM
+### Issue #6: Tournament ID Changes Between Sessions ✅ FIXED
+**Status**: FIXED  
+**Severity**: HIGH - Caused completed matches to be filtered out
 
 **Problem**: 
-JSON shows different tournament IDs for "PDC World Championship":
-- `tournament.id: 169922` → "PDC World Championship 25/26"
-- `tournament.id: 171078` → "PDC World Championship 2026"
+Tournament IDs change between different sessions/days of the same tournament:
+- Evening session (Dec 14, 19:00+): `tournament.id: 169922`
+- Afternoon session (Dec 14, 13:00-18:00): `tournament.id: 171078`
+- Both sessions are "PDC World Championship" with `uniqueTournament.id: 616`
 
-These are SEASONAL tournament IDs, not the unique tournament ID.
+**User Impact**: 
+- User configures tournament ID 169922 (evening session)
+- Matches from afternoon session (tournament ID 171078) are filtered out
+- Log shows: "Parsed 4 matches, skipped: 8 not today, 4 wrong tournament"
+- The 4 "wrong tournament" were actually completed matches from same day!
 
-**Current Code**: Uses `event["tournament"]["id"]` (line 669) for filtering
+**Root Cause**:
+- Code only checked `tournament.id` (session-specific ID)
+- When tournament ID changes between sessions, earlier matches are excluded
 
-**Question**: Should we use:
-1. `tournament.id` (seasonal ID) - current implementation
-2. `tournament.uniqueTournament.id` (unique ID 616 for PDC WC)
+**Fix Applied**:
+Check BOTH `tournament.id` AND `tournament.uniqueTournament.id`:
+```cpp
+// Get both tournament IDs for matching
+int tournamentId = event["tournament"]["id"] | 0;
+int uniqueTournamentId = event["tournament"]["uniqueTournament"]["id"] | 0;
 
-**Impact**: Users need to configure the correct seasonal IDs, not unique tournament ID
+// Check if enabled (check BOTH IDs to catch all sessions)
+for (int enabledId : enabledTournamentIds) {
+    if (enabledId == tournamentId || enabledId == uniqueTournamentId) {
+        isEnabled = true;
+        break;
+    }
+}
+```
 
-**Recommendation**: Document that tournament IDs are seasonal IDs in configuration
+**Result**: 
+- Users can configure EITHER the session-specific ID OR the unique tournament ID
+- All matches from the same tournament (any session) will be included
+- Completed matches from earlier sessions now display correctly
+
+**Applied to**:
+- `parseDailyEventsJson()` - for scheduled/completed matches
+- `parseLiveEventsJson()` - for live match filtering
 
 ---
 

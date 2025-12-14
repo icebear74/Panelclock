@@ -749,14 +749,17 @@ void SofaScoreLiveModule::parseDailyEventsJson(const char* json, size_t len) {
             continue;  // Skip matches not happening today
         }
         
-        // Use tournament.id (seasonal ID) to match with active-tournaments tournamentId
+        // Get both tournament IDs for matching
+        // tournament.id changes per session/day (e.g., 169922 for tonight's matches, 171078 for afternoon)
+        // tournament.uniqueTournament.id stays constant for the entire event (e.g., 616 for PDC World Championship)
         int tournamentId = event["tournament"]["id"] | 0;
+        int uniqueTournamentId = event["tournament"]["uniqueTournament"]["id"] | 0;
         
-        // Check if this tournament is enabled
+        // Check if this tournament is enabled (check BOTH IDs to catch all sessions of same tournament)
         bool isEnabled = enabledTournamentIds.empty();  // If no filter, show all
         if (!isEnabled) {
             for (int enabledId : enabledTournamentIds) {
-                if (enabledId == tournamentId) {
+                if (enabledId == tournamentId || enabledId == uniqueTournamentId) {
                     isEnabled = true;
                     break;
                 }
@@ -899,14 +902,15 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
     int parsedCount = 0;
     
     for (JsonObject event : events) {
-        // Check tournament ID against configured tournaments
+        // Get both tournament IDs for matching (see comment in parseDailyEventsJson)
         int tournamentId = event["tournament"]["id"] | 0;
+        int uniqueTournamentId = event["tournament"]["uniqueTournament"]["id"] | 0;
         
-        // Check if this tournament is enabled
+        // Check if this tournament is enabled (check BOTH IDs)
         bool isEnabled = enabledTournamentIds.empty();
         if (!isEnabled) {
             for (int enabledId : enabledTournamentIds) {
-                if (enabledId == tournamentId) {
+                if (enabledId == tournamentId || enabledId == uniqueTournamentId) {
                     isEnabled = true;
                     break;
                 }
