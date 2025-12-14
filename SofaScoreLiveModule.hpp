@@ -133,6 +133,8 @@ private:
     
     // Live event monitoring
     bool _hasLiveEvents = false;
+    bool _liveEndpointRegistered = false;  // Track if live endpoint has been registered
+    bool _dailySchedulesPaused = false;
     bool _continuousLiveDisplay = false;  // Show live match continuously while active
     unsigned long _lastLiveCheckTime = 0;
     unsigned long _lastLiveDataFetchTime = 0;

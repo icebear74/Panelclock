@@ -544,8 +544,20 @@ void SofaScoreLiveModule::checkAndFetchLiveEvents() {
     if (now - _lastLiveCheckTime >= LIVE_CHECK_INTERVAL_MS) {
         _lastLiveCheckTime = now;
         
-        // Fetch live events endpoint
+        // Fetch live events endpoint with priority if we have live events
         const char* liveUrl = "https://api.sofascore.com/api/v1/sport/darts/events/live";
+        
+        // Register with priority if we haven't already
+        if (_hasLiveEvents && !_liveEndpointRegistered) {
+            webClient->registerResourceSeconds(liveUrl, 30, true, nullptr);  // Priority, 30s interval
+            _liveEndpointRegistered = true;
+            Log.println("[SofaScore] Registered PRIORITY live events endpoint (30s)");
+        } else if (!_hasLiveEvents && !_liveEndpointRegistered) {
+            // Register without priority for initial check
+            webClient->registerResourceSeconds(liveUrl, 60, false, nullptr);  // Normal, 60s interval
+            _liveEndpointRegistered = true;
+            Log.println("[SofaScore] Registered live events endpoint (60s)");
+        }
         
         webClient->accessResource(liveUrl,
             [this](const char* buffer, size_t size, time_t last_update, bool is_stale) {
@@ -623,12 +635,13 @@ void SofaScoreLiveModule::updateLiveMatchStats() {
         xSemaphoreGive(dataMutex);
     }
     
-    // Register new resources (outside mutex to avoid holding mutex during registration)
+    // Register new resources with PRIORITY mode (outside mutex to avoid holding mutex during registration)
     for (int eventId : eventIdsToRegister) {
         char statsUrl[128];
         snprintf(statsUrl, sizeof(statsUrl), "https://api.sofascore.com/api/v1/event/%d/statistics", eventId);
-        webClient->registerResource(statsUrl, 1, nullptr);  // Update every 1 minute (minimum supported)
-        Log.printf("[SofaScore] Registered live match statistics: eventId=%d (1min interval)\n", eventId);
+        // Use registerResourceSeconds with priority=true for 30-second updates
+        webClient->registerResourceSeconds(statsUrl, 30, true, nullptr);  // Priority pull, 30 second updates
+        Log.printf("[SofaScore] Registered PRIORITY live match statistics: eventId=%d (30s interval)\n", eventId);
     }
     
     // Fetch statistics for all live matches WITHOUT holding dataMutex to avoid nested mutex locks
@@ -1346,7 +1359,7 @@ void SofaScoreLiveModule::drawLiveMatch() {
         
         int y = 24;
         
-        // NEW LAYOUT: Names at top with averages below
+        // NEW LAYOUT: Names at top (left/right) with score centered BETWEEN them
         u8g2.setFont(u8g2_font_profont10_tf);
         u8g2.setForegroundColor(0xFFFF);
         
@@ -1356,7 +1369,22 @@ void SofaScoreLiveModule::drawLiveMatch() {
             u8g2.print(match.homePlayerName);
         }
         
-        // Away player (right) - Name  
+        // Score centered BETWEEN names - NO LABEL
+        u8g2.setFont(u8g2_font_profont12_tf);
+        char scoreStr[32];
+        if (match.homeLegs > 0 || match.awayLegs > 0) {
+            // Show: "3:2 (4:3)" = Sets (Legs)
+            snprintf(scoreStr, sizeof(scoreStr), "%d:%d (%d:%d)", 
+                     match.homeScore, match.awayScore, match.homeLegs, match.awayLegs);
+        } else {
+            snprintf(scoreStr, sizeof(scoreStr), "%d:%d", match.homeScore, match.awayScore);
+        }
+        int scoreWidth = u8g2.getUTF8Width(scoreStr);
+        u8g2.setCursor((_currentCanvas->width() - scoreWidth) / 2, y);
+        u8g2.print(scoreStr);
+        
+        // Away player (right) - Name
+        u8g2.setFont(u8g2_font_profont10_tf);
         if (match.awayPlayerName) {
             int nameWidth = u8g2.getUTF8Width(match.awayPlayerName);
             u8g2.setCursor(_currentCanvas->width() - nameWidth - 2, y);
@@ -1365,16 +1393,16 @@ void SofaScoreLiveModule::drawLiveMatch() {
         
         y += 10;
         
-        // Averages below names
+        // Averages below names (left and right)
         u8g2.setFont(u8g2_font_5x8_tf);
-        if (match.homeAverage > 0) {
+        if (match.homeAverage > 0.1) {  // Use 0.1 to avoid floating point comparison issues
             char avgStr[16];
             snprintf(avgStr, sizeof(avgStr), "%.1f", match.homeAverage);
             u8g2.setCursor(2, y);
             u8g2.print(avgStr);
         }
         
-        if (match.awayAverage > 0) {
+        if (match.awayAverage > 0.1) {  // Use 0.1 to avoid floating point comparison issues
             char avgStr[16];
             snprintf(avgStr, sizeof(avgStr), "%.1f", match.awayAverage);
             int avgWidth = u8g2.getUTF8Width(avgStr);
@@ -1383,23 +1411,6 @@ void SofaScoreLiveModule::drawLiveMatch() {
         }
         
         y += 10;
-        
-        // Score centered - NO LABEL, just the score with legs
-        u8g2.setFont(u8g2_font_profont12_tf);
-        u8g2.setForegroundColor(0xFFFF);
-        char scoreStr[32];
-        if (match.homeLegs > 0 || match.awayLegs > 0) {
-            // Show: "3:2 (4:3)" = Sets (Legs)
-            snprintf(scoreStr, sizeof(scoreStr), "%d:%d (%d:%d)", 
-                     match.homeScore, match.awayScore, match.homeLegs, match.awayLegs);
-        } else {
-            snprintf(scoreStr, sizeof(scoreStr), "%d : %d", match.homeScore, match.awayScore);
-        }
-        int scoreWidth = u8g2.getUTF8Width(scoreStr);
-        u8g2.setCursor((_currentCanvas->width() - scoreWidth) / 2, y);
-        u8g2.print(scoreStr);
-        
-        y += 12;  // More space for statistics
         
         // Statistics table - MORE ROWS NOW
         if (wantsFullscreen()) {
