@@ -251,15 +251,6 @@ void WebClientModule::registerResourceSeconds(const String& url, uint32_t update
                new_res.url.c_str(), update_interval_seconds, with_priority, force_new, new_res.cert_filename.c_str());
 }
 
-    resources.emplace_back(url.c_str(), interval_ms, root_ca);
-    ManagedResource& new_res = resources.back();
-    new_res.has_priority = with_priority;
-    new_res.use_ms_timing = true;  // Enable millisecond-precise timing
-
-    Log.printf("[WebDataManager] Ressource registriert (Sekunden-genau): %s, Intervall: %u Sek, Priorität: %d (Cert-File: '%s')\n", 
-               new_res.url.c_str(), update_interval_seconds, with_priority, new_res.cert_filename.c_str());
-}
-
 void WebClientModule::registerResourceSecondsWithHeaders(const String& url, const String& customHeaders, uint32_t update_interval_seconds, bool with_priority, const char* root_ca) {
     if (url.isEmpty() || update_interval_seconds == 0) return;
     

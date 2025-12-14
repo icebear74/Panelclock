@@ -516,7 +516,7 @@ void SofaScoreLiveModule::queueData() {
         if (dailyUrl != _lastRegisteredDailyUrl) {
             uint32_t fetchInterval = config->dartsSofascoreFetchIntervalMin > 0 ? config->dartsSofascoreFetchIntervalMin : 60;
             // Convert minutes to seconds and use registerResourceSeconds for consistency with live events
-            webClient->registerResourceSeconds(dailyUrl.c_str(), fetchInterval * 60, false, nullptr);
+            webClient->registerResourceSeconds(dailyUrl.c_str(), fetchInterval * 60, false, false);
             _lastRegisteredDailyUrl = dailyUrl;
             Log.printf("[SofaScore] Registered daily events: interval=%d min (%d sec)\n", fetchInterval, fetchInterval * 60);
         }
@@ -876,7 +876,7 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
             
             // Switch back to normal polling (60s, non-priority)
             const char* liveUrl = "https://api.sofascore.com/api/v1/sport/darts/events/live";
-            webClient->registerResourceSeconds(liveUrl, 60, false, nullptr);
+            webClient->registerResourceSeconds(liveUrl, 60, false, false);
             
             // Clear registered event IDs for statistics
             _registeredEventIds.clear();
@@ -989,7 +989,7 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
         
         // Switch to priority polling (30s interval)
         const char* liveUrl = "https://api.sofascore.com/api/v1/sport/darts/events/live";
-        webClient->registerResourceSeconds(liveUrl, 30, true, nullptr);
+        webClient->registerResourceSeconds(liveUrl, 30, true, false);
         
         Log.println("[SofaScore] Live events detected - Pausing daily schedules, switched to PRIORITY 30s polling");
         
@@ -1001,7 +1001,7 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
         
         // Switch back to normal polling (60s, non-priority)
         const char* liveUrl = "https://api.sofascore.com/api/v1/sport/darts/events/live";
-        webClient->registerResourceSeconds(liveUrl, 60, false, nullptr);
+        webClient->registerResourceSeconds(liveUrl, 60, false, false);
         
         // Clear registered event IDs
         _registeredEventIds.clear();
