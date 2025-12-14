@@ -114,7 +114,9 @@ ManagedResource::ManagedResource(ManagedResource&& other) noexcept
     : url(std::move(other.url)), customHeaders(std::move(other.customHeaders)), update_interval_ms(other.update_interval_ms), root_ca_fallback(other.root_ca_fallback),
       cert_filename(std::move(other.cert_filename)), data_buffer(other.data_buffer), data_size(other.data_size), 
       last_successful_update(other.last_successful_update), last_check_attempt(other.last_check_attempt), 
-      mutex(other.mutex), retry_count(other.retry_count), is_in_retry_mode(other.is_in_retry_mode), is_data_stale(other.is_data_stale)
+      last_check_attempt_ms(other.last_check_attempt_ms),
+      mutex(other.mutex), retry_count(other.retry_count), is_in_retry_mode(other.is_in_retry_mode), is_data_stale(other.is_data_stale),
+      is_paused(other.is_paused), has_priority(other.has_priority), use_ms_timing(other.use_ms_timing)
 {
     other.data_buffer = nullptr; other.mutex = nullptr;
 }
@@ -215,12 +217,146 @@ void WebClientModule::registerResourceWithHeaders(const String& url, const Strin
                new_res.url.c_str(), new_res.customHeaders.c_str(), new_res.cert_filename.c_str());
 }
 
+void WebClientModule::registerResourceSeconds(const String& url, uint32_t update_interval_seconds, bool with_priority, const char* root_ca) {
+    if (url.isEmpty() || update_interval_seconds == 0) return;
+    
+    uint32_t interval_ms = update_interval_seconds * 1000UL;
+    
+    // Extract host from URL for comparison
+    String host;
+    int hostStart = url.indexOf("://");
+    if (hostStart != -1) hostStart += 3; else hostStart = 0;
+    int pathStart = url.indexOf("/", hostStart);
+    host = (pathStart != -1) ? url.substring(hostStart, pathStart) : url.substring(hostStart);
+    int colonPos = host.indexOf(":");
+    if (colonPos != -1) {
+        host = host.substring(0, colonPos);
+    }
+    
+    // Check if a resource with the same host already exists
+    for(auto& res : resources) {
+        // Extract host from existing resource URL
+        PsramString existingHost;
+        int existingHostStart = indexOf(res.url, "://");
+        if (existingHostStart != -1) existingHostStart += 3; else existingHostStart = 0;
+        int existingPathStart = indexOf(res.url, "/", existingHostStart);
+        existingHost = (existingPathStart != -1) ? res.url.substr(existingHostStart, existingPathStart - existingHostStart) : res.url.substr(existingHostStart);
+        int existingColonPos = indexOf(existingHost, ":");
+        if (existingColonPos != -1) {
+            existingHost = existingHost.substr(0, existingColonPos);
+        }
+        
+        // If same host, update the URL but keep other parameters
+        if (existingHost.compare(host.c_str()) == 0) {
+            if (xSemaphoreTake(res.mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+                res.url = url.c_str();
+                res.update_interval_ms = interval_ms;
+                res.has_priority = with_priority;
+                res.use_ms_timing = true;  // Enable millisecond-precise timing
+                Log.printf("[WebDataManager] URL aktualisiert für Host %s: %s (Intervall: %u Sek, Priorität: %d)\n", 
+                          host.c_str(), url.c_str(), update_interval_seconds, with_priority);
+                xSemaphoreGive(res.mutex);
+            }
+            return;
+        }
+    }
+    
+    // No existing resource with same host, check for exact URL match
+    for(const auto& res : resources) {
+        if (res.url.compare(url.c_str()) == 0) return;
+    }
+
+    resources.emplace_back(url.c_str(), interval_ms, root_ca);
+    ManagedResource& new_res = resources.back();
+    new_res.has_priority = with_priority;
+    new_res.use_ms_timing = true;  // Enable millisecond-precise timing
+
+    Log.printf("[WebDataManager] Ressource registriert (Sekunden-genau): %s, Intervall: %u Sek, Priorität: %d (Cert-File: '%s')\n", 
+               new_res.url.c_str(), update_interval_seconds, with_priority, new_res.cert_filename.c_str());
+}
+
+void WebClientModule::registerResourceSecondsWithHeaders(const String& url, const String& customHeaders, uint32_t update_interval_seconds, bool with_priority, const char* root_ca) {
+    if (url.isEmpty() || update_interval_seconds == 0) return;
+    
+    // For resources with custom headers, we register each URL+header combination as a separate resource
+    // This allows multiple resources with the same URL but different headers (e.g., different park IDs)
+    
+    // Check if exact URL+headers combination already exists
+    for(const auto& res : resources) {
+        if (res.url.compare(url.c_str()) == 0 && res.customHeaders.compare(customHeaders.c_str()) == 0) {
+            Log.printf("[WebDataManager] Ressource mit Headers bereits registriert: %s\n", url.c_str());
+            return; // Already exists
+        }
+    }
+    
+    uint32_t interval_ms = update_interval_seconds * 1000UL;
+    resources.emplace_back(url.c_str(), customHeaders.c_str(), interval_ms, root_ca);
+    ManagedResource& new_res = resources.back();
+    new_res.has_priority = with_priority;
+    new_res.use_ms_timing = true;  // Enable millisecond-precise timing
+    
+    Log.printf("[WebDataManager] Ressource mit Headers registriert (Sekunden-genau): %s, Intervall: %u Sek, Priorität: %d (Headers: %s, Cert-File: '%s')\n", 
+               new_res.url.c_str(), update_interval_seconds, with_priority, new_res.customHeaders.c_str(), new_res.cert_filename.c_str());
+}
+
 void WebClientModule::updateResourceUrl(const String& old_url, const String& new_url) {
     for (auto& resource : resources) {
         if (resource.url.compare(old_url.c_str()) == 0) {
             if (xSemaphoreTake(resource.mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
                 resource.url = new_url.c_str();
                 Log.printf("[WebDataManager] URL für Ressource aktualisiert: %s -> %s\n", old_url.c_str(), new_url.c_str());
+                xSemaphoreGive(resource.mutex);
+            }
+            return;
+        }
+    }
+}
+
+void WebClientModule::pauseResource(const String& url) {
+    for (auto& resource : resources) {
+        if (resource.url.compare(url.c_str()) == 0 && resource.customHeaders.empty()) {
+            if (xSemaphoreTake(resource.mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+                resource.is_paused = true;
+                Log.printf("[WebDataManager] Ressource pausiert: %s\n", url.c_str());
+                xSemaphoreGive(resource.mutex);
+            }
+            return;
+        }
+    }
+}
+
+void WebClientModule::pauseResourceWithHeaders(const String& url, const String& customHeaders) {
+    for (auto& resource : resources) {
+        if (resource.url.compare(url.c_str()) == 0 && resource.customHeaders.compare(customHeaders.c_str()) == 0) {
+            if (xSemaphoreTake(resource.mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+                resource.is_paused = true;
+                Log.printf("[WebDataManager] Ressource mit Headers pausiert: %s\n", url.c_str());
+                xSemaphoreGive(resource.mutex);
+            }
+            return;
+        }
+    }
+}
+
+void WebClientModule::resumeResource(const String& url) {
+    for (auto& resource : resources) {
+        if (resource.url.compare(url.c_str()) == 0 && resource.customHeaders.empty()) {
+            if (xSemaphoreTake(resource.mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+                resource.is_paused = false;
+                Log.printf("[WebDataManager] Ressource fortgesetzt: %s\n", url.c_str());
+                xSemaphoreGive(resource.mutex);
+            }
+            return;
+        }
+    }
+}
+
+void WebClientModule::resumeResourceWithHeaders(const String& url, const String& customHeaders) {
+    for (auto& resource : resources) {
+        if (resource.url.compare(url.c_str()) == 0 && resource.customHeaders.compare(customHeaders.c_str()) == 0) {
+            if (xSemaphoreTake(resource.mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+                resource.is_paused = false;
+                Log.printf("[WebDataManager] Ressource mit Headers fortgesetzt: %s\n", url.c_str());
                 xSemaphoreGive(resource.mutex);
             }
             return;
@@ -627,6 +763,12 @@ void WebClientModule::performJob(const WebJob& job) {
     LOG_MEMORY_STRATEGIC("WebClient: End performJob");
 }
 
+// Helper function to safely calculate elapsed time in milliseconds, handling millis() rollover
+static inline unsigned long millisElapsed(unsigned long start, unsigned long now) {
+    // This handles rollover correctly because unsigned arithmetic wraps around
+    return now - start;
+}
+
 void WebClientModule::webWorkerTask(void* param) {
     WebClientModule* self = static_cast<WebClientModule*>(param);
     Log.printf("[WebDataManager] Worker-Task gestartet auf Core %d.\n", xPortGetCoreID());
@@ -668,29 +810,104 @@ void WebClientModule::webWorkerTask(void* param) {
             // Periodic resource updates
             time_t now;
             time(&now);
+            unsigned long nowMs = millis();
+            
+            // First pass: find priority resources that are due
+            ManagedResource* priority_resource = nullptr;
             for (auto& resource : self->resources) {
-                bool should_run = false;
-                if (resource.is_in_retry_mode) {
-                    if ((now - resource.last_check_attempt) * 1000UL >= 30000UL) {
-                        should_run = true;
+                // Skip paused resources
+                if (resource.is_paused) continue;
+                
+                // Check if this priority resource is due
+                if (resource.has_priority) {
+                    bool should_run = false;
+                    if (resource.is_in_retry_mode) {
+                        // Use millisecond timing for retry consistency
+                        if (resource.use_ms_timing) {
+                            if (resource.last_check_attempt_ms == 0 || millisElapsed(resource.last_check_attempt_ms, nowMs) >= 30000UL) {
+                                should_run = true;
+                            }
+                        } else {
+                            if ((now - resource.last_check_attempt) * 1000UL >= 30000UL) {
+                                should_run = true;
+                            }
+                        }
+                    } else {
+                        if (resource.use_ms_timing) {
+                            if (resource.last_check_attempt_ms == 0 || millisElapsed(resource.last_check_attempt_ms, nowMs) >= resource.update_interval_ms) {
+                                should_run = true;
+                            }
+                        } else {
+                            if (resource.last_check_attempt == 0 || (now - resource.last_check_attempt) * 1000UL >= resource.update_interval_ms) {
+                                should_run = true;
+                            }
+                        }
                     }
-                } else {
-                    if (resource.last_check_attempt == 0 || (now - resource.last_check_attempt) * 1000UL >= resource.update_interval_ms) {
-                        should_run = true;
+                    
+                    if (should_run) {
+                        priority_resource = &resource;
+                        break;  // Execute first priority resource found
                     }
                 }
-
-                if (should_run) {
-                    // Respect global minimum pause between downloads
-                    unsigned long nowMsInner = millis();
-                    if (self->_lastDownloadMs != 0 && (nowMsInner - self->_lastDownloadMs) < MIN_PAUSE_BETWEEN_DOWNLOADS_MS) {
-                        // skip this resource for now; next loop will retry
-                        continue;
+            }
+            
+            // If we found a priority resource that's due, execute it immediately (skip minimum pause)
+            if (priority_resource != nullptr) {
+                Log.printf("[WebDataManager] Prioritäts-Ressource wird ausgeführt: %s\n", priority_resource->url.c_str());
+                if (priority_resource->use_ms_timing) {
+                    priority_resource->last_check_attempt_ms = millis();
+                }
+                self->_lastDownloadMs = millis();
+                self->performUpdate(*priority_resource);
+            } else {
+                // Normal resource processing
+                for (auto& resource : self->resources) {
+                    // Skip paused resources
+                    if (resource.is_paused) continue;
+                    
+                    bool should_run = false;
+                    if (resource.is_in_retry_mode) {
+                        // Use millisecond timing for retry consistency when available
+                        if (resource.use_ms_timing) {
+                            if (millisElapsed(resource.last_check_attempt_ms, nowMs) >= 30000UL) {
+                                should_run = true;
+                            }
+                        } else {
+                            if ((now - resource.last_check_attempt) * 1000UL >= 30000UL) {
+                                should_run = true;
+                            }
+                        }
+                    } else {
+                        // For resources with millisecond-precise tracking, use millisecond comparison
+                        if (resource.use_ms_timing) {
+                            if (resource.last_check_attempt_ms == 0 || millisElapsed(resource.last_check_attempt_ms, nowMs) >= resource.update_interval_ms) {
+                                should_run = true;
+                            }
+                        } else {
+                            // Fallback to second-based comparison for legacy resources
+                            if (resource.last_check_attempt == 0 || (now - resource.last_check_attempt) * 1000UL >= resource.update_interval_ms) {
+                                should_run = true;
+                            }
+                        }
                     }
 
-                    // All good: perform update and record last download time
-                    self->_lastDownloadMs = millis();
-                    self->performUpdate(resource);
+                    if (should_run) {
+                        // Respect global minimum pause between downloads
+                        unsigned long nowMsInner = millis();
+                        if (self->_lastDownloadMs != 0 && millisElapsed(self->_lastDownloadMs, nowMsInner) < MIN_PAUSE_BETWEEN_DOWNLOADS_MS) {
+                            // skip this resource for now; next loop will retry
+                            continue;
+                        }
+
+                        // All good: perform update and record last download time
+                        // Set millisecond timestamp for resources using millisecond timing
+                        if (resource.use_ms_timing) {
+                            resource.last_check_attempt_ms = millis();
+                        }
+                        self->_lastDownloadMs = millis();
+                        self->performUpdate(resource);
+                        break;  // Process only one resource per iteration to avoid overload
+                    }
                 }
             }
         }
