@@ -590,9 +590,6 @@ void SofaScoreLiveModule::fetchLiveData() {
                 }
             }
         });
-    
-    // Update statistics for live matches
-    updateLiveMatchStats();
 }
 
 void SofaScoreLiveModule::updateLiveMatchStats() {
@@ -659,6 +656,12 @@ void SofaScoreLiveModule::processData() {
             live_pending_buffer = nullptr;
             live_data_pending = false;
             xSemaphoreGive(dataMutex);
+            
+            // After parsing live events, update statistics for live matches
+            // This is done AFTER parsing so liveMatches is populated
+            Log.println("[SofaScore] Live events parsed, fetching statistics...");
+            updateLiveMatchStats();
+            
             if (updateCallback) updateCallback();
         }
     }
