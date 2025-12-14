@@ -84,6 +84,8 @@ struct DeviceConfig {
     int dartsSofascorePlayNextMinutes = 0;
     /// @brief Live-Match dauerhaft anzeigen während es läuft (statt zu rotieren).
     bool dartsSofascoreContinuousLive = false;
+    /// @brief Debug-Logging für SofaScore in Datei aktivieren.
+    bool sofascoreDebugEnabled = false;
 
     /// @brief Schaltet das Fritz!Box Anrufmonitor-Modul ein/aus.
     bool fritzboxEnabled = false;
