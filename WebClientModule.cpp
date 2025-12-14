@@ -220,6 +220,8 @@ void WebClientModule::registerResourceWithHeaders(const String& url, const Strin
 void WebClientModule::registerResourceSeconds(const String& url, uint32_t update_interval_seconds, bool with_priority, const char* root_ca) {
     if (url.isEmpty() || update_interval_seconds == 0) return;
     
+    uint32_t interval_ms = update_interval_seconds * 1000UL;
+    
     // Extract host from URL for comparison
     String host;
     int hostStart = url.indexOf("://");
@@ -248,8 +250,10 @@ void WebClientModule::registerResourceSeconds(const String& url, uint32_t update
         if (existingHost.compare(host.c_str()) == 0) {
             if (xSemaphoreTake(res.mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
                 res.url = url.c_str();
+                res.update_interval_ms = interval_ms;
                 res.has_priority = with_priority;
-                Log.printf("[WebDataManager] URL aktualisiert für Host %s: %s (priority: %d)\n", host.c_str(), url.c_str(), with_priority);
+                Log.printf("[WebDataManager] URL aktualisiert für Host %s: %s (Intervall: %u Sek, Priorität: %d)\n", 
+                          host.c_str(), url.c_str(), update_interval_seconds, with_priority);
                 xSemaphoreGive(res.mutex);
             }
             return;
@@ -261,7 +265,6 @@ void WebClientModule::registerResourceSeconds(const String& url, uint32_t update
         if (res.url.compare(url.c_str()) == 0) return;
     }
 
-    uint32_t interval_ms = update_interval_seconds * 1000UL;
     resources.emplace_back(url.c_str(), interval_ms, root_ca);
     ManagedResource& new_res = resources.back();
     new_res.has_priority = with_priority;
@@ -872,7 +875,10 @@ void WebClientModule::webWorkerTask(void* param) {
                         }
 
                         // All good: perform update and record last download time
-                        resource.last_check_attempt_ms = millis();
+                        // Set millisecond timestamp for second-precise resources
+                        if (resource.has_priority || resource.last_check_attempt_ms > 0) {
+                            resource.last_check_attempt_ms = millis();
+                        }
                         self->_lastDownloadMs = millis();
                         self->performUpdate(resource);
                         break;  // Process only one resource per iteration to avoid overload
