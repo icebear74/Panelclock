@@ -528,10 +528,15 @@ void SofaScoreLiveModule::queueData() {
 }
 
 void SofaScoreLiveModule::updateLiveMatchStats() {
-    // For each live match, fetch updated statistics every 1 minute
+    // Collect live event IDs while holding mutex, then fetch stats without holding mutex
+    std::vector<int, PsramAllocator<int>> liveEventIds;
+    
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        // Collect all live event IDs that need statistics updates
         for (const auto& match : liveMatches) {
             if (match.status == MatchStatus::LIVE) {
+                liveEventIds.push_back(match.eventId);
+                
                 // Check if already registered
                 bool alreadyRegistered = false;
                 for (int registeredId : _registeredEventIds) {
@@ -542,30 +547,43 @@ void SofaScoreLiveModule::updateLiveMatchStats() {
                 }
                 
                 if (!alreadyRegistered) {
-                    char statsUrl[128];
-                    snprintf(statsUrl, sizeof(statsUrl), "https://api.sofascore.com/api/v1/event/%d/statistics", match.eventId);
-                    
-                    webClient->registerResource(statsUrl, 1, nullptr);  // Update every 1 minute (minimum supported)
                     _registeredEventIds.push_back(match.eventId);
-                    Log.printf("[SofaScore] Registered live match statistics: eventId=%d (1min interval)\n", match.eventId);
                 }
-                
-                // Access the statistics data and process it
-                char statsUrl[128];
-                snprintf(statsUrl, sizeof(statsUrl), "https://api.sofascore.com/api/v1/event/%d/statistics", match.eventId);
-                
-                // Note: The callback is executed while we hold dataMutex.
-                // parseMatchStatistics() does NOT acquire dataMutex, so this is safe.
-                webClient->accessResource(statsUrl,
-                    [this, eventId = match.eventId](const char* buffer, size_t size, time_t last_update, bool is_stale) {
-                        if (buffer && size > 0) {
-                            // Parse statistics directly (we're already holding the mutex)
-                            this->parseMatchStatistics(eventId, buffer, size);
-                        }
-                    });
             }
         }
         xSemaphoreGive(dataMutex);
+    }
+    
+    // Now fetch statistics WITHOUT holding dataMutex to avoid nested mutex locks
+    for (int eventId : liveEventIds) {
+        char statsUrl[128];
+        snprintf(statsUrl, sizeof(statsUrl), "https://api.sofascore.com/api/v1/event/%d/statistics", eventId);
+        
+        // Register resource if not already registered (check outside mutex is safe for registration)
+        bool needsRegistration = true;
+        if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            for (int registeredId : _registeredEventIds) {
+                if (registeredId == eventId) {
+                    needsRegistration = false;
+                    break;
+                }
+            }
+            xSemaphoreGive(dataMutex);
+        }
+        
+        if (needsRegistration) {
+            webClient->registerResource(statsUrl, 1, nullptr);  // Update every 1 minute (minimum supported)
+            Log.printf("[SofaScore] Registered live match statistics: eventId=%d (1min interval)\n", eventId);
+        }
+        
+        // Access the statistics data - callback will acquire dataMutex as needed
+        webClient->accessResource(statsUrl,
+            [this, eventId](const char* buffer, size_t size, time_t last_update, bool is_stale) {
+                if (buffer && size > 0) {
+                    // parseMatchStatistics() will acquire dataMutex internally
+                    this->parseMatchStatistics(eventId, buffer, size);
+                }
+            });
     }
 }
 
@@ -732,13 +750,8 @@ void SofaScoreLiveModule::parseDailyEventsJson(const char* json, size_t len) {
     Log.printf("[SofaScore] Parsed %d daily matches (%d live) - filtered to TODAY only\n", dailyMatches.size(), liveMatches.size());
     
     // Re-group matches by tournament after parsing (to update page counts and skip empty tournaments)
-    // IMPORTANT: Must hold dataMutex when calling groupMatchesByTournament()
-    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        groupMatchesByTournament();
-        xSemaphoreGive(dataMutex);
-    } else {
-        Log.println("[SofaScore] WARNING: Could not acquire mutex for groupMatchesByTournament");
-    }
+    // NOTE: parseDailyEventsJson() is called from processData() which already holds dataMutex
+    groupMatchesByTournament();
 }
 
 void SofaScoreLiveModule::parseMatchStatistics(int eventId, const char* json, size_t len) {
@@ -753,90 +766,96 @@ void SofaScoreLiveModule::parseMatchStatistics(int eventId, const char* json, si
         return;
     }
     
-    // Find the match in liveMatches
-    for (auto& match : liveMatches) {
-        if (match.eventId == eventId) {
-            // Parse statistics
-            JsonArray statistics = doc["statistics"].as<JsonArray>();
-            for (JsonObject period : statistics) {
-                JsonArray groups = period["groups"].as<JsonArray>();
-                for (JsonObject group : groups) {
-                    JsonArray items = group["statisticsItems"].as<JsonArray>();
-                    for (JsonObject item : items) {
-                        const char* name = item["name"];
-                        const char* key = item["key"];  // Use key field for better matching
-                        if (!key && !name) continue;
-                        
-                        // Helper to get numeric value from either string or numeric field
-                        auto getHomeValue = [&item]() -> float {
-                            if (item["homeValue"].is<float>()) return item["homeValue"].as<float>();
-                            if (item["homeValue"].is<int>()) return item["homeValue"].as<int>();
-                            if (item["home"].is<const char*>()) return atof(item["home"].as<const char*>());
-                            return 0.0f;
-                        };
-                        auto getAwayValue = [&item]() -> float {
-                            if (item["awayValue"].is<float>()) return item["awayValue"].as<float>();
-                            if (item["awayValue"].is<int>()) return item["awayValue"].as<int>();
-                            if (item["away"].is<const char*>()) return atof(item["away"].as<const char*>());
-                            return 0.0f;
-                        };
-                        
-                        // Use key field (more reliable) or fallback to name
-                        if ((key && strcmp(key, "Average3Darts") == 0) || (name && strcmp(name, "Average 3 darts") == 0)) {
-                            match.homeAverage = getHomeValue();
-                            match.awayAverage = getAwayValue();
-                        } else if ((key && strcmp(key, "Thrown180") == 0) || (name && strcmp(name, "Thrown 180") == 0)) {
-                            match.home180s = (int)getHomeValue();
-                            match.away180s = (int)getAwayValue();
-                        } else if ((key && strcmp(key, "ThrownOver140") == 0) || (name && strcmp(name, "Thrown over 140") == 0)) {
-                            match.homeOver140 = (int)getHomeValue();
-                            match.awayOver140 = (int)getAwayValue();
-                        } else if ((key && strcmp(key, "ThrownOver100") == 0) || (name && strcmp(name, "Thrown over 100") == 0)) {
-                            match.homeOver100 = (int)getHomeValue();
-                            match.awayOver100 = (int)getAwayValue();
-                        } else if ((key && strcmp(key, "CheckoutsOver100") == 0) || (name && strcmp(name, "Checkouts over 100") == 0)) {
-                            match.homeCheckoutsOver100 = (int)getHomeValue();
-                            match.awayCheckoutsOver100 = (int)getAwayValue();
-                        } else if ((key && strcmp(key, "CheckoutsAccuracy") == 0) || (name && strcmp(name, "Checkout %") == 0) || (name && strcmp(name, "Checkouts accuracy") == 0)) {
-                            // For checkout accuracy, extract percentage from "2/3 (37%)" format if string
-                            if (item["home"].is<const char*>()) {
-                                const char* homeStr = item["home"].as<const char*>();
-                                // Look for percentage in parentheses like "2/3 (37%)"
-                                const char* openParen = strchr(homeStr, '(');
-                                const char* closeParen = openParen ? strchr(openParen, ')') : nullptr;
-                                if (openParen && closeParen && closeParen > openParen + 1) {
-                                    // Skip '(' and parse the number
-                                    float parsed = atof(openParen + 1);
-                                    match.homeCheckoutPercent = parsed > 0.0f ? parsed : getHomeValue();
+    // Acquire mutex before accessing liveMatches
+    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        // Find the match in liveMatches
+        for (auto& match : liveMatches) {
+            if (match.eventId == eventId) {
+                // Parse statistics
+                JsonArray statistics = doc["statistics"].as<JsonArray>();
+                for (JsonObject period : statistics) {
+                    JsonArray groups = period["groups"].as<JsonArray>();
+                    for (JsonObject group : groups) {
+                        JsonArray items = group["statisticsItems"].as<JsonArray>();
+                        for (JsonObject item : items) {
+                            const char* name = item["name"];
+                            const char* key = item["key"];  // Use key field for better matching
+                            if (!key && !name) continue;
+                            
+                            // Helper to get numeric value from either string or numeric field
+                            auto getHomeValue = [&item]() -> float {
+                                if (item["homeValue"].is<float>()) return item["homeValue"].as<float>();
+                                if (item["homeValue"].is<int>()) return item["homeValue"].as<int>();
+                                if (item["home"].is<const char*>()) return atof(item["home"].as<const char*>());
+                                return 0.0f;
+                            };
+                            auto getAwayValue = [&item]() -> float {
+                                if (item["awayValue"].is<float>()) return item["awayValue"].as<float>();
+                                if (item["awayValue"].is<int>()) return item["awayValue"].as<int>();
+                                if (item["away"].is<const char*>()) return atof(item["away"].as<const char*>());
+                                return 0.0f;
+                            };
+                            
+                            // Use key field (more reliable) or fallback to name
+                            if ((key && strcmp(key, "Average3Darts") == 0) || (name && strcmp(name, "Average 3 darts") == 0)) {
+                                match.homeAverage = getHomeValue();
+                                match.awayAverage = getAwayValue();
+                            } else if ((key && strcmp(key, "Thrown180") == 0) || (name && strcmp(name, "Thrown 180") == 0)) {
+                                match.home180s = (int)getHomeValue();
+                                match.away180s = (int)getAwayValue();
+                            } else if ((key && strcmp(key, "ThrownOver140") == 0) || (name && strcmp(name, "Thrown over 140") == 0)) {
+                                match.homeOver140 = (int)getHomeValue();
+                                match.awayOver140 = (int)getAwayValue();
+                            } else if ((key && strcmp(key, "ThrownOver100") == 0) || (name && strcmp(name, "Thrown over 100") == 0)) {
+                                match.homeOver100 = (int)getHomeValue();
+                                match.awayOver100 = (int)getAwayValue();
+                            } else if ((key && strcmp(key, "CheckoutsOver100") == 0) || (name && strcmp(name, "Checkouts over 100") == 0)) {
+                                match.homeCheckoutsOver100 = (int)getHomeValue();
+                                match.awayCheckoutsOver100 = (int)getAwayValue();
+                            } else if ((key && strcmp(key, "CheckoutsAccuracy") == 0) || (name && strcmp(name, "Checkout %") == 0) || (name && strcmp(name, "Checkouts accuracy") == 0)) {
+                                // For checkout accuracy, extract percentage from "2/3 (37%)" format if string
+                                if (item["home"].is<const char*>()) {
+                                    const char* homeStr = item["home"].as<const char*>();
+                                    // Look for percentage in parentheses like "2/3 (37%)"
+                                    const char* openParen = strchr(homeStr, '(');
+                                    const char* closeParen = openParen ? strchr(openParen, ')') : nullptr;
+                                    if (openParen && closeParen && closeParen > openParen + 1) {
+                                        // Skip '(' and parse the number
+                                        float parsed = atof(openParen + 1);
+                                        match.homeCheckoutPercent = parsed > 0.0f ? parsed : getHomeValue();
+                                    } else {
+                                        match.homeCheckoutPercent = getHomeValue();
+                                    }
                                 } else {
                                     match.homeCheckoutPercent = getHomeValue();
                                 }
-                            } else {
-                                match.homeCheckoutPercent = getHomeValue();
-                            }
-                            if (item["away"].is<const char*>()) {
-                                const char* awayStr = item["away"].as<const char*>();
-                                const char* openParen = strchr(awayStr, '(');
-                                const char* closeParen = openParen ? strchr(openParen, ')') : nullptr;
-                                if (openParen && closeParen && closeParen > openParen + 1) {
-                                    // Skip '(' and parse the number
-                                    float parsed = atof(openParen + 1);
-                                    match.awayCheckoutPercent = parsed > 0.0f ? parsed : getAwayValue();
+                                if (item["away"].is<const char*>()) {
+                                    const char* awayStr = item["away"].as<const char*>();
+                                    const char* openParen = strchr(awayStr, '(');
+                                    const char* closeParen = openParen ? strchr(openParen, ')') : nullptr;
+                                    if (openParen && closeParen && closeParen > openParen + 1) {
+                                        // Skip '(' and parse the number
+                                        float parsed = atof(openParen + 1);
+                                        match.awayCheckoutPercent = parsed > 0.0f ? parsed : getAwayValue();
+                                    } else {
+                                        match.awayCheckoutPercent = getAwayValue();
+                                    }
                                 } else {
                                     match.awayCheckoutPercent = getAwayValue();
                                 }
-                            } else {
-                                match.awayCheckoutPercent = getAwayValue();
                             }
                         }
                     }
                 }
+                
+                Log.printf("[SofaScore] Updated stats: Avg %.1f vs %.1f, 180s %d vs %d\n",
+                          match.homeAverage, match.awayAverage, match.home180s, match.away180s);
+                break;
             }
-            
-            Log.printf("[SofaScore] Updated stats: Avg %.1f vs %.1f, 180s %d vs %d\n",
-                      match.homeAverage, match.awayAverage, match.home180s, match.away180s);
-            break;
         }
+        xSemaphoreGive(dataMutex);
+    } else {
+        Log.printf("[SofaScore] Could not acquire mutex for parsing statistics (event %d)\n", eventId);
     }
 }
 
