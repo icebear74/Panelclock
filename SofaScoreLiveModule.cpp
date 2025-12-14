@@ -737,6 +737,8 @@ void SofaScoreLiveModule::parseDailyEventsJson(const char* json, size_t len) {
     int skippedTournamentFilter = 0;
     int parsedCount = 0;
     
+    Log.printf("[SofaScore] Parsing daily events - Total events in JSON: %d\n", events.size());
+    
     for (JsonObject event : events) {
         // Check match timestamp - filter to TODAY only using GeneralTimeConverter
         time_t matchTimestamp = event["startTimestamp"] | 0;
@@ -839,7 +841,8 @@ void SofaScoreLiveModule::parseDailyEventsJson(const char* json, size_t len) {
         parsedCount++;
     }
     
-    Log.printf("[SofaScore] Parsed %d matches (%d live)\n", parsedCount, liveMatches.size());
+    Log.printf("[SofaScore] Parsed %d matches (%d live, skipped: %d not today, %d wrong tournament)\n", 
+               parsedCount, liveMatches.size(), skippedNotToday, skippedTournamentFilter);
     
     // Re-group matches by tournament after parsing
     groupMatchesByTournament();
