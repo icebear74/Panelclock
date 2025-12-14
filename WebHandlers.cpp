@@ -542,7 +542,8 @@ void handleSaveModules() {
             deviceConfig->dartsSofascoreTournamentIds,
             deviceConfig->dartsSofascoreFullscreen,
             deviceConfig->dartsSofascoreInterruptOnLive,
-            deviceConfig->dartsSofascorePlayNextMinutes
+            deviceConfig->dartsSofascorePlayNextMinutes,
+            deviceConfig->dartsSofascoreContinuousLive
         );
     }
     

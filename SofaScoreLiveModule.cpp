@@ -727,7 +727,6 @@ void SofaScoreLiveModule::parseDailyEventsJson(const char* json, size_t len) {
     
     // Get today's time for comparison using GeneralTimeConverter
     time_t now = time(nullptr);
-    time_t nowLocal = timeConverter.toLocal(now);
     
     JsonArray events = doc["events"].as<JsonArray>();
     
@@ -738,10 +737,9 @@ void SofaScoreLiveModule::parseDailyEventsJson(const char* json, size_t len) {
     for (JsonObject event : events) {
         // Check match timestamp - filter to TODAY only using GeneralTimeConverter
         time_t matchTimestamp = event["startTimestamp"] | 0;
-        time_t matchLocal = timeConverter.toLocal(matchTimestamp);
         
-        // Use isSameDay to check if match is today
-        if (!timeConverter.isSameDay(nowLocal, matchLocal)) {
+        // Use isSameDay to check if match is today (isSameDay handles timezone conversion internally)
+        if (!timeConverter.isSameDay(now, matchTimestamp)) {
             skippedNotToday++;
             continue;  // Skip matches not happening today
         }
@@ -1026,25 +1024,18 @@ void SofaScoreLiveModule::parseMatchStatistics(int eventId, const char* json, si
                             if ((key && strcmp(key, "Average3Darts") == 0) || (name && strcmp(name, "Average 3 darts") == 0)) {
                                 match.homeAverage = getHomeValue();
                                 match.awayAverage = getAwayValue();
-                                statsFound++;
-                                Log.printf("[SofaScore]     📊 Average: %.1f vs %.1f\n", match.homeAverage, match.awayAverage);
                             } else if ((key && strcmp(key, "Thrown180") == 0) || (name && strcmp(name, "Thrown 180") == 0)) {
                                 match.home180s = (int)getHomeValue();
                                 match.away180s = (int)getAwayValue();
-                                statsFound++;
-                                Log.printf("[SofaScore]     🎯 180s: %d vs %d\n", match.home180s, match.away180s);
                             } else if ((key && strcmp(key, "ThrownOver140") == 0) || (name && strcmp(name, "Thrown over 140") == 0)) {
                                 match.homeOver140 = (int)getHomeValue();
                                 match.awayOver140 = (int)getAwayValue();
-                                statsFound++;
                             } else if ((key && strcmp(key, "ThrownOver100") == 0) || (name && strcmp(name, "Thrown over 100") == 0)) {
                                 match.homeOver100 = (int)getHomeValue();
                                 match.awayOver100 = (int)getAwayValue();
-                                statsFound++;
                             } else if ((key && strcmp(key, "CheckoutsOver100") == 0) || (name && strcmp(name, "Checkouts over 100") == 0)) {
                                 match.homeCheckoutsOver100 = (int)getHomeValue();
                                 match.awayCheckoutsOver100 = (int)getAwayValue();
-                                statsFound++;
                             } else if ((key && strcmp(key, "CheckoutsAccuracy") == 0) || (name && strcmp(name, "Checkout %") == 0) || (name && strcmp(name, "Checkouts accuracy") == 0)) {
                                 // For checkout accuracy, extract percentage from "2/3 (37%)" format if string
                                 if (item["home"].is<const char*>()) {
