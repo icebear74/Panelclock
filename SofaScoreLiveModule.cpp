@@ -544,20 +544,8 @@ void SofaScoreLiveModule::checkAndFetchLiveEvents() {
     if (now - _lastLiveCheckTime >= LIVE_CHECK_INTERVAL_MS) {
         _lastLiveCheckTime = now;
         
-        // Fetch live events endpoint with priority if we have live events
+        // Fetch live events endpoint
         const char* liveUrl = "https://api.sofascore.com/api/v1/sport/darts/events/live";
-        
-        // Register with priority if we haven't already
-        if (_hasLiveEvents && !_liveEndpointRegistered) {
-            webClient->registerResourceSeconds(liveUrl, 30, true, nullptr);  // Priority, 30s interval
-            _liveEndpointRegistered = true;
-            Log.println("[SofaScore] Registered PRIORITY live events endpoint (30s)");
-        } else if (!_hasLiveEvents && !_liveEndpointRegistered) {
-            // Register without priority for initial check
-            webClient->registerResourceSeconds(liveUrl, 60, false, nullptr);  // Normal, 60s interval
-            _liveEndpointRegistered = true;
-            Log.println("[SofaScore] Registered live events endpoint (60s)");
-        }
         
         webClient->accessResource(liveUrl,
             [this](const char* buffer, size_t size, time_t last_update, bool is_stale) {
@@ -878,7 +866,15 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
         
         if (hadLiveEvents) {
             _dailySchedulesPaused = false;
-            Log.println("[SofaScore] Live events ended - Resuming daily schedules");
+            
+            // Switch back to normal polling (60s, non-priority)
+            const char* liveUrl = "https://api.sofascore.com/api/v1/sport/darts/events/live";
+            webClient->registerResourceSeconds(liveUrl, 60, false, nullptr);
+            
+            // Clear registered event IDs for statistics
+            _registeredEventIds.clear();
+            
+            Log.println("[SofaScore] Live events ended - Resuming daily schedules, switched to 60s polling");
         }
         
         return;
@@ -975,14 +971,27 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
     
     if (_hasLiveEvents && !hadLiveEvents) {
         _dailySchedulesPaused = true;
-        Log.println("[SofaScore] Live events detected - Pausing daily schedules");
+        
+        // Switch to priority polling (30s interval)
+        const char* liveUrl = "https://api.sofascore.com/api/v1/sport/darts/events/live";
+        webClient->registerResourceSeconds(liveUrl, 30, true, nullptr);
+        
+        Log.println("[SofaScore] Live events detected - Pausing daily schedules, switched to PRIORITY 30s polling");
         
         if (_interruptOnLive && updateCallback) {
             updateCallback();
         }
     } else if (!_hasLiveEvents && hadLiveEvents) {
         _dailySchedulesPaused = false;
-        Log.println("[SofaScore] Live events ended - Resuming daily schedules");
+        
+        // Switch back to normal polling (60s, non-priority)
+        const char* liveUrl = "https://api.sofascore.com/api/v1/sport/darts/events/live";
+        webClient->registerResourceSeconds(liveUrl, 60, false, nullptr);
+        
+        // Clear registered event IDs
+        _registeredEventIds.clear();
+        
+        Log.println("[SofaScore] Live events ended - Resuming daily schedules, switched to 60s polling");
     }
     
     if (parsedCount > 0) {
