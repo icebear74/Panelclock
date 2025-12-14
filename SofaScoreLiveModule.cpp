@@ -332,6 +332,13 @@ void SofaScoreLiveModule::resetPaging() {
     if (_nameScroller) _nameScroller->reset();
     if (_tournamentScroller) _tournamentScroller->reset();
     
+    // Recalculate pages when resetting
+    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        groupMatchesByTournament();
+        _totalPages = calculateTotalPages();
+        xSemaphoreGive(dataMutex);
+    }
+    
     // Release interrupt if active
     if (_hasActiveInterrupt && _interruptUID > 0) {
         releasePriorityEx(_interruptUID);
@@ -375,9 +382,8 @@ void SofaScoreLiveModule::logicTick() {
             
             switch (_currentMode) {
                 case SofaScoreDisplayMode::DAILY_RESULTS:
-                    // Group matches by tournament and calculate pages
-                    groupMatchesByTournament();
-                    _totalPages = calculateTotalPages();
+                    // NOTE: groupMatchesByTournament() is now called only in processData()
+                    // and resetPaging(), not on every page advance for performance
                     
                     if (_tournamentGroups.empty()) {
                         _currentPage = 0;
@@ -831,6 +837,9 @@ void SofaScoreLiveModule::parseDailyEventsJson(const char* json, size_t len) {
     // Re-group matches by tournament after parsing (to update page counts and skip empty tournaments)
     // NOTE: parseDailyEventsJson() is called from processData() which already holds dataMutex
     groupMatchesByTournament();
+    _totalPages = calculateTotalPages();  // Update total pages after grouping
+    
+    Log.printf("[SofaScore] 📄 Total pages calculated: %d\n", _totalPages);
 }
 
 void SofaScoreLiveModule::parseMatchStatistics(int eventId, const char* json, size_t len) {
