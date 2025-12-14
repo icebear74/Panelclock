@@ -99,7 +99,7 @@ private:
     bool _debugFileEnabled;
     File _debugFile;
     const char* DEBUG_FILE_PATH = "/debug.log";
-    const size_t MAX_DEBUG_FILE_SIZE = 100 * 1024; // 100KB
+    const size_t MAX_DEBUG_FILE_SIZE = 500 * 1024; // 500KB
     
     /**
      * @brief Finalize the current line and add it to the ring buffer
