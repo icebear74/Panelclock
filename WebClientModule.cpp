@@ -116,7 +116,7 @@ ManagedResource::ManagedResource(ManagedResource&& other) noexcept
       last_successful_update(other.last_successful_update), last_check_attempt(other.last_check_attempt), 
       last_check_attempt_ms(other.last_check_attempt_ms),
       mutex(other.mutex), retry_count(other.retry_count), is_in_retry_mode(other.is_in_retry_mode), is_data_stale(other.is_data_stale),
-      is_paused(other.is_paused), has_priority(other.has_priority)
+      is_paused(other.is_paused), has_priority(other.has_priority), use_ms_timing(other.use_ms_timing)
 {
     other.data_buffer = nullptr; other.mutex = nullptr;
 }
@@ -252,6 +252,7 @@ void WebClientModule::registerResourceSeconds(const String& url, uint32_t update
                 res.url = url.c_str();
                 res.update_interval_ms = interval_ms;
                 res.has_priority = with_priority;
+                res.use_ms_timing = true;  // Enable millisecond-precise timing
                 Log.printf("[WebDataManager] URL aktualisiert für Host %s: %s (Intervall: %u Sek, Priorität: %d)\n", 
                           host.c_str(), url.c_str(), update_interval_seconds, with_priority);
                 xSemaphoreGive(res.mutex);
@@ -268,6 +269,7 @@ void WebClientModule::registerResourceSeconds(const String& url, uint32_t update
     resources.emplace_back(url.c_str(), interval_ms, root_ca);
     ManagedResource& new_res = resources.back();
     new_res.has_priority = with_priority;
+    new_res.use_ms_timing = true;  // Enable millisecond-precise timing
 
     Log.printf("[WebDataManager] Ressource registriert (Sekunden-genau): %s, Intervall: %u Sek, Priorität: %d (Cert-File: '%s')\n", 
                new_res.url.c_str(), update_interval_seconds, with_priority, new_res.cert_filename.c_str());
@@ -291,6 +293,7 @@ void WebClientModule::registerResourceSecondsWithHeaders(const String& url, cons
     resources.emplace_back(url.c_str(), customHeaders.c_str(), interval_ms, root_ca);
     ManagedResource& new_res = resources.back();
     new_res.has_priority = with_priority;
+    new_res.use_ms_timing = true;  // Enable millisecond-precise timing
     
     Log.printf("[WebDataManager] Ressource mit Headers registriert (Sekunden-genau): %s, Intervall: %u Sek, Priorität: %d (Headers: %s, Cert-File: '%s')\n", 
                new_res.url.c_str(), update_interval_seconds, with_priority, new_res.customHeaders.c_str(), new_res.cert_filename.c_str());
@@ -760,6 +763,12 @@ void WebClientModule::performJob(const WebJob& job) {
     LOG_MEMORY_STRATEGIC("WebClient: End performJob");
 }
 
+// Helper function to safely calculate elapsed time in milliseconds, handling millis() rollover
+static inline unsigned long millisElapsed(unsigned long start, unsigned long now) {
+    // This handles rollover correctly because unsigned arithmetic wraps around
+    return now - start;
+}
+
 void WebClientModule::webWorkerTask(void* param) {
     WebClientModule* self = static_cast<WebClientModule*>(param);
     Log.printf("[WebDataManager] Worker-Task gestartet auf Core %d.\n", xPortGetCoreID());
@@ -813,18 +822,25 @@ void WebClientModule::webWorkerTask(void* param) {
                 if (resource.has_priority) {
                     bool should_run = false;
                     if (resource.is_in_retry_mode) {
-                        if (resource.last_check_attempt_ms == 0) {
-                            // First run or after initialization
-                            should_run = true;
-                        } else if ((nowMs - resource.last_check_attempt_ms) >= 30000UL) {
-                            should_run = true;
+                        // Use millisecond timing for retry consistency
+                        if (resource.use_ms_timing) {
+                            if (resource.last_check_attempt_ms == 0 || millisElapsed(resource.last_check_attempt_ms, nowMs) >= 30000UL) {
+                                should_run = true;
+                            }
+                        } else {
+                            if ((now - resource.last_check_attempt) * 1000UL >= 30000UL) {
+                                should_run = true;
+                            }
                         }
                     } else {
-                        if (resource.last_check_attempt_ms == 0) {
-                            // First run
-                            should_run = true;
-                        } else if ((nowMs - resource.last_check_attempt_ms) >= resource.update_interval_ms) {
-                            should_run = true;
+                        if (resource.use_ms_timing) {
+                            if (resource.last_check_attempt_ms == 0 || millisElapsed(resource.last_check_attempt_ms, nowMs) >= resource.update_interval_ms) {
+                                should_run = true;
+                            }
+                        } else {
+                            if (resource.last_check_attempt == 0 || (now - resource.last_check_attempt) * 1000UL >= resource.update_interval_ms) {
+                                should_run = true;
+                            }
                         }
                     }
                     
@@ -838,7 +854,9 @@ void WebClientModule::webWorkerTask(void* param) {
             // If we found a priority resource that's due, execute it immediately (skip minimum pause)
             if (priority_resource != nullptr) {
                 Log.printf("[WebDataManager] Prioritäts-Ressource wird ausgeführt: %s\n", priority_resource->url.c_str());
-                priority_resource->last_check_attempt_ms = millis();
+                if (priority_resource->use_ms_timing) {
+                    priority_resource->last_check_attempt_ms = millis();
+                }
                 self->_lastDownloadMs = millis();
                 self->performUpdate(*priority_resource);
             } else {
@@ -849,13 +867,20 @@ void WebClientModule::webWorkerTask(void* param) {
                     
                     bool should_run = false;
                     if (resource.is_in_retry_mode) {
-                        if ((now - resource.last_check_attempt) * 1000UL >= 30000UL) {
-                            should_run = true;
+                        // Use millisecond timing for retry consistency when available
+                        if (resource.use_ms_timing) {
+                            if (millisElapsed(resource.last_check_attempt_ms, nowMs) >= 30000UL) {
+                                should_run = true;
+                            }
+                        } else {
+                            if ((now - resource.last_check_attempt) * 1000UL >= 30000UL) {
+                                should_run = true;
+                            }
                         }
                     } else {
                         // For resources with millisecond-precise tracking, use millisecond comparison
-                        if (resource.last_check_attempt_ms > 0) {
-                            if ((nowMs - resource.last_check_attempt_ms) >= resource.update_interval_ms) {
+                        if (resource.use_ms_timing) {
+                            if (resource.last_check_attempt_ms == 0 || millisElapsed(resource.last_check_attempt_ms, nowMs) >= resource.update_interval_ms) {
                                 should_run = true;
                             }
                         } else {
@@ -869,14 +894,14 @@ void WebClientModule::webWorkerTask(void* param) {
                     if (should_run) {
                         // Respect global minimum pause between downloads
                         unsigned long nowMsInner = millis();
-                        if (self->_lastDownloadMs != 0 && (nowMsInner - self->_lastDownloadMs) < MIN_PAUSE_BETWEEN_DOWNLOADS_MS) {
+                        if (self->_lastDownloadMs != 0 && millisElapsed(self->_lastDownloadMs, nowMsInner) < MIN_PAUSE_BETWEEN_DOWNLOADS_MS) {
                             // skip this resource for now; next loop will retry
                             continue;
                         }
 
                         // All good: perform update and record last download time
-                        // Set millisecond timestamp for second-precise resources
-                        if (resource.has_priority || resource.last_check_attempt_ms > 0) {
+                        // Set millisecond timestamp for resources using millisecond timing
+                        if (resource.use_ms_timing) {
                             resource.last_check_attempt_ms = millis();
                         }
                         self->_lastDownloadMs = millis();

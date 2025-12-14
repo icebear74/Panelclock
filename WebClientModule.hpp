@@ -53,6 +53,7 @@ struct ManagedResource {
     bool is_data_stale = true;
     bool is_paused = false;          // When true, resource polling is paused
     bool has_priority = false;       // When true, resource is checked with priority when due
+    bool use_ms_timing = false;      // When true, use millisecond-precise timing
 
     ManagedResource(const PsramString& u, uint32_t interval, const char* ca);
     ManagedResource(const PsramString& u, const PsramString& headers, uint32_t interval, const char* ca);
