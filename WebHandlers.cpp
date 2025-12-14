@@ -925,7 +925,8 @@ void handleToggleDebugFile() {
     
     bool enabled = doc["enabled"] | false;
     deviceConfig->debugFileEnabled = enabled;
-    saveDeviceConfig();
+    // Don't save to config for security - only apply live
+    // saveDeviceConfig();
     
     // Apply immediately via the existing applyLiveConfig function
     applyLiveConfig();
