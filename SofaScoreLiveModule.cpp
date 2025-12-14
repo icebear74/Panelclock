@@ -539,16 +539,23 @@ void SofaScoreLiveModule::queueData() {
 }
 
 void SofaScoreLiveModule::checkAndFetchLiveEvents() {
-    unsigned long now = millis();
+    if (!webClient) return;
     
-    // Check for live events every 60 seconds
-    if (now - _lastLiveCheckTime >= LIVE_CHECK_INTERVAL_MS) {
-        _lastLiveCheckTime = now;
-        
-        // Fetch live events endpoint
-        const char* liveUrl = "https://api.sofascore.com/api/v1/sport/darts/events/live";
-        
-        webClient->accessResource(liveUrl,
+    const char* liveUrl = "https://api.sofascore.com/api/v1/sport/darts/events/live";
+    
+    // Register live events endpoint for periodic fetching (60s when idle, 30s when active)
+    // Note: This will be re-registered with different intervals in parseLiveEventsJson()
+    // based on whether live events are detected
+    if (!_hasLiveEvents) {
+        // No live events: check every 60 seconds
+        webClient->registerResourceSeconds(liveUrl, 60, false, false);
+    } else {
+        // Has live events: check every 30 seconds with priority
+        webClient->registerResourceSeconds(liveUrl, 30, false, true);
+    }
+    
+    // Access the resource to fetch latest data
+    webClient->accessResource(liveUrl,
             [this](const char* buffer, size_t size, time_t last_update, bool is_stale) {
                 if (buffer && size > 0) {
                     if (live_pending_buffer) free(live_pending_buffer);
@@ -562,12 +569,6 @@ void SofaScoreLiveModule::checkAndFetchLiveEvents() {
                     }
                 }
             });
-    }
-    
-    // If we have live events, fetch live data more frequently (every 30 seconds)
-    if (_hasLiveEvents && (now - _lastLiveDataFetchTime >= LIVE_DATA_FETCH_INTERVAL_MS)) {
-        fetchLiveData();
-    }
 }
 
 void SofaScoreLiveModule::fetchLiveData() {
