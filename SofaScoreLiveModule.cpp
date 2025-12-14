@@ -530,6 +530,7 @@ void SofaScoreLiveModule::queueData() {
 void SofaScoreLiveModule::updateLiveMatchStats() {
     // Collect live event IDs while holding mutex, then fetch stats without holding mutex
     std::vector<int, PsramAllocator<int>> liveEventIds;
+    std::vector<int, PsramAllocator<int>> eventIdsToRegister;
     
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
         // Collect all live event IDs that need statistics updates
@@ -547,6 +548,7 @@ void SofaScoreLiveModule::updateLiveMatchStats() {
                 }
                 
                 if (!alreadyRegistered) {
+                    eventIdsToRegister.push_back(match.eventId);
                     _registeredEventIds.push_back(match.eventId);
                 }
             }
@@ -554,27 +556,18 @@ void SofaScoreLiveModule::updateLiveMatchStats() {
         xSemaphoreGive(dataMutex);
     }
     
-    // Now fetch statistics WITHOUT holding dataMutex to avoid nested mutex locks
+    // Register new resources (outside mutex to avoid holding mutex during registration)
+    for (int eventId : eventIdsToRegister) {
+        char statsUrl[128];
+        snprintf(statsUrl, sizeof(statsUrl), "https://api.sofascore.com/api/v1/event/%d/statistics", eventId);
+        webClient->registerResource(statsUrl, 1, nullptr);  // Update every 1 minute (minimum supported)
+        Log.printf("[SofaScore] Registered live match statistics: eventId=%d (1min interval)\n", eventId);
+    }
+    
+    // Fetch statistics for all live matches WITHOUT holding dataMutex to avoid nested mutex locks
     for (int eventId : liveEventIds) {
         char statsUrl[128];
         snprintf(statsUrl, sizeof(statsUrl), "https://api.sofascore.com/api/v1/event/%d/statistics", eventId);
-        
-        // Register resource if not already registered (check outside mutex is safe for registration)
-        bool needsRegistration = true;
-        if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-            for (int registeredId : _registeredEventIds) {
-                if (registeredId == eventId) {
-                    needsRegistration = false;
-                    break;
-                }
-            }
-            xSemaphoreGive(dataMutex);
-        }
-        
-        if (needsRegistration) {
-            webClient->registerResource(statsUrl, 1, nullptr);  // Update every 1 minute (minimum supported)
-            Log.printf("[SofaScore] Registered live match statistics: eventId=%d (1min interval)\n", eventId);
-        }
         
         // Access the statistics data - callback will acquire dataMutex as needed
         webClient->accessResource(statsUrl,
