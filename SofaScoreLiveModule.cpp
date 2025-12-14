@@ -330,6 +330,7 @@ void SofaScoreLiveModule::resetPaging() {
     _logicTicksSincePageSwitch = 0;
     _logicTicksSinceModeSwitch = 0;
     _isFinished = false;
+    _liveEventsRegistered = false;  // Reset registration flag
     if (_nameScroller) _nameScroller->reset();
     if (_tournamentScroller) _tournamentScroller->reset();
     
@@ -544,14 +545,21 @@ void SofaScoreLiveModule::checkAndFetchLiveEvents() {
     const char* liveUrl = "https://api.sofascore.com/api/v1/sport/darts/events/live";
     
     // Register live events endpoint for periodic fetching (60s when idle, 30s when active)
-    // Note: This will be re-registered with different intervals in parseLiveEventsJson()
-    // based on whether live events are detected
+    // Only register when unregistered or when state changes to prevent spam
+    bool shouldRegister = !_liveEventsRegistered;
+    
     if (!_hasLiveEvents) {
         // No live events: check every 60 seconds
-        webClient->registerResourceSeconds(liveUrl, 60, false, false);
+        if (shouldRegister) {
+            webClient->registerResourceSeconds(liveUrl, 60, false, false);
+            _liveEventsRegistered = true;
+        }
     } else {
         // Has live events: check every 30 seconds with priority
-        webClient->registerResourceSeconds(liveUrl, 30, false, true);
+        if (shouldRegister) {
+            webClient->registerResourceSeconds(liveUrl, 30, false, true);
+            _liveEventsRegistered = true;
+        }
     }
     
     // Access the resource to fetch latest data

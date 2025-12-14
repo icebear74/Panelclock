@@ -142,6 +142,7 @@ private:
     const unsigned long LIVE_DATA_FETCH_INTERVAL_MS = 30000;  // Fetch live data every 30 seconds when active
     const unsigned long LIVE_DISPLAY_REPEAT_MS = 60000;  // Repeat live display every 60 seconds
     const unsigned long LIVE_MIN_DISPLAY_MS = 20000;  // Minimum 20 seconds display for live stats
+    bool _liveEventsRegistered = false;  // Track if live events endpoint is registered to prevent spam
     
     // Paging
     int _currentPage = 0;
