@@ -86,6 +86,8 @@ struct DeviceConfig {
     bool dartsSofascoreContinuousLive = false;
     /// @brief Debug-Logging für SofaScore in Datei aktivieren.
     bool sofascoreDebugEnabled = false;
+    /// @brief Debug-Logging in Datei aktivieren (alle Module via MultiLogger).
+    bool debugFileEnabled = false;
 
     /// @brief Schaltet das Fritz!Box Anrufmonitor-Modul ein/aus.
     bool fritzboxEnabled = false;

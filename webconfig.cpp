@@ -71,6 +71,8 @@ void loadDeviceConfig() {
                 deviceConfig->dartsSofascoreFullscreen = doc["dartsSofascoreFullscreen"] | false;
                 deviceConfig->dartsSofascoreInterruptOnLive = doc["dartsSofascoreInterruptOnLive"] | true;
                 deviceConfig->dartsSofascorePlayNextMinutes = doc["dartsSofascorePlayNextMinutes"] | 0;
+                deviceConfig->dartsSofascoreContinuousLive = doc["dartsSofascoreContinuousLive"] | false;
+                deviceConfig->debugFileEnabled = doc["debugFileEnabled"] | false;
 
                 deviceConfig->fritzboxEnabled = doc["fritzboxEnabled"] | false;
                 deviceConfig->fritzboxIp = doc["fritzboxIp"] | "";
@@ -221,6 +223,8 @@ void saveDeviceConfig() {
     doc["dartsSofascoreFullscreen"] = deviceConfig->dartsSofascoreFullscreen;
     doc["dartsSofascoreInterruptOnLive"] = deviceConfig->dartsSofascoreInterruptOnLive;
     doc["dartsSofascorePlayNextMinutes"] = deviceConfig->dartsSofascorePlayNextMinutes;
+    doc["dartsSofascoreContinuousLive"] = deviceConfig->dartsSofascoreContinuousLive;
+    doc["debugFileEnabled"] = deviceConfig->debugFileEnabled;
 
     doc["fritzboxEnabled"] = deviceConfig->fritzboxEnabled;
     doc["fritzboxIp"] = deviceConfig->fritzboxIp.c_str();
