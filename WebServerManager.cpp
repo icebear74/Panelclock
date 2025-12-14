@@ -62,6 +62,7 @@ void setupWebServer(bool portalMode) {
     // Debug routes
     server->on("/debug", HTTP_GET, handleDebugData);
     server->on("/debug/station", HTTP_GET, handleDebugStationHistory);
+    server->on("/api/toggle_debug_file", HTTP_POST, handleToggleDebugFile);
     
     // Stream page for remote debugging
     server->on("/stream", HTTP_GET, handleStreamPage);
