@@ -925,12 +925,10 @@ void handleToggleDebugFile() {
     
     bool enabled = doc["enabled"] | false;
     deviceConfig->debugFileEnabled = enabled;
-    deviceConfig->save();
+    saveDeviceConfig();
     
-    // Apply immediately
-    if (app) {
-        app->executeApplyLiveConfig();
-    }
+    // Apply immediately via the existing applyLiveConfig function
+    applyLiveConfig();
     
     server->send(200, "application/json", "{\"success\":true}");
 }
