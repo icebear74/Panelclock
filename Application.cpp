@@ -344,6 +344,9 @@ void Application::executeApplyLiveConfig() {
     if (!_tankerkoenigMod || !_calendarMod || !_dartsMod || !_fritzMod || !_curiousMod || !_weatherMod || !_themeParkMod || !_animationsMod || !timeConverter || !deviceConfig) return;
     Log.println("[Config] Wende Live-Konfiguration an...");
     
+    // Apply debug file logging setting (immediately active)
+    Log.setDebugFileEnabled(deviceConfig->debugFileEnabled);
+    
     if (!timeConverter->setTimezone(deviceConfig->timezone.c_str())) {
         timeConverter->setTimezone("UTC");
     }

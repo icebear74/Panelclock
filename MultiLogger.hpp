@@ -3,6 +3,8 @@
 
 #include <Arduino.h>
 #include <Print.h>
+#include <FS.h>
+#include <LittleFS.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "PsramUtils.hpp"
@@ -66,6 +68,18 @@ public:
      * @brief Clear the ring buffer
      */
     void clearBuffer();
+    
+    /**
+     * @brief Enable or disable debug file logging
+     * @param enabled true to enable file logging, false to disable
+     */
+    void setDebugFileEnabled(bool enabled);
+    
+    /**
+     * @brief Check if debug file logging is enabled
+     * @return true if enabled
+     */
+    bool isDebugFileEnabled() const { return _debugFileEnabled; }
 
 private:
     // Ring buffer stored in PSRAM
@@ -81,10 +95,21 @@ private:
     // Mutex for thread safety
     SemaphoreHandle_t _mutex;
     
+    // Debug file logging
+    bool _debugFileEnabled;
+    File _debugFile;
+    const char* DEBUG_FILE_PATH = "/debug.log";
+    const size_t MAX_DEBUG_FILE_SIZE = 100 * 1024; // 100KB
+    
     /**
      * @brief Finalize the current line and add it to the ring buffer
      */
     void _finalizeLine();
+    
+    /**
+     * @brief Write line to debug file if enabled
+     */
+    void _writeToDebugFile(const PsramString& line);
 };
 
 // Serial mutex (from main application) - external declaration
