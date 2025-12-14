@@ -1,0 +1,681 @@
+
+=== Debug logging started ===
+[22:17:40] [PanelStreamer::streamerTask] Running, loops=41, clients=0
+[23:17:40] [WebDataManager] URL aktualisiert für Host creativecommons.tankerkoenig.de: https://creativecommons.tankerkoenig.de/json/prices.php?ids=005056ba-7cb6-1ed2-bceb-74dffc2ecd25,1a248588-f486-448d-9133-838720f8c043,51d4b5a7-a095-1aa0-e100-80009459e03a,92940496-da28-4df2-a743-7471b0248d36,005056ba-7cb6-1ed2-bceb-902f9b9a4d35,877c0f9c-7722-48cf-b819-94a5a8a7879b,37eba56a-5e65-4dce-8606-6b33604a0ea9,7b0a3068-6471-4c49-9ffe-465d5d23cb2a,087bc6cf-fd2d-417a-98ad-725c51a6e6af,ee5fa84f-e7e0-4e0a-a95a-bf2691e06ba0,73d83220-9067-4dcf-bd64-d1b8c16b7f9f&apikey=30b237fa-a971-15da-32a5-23ecbf34d526
+[23:17:40] [TankerkoenigModule] Failsafe-Timeout auf 76000 ms gesetzt (11 Seiten).
+[23:17:40] [WebDataManager] URL aktualisiert für Host calendar.google.com: https://calendar.google.com/calendar/ical/07kpkqe1smsqa84u9dritdhkf0%40group.calendar.google.com/private-7995046dc8216494232c3ee88ef3dcb9/basic.ics
+[23:17:41] [WebDataManager] URL aktualisiert für Host www.dartsrankings.com: https://www.dartsrankings.com/
+[23:17:41] [SofaScore] Config updated: enabled=1, fetch=2 min, display=20 sec, fullscreen=1, interrupt=1, playNext=2 min, continuousLive=0
+[23:17:41] [WebDataManager] URL aktualisiert für Host www.kuriose-feiertage.de: https://www.kuriose-feiertage.de/kalender/dezember/
+[23:17:41] [WebDataManager] URL aktualisiert für Host api.open-meteo.com: https://api.open-meteo.com/v1/forecast?latitude=51.581619&longitude=6.729939&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,rain,showers,snowfall,weather_code,cloud_cover,wind_speed_10m,wind_gusts_10m,uv_index&hourly=temperature_2m,apparent_temperature,precipitation_probability,precipitation,rain,snowfall,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,temperature_2m_mean,sunrise,sunset,precipitation_sum,rain_sum,snowfall_sum,precipitation_probability_max,uv_index_max,cloud_cover_mean,wind_speed_10m_max,sunshine_duration&start_date=2025-12-14&end_date=2025-12-22&timezone=UTC
+[23:17:41] [WebDataManager] URL aktualisiert für Host archive-api.open-meteo.com: https://archive-api.open-meteo.com/v1/archive?latitude=51.581619&longitude=6.729939&start_date=2020-12-14&end_date=2025-12-14&daily=temperature_2m_mean&timezone=UTC
+[23:17:41] [WebDataManager] Ressource mit Headers bereits registriert: https://api.wartezeiten.app/v1/waitingtimes
+[23:17:41] [WebDataManager] Ressource mit Headers bereits registriert: https://api.wartezeiten.app/v1/openingtimes
+[23:17:41] [WebDataManager] Ressource mit Headers bereits registriert: https://api.wartezeiten.app/v1/crowdlevel
+[23:17:42] [ThemePark] Registered resources for park movieparkgermany
+[23:17:42] [WebDataManager] Ressource mit Headers bereits registriert: https://api.wartezeiten.app/v1/waitingtimes
+[23:17:42] [WebDataManager] Ressource mit Headers bereits registriert: https://api.wartezeiten.app/v1/openingtimes
+[23:17:42] [WebDataManager] Ressource mit Headers bereits registriert: https://api.wartezeiten.app/v1/crowdlevel
+[23:17:42] [ThemePark] Registered resources for park phantasialand
+[23:17:42] [WebDataManager] Ressource mit Headers bereits registriert: https://api.wartezeiten.app/v1/waitingtimes
+[23:17:42] [WebDataManager] Ressource mit Headers bereits registriert: https://api.wartezeiten.app/v1/openingtimes
+[23:17:42] [WebDataManager] Ressource mit Headers bereits registriert: https://api.wartezeiten.app/v1/crowdlevel
+[23:17:42] [ThemePark] Registered resources for park walibiholland
+[23:17:43] [Config] Live-Konfiguration angewendet.
+[23:17:49] [WebDataManager] Starte Update für https://calendar.google.com/calendar/ical/07kpkqe1smsqa84u9dritdhkf0%40group.calendar.google.com/private-7995046dc8216494232c3ee88ef3dcb9/basic.ics...
+[23:17:49] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://calendar.google.com/calendar/ical/07kpkqe1smsqa84u9dritdhkf0%40group.calendar.google.com/private-7995046dc8216494232c3ee88ef3dcb9/basic.ics.
+[23:17:49] [WebDataManager] FEHLER bei https://calendar.google.com/calendar/ical/07kpkqe1smsqa84u9dritdhkf0%40group.calendar.google.com/private-7995046dc8216494232c3ee88ef3dcb9/basic.ics: Connect-Fehler: SSL - Memory allocation failed. Versuch 1/3 in 30s.
+[23:17:50] [PanelStreamer::streamerTask] Running, loops=61, clients=0
+[23:17:59] [WebDataManager] Starte Update für https://www.dartsrankings.com/...
+[23:17:59] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://www.dartsrankings.com/.
+[23:18:00] [WebDataManager] ERFOLG: https://www.dartsrankings.com/ aktualisiert (82780 Bytes).
+[23:18:01] [PanelStreamer::streamerTask] Running, loops=81, clients=0
+[23:18:09] [WebDataManager] Starte Update für https://api.open-meteo.com/v1/forecast?latitude=51.581619&longitude=6.729939&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,rain,showers,snowfall,weather_code,cloud_cover,wind_speed_10m,wind_gusts_10m,uv_index&hourly=temperature_2m,apparent_temperature,precipitation_probability,precipitation,rain,snowfall,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,temperature_2m_mean,sunrise,sunset,precipitation_sum,rain_sum,snowfall_sum,precipitation_probability_max,uv_index_max,cloud_cover_mean,wind_speed_10m_max,sunshine_duration&start_date=2025-12-14&end_date=2025-12-22&timezone=UTC...
+[23:18:09] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://api.open-meteo.com/v1/forecast?latitude=51.581619&longitude=6.729939&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,rain,showers,snowfall,weather_code,cloud_cover,wind_speed_10m,wind_gusts_10m,uv_index&hourly=temperature_2m,apparent_temperature,precipitation_probability,precipitation,rain,snowfall,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,temperature_2m_mean,sunrise,sunset,precipitation_sum,rain_sum,snowfall_sum,precipitation_probability_max,uv_index_max,cloud_cover_mean,wind_speed_10m_max,sunshine_duration&start_date=2025-12-14&end_date=2025-12-22&timezone=UTC.
+[23:18:10] [WebDataManager] ERFOLG: https://api.open-meteo.com/v1/forecast?latitude=51.581619&longitude=6.729939&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,rain,showers,snowfall,weather_code,cloud_cover,wind_speed_10m,wind_gusts_10m,uv_index&hourly=temperature_2m,apparent_temperature,precipitation_probability,precipitation,rain,snowfall,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,temperature_2m_mean,sunrise,sunset,precipitation_sum,rain_sum,snowfall_sum,precipitation_probability_max,uv_index_max,cloud_cover_mean,wind_speed_10m_max,sunshine_duration&start_date=2025-12-14&end_date=2025-12-22&timezone=UTC aktualisiert (12779 Bytes).
+[23:18:11] [PanelStreamer::streamerTask] Running, loops=101, clients=0
+[23:18:19] [WebDataManager] Starte Update für https://calendar.google.com/calendar/ical/07kpkqe1smsqa84u9dritdhkf0%40group.calendar.google.com/private-7995046dc8216494232c3ee88ef3dcb9/basic.ics...
+[23:18:19] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://calendar.google.com/calendar/ical/07kpkqe1smsqa84u9dritdhkf0%40group.calendar.google.com/private-7995046dc8216494232c3ee88ef3dcb9/basic.ics.
+[23:18:21] [PanelStreamer::streamerTask] Running, loops=120, clients=0
+[23:18:22] [WebDataManager] ERFOLG: https://calendar.google.com/calendar/ical/07kpkqe1smsqa84u9dritdhkf0%40group.calendar.google.com/private-7995046dc8216494232c3ee88ef3dcb9/basic.ics aktualisiert (25180 Bytes).
+[23:18:29] [AnimationsModule] Zeit abgelaufen für Adventskranz (UID=2000)
+[23:18:29] [WebDataManager] Starte Update für https://archive-api.open-meteo.com/v1/archive?latitude=51.581619&longitude=6.729939&start_date=2020-12-14&end_date=2025-12-14&daily=temperature_2m_mean&timezone=UTC...
+[23:18:30] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://archive-api.open-meteo.com/v1/archive?latitude=51.581619&longitude=6.729939&start_date=2020-12-14&end_date=2025-12-14&daily=temperature_2m_mean&timezone=UTC.
+[23:18:31] [WebDataManager] ERFOLG: https://archive-api.open-meteo.com/v1/archive?latitude=51.581619&longitude=6.729939&start_date=2020-12-14&end_date=2025-12-14&daily=temperature_2m_mean&timezone=UTC aktualisiert (32426 Bytes).
+[23:18:31] [PanelStreamer::streamerTask] Running, loops=140, clients=0
+[23:18:39] [WebSocket] Event received: type=2, num=0
+[23:18:39] [WebSocket] Client #0 connected from 192.168.188.93
+[23:18:40] [WebDataManager] Starte Update für https://api.wartezeiten.app/v1/waitingtimes...
+[23:18:40] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://api.wartezeiten.app/v1/waitingtimes.
+[23:18:40] [WebSocket] Event received: type=10, num=0
+[23:18:40] [WebSocket] Client #0 pong
+[23:18:40] [WebDataManager] Added header: accept: application/json
+[23:18:41] [WebDataManager] Added header: park: movieparkgermany
+[23:18:41] [WebDataManager] Added header: language: de
+[23:18:41] [PanelStreamer::streamerTask] Running, loops=170, clients=1
+[23:18:41] [PanelStreamer::streamerTask] - Client #0 connected
+[23:18:42] [WebDataManager] ERFOLG: https://api.wartezeiten.app/v1/waitingtimes aktualisiert (4332 Bytes).
+[23:18:42] [ThemePark] parseWaitTimes called for park: movieparkgermany
+[23:18:42] [ThemePark] About to lookup name for: movieparkgermany
+[23:18:42] [ThemePark] getParkNameFromCache: searching 46 parks for movieparkgermany
+[23:18:42] [ThemePark] Found name for movieparkgermany: Movie Park Germany
+[23:18:42] [ThemePark] About to lookup country for: movieparkgermany
+[23:18:42] [ThemePark] getParkCountryFromCache: searching 46 parks for movieparkgermany
+[23:18:42] [ThemePark] Found country for movieparkgermany: Deutschland
+[23:18:42] [ThemePark] Park Movie Park Germany is closed (all attractions closed)
+[23:18:43] [ThemePark] Updated park Movie Park Germany with 21 attractions (0 open), 4 pages, total pages: 1
+[23:18:44] [Calendar] Display-Duration erreicht (15000 ms) -> Modul beendet sich selbst
+[23:18:50] [WebDataManager] Starte Update für https://api.wartezeiten.app/v1/openingtimes...
+[23:18:50] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://api.wartezeiten.app/v1/openingtimes.
+[23:18:51] [WebDataManager] Added header: accept: application/json
+[23:18:51] [WebDataManager] Added header: park: movieparkgermany
+[23:18:51] [PanelStreamer::streamerTask] Running, loops=315, clients=1
+[23:18:51] [WebDataManager] ERFOLG: https://api.wartezeiten.app/v1/openingtimes aktualisiert (105 Bytes).
+[23:18:52] [ThemePark] Updated opening times for movieparkgermany: 12:00 - 20:00 (open: yes)
+[23:18:52] [PanelStreamer::streamerTask] - Client #0 connected
+[23:18:54] [WebSocket] Event received: type=10, num=0
+[23:18:54] [WebSocket] Client #0 pong
+[23:19:00] [WebDataManager] Starte Update für https://api.wartezeiten.app/v1/crowdlevel...
+[23:19:00] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://api.wartezeiten.app/v1/crowdlevel.
+[23:19:01] [WebDataManager] Added header: accept: application/json
+[23:19:01] [WebDataManager] Added header: park: movieparkgermany
+[23:19:01] [WebDataManager] Added header: language: de
+[23:19:02] [PanelStreamer::streamerTask] Running, loops=469, clients=1
+[23:19:02] [PanelStreamer::streamerTask] - Client #0 connected
+[23:19:02] [WebDataManager] ERFOLG: https://api.wartezeiten.app/v1/crowdlevel aktualisiert (60 Bytes).
+[23:19:02] [ThemePark] Updated crowd level for movieparkgermany: 6.31%
+[23:19:09] [WebSocket] Event received: type=10, num=0
+[23:19:09] [WebSocket] Client #0 pong
+[23:19:10] [WebDataManager] Starte Update für https://api.wartezeiten.app/v1/waitingtimes...
+[23:19:10] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://api.wartezeiten.app/v1/waitingtimes.
+[23:19:11] [WebDataManager] Added header: accept: application/json
+[23:19:11] [WebDataManager] Added header: park: phantasialand
+[23:19:11] [WebDataManager] Added header: language: de
+[23:19:12] [PanelStreamer::streamerTask] Running, loops=615, clients=1
+[23:19:12] [PanelStreamer::streamerTask] - Client #0 connected
+[23:19:12] [WebDataManager] ERFOLG: https://api.wartezeiten.app/v1/waitingtimes aktualisiert (6874 Bytes).
+[23:19:12] [ThemePark] parseWaitTimes called for park: phantasialand
+[23:19:12] [ThemePark] About to lookup name for: phantasialand
+[23:19:13] [ThemePark] getParkNameFromCache: searching 46 parks for phantasialand
+[23:19:13] [ThemePark] Found name for phantasialand: Phantasialand
+[23:19:13] [ThemePark] About to lookup country for: phantasialand
+[23:19:13] [ThemePark] getParkCountryFromCache: searching 46 parks for phantasialand
+[23:19:13] [ThemePark] Found country for phantasialand: Deutschland
+[23:19:13] [ThemePark] Park Phantasialand is closed (all attractions closed)
+[23:19:13] [ThemePark] Updated park Phantasialand with 35 attractions (0 open), 6 pages, total pages: 1
+[23:19:20] [WebDataManager] Starte Update für https://api.wartezeiten.app/v1/openingtimes...
+[23:19:20] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://api.wartezeiten.app/v1/openingtimes.
+[23:19:21] [WebDataManager] Added header: accept: application/json
+[23:19:21] [WebDataManager] Added header: park: phantasialand
+[23:19:22] [WebDataManager] ERFOLG: https://api.wartezeiten.app/v1/openingtimes aktualisiert (105 Bytes).
+[23:19:22] [PanelStreamer::streamerTask] Running, loops=763, clients=1
+[23:19:22] [ThemePark] Updated opening times for phantasialand: 11:00 - 20:00 (open: yes)
+[23:19:22] [PanelStreamer::streamerTask] - Client #0 connected
+[23:19:24] [WebSocket] Event received: type=10, num=0
+[23:19:24] [WebSocket] Client #0 pong
+[23:19:31] [WebDataManager] Starte Update für https://api.wartezeiten.app/v1/crowdlevel...
+[23:19:31] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://api.wartezeiten.app/v1/crowdlevel.
+[23:19:31] [WebDataManager] Added header: accept: application/json
+[23:19:31] [WebDataManager] Added header: park: phantasialand
+[23:19:32] [WebDataManager] Added header: language: de
+[23:19:32] [PanelStreamer::streamerTask] Running, loops=916, clients=1
+[23:19:32] [PanelStreamer::streamerTask] - Client #0 connected
+[23:19:32] [WebDataManager] ERFOLG: https://api.wartezeiten.app/v1/crowdlevel aktualisiert (60 Bytes).
+[23:19:33] [ThemePark] Updated crowd level for phantasialand: 29.50%
+[23:19:39] [WebSocket] Event received: type=10, num=0
+[23:19:39] [WebSocket] Client #0 pong
+[23:19:41] [WebDataManager] Starte Update für https://api.wartezeiten.app/v1/waitingtimes...
+[23:19:41] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://api.wartezeiten.app/v1/waitingtimes.
+[23:19:41] [WebDataManager] Added header: accept: application/json
+[23:19:42] [WebDataManager] Added header: park: walibiholland
+[23:19:42] [WebDataManager] Added header: language: de
+[23:19:42] [PanelStreamer::streamerTask] Running, loops=1070, clients=1
+[23:19:42] [PanelStreamer::streamerTask] - Client #0 connected
+[23:19:43] [WebDataManager] ERFOLG: https://api.wartezeiten.app/v1/waitingtimes aktualisiert (9942 Bytes).
+[23:19:43] [ThemePark] parseWaitTimes called for park: walibiholland
+[23:19:43] [ThemePark] About to lookup name for: walibiholland
+[23:19:43] [ThemePark] getParkNameFromCache: searching 46 parks for walibiholland
+[23:19:43] [ThemePark] Found name for walibiholland: Walibi Holland
+[23:19:43] [ThemePark] About to lookup country for: walibiholland
+[23:19:43] [ThemePark] getParkCountryFromCache: searching 46 parks for walibiholland
+[23:19:44] [ThemePark] Found country for walibiholland: Niederlande
+[23:19:44] [ThemePark] Park Walibi Holland is closed (all attractions closed)
+[23:19:44] [ThemePark] Updated park Walibi Holland with 38 attractions (0 open), 7 pages, total pages: 2
+[23:19:51] [WebDataManager] Starte Update für https://api.wartezeiten.app/v1/openingtimes...
+[23:19:51] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://api.wartezeiten.app/v1/openingtimes.
+[23:19:52] [WebDataManager] Added header: accept: application/json
+[23:19:52] [WebDataManager] Added header: park: walibiholland
+[23:19:52] [PanelStreamer::streamerTask] Running, loops=1198, clients=1
+[23:19:52] [PanelStreamer::streamerTask] - Client #0 connected
+[23:19:53] [WebDataManager] ERFOLG: https://api.wartezeiten.app/v1/openingtimes aktualisiert (60 Bytes).
+[23:19:53] [ThemePark] Updated opening times for walibiholland:  -  (open: no)
+[23:19:54] [WebSocket] Event received: type=10, num=0
+[23:19:54] [WebSocket] Client #0 pong
+[23:20:01] [WebDataManager] Starte Update für https://api.wartezeiten.app/v1/crowdlevel...
+[23:20:01] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://api.wartezeiten.app/v1/crowdlevel.
+[23:20:02] [WebDataManager] Added header: accept: application/json
+[23:20:02] [WebDataManager] Added header: park: walibiholland
+[23:20:02] [WebDataManager] Added header: language: de
+[23:20:03] [PanelStreamer::streamerTask] Running, loops=1357, clients=1
+[23:20:03] [PanelStreamer::streamerTask] - Client #0 connected
+[23:20:03] [WebDataManager] ERFOLG: https://api.wartezeiten.app/v1/crowdlevel aktualisiert (61 Bytes).
+[23:20:03] [ThemePark] Updated crowd level for walibiholland: 25.64%
+[23:20:09] [WebSocket] Event received: type=10, num=0
+[23:20:09] [WebSocket] Client #0 pong
+[23:20:11] [WebDataManager] Starte Update für https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14...
+[23:20:11] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14.
+[23:20:13] [WebDataManager] ERFOLG: https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14 aktualisiert (64607 Bytes).
+[23:20:13] [PanelStreamer::streamerTask] Running, loops=1516, clients=1
+[23:20:13] [PanelStreamer::streamerTask] - Client #0 connected
+[23:20:13] [SofaScore] Parsing daily events - Total events in JSON: 16
+[23:20:13] [SofaScore] Parsed 2 matches (0 live, skipped: 8 not today, 6 wrong tournament)
+[23:20:14] [SofaScore] PlayNext requested: UID=5999, duration=20000 ms (1 matches), interval=2 min
+[23:20:23] [PanelStreamer::streamerTask] Running, loops=1694, clients=1
+[23:20:23] [PanelStreamer::streamerTask] - Client #0 connected
+[23:20:24] [WebSocket] Event received: type=10, num=0
+[23:20:24] [WebSocket] Client #0 pong
+[23:20:33] [PanelStreamer::streamerTask] Running, loops=1872, clients=1
+[23:20:33] [PanelStreamer::streamerTask] - Client #0 connected
+[23:20:39] [WebSocket] Event received: type=10, num=0
+[23:20:39] [WebSocket] Client #0 pong
+[23:20:43] [PanelStreamer::streamerTask] Running, loops=2050, clients=1
+[23:20:43] [PanelStreamer::streamerTask] - Client #0 connected
+[23:20:53] [PanelStreamer::streamerTask] Running, loops=2232, clients=1
+[23:20:53] [PanelStreamer::streamerTask] - Client #0 connected
+[23:20:54] [WebSocket] Event received: type=10, num=0
+[23:20:54] [WebSocket] Client #0 pong
+[23:21:03] [PanelStreamer::streamerTask] Running, loops=2412, clients=1
+[23:21:03] [PanelStreamer::streamerTask] - Client #0 connected
+[23:21:09] [WebSocket] Event received: type=10, num=0
+[23:21:09] [WebSocket] Client #0 pong
+[23:21:13] [PanelStreamer::streamerTask] Running, loops=2583, clients=1
+[23:21:13] [PanelStreamer::streamerTask] - Client #0 connected
+[23:21:23] [PanelStreamer::streamerTask] Running, loops=2742, clients=1
+[23:21:23] [PanelStreamer::streamerTask] - Client #0 connected
+[23:21:24] [WebSocket] Event received: type=10, num=0
+[23:21:24] [WebSocket] Client #0 pong
+[23:21:29] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:21:30] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:21:31] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:21:32] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:21:33] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:21:33] [PanelStreamer::streamerTask] Running, loops=2910, clients=1
+[23:21:33] [PanelStreamer::streamerTask] - Client #0 connected
+[23:21:34] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:21:35] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:21:36] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:21:37] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:21:38] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:21:39] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:21:39] [WebSocket] Event received: type=10, num=0
+[23:21:39] [WebSocket] Client #0 pong
+[23:21:40] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:21:41] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:21:42] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:21:43] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:21:43] [PanelStreamer::streamerTask] Running, loops=3092, clients=1
+[23:21:43] [PanelStreamer::streamerTask] - Client #0 connected
+[23:21:44] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:21:45] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:21:46] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:21:47] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:21:48] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:21:48] [SofaScore] Cycle complete (no live matches)
+[23:21:48] [SofaScore] Released PlayNext after cycle complete
+[23:21:48] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:21:49] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:21:50] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:21:53] [PanelStreamer::streamerTask] Running, loops=3276, clients=1
+[23:21:53] [PanelStreamer::streamerTask] - Client #0 connected
+[23:21:54] [WebSocket] Event received: type=10, num=0
+[23:21:54] [WebSocket] Client #0 pong
+[23:22:03] [PanelStreamer::streamerTask] Running, loops=3459, clients=1
+[23:22:03] [PanelStreamer::streamerTask] - Client #0 connected
+[23:22:09] [WebSocket] Event received: type=10, num=0
+[23:22:09] [WebSocket] Client #0 pong
+[23:22:11] [WebDataManager] Starte Update für https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14...
+[23:22:11] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14.
+[23:22:13] [WebDataManager] ERFOLG: https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14 aktualisiert (64607 Bytes).
+[23:22:13] [SofaScore] Parsing daily events - Total events in JSON: 16
+[23:22:13] [SofaScore] Parsed 2 matches (0 live, skipped: 8 not today, 6 wrong tournament)
+[23:22:13] [PanelStreamer::streamerTask] Running, loops=3632, clients=1
+[23:22:13] [PanelStreamer::streamerTask] - Client #0 connected
+[23:22:14] [SofaScore] PlayNext requested: UID=5999, duration=20000 ms (1 matches), interval=2 min
+[23:22:23] [PanelStreamer::streamerTask] Running, loops=3819, clients=1
+[23:22:23] [PanelStreamer::streamerTask] - Client #0 connected
+[23:22:24] [WebSocket] Event received: type=10, num=0
+[23:22:24] [WebSocket] Client #0 pong
+[23:22:33] [PanelStreamer::streamerTask] Running, loops=4005, clients=1
+[23:22:33] [PanelStreamer::streamerTask] - Client #0 connected
+[23:22:39] [WebSocket] Event received: type=10, num=0
+[23:22:39] [WebSocket] Client #0 pong
+[23:22:43] [PanelStreamer::streamerTask] Running, loops=4173, clients=1
+[23:22:43] [PanelStreamer::streamerTask] - Client #0 connected
+[23:22:50] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:22:51] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:22:52] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:22:53] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:22:53] [PanelStreamer::streamerTask] Running, loops=4311, clients=1
+[23:22:53] [PanelStreamer::streamerTask] - Client #0 connected
+[23:22:54] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:22:54] [WebSocket] Event received: type=10, num=0
+[23:22:54] [WebSocket] Client #0 pong
+[23:22:55] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:22:56] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:22:57] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:22:58] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:22:59] [WebDataManager] Starte Update für https://www.dartsrankings.com/...
+[23:22:59] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://www.dartsrankings.com/.
+[23:22:59] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:23:00] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:23:00] [WebDataManager] ERFOLG: https://www.dartsrankings.com/ aktualisiert (82675 Bytes).
+[23:23:01] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:23:01] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:23:02] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:23:03] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:23:03] [PanelStreamer::streamerTask] Running, loops=4482, clients=1
+[23:23:04] [PanelStreamer::streamerTask] - Client #0 connected
+[23:23:04] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:23:05] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:23:06] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:23:07] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:23:08] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:23:08] [SofaScore] Cycle complete (no live matches)
+[23:23:09] [SofaScore] Released PlayNext after cycle complete
+[23:23:09] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:23:09] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:23:09] [WebSocket] Event received: type=10, num=0
+[23:23:09] [WebSocket] Client #0 pong
+[23:23:10] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:23:11] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:23:14] [PanelStreamer::streamerTask] Running, loops=4660, clients=1
+[23:23:14] [PanelStreamer::streamerTask] - Client #0 connected
+[23:23:24] [PanelStreamer::streamerTask] Running, loops=4838, clients=1
+[23:23:24] [PanelStreamer::streamerTask] - Client #0 connected
+[23:23:24] [WebSocket] Event received: type=10, num=0
+[23:23:24] [WebSocket] Client #0 pong
+[23:23:29] [AnimationsModule] Weihnachtsbaum PlayNext angefordert (UID=2001, Counter=1)
+[23:23:31] [WebSocket] Event received: type=1, num=0
+[23:23:31] [WebSocket] Client #0 disconnected
+[23:23:34] [PanelStreamer::streamerTask] Running, loops=4977, clients=0
+[23:23:38] [WebDataManager] Starte Update für https://creativecommons.tankerkoenig.de/json/prices.php?ids=005056ba-7cb6-1ed2-bceb-74dffc2ecd25,1a248588-f486-448d-9133-838720f8c043,51d4b5a7-a095-1aa0-e100-80009459e03a,92940496-da28-4df2-a743-7471b0248d36,005056ba-7cb6-1ed2-bceb-902f9b9a4d35,877c0f9c-7722-48cf-b819-94a5a8a7879b,37eba56a-5e65-4dce-8606-6b33604a0ea9,7b0a3068-6471-4c49-9ffe-465d5d23cb2a,087bc6cf-fd2d-417a-98ad-725c51a6e6af,ee5fa84f-e7e0-4e0a-a95a-bf2691e06ba0,73d83220-9067-4dcf-bd64-d1b8c16b7f9f&apikey=30b237fa-a971-15da-32a5-23ecbf34d526...
+[23:23:38] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://creativecommons.tankerkoenig.de/json/prices.php?ids=005056ba-7cb6-1ed2-bceb-74dffc2ecd25,1a248588-f486-448d-9133-838720f8c043,51d4b5a7-a095-1aa0-e100-80009459e03a,92940496-da28-4df2-a743-7471b0248d36,005056ba-7cb6-1ed2-bceb-902f9b9a4d35,877c0f9c-7722-48cf-b819-94a5a8a7879b,37eba56a-5e65-4dce-8606-6b33604a0ea9,7b0a3068-6471-4c49-9ffe-465d5d23cb2a,087bc6cf-fd2d-417a-98ad-725c51a6e6af,ee5fa84f-e7e0-4e0a-a95a-bf2691e06ba0,73d83220-9067-4dcf-bd64-d1b8c16b7f9f&apikey=30b237fa-a971-15da-32a5-23ecbf34d526.
+[23:23:39] [WebDataManager] ERFOLG: https://creativecommons.tankerkoenig.de/json/prices.php?ids=005056ba-7cb6-1ed2-bceb-74dffc2ecd25,1a248588-f486-448d-9133-838720f8c043,51d4b5a7-a095-1aa0-e100-80009459e03a,92940496-da28-4df2-a743-7471b0248d36,005056ba-7cb6-1ed2-bceb-902f9b9a4d35,877c0f9c-7722-48cf-b819-94a5a8a7879b,37eba56a-5e65-4dce-8606-6b33604a0ea9,7b0a3068-6471-4c49-9ffe-465d5d23cb2a,087bc6cf-fd2d-417a-98ad-725c51a6e6af,ee5fa84f-e7e0-4e0a-a95a-bf2691e06ba0,73d83220-9067-4dcf-bd64-d1b8c16b7f9f&apikey=30b237fa-a971-15da-32a5-23ecbf34d526 aktualisiert (766 Bytes).
+[23:23:42] [ThemePark] All 2 displayable parks shown -> Module finished
+[23:23:42] [AnimationsModule] Aktiviert: Weihnachtsbaum (UID=2001)
+[23:23:44] [PanelStreamer::streamerTask] Running, loops=4997, clients=0
+[23:23:54] [PanelStreamer::streamerTask] Running, loops=5017, clients=0
+[23:24:04] [PanelStreamer::streamerTask] Running, loops=5037, clients=0
+[23:24:12] [WebDataManager] Starte Update für https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14...
+[23:24:12] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14.
+[23:24:14] [SofaScore] PlayNext requested: UID=5999, duration=20000 ms (1 matches), interval=2 min
+[23:24:14] [PanelStreamer::streamerTask] Running, loops=5057, clients=0
+[23:24:18] [WebDataManager] ERFOLG: https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14 aktualisiert (64607 Bytes).
+[23:24:18] [SofaScore] Parsing daily events - Total events in JSON: 16
+[23:24:18] [SofaScore] Parsed 2 matches (0 live, skipped: 8 not today, 6 wrong tournament)
+[23:24:25] [PanelStreamer::streamerTask] Running, loops=5076, clients=0
+[23:24:35] [PanelStreamer::streamerTask] Running, loops=5096, clients=0
+[23:24:45] [PanelStreamer::streamerTask] Running, loops=5116, clients=0
+[23:24:48] [AnimationsModule] Zeit abgelaufen für Weihnachtsbaum (UID=2001)
+[23:24:55] [PanelStreamer::streamerTask] Running, loops=5136, clients=0
+[23:25:05] [PanelStreamer::streamerTask] Running, loops=5156, clients=0
+[23:25:15] [PanelStreamer::streamerTask] Running, loops=5176, clients=0
+[23:25:25] [PanelStreamer::streamerTask] Running, loops=5196, clients=0
+[23:25:35] [PanelStreamer::streamerTask] Running, loops=5216, clients=0
+[23:25:45] [PanelStreamer::streamerTask] Running, loops=5236, clients=0
+[23:25:48] [Tanker] Alle 10 Seiten gezeigt -> Modul beendet sich selbst
+[23:25:55] [PanelStreamer::streamerTask] Running, loops=5256, clients=0
+[23:26:03] [Calendar] Display-Duration erreicht (15000 ms) -> Modul beendet sich selbst
+[23:26:05] [PanelStreamer::streamerTask] Running, loops=5276, clients=0
+[23:26:12] [WebDataManager] Starte Update für https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14...
+[23:26:12] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14.
+[23:26:13] [WebDataManager] ERFOLG: https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14 aktualisiert (64607 Bytes).
+[23:26:13] [SofaScore] Parsing daily events - Total events in JSON: 16
+[23:26:14] [SofaScore] Parsed 2 matches (0 live, skipped: 8 not today, 6 wrong tournament)
+[23:26:16] [PanelStreamer::streamerTask] Running, loops=5296, clients=0
+[23:26:26] [PanelStreamer::streamerTask] Running, loops=5316, clients=0
+[23:26:36] [PanelStreamer::streamerTask] Running, loops=5336, clients=0
+[23:26:46] [PanelStreamer::streamerTask] Running, loops=5356, clients=0
+[23:26:56] [PanelStreamer::streamerTask] Running, loops=5376, clients=0
+[23:27:06] [PanelStreamer::streamerTask] Running, loops=5396, clients=0
+[23:27:16] [PanelStreamer::streamerTask] Running, loops=5416, clients=0
+[23:27:26] [PanelStreamer::streamerTask] Running, loops=5436, clients=0
+[23:27:36] [PanelStreamer::streamerTask] Running, loops=5456, clients=0
+[23:27:46] [PanelStreamer::streamerTask] Running, loops=5476, clients=0
+[23:27:56] [PanelStreamer::streamerTask] Running, loops=5496, clients=0
+[23:27:59] [WebDataManager] Starte Update für https://www.dartsrankings.com/...
+[23:27:59] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://www.dartsrankings.com/.
+[23:28:00] [WebDataManager] ERFOLG: https://www.dartsrankings.com/ aktualisiert (82675 Bytes).
+[23:28:06] [PanelStreamer::streamerTask] Running, loops=5516, clients=0
+[23:28:12] [WebDataManager] Starte Update für https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14...
+[23:28:13] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14.
+[23:28:14] [WebDataManager] ERFOLG: https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14 aktualisiert (64607 Bytes).
+[23:28:14] [SofaScore] Parsing daily events - Total events in JSON: 16
+[23:28:14] [SofaScore] Parsed 2 matches (0 live, skipped: 8 not today, 6 wrong tournament)
+[23:28:16] [PanelStreamer::streamerTask] Running, loops=5536, clients=0
+[23:28:23] [WebDataManager] Starte Update für https://calendar.google.com/calendar/ical/07kpkqe1smsqa84u9dritdhkf0%40group.calendar.google.com/private-7995046dc8216494232c3ee88ef3dcb9/basic.ics...
+[23:28:23] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://calendar.google.com/calendar/ical/07kpkqe1smsqa84u9dritdhkf0%40group.calendar.google.com/private-7995046dc8216494232c3ee88ef3dcb9/basic.ics.
+[23:28:25] [WebDataManager] ERFOLG: https://calendar.google.com/calendar/ical/07kpkqe1smsqa84u9dritdhkf0%40group.calendar.google.com/private-7995046dc8216494232c3ee88ef3dcb9/basic.ics aktualisiert (25180 Bytes).
+[23:28:26] [PanelStreamer::streamerTask] Running, loops=5556, clients=0
+[23:28:37] [PanelStreamer::streamerTask] Running, loops=5576, clients=0
+[23:28:40] [WebDataManager] Starte Update für https://api.wartezeiten.app/v1/waitingtimes...
+[23:28:40] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://api.wartezeiten.app/v1/waitingtimes.
+[23:28:40] [WebDataManager] Added header: accept: application/json
+[23:28:40] [WebDataManager] Added header: park: movieparkgermany
+[23:28:41] [WebDataManager] Added header: language: de
+[23:28:41] [WebDataManager] ERFOLG: https://api.wartezeiten.app/v1/waitingtimes aktualisiert (4332 Bytes).
+[23:28:41] [ThemePark] parseWaitTimes called for park: movieparkgermany
+[23:28:41] [ThemePark] About to lookup name for: movieparkgermany
+[23:28:41] [ThemePark] getParkNameFromCache: searching 46 parks for movieparkgermany
+[23:28:42] [ThemePark] Found name for movieparkgermany: Movie Park Germany
+[23:28:42] [ThemePark] About to lookup country for: movieparkgermany
+[23:28:42] [ThemePark] getParkCountryFromCache: searching 46 parks for movieparkgermany
+[23:28:42] [ThemePark] Found country for movieparkgermany: Deutschland
+[23:28:42] [ThemePark] Park Movie Park Germany is closed (all attractions closed)
+[23:28:42] [ThemePark] Updated park Movie Park Germany with 21 attractions (0 open), 4 pages, total pages: 2
+[23:28:46] [SofaScore] Released PlayNext on reset
+[23:28:46] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:28:46] [SofaScore] PlayNext request failed
+[23:28:47] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:28:47] [PanelStreamer::streamerTask] Running, loops=5596, clients=0
+[23:28:48] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:28:49] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:28:50] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:28:51] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:28:52] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:28:53] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:28:54] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:28:55] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:28:56] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:28:57] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:28:57] [PanelStreamer::streamerTask] Running, loops=5616, clients=0
+[23:28:58] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:28:59] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:29:00] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:29:01] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:29:02] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:29:03] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:29:04] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:29:05] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:29:06] [SofaScore] Cycle complete (no live matches)
+[23:29:06] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:29:06] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:29:07] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:29:07] [PanelStreamer::streamerTask] Running, loops=5636, clients=0
+[23:29:10] [WebDataManager] Starte Update für https://api.wartezeiten.app/v1/waitingtimes...
+[23:29:10] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://api.wartezeiten.app/v1/waitingtimes.
+[23:29:10] [WebDataManager] Added header: accept: application/json
+[23:29:10] [WebDataManager] Added header: park: phantasialand
+[23:29:10] [WebDataManager] Added header: language: de
+[23:29:11] [ThemePark] parseWaitTimes called for park: phantasialand
+[23:29:11] [WebDataManager] ERFOLG: https://api.wartezeiten.app/v1/waitingtimes aktualisiert (6874 Bytes).
+[23:29:11] [ThemePark] About to lookup name for: phantasialand
+[23:29:11] [ThemePark] getParkNameFromCache: searching 46 parks for phantasialand
+[23:29:12] [ThemePark] Found name for phantasialand: Phantasialand
+[23:29:12] [ThemePark] About to lookup country for: phantasialand
+[23:29:12] [ThemePark] getParkCountryFromCache: searching 46 parks for phantasialand
+[23:29:12] [ThemePark] Found country for phantasialand: Deutschland
+[23:29:12] [ThemePark] Park Phantasialand is closed (all attractions closed)
+[23:29:12] [ThemePark] Updated park Phantasialand with 35 attractions (0 open), 6 pages, total pages: 2
+[23:29:17] [PanelStreamer::streamerTask] Running, loops=5655, clients=0
+[23:29:27] [PanelStreamer::streamerTask] Running, loops=5675, clients=0
+[23:29:37] [PanelStreamer::streamerTask] Running, loops=5695, clients=0
+[23:29:38] [WebDataManager] Starte Update für https://creativecommons.tankerkoenig.de/json/prices.php?ids=005056ba-7cb6-1ed2-bceb-74dffc2ecd25,1a248588-f486-448d-9133-838720f8c043,51d4b5a7-a095-1aa0-e100-80009459e03a,92940496-da28-4df2-a743-7471b0248d36,005056ba-7cb6-1ed2-bceb-902f9b9a4d35,877c0f9c-7722-48cf-b819-94a5a8a7879b,37eba56a-5e65-4dce-8606-6b33604a0ea9,7b0a3068-6471-4c49-9ffe-465d5d23cb2a,087bc6cf-fd2d-417a-98ad-725c51a6e6af,ee5fa84f-e7e0-4e0a-a95a-bf2691e06ba0,73d83220-9067-4dcf-bd64-d1b8c16b7f9f&apikey=30b237fa-a971-15da-32a5-23ecbf34d526...
+[23:29:38] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://creativecommons.tankerkoenig.de/json/prices.php?ids=005056ba-7cb6-1ed2-bceb-74dffc2ecd25,1a248588-f486-448d-9133-838720f8c043,51d4b5a7-a095-1aa0-e100-80009459e03a,92940496-da28-4df2-a743-7471b0248d36,005056ba-7cb6-1ed2-bceb-902f9b9a4d35,877c0f9c-7722-48cf-b819-94a5a8a7879b,37eba56a-5e65-4dce-8606-6b33604a0ea9,7b0a3068-6471-4c49-9ffe-465d5d23cb2a,087bc6cf-fd2d-417a-98ad-725c51a6e6af,ee5fa84f-e7e0-4e0a-a95a-bf2691e06ba0,73d83220-9067-4dcf-bd64-d1b8c16b7f9f&apikey=30b237fa-a971-15da-32a5-23ecbf34d526.
+[23:29:39] [WebDataManager] ERFOLG: https://creativecommons.tankerkoenig.de/json/prices.php?ids=005056ba-7cb6-1ed2-bceb-74dffc2ecd25,1a248588-f486-448d-9133-838720f8c043,51d4b5a7-a095-1aa0-e100-80009459e03a,92940496-da28-4df2-a743-7471b0248d36,005056ba-7cb6-1ed2-bceb-902f9b9a4d35,877c0f9c-7722-48cf-b819-94a5a8a7879b,37eba56a-5e65-4dce-8606-6b33604a0ea9,7b0a3068-6471-4c49-9ffe-465d5d23cb2a,087bc6cf-fd2d-417a-98ad-725c51a6e6af,ee5fa84f-e7e0-4e0a-a95a-bf2691e06ba0,73d83220-9067-4dcf-bd64-d1b8c16b7f9f&apikey=30b237fa-a971-15da-32a5-23ecbf34d526 aktualisiert (766 Bytes).
+[23:29:48] [PanelStreamer::streamerTask] Running, loops=5715, clients=0
+[23:29:48] [WebDataManager] Starte Update für https://api.wartezeiten.app/v1/waitingtimes...
+[23:29:48] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://api.wartezeiten.app/v1/waitingtimes.
+[23:29:49] [WebDataManager] Added header: accept: application/json
+[23:29:49] [WebDataManager] Added header: park: walibiholland
+[23:29:49] [WebDataManager] Added header: language: de
+[23:29:49] [AnimationsModule] Kamin PlayNext angefordert (UID=2002, Counter=2)
+[23:29:50] [WebDataManager] ERFOLG: https://api.wartezeiten.app/v1/waitingtimes aktualisiert (9942 Bytes).
+[23:29:50] [ThemePark] parseWaitTimes called for park: walibiholland
+[23:29:50] [ThemePark] About to lookup name for: walibiholland
+[23:29:50] [ThemePark] getParkNameFromCache: searching 46 parks for walibiholland
+[23:29:50] [ThemePark] Found name for walibiholland: Walibi Holland
+[23:29:50] [ThemePark] About to lookup country for: walibiholland
+[23:29:50] [ThemePark] getParkCountryFromCache: searching 46 parks for walibiholland
+[23:29:50] [ThemePark] Found country for walibiholland: Niederlande
+[23:29:50] [ThemePark] Park Walibi Holland is closed (all attractions closed)
+[23:29:50] [ThemePark] Updated park Walibi Holland with 38 attractions (0 open), 7 pages, total pages: 2
+[23:29:58] [PanelStreamer::streamerTask] Running, loops=5735, clients=0
+[23:30:08] [PanelStreamer::streamerTask] Running, loops=5755, clients=0
+[23:30:08] [AnimationsModule] Aktiviert: Kamin (UID=2002)
+[23:30:13] [WebDataManager] Starte Update für https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14...
+[23:30:13] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14.
+[23:30:16] [WebDataManager] ERFOLG: https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14 aktualisiert (64607 Bytes).
+[23:30:16] [SofaScore] Parsing daily events - Total events in JSON: 16
+[23:30:16] [SofaScore] Parsed 2 matches (0 live, skipped: 8 not today, 6 wrong tournament)
+[23:30:18] [PanelStreamer::streamerTask] Running, loops=5775, clients=0
+[23:30:29] [PanelStreamer::streamerTask] Running, loops=5795, clients=0
+[23:30:39] [PanelStreamer::streamerTask] Running, loops=5815, clients=0
+[23:30:46] [SofaScore] PlayNext request failed
+[23:30:49] [PanelStreamer::streamerTask] Running, loops=5835, clients=0
+[23:30:59] [PanelStreamer::streamerTask] Running, loops=5855, clients=0
+[23:31:09] [PanelStreamer::streamerTask] Running, loops=5875, clients=0
+[23:31:14] [AnimationsModule] Zeit abgelaufen für Kamin (UID=2002)
+[23:31:19] [PanelStreamer::streamerTask] Running, loops=5895, clients=0
+[23:31:29] [PanelStreamer::streamerTask] Running, loops=5915, clients=0
+[23:31:39] [PanelStreamer::streamerTask] Running, loops=5935, clients=0
+[23:31:44] [ThemePark] All 2 displayable parks shown -> Module finished
+[23:31:44] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:31:45] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:31:46] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:31:47] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:31:48] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:31:49] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:31:49] [PanelStreamer::streamerTask] Running, loops=5955, clients=0
+[23:31:50] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:31:51] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:31:52] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:31:53] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:31:54] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:31:55] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:31:56] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:31:57] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:31:58] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:31:59] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:31:59] [PanelStreamer::streamerTask] Running, loops=5975, clients=0
+[23:32:00] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:32:01] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:32:02] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:32:02] [SofaScore] Cycle complete (no live matches)
+[23:32:02] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:32:03] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:32:04] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:32:05] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:32:06] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:32:09] [PanelStreamer::streamerTask] Running, loops=5995, clients=0
+[23:32:13] [WebDataManager] Starte Update für https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14...
+[23:32:13] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14.
+[23:32:14] [WebDataManager] ERFOLG: https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14 aktualisiert (64912 Bytes).
+[23:32:14] [SofaScore] Parsing daily events - Total events in JSON: 16
+[23:32:14] [SofaScore] Parsed 2 matches (0 live, skipped: 8 not today, 6 wrong tournament)
+[23:32:19] [PanelStreamer::streamerTask] Running, loops=6015, clients=0
+[23:32:29] [PanelStreamer::streamerTask] Running, loops=6035, clients=0
+[23:32:39] [PanelStreamer::streamerTask] Running, loops=6055, clients=0
+[23:32:46] [SofaScore] PlayNext requested: UID=5999, duration=20000 ms (1 matches), interval=2 min
+[23:32:49] [PanelStreamer::streamerTask] Running, loops=6075, clients=0
+[23:32:59] [WebDataManager] Starte Update für https://www.dartsrankings.com/...
+[23:32:59] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://www.dartsrankings.com/.
+[23:33:00] [PanelStreamer::streamerTask] Running, loops=6095, clients=0
+[23:33:00] [WebDataManager] ERFOLG: https://www.dartsrankings.com/ aktualisiert (82675 Bytes).
+[23:33:06] [Tanker] Alle 10 Seiten gezeigt -> Modul beendet sich selbst
+[23:33:06] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:33:07] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:33:08] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:33:09] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:33:10] [PanelStreamer::streamerTask] Running, loops=6115, clients=0
+[23:33:10] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:33:11] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:33:12] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:33:13] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:33:14] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:33:15] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:33:16] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:33:17] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:33:18] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:33:19] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:33:20] [PanelStreamer::streamerTask] Running, loops=6135, clients=0
+[23:33:20] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:33:21] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:33:22] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:33:23] [SofaScore] Cycle complete (no live matches)
+[23:33:23] [SofaScore] Released PlayNext after cycle complete
+[23:33:23] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:33:23] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:33:24] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:33:25] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:33:26] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:33:27] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:33:28] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:33:30] [PanelStreamer::streamerTask] Running, loops=6155, clients=0
+[23:33:40] [PanelStreamer::streamerTask] Running, loops=6175, clients=0
+[23:33:50] [PanelStreamer::streamerTask] Running, loops=6195, clients=0
+[23:34:00] [PanelStreamer::streamerTask] Running, loops=6215, clients=0
+[23:34:10] [PanelStreamer::streamerTask] Running, loops=6235, clients=0
+[23:34:13] [WebDataManager] Starte Update für https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14...
+[23:34:13] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14.
+[23:34:15] [WebDataManager] ERFOLG: https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14 aktualisiert (64738 Bytes).
+[23:34:15] [SofaScore] Parsing daily events - Total events in JSON: 16
+[23:34:15] [SofaScore] Parsed 1 matches (1 live, skipped: 8 not today, 7 wrong tournament)
+[23:34:20] [PanelStreamer::streamerTask] Running, loops=6255, clients=0
+[23:34:30] [PanelStreamer::streamerTask] Running, loops=6275, clients=0
+[23:34:40] [PanelStreamer::streamerTask] Running, loops=6295, clients=0
+[23:34:50] [PanelStreamer::streamerTask] Running, loops=6315, clients=0
+[23:35:00] [PanelStreamer::streamerTask] Running, loops=6335, clients=0
+[23:35:06] [SofaScore] New live match detected: Event ID 15142734
+[23:35:06] [SofaScore] Requesting interrupt for live match statistics
+[23:35:06] [SofaScore] Interrupt requested with UID 5734 for 20000 ms (periodic update every minute)
+[23:35:07] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:35:08] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:35:09] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:35:10] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:35:10] [PanelStreamer::streamerTask] Running, loops=6355, clients=0
+[23:35:11] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:35:12] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:35:13] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:35:14] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:35:15] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:35:16] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:35:17] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:35:18] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:35:19] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:35:20] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[23:35:20] [PanelStreamer::streamerTask] Running, loops=6375, clients=0
+[23:35:21] [SofaScore] Switched to LIVE_MATCH mode
+[23:35:21] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[23:35:21] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[23:35:22] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[23:35:23] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[23:35:24] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[23:35:25] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[23:35:26] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[23:35:27] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[23:35:28] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[23:35:31] [PanelStreamer::streamerTask] Running, loops=6395, clients=0
+[23:35:38] [WebDataManager] Starte Update für https://creativecommons.tankerkoenig.de/json/prices.php?ids=005056ba-7cb6-1ed2-bceb-74dffc2ecd25,1a248588-f486-448d-9133-838720f8c043,51d4b5a7-a095-1aa0-e100-80009459e03a,92940496-da28-4df2-a743-7471b0248d36,005056ba-7cb6-1ed2-bceb-902f9b9a4d35,877c0f9c-7722-48cf-b819-94a5a8a7879b,37eba56a-5e65-4dce-8606-6b33604a0ea9,7b0a3068-6471-4c49-9ffe-465d5d23cb2a,087bc6cf-fd2d-417a-98ad-725c51a6e6af,ee5fa84f-e7e0-4e0a-a95a-bf2691e06ba0,73d83220-9067-4dcf-bd64-d1b8c16b7f9f&apikey=30b237fa-a971-15da-32a5-23ecbf34d526...
+[23:35:38] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://creativecommons.tankerkoenig.de/json/prices.php?ids=005056ba-7cb6-1ed2-bceb-74dffc2ecd25,1a248588-f486-448d-9133-838720f8c043,51d4b5a7-a095-1aa0-e100-80009459e03a,92940496-da28-4df2-a743-7471b0248d36,005056ba-7cb6-1ed2-bceb-902f9b9a4d35,877c0f9c-7722-48cf-b819-94a5a8a7879b,37eba56a-5e65-4dce-8606-6b33604a0ea9,7b0a3068-6471-4c49-9ffe-465d5d23cb2a,087bc6cf-fd2d-417a-98ad-725c51a6e6af,ee5fa84f-e7e0-4e0a-a95a-bf2691e06ba0,73d83220-9067-4dcf-bd64-d1b8c16b7f9f&apikey=30b237fa-a971-15da-32a5-23ecbf34d526.
+[23:35:39] [WebDataManager] ERFOLG: https://creativecommons.tankerkoenig.de/json/prices.php?ids=005056ba-7cb6-1ed2-bceb-74dffc2ecd25,1a248588-f486-448d-9133-838720f8c043,51d4b5a7-a095-1aa0-e100-80009459e03a,92940496-da28-4df2-a743-7471b0248d36,005056ba-7cb6-1ed2-bceb-902f9b9a4d35,877c0f9c-7722-48cf-b819-94a5a8a7879b,37eba56a-5e65-4dce-8606-6b33604a0ea9,7b0a3068-6471-4c49-9ffe-465d5d23cb2a,087bc6cf-fd2d-417a-98ad-725c51a6e6af,ee5fa84f-e7e0-4e0a-a95a-bf2691e06ba0,73d83220-9067-4dcf-bd64-d1b8c16b7f9f&apikey=30b237fa-a971-15da-32a5-23ecbf34d526 aktualisiert (766 Bytes).
+[23:35:41] [PanelStreamer::streamerTask] Running, loops=6415, clients=0
+[23:35:51] [PanelStreamer::streamerTask] Running, loops=6435, clients=0
+[23:36:01] [PanelStreamer::streamerTask] Running, loops=6455, clients=0
+[23:36:11] [PanelStreamer::streamerTask] Running, loops=6475, clients=0
+[23:36:14] [WebDataManager] Starte Update für https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14...
+[23:36:14] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14.
+[23:36:14] [AnimationsModule] Adventskranz PlayNext angefordert (UID=2003, Counter=3)
+[23:36:16] [WebDataManager] ERFOLG: https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14 aktualisiert (64790 Bytes).
+[23:36:16] [SofaScore] Parsing daily events - Total events in JSON: 16
+[23:36:16] [SofaScore] Parsed 1 matches (1 live, skipped: 8 not today, 7 wrong tournament)
+[23:36:21] [PanelStreamer::streamerTask] Running, loops=6495, clients=0
+[23:36:31] [PanelStreamer::streamerTask] Running, loops=6515, clients=0
+[23:36:33] [AnimationsModule] Aktiviert: Adventskranz (UID=2003)
+[23:36:42] [PanelStreamer::streamerTask] Running, loops=6535, clients=0
+[23:36:52] [PanelStreamer::streamerTask] Running, loops=6555, clients=0
+[23:37:02] [PanelStreamer::streamerTask] Running, loops=6575, clients=0
+[23:37:12] [PanelStreamer::streamerTask] Running, loops=6595, clients=0
+[23:37:22] [PanelStreamer::streamerTask] Running, loops=6615, clients=0
+[23:37:32] [PanelStreamer::streamerTask] Running, loops=6635, clients=0
+[23:37:39] [AnimationsModule] Zeit abgelaufen für Adventskranz (UID=2003)
+[23:37:42] [PanelStreamer::streamerTask] Running, loops=6655, clients=0
+[23:37:52] [PanelStreamer::streamerTask] Running, loops=6675, clients=0
+[23:37:59] [WebDataManager] Starte Update für https://www.dartsrankings.com/...
+[23:37:59] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://www.dartsrankings.com/.
+[23:38:00] [WebDataManager] ERFOLG: https://www.dartsrankings.com/ aktualisiert (82675 Bytes).
+[23:38:02] [PanelStreamer::streamerTask] Running, loops=6695, clients=0
+[23:38:12] [PanelStreamer::streamerTask] Running, loops=6715, clients=0
+[23:38:14] [WebDataManager] Starte Update für https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14...
+[23:38:14] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14.
+[23:38:15] [WebDataManager] ERFOLG: https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14 aktualisiert (64783 Bytes).
+[23:38:15] [SofaScore] Parsing daily events - Total events in JSON: 16
+[23:38:15] [SofaScore] Parsed 1 matches (1 live, skipped: 8 not today, 7 wrong tournament)
+[23:38:22] [PanelStreamer::streamerTask] Running, loops=6735, clients=0
+[23:38:24] [WebDataManager] Starte Update für https://calendar.google.com/calendar/ical/07kpkqe1smsqa84u9dritdhkf0%40group.calendar.google.com/private-7995046dc8216494232c3ee88ef3dcb9/basic.ics...
+[23:38:24] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://calendar.google.com/calendar/ical/07kpkqe1smsqa84u9dritdhkf0%40group.calendar.google.com/private-7995046dc8216494232c3ee88ef3dcb9/basic.ics.
+[23:38:26] [WebDataManager] ERFOLG: https://calendar.google.com/calendar/ical/07kpkqe1smsqa84u9dritdhkf0%40group.calendar.google.com/private-7995046dc8216494232c3ee88ef3dcb9/basic.ics aktualisiert (25180 Bytes).
+[23:38:32] [PanelStreamer::streamerTask] Running, loops=6755, clients=0
+[23:38:40] [WebDataManager] Starte Update für https://api.wartezeiten.app/v1/waitingtimes...
+[23:38:40] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://api.wartezeiten.app/v1/waitingtimes.
+[23:38:41] [WebDataManager] Added header: accept: application/json
+[23:38:41] [WebDataManager] Added header: park: movieparkgermany
+[23:38:41] [WebDataManager] Added header: language: de
+[23:38:41] [ThemePark] parseWaitTimes called for park: movieparkgermany
+[23:38:42] [WebDataManager] ERFOLG: https://api.wartezeiten.app/v1/waitingtimes aktualisiert (4332 Bytes).
+[23:38:42] [ThemePark] About to lookup name for: movieparkgermany
+[23:38:42] [ThemePark] getParkNameFromCache: searching 46 parks for movieparkgermany
+[23:38:42] [ThemePark] Found name for movieparkgermany: Movie Park Germany
+[23:38:42] [ThemePark] About to lookup country for: movieparkgermany
+[23:38:42] [ThemePark] getParkCountryFromCache: searching 46 parks for movieparkgermany
+[23:38:42] [ThemePark] Found country for movieparkgermany: Deutschland
+[23:38:42] [ThemePark] Park Movie Park Germany is closed (all attractions closed)
+[23:38:42] [ThemePark] Updated park Movie Park Germany with 21 attractions (0 open), 4 pages, total pages: 2
+[23:38:43] [PanelStreamer::streamerTask] Running, loops=6775, clients=0
+[23:38:53] [PanelStreamer::streamerTask] Running, loops=6795, clients=0
+[23:39:03] [PanelStreamer::streamerTask] Running, loops=6815, clients=0
+[23:39:10] [WebDataManager] Starte Update für https://api.wartezeiten.app/v1/waitingtimes...
+[23:39:10] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://api.wartezeiten.app/v1/waitingtimes.
+[23:39:10] [WebDataManager] Added header: accept: application/json
+[23:39:10] [WebDataManager] Added header: park: phantasialand
+[23:39:10] [WebDataManager] Added header: language: de
+[23:39:12] [ThemePark] parseWaitTimes called for park: phantasialand
+[23:39:12] [WebDataManager] ERFOLG: https://api.wartezeiten.app/v1/waitingtimes aktualisiert (6874 Bytes).
+[23:39:12] [ThemePark] About to lookup name for: phantasialand
+[23:39:12] [ThemePark] getParkNameFromCache: searching 46 parks for phantasialand
+[23:39:12] [ThemePark] Found name for phantasialand: Phantasialand
+[23:39:12] [ThemePark] About to lookup country for: phantasialand
+[23:39:12] [ThemePark] getParkCountryFromCache: searching 46 parks for phantasialand
+[23:39:12] [ThemePark] Found country for phantasialand: Deutschland
+[23:39:12] [ThemePark] Park Phantasialand is closed (all attractions closed)
+[23:39:12] [ThemePark] Updated park Phantasialand with 35 attractions (0 open), 6 pages, total pages: 2
+[23:39:13] [PanelStreamer::streamerTask] Running, loops=6834, clients=0
+[23:39:23] [PanelStreamer::streamerTask] Running, loops=6854, clients=0
+[23:39:33] [PanelStreamer::streamerTask] Running, loops=6874, clients=0
+[23:39:43] [PanelStreamer::streamerTask] Running, loops=6894, clients=0
+[23:39:48] [WebDataManager] Starte Update für https://api.wartezeiten.app/v1/waitingtimes...
+[23:39:48] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://api.wartezeiten.app/v1/waitingtimes.
+[23:39:48] [WebDataManager] Added header: accept: application/json
+[23:39:48] [WebDataManager] Added header: park: walibiholland
+[23:39:48] [WebDataManager] Added header: language: de
+[23:39:49] [ThemePark] parseWaitTimes called for park: walibiholland
+[23:39:49] [WebDataManager] ERFOLG: https://api.wartezeiten.app/v1/waitingtimes aktualisiert (9942 Bytes).
+[23:39:49] [ThemePark] About to lookup name for: walibiholland
+[23:39:49] [ThemePark] getParkNameFromCache: searching 46 parks for walibiholland
+[23:39:49] [ThemePark] Found name for walibiholland: Walibi Holland
+[23:39:50] [ThemePark] About to lookup country for: walibiholland
+[23:39:50] [ThemePark] getParkCountryFromCache: searching 46 parks for walibiholland
+[23:39:50] [ThemePark] Found country for walibiholland: Niederlande
+[23:39:50] [ThemePark] Park Walibi Holland is closed (all attractions closed)
+[23:39:50] [ThemePark] Updated park Walibi Holland with 38 attractions (0 open), 7 pages, total pages: 2
+[23:39:54] [PanelStreamer::streamerTask] Running, loops=6914, clients=0
+[23:40:04] [PanelStreamer::streamerTask] Running, loops=6934, clients=0
+[23:40:14] [PanelStreamer::streamerTask] Running, loops=6954, clients=0
+[23:40:14] [WebDataManager] Starte Update für https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14...
+[23:40:14] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14.
+[23:40:15] [WebDataManager] ERFOLG: https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14 aktualisiert (64754 Bytes).
+[23:40:15] [SofaScore] Parsing daily events - Total events in JSON: 16
+[23:40:15] [SofaScore] Parsed 1 matches (1 live, skipped: 8 not today, 7 wrong tournament)
+[23:40:24] [PanelStreamer::streamerTask] Running, loops=6974, clients=0
+[23:40:34] [PanelStreamer::streamerTask] Running, loops=6994, clients=0
+[23:40:44] [PanelStreamer::streamerTask] Running, loops=7014, clients=0
