@@ -131,6 +131,14 @@ private:
     unsigned long _displayDuration = 20000;  // 20 seconds per page
     uint32_t _currentTicksPerPage = 200;     // 200 * 100ms = 20 seconds
     
+    // Live event monitoring
+    bool _hasLiveEvents = false;
+    unsigned long _lastLiveCheckTime = 0;
+    unsigned long _lastLiveDataFetchTime = 0;
+    const unsigned long LIVE_CHECK_INTERVAL_MS = 60000;  // Check for live events every 60 seconds
+    const unsigned long LIVE_DATA_FETCH_INTERVAL_MS = 30000;  // Fetch live data every 30 seconds when active
+    bool _dailySchedulesPaused = false;
+    
     // Paging
     int _currentPage = 0;
     int _totalPages = 1;
@@ -198,8 +206,11 @@ private:
     void clearAllData();
     void parseTournamentsJson(const char* json, size_t len);
     void parseDailyEventsJson(const char* json, size_t len);
+    void parseLiveEventsJson(const char* json, size_t len);  // NEW: Parse live events endpoint
     void parseMatchStatistics(int eventId, const char* json, size_t len);
     void updateLiveMatchStats();
+    void checkAndFetchLiveEvents();  // NEW: Check for live events every minute
+    void fetchLiveData();  // NEW: Fetch live events + statistics
     void switchToNextMode();
     void checkForLiveMatchInterrupt();
     void checkForPlayNext();

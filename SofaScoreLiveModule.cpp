@@ -497,39 +497,99 @@ void SofaScoreLiveModule::switchToNextMode() {
 void SofaScoreLiveModule::queueData() {
     if (!webClient) return;
     
-    // Fetch today's events
-    time_t now;
-    time(&now);
-    struct tm* timeinfo = localtime(&now);
-    char dateStr[16];
-    strftime(dateStr, sizeof(dateStr), "%Y-%m-%d", timeinfo);
+    // Check for live events every minute
+    checkAndFetchLiveEvents();
     
-    PsramString dailyUrl = PsramString("https://api.sofascore.com/api/v1/sport/darts/scheduled-events/") + dateStr;
+    // Only fetch daily schedules if not paused (no live events active)
+    if (!_dailySchedulesPaused) {
+        // Fetch today's events
+        time_t now;
+        time(&now);
+        struct tm* timeinfo = localtime(&now);
+        char dateStr[16];
+        strftime(dateStr, sizeof(dateStr), "%Y-%m-%d", timeinfo);
+        
+        PsramString dailyUrl = PsramString("https://api.sofascore.com/api/v1/sport/darts/scheduled-events/") + dateStr;
+        
+        // Register only if URL changed (new day)
+        if (dailyUrl != _lastRegisteredDailyUrl) {
+            uint32_t fetchInterval = config->dartsSofascoreFetchIntervalMin > 0 ? config->dartsSofascoreFetchIntervalMin : 60;
+            webClient->registerResource(dailyUrl.c_str(), fetchInterval, nullptr);  // Use configured interval
+            _lastRegisteredDailyUrl = dailyUrl;
+            Log.printf("[SofaScore] Registered daily events: interval=%d min\n", fetchInterval);
+        }
+        
+        webClient->accessResource(dailyUrl.c_str(),
+            [this](const char* buffer, size_t size, time_t last_update, bool is_stale) {
+                if (buffer && size > 0 && last_update > this->daily_last_processed_update) {
+                    if (daily_pending_buffer) free(daily_pending_buffer);
+                    daily_pending_buffer = (char*)ps_malloc(size + 1);
+                    if (daily_pending_buffer) {
+                        memcpy(daily_pending_buffer, buffer, size);
+                        daily_pending_buffer[size] = '\0';
+                        daily_buffer_size = size;
+                        daily_last_processed_update = last_update;
+                        daily_data_pending = true;
+                    }
+                }
+            });
+    }
+}
+
+void SofaScoreLiveModule::checkAndFetchLiveEvents() {
+    unsigned long now = millis();
     
-    // Register only if URL changed (new day)
-    if (dailyUrl != _lastRegisteredDailyUrl) {
-        uint32_t fetchInterval = config->dartsSofascoreFetchIntervalMin > 0 ? config->dartsSofascoreFetchIntervalMin : 60;
-        webClient->registerResource(dailyUrl.c_str(), fetchInterval, nullptr);  // Use configured interval
-        _lastRegisteredDailyUrl = dailyUrl;
-        Log.printf("[SofaScore] Registered daily events: interval=%d min\n", fetchInterval);
+    // Check for live events every 60 seconds
+    if (now - _lastLiveCheckTime >= LIVE_CHECK_INTERVAL_MS) {
+        _lastLiveCheckTime = now;
+        
+        // Fetch live events endpoint
+        const char* liveUrl = "https://api.sofascore.com/api/v1/sport/darts/events/live";
+        
+        webClient->accessResource(liveUrl,
+            [this](const char* buffer, size_t size, time_t last_update, bool is_stale) {
+                if (buffer && size > 0) {
+                    if (live_pending_buffer) free(live_pending_buffer);
+                    live_pending_buffer = (char*)ps_malloc(size + 1);
+                    if (live_pending_buffer) {
+                        memcpy(live_pending_buffer, buffer, size);
+                        live_pending_buffer[size] = '\0';
+                        live_buffer_size = size;
+                        live_last_processed_update = last_update;
+                        live_data_pending = true;
+                    }
+                }
+            });
     }
     
-    webClient->accessResource(dailyUrl.c_str(),
+    // If we have live events, fetch live data more frequently (every 30 seconds)
+    if (_hasLiveEvents && (now - _lastLiveDataFetchTime >= LIVE_DATA_FETCH_INTERVAL_MS)) {
+        fetchLiveData();
+    }
+}
+
+void SofaScoreLiveModule::fetchLiveData() {
+    _lastLiveDataFetchTime = millis();
+    
+    // Fetch live events endpoint
+    const char* liveUrl = "https://api.sofascore.com/api/v1/sport/darts/events/live";
+    
+    webClient->accessResource(liveUrl,
         [this](const char* buffer, size_t size, time_t last_update, bool is_stale) {
-            if (buffer && size > 0 && last_update > this->daily_last_processed_update) {
-                if (daily_pending_buffer) free(daily_pending_buffer);
-                daily_pending_buffer = (char*)ps_malloc(size + 1);
-                if (daily_pending_buffer) {
-                    memcpy(daily_pending_buffer, buffer, size);
-                    daily_pending_buffer[size] = '\0';
-                    daily_buffer_size = size;
-                    daily_last_processed_update = last_update;
-                    daily_data_pending = true;
+            if (buffer && size > 0) {
+                if (live_pending_buffer) free(live_pending_buffer);
+                live_pending_buffer = (char*)ps_malloc(size + 1);
+                if (live_pending_buffer) {
+                    memcpy(live_pending_buffer, buffer, size);
+                    live_pending_buffer[size] = '\0';
+                    live_buffer_size = size;
+                    live_last_processed_update = last_update;
+                    live_data_pending = true;
                 }
             }
         });
     
-    // 3. Update live match statistics
+    // Update statistics for live matches
     updateLiveMatchStats();
 }
 
@@ -587,8 +647,20 @@ void SofaScoreLiveModule::updateLiveMatchStats() {
 }
 
 void SofaScoreLiveModule::processData() {
-    // Process pending daily events data
-    if (daily_data_pending) {
+    // Process pending live events data FIRST (higher priority)
+    if (live_data_pending) {
+        if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(500)) == pdTRUE) {
+            parseLiveEventsJson(live_pending_buffer, live_buffer_size);
+            free(live_pending_buffer);
+            live_pending_buffer = nullptr;
+            live_data_pending = false;
+            xSemaphoreGive(dataMutex);
+            if (updateCallback) updateCallback();
+        }
+    }
+    
+    // Process pending daily events data (only if no live events)
+    if (daily_data_pending && !_dailySchedulesPaused) {
         if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(500)) == pdTRUE) {
             parseDailyEventsJson(daily_pending_buffer, daily_buffer_size);
             free(daily_pending_buffer);
@@ -840,6 +912,160 @@ void SofaScoreLiveModule::parseDailyEventsJson(const char* json, size_t len) {
     _totalPages = calculateTotalPages();  // Update total pages after grouping
     
     Log.printf("[SofaScore] 📄 Total pages calculated: %d\n", _totalPages);
+}
+
+void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
+    Log.println("[SofaScore] 🔴 Parsing LIVE events JSON...");
+    Log.printf("[SofaScore] JSON size: %d bytes\n", len);
+    
+    SpiRamAllocator allocator;
+    JsonDocument doc(&allocator);
+    
+    DeserializationError error = deserializeJson(doc, json, len);
+    if (error) {
+        Log.printf("[SofaScore] ❌ JSON parse error: %s\n", error.c_str());
+        return;
+    }
+    
+    // Clear and rebuild liveMatches from live endpoint
+    liveMatches.clear();
+    
+    JsonArray events = doc["events"].as<JsonArray>();
+    Log.printf("[SofaScore] 🔴 Found %d LIVE events in JSON\n", events.size());
+    
+    bool foundConfiguredEvent = false;
+    int parsedCount = 0;
+    
+    for (JsonObject event : events) {
+        // Check tournament ID against configured tournaments
+        int tournamentId = event["tournament"]["id"] | 0;
+        
+        // Check if this tournament is enabled
+        bool isEnabled = enabledTournamentIds.empty();  // If no filter, show all
+        if (!isEnabled) {
+            for (int enabledId : enabledTournamentIds) {
+                if (enabledId == tournamentId) {
+                    isEnabled = true;
+                    break;
+                }
+            }
+        }
+        
+        if (!isEnabled) continue;  // Skip tournaments not in filter
+        
+        foundConfiguredEvent = true;
+        
+        SofaScoreMatch match;
+        match.eventId = event["id"] | 0;
+        
+        Log.printf("[SofaScore] 🔴 Parsing LIVE event ID %d\n", match.eventId);
+        
+        // Get player names (with NULL checks)
+        const char* homeName = event["homeTeam"]["shortName"];
+        if (!homeName) {
+            homeName = event["homeTeam"]["name"];
+            Log.printf("[SofaScore]   ⚠️  Home shortName is NULL, using full name\n");
+        } else if (*homeName == '\0') {
+            homeName = event["homeTeam"]["name"];
+        }
+        if (homeName) {
+            match.homePlayerName = psram_strdup(homeName);
+            Log.printf("[SofaScore]   👤 Home: %s\n", homeName);
+        }
+        
+        const char* awayName = event["awayTeam"]["shortName"];
+        if (!awayName) {
+            awayName = event["awayTeam"]["name"];
+            Log.printf("[SofaScore]   ⚠️  Away shortName is NULL, using full name\n");
+        } else if (*awayName == '\0') {
+            awayName = event["awayTeam"]["name"];
+        }
+        if (awayName) {
+            match.awayPlayerName = psram_strdup(awayName);
+            Log.printf("[SofaScore]   👤 Away: %s\n", awayName);
+        }
+        
+        // Parse scores - live endpoint has current set scores in "current" field
+        // and legs in period1, period2, etc.
+        JsonObject homeScore = event["homeScore"];
+        if (!homeScore.isNull() && homeScore.size() > 0) {
+            match.homeScore = homeScore["current"] | 0;  // Sets won
+            
+            // Parse legs for each set - need to find which set is currently active
+            // period1 = legs in set 1, period2 = legs in set 2, etc.
+            // The current set being played will have the latest period data
+            int currentSet = match.homeScore + match.awayScore;  // Total sets played + current set
+            
+            // Parse all available period (set) scores to get legs
+            if (homeScore.containsKey("period1")) match.homeLegs = homeScore["period1"] | 0;
+            if (homeScore.containsKey("period2")) match.homeLegs = homeScore["period2"] | 0;
+            if (homeScore.containsKey("period3")) match.homeLegs = homeScore["period3"] | 0;
+            if (homeScore.containsKey("period4")) match.homeLegs = homeScore["period4"] | 0;
+            if (homeScore.containsKey("period5")) match.homeLegs = homeScore["period5"] | 0;
+            if (homeScore.containsKey("period6")) match.homeLegs = homeScore["period6"] | 0;
+            if (homeScore.containsKey("period7")) match.homeLegs = homeScore["period7"] | 0;
+            
+            Log.printf("[SofaScore]   📊 Home: %d sets, %d legs in current set\n", match.homeScore, match.homeLegs);
+        }
+        
+        JsonObject awayScore = event["awayScore"];
+        if (!awayScore.isNull() && awayScore.size() > 0) {
+            match.awayScore = awayScore["current"] | 0;  // Sets won
+            
+            // Parse legs for current set
+            if (awayScore.containsKey("period1")) match.awayLegs = awayScore["period1"] | 0;
+            if (awayScore.containsKey("period2")) match.awayLegs = awayScore["period2"] | 0;
+            if (awayScore.containsKey("period3")) match.awayLegs = awayScore["period3"] | 0;
+            if (awayScore.containsKey("period4")) match.awayLegs = awayScore["period4"] | 0;
+            if (awayScore.containsKey("period5")) match.awayLegs = awayScore["period5"] | 0;
+            if (awayScore.containsKey("period6")) match.awayLegs = awayScore["period6"] | 0;
+            if (awayScore.containsKey("period7")) match.awayLegs = awayScore["period7"] | 0;
+            
+            Log.printf("[SofaScore]   📊 Away: %d sets, %d legs in current set\n", match.awayScore, match.awayLegs);
+        }
+        
+        const char* tournamentName = event["tournament"]["name"];
+        if (tournamentName) {
+            match.tournamentName = psram_strdup(tournamentName);
+            Log.printf("[SofaScore]   🏆 Tournament: %s (ID: %d)\n", tournamentName, tournamentId);
+        }
+        
+        const char* statusType = event["status"]["type"];
+        if (statusType && strcmp(statusType, "inprogress") == 0) {
+            match.status = MatchStatus::LIVE;
+            Log.printf("[SofaScore]   🔴 Status: LIVE\n");
+        } else {
+            // If not in progress, don't add to live matches
+            continue;
+        }
+        
+        match.startTimestamp = event["startTimestamp"] | 0;
+        
+        liveMatches.push_back(std::move(match));
+        parsedCount++;
+    }
+    
+    // Update live event state
+    bool hadLiveEvents = _hasLiveEvents;
+    _hasLiveEvents = foundConfiguredEvent && !liveMatches.empty();
+    
+    if (_hasLiveEvents && !hadLiveEvents) {
+        // Just detected live events - pause daily schedules
+        _dailySchedulesPaused = true;
+        Log.println("[SofaScore] 🔴 LIVE EVENTS DETECTED - Pausing daily schedules");
+        
+        // Trigger urgent display
+        if (_interruptOnLive && updateCallback) {
+            updateCallback();
+        }
+    } else if (!_hasLiveEvents && hadLiveEvents) {
+        // Live events ended - resume daily schedules
+        _dailySchedulesPaused = false;
+        Log.println("[SofaScore] ✅ Live events ended - Resuming daily schedules");
+    }
+    
+    Log.printf("[SofaScore] 🔴 Parsed %d LIVE matches for configured tournaments\n", parsedCount);
+    Log.printf("[SofaScore] 📊 Live events active: %s\n", _hasLiveEvents ? "YES" : "NO");
 }
 
 void SofaScoreLiveModule::parseMatchStatistics(int eventId, const char* json, size_t len) {
@@ -1242,7 +1468,7 @@ void SofaScoreLiveModule::drawLiveMatch() {
         u8g2.setFont(u8g2_font_profont10_tf);
         u8g2.setForegroundColor(0xFFFF);
         
-        // Player 1 (Home) - Left column - use shortName as-is
+        // Player 1 (Home) - Left column
         if (match.homePlayerName) {
             u8g2.setCursor(2, y);
             u8g2.print(match.homePlayerName);
@@ -1257,7 +1483,7 @@ void SofaScoreLiveModule::drawLiveMatch() {
             }
         }
         
-        // Player 2 (Away) - Right column - use shortName as-is
+        // Player 2 (Away) - Right column
         u8g2.setFont(u8g2_font_profont10_tf);
         if (match.awayPlayerName) {
             int nameWidth = u8g2.getUTF8Width(match.awayPlayerName);
@@ -1277,12 +1503,12 @@ void SofaScoreLiveModule::drawLiveMatch() {
         
         y += 22;
         
-        // Score centered
+        // Score centered - ALWAYS show legs if available
         u8g2.setFont(u8g2_font_profont12_tf);
         u8g2.setForegroundColor(0xFFFF);
         char scoreStr[32];
-        // Show legs in parentheses for live matches
-        if (match.status == MatchStatus::LIVE && (match.homeLegs > 0 || match.awayLegs > 0)) {
+        // Show legs in parentheses if any legs have been played
+        if (match.homeLegs > 0 || match.awayLegs > 0) {
             snprintf(scoreStr, sizeof(scoreStr), "%d:%d (%d:%d)", 
                      match.homeScore, match.awayScore, match.homeLegs, match.awayLegs);
         } else {
@@ -1294,35 +1520,29 @@ void SofaScoreLiveModule::drawLiveMatch() {
         
         u8g2.setFont(u8g2_font_5x8_tf);
         y += 10;
-        const char* scoreLabel = (match.status == MatchStatus::LIVE && (match.homeLegs > 0 || match.awayLegs > 0)) ? "Sets (Legs)" : "Sets";
+        const char* scoreLabel = (match.homeLegs > 0 || match.awayLegs > 0) ? "Sets (Legs)" : "Sets";
         u8g2.setCursor((_currentCanvas->width() - u8g2.getUTF8Width(scoreLabel)) / 2, y);
         u8g2.print(scoreLabel);
         
-        y += 10;
+        y += 8;  // Reduced spacing
         
-        // Statistics table (only on fullscreen)
+        // Statistics table - OPTIMIZED to fit fullscreen (96px height)
         if (wantsFullscreen()) {
             u8g2.setFont(u8g2_font_5x8_tf);
             
-            // Headers: "Home" centered at left, "Stat" centered, "Away" centered at right
-            u8g2.setForegroundColor(0xAAAA);
-            u8g2.setCursor(10, y);
-            u8g2.print("Home");
-            u8g2.setCursor(_currentCanvas->width() / 2 - 10, y);
-            u8g2.print("Stat");
-            u8g2.setCursor(_currentCanvas->width() - 30, y);
-            u8g2.print("Away");
-            y += 8;
-            
+            // Compact 3-row layout: Avg, 180s, CO%
             // Row 1: Average
-            u8g2.setForegroundColor(0xFFFF);
+            u8g2.setForegroundColor(0xFFE0);  // Yellow for stat labels
             char homeVal[12], awayVal[12];
             snprintf(homeVal, sizeof(homeVal), "%.1f", match.homeAverage);
             snprintf(awayVal, sizeof(awayVal), "%.1f", match.awayAverage);
+            u8g2.setForegroundColor(0xFFFF);
             u8g2.setCursor(2, y);
             u8g2.print(homeVal);
+            u8g2.setForegroundColor(0xFFE0);
             u8g2.setCursor(_currentCanvas->width() / 2 - 10, y);
             u8g2.print("Avg");
+            u8g2.setForegroundColor(0xFFFF);
             int awayWidth = u8g2.getUTF8Width(awayVal);
             u8g2.setCursor(_currentCanvas->width() - awayWidth - 2, y);
             u8g2.print(awayVal);
@@ -1333,67 +1553,29 @@ void SofaScoreLiveModule::drawLiveMatch() {
             snprintf(awayVal, sizeof(awayVal), "%d", match.away180s);
             u8g2.setCursor(2, y);
             u8g2.print(homeVal);
+            u8g2.setForegroundColor(0xFFE0);
             u8g2.setCursor(_currentCanvas->width() / 2 - 10, y);
             u8g2.print("180");
+            u8g2.setForegroundColor(0xFFFF);
             awayWidth = u8g2.getUTF8Width(awayVal);
             u8g2.setCursor(_currentCanvas->width() - awayWidth - 2, y);
             u8g2.print(awayVal);
             y += 8;
             
-            // Row 3: Over 140
-            snprintf(homeVal, sizeof(homeVal), "%d", match.homeOver140);
-            snprintf(awayVal, sizeof(awayVal), "%d", match.awayOver140);
-            u8g2.setCursor(2, y);
-            u8g2.print(homeVal);
-            u8g2.setCursor(_currentCanvas->width() / 2 - 12, y);
-            u8g2.print(">140");
-            awayWidth = u8g2.getUTF8Width(awayVal);
-            u8g2.setCursor(_currentCanvas->width() - awayWidth - 2, y);
-            u8g2.print(awayVal);
-            y += 8;
-            
-            // Row 4: Over 100
-            snprintf(homeVal, sizeof(homeVal), "%d", match.homeOver100);
-            snprintf(awayVal, sizeof(awayVal), "%d", match.awayOver100);
-            u8g2.setCursor(2, y);
-            u8g2.print(homeVal);
-            u8g2.setCursor(_currentCanvas->width() / 2 - 12, y);
-            u8g2.print(">100");
-            awayWidth = u8g2.getUTF8Width(awayVal);
-            u8g2.setCursor(_currentCanvas->width() - awayWidth - 2, y);
-            u8g2.print(awayVal);
-            y += 8;
-            
-            // Row 5: Checkouts > 100
-            snprintf(homeVal, sizeof(homeVal), "%d", match.homeCheckoutsOver100);
-            snprintf(awayVal, sizeof(awayVal), "%d", match.awayCheckoutsOver100);
-            u8g2.setCursor(2, y);
-            u8g2.print(homeVal);
-            u8g2.setCursor(_currentCanvas->width() / 2 - 12, y);
-            u8g2.print("CO>100");
-            awayWidth = u8g2.getUTF8Width(awayVal);
-            u8g2.setCursor(_currentCanvas->width() - awayWidth - 2, y);
-            u8g2.print(awayVal);
-            y += 8;
-            
-            // Row 6: Checkout Accuracy
+            // Row 3: Checkout %
             snprintf(homeVal, sizeof(homeVal), "%.0f%%", match.homeCheckoutPercent);
             snprintf(awayVal, sizeof(awayVal), "%.0f%%", match.awayCheckoutPercent);
             u8g2.setCursor(2, y);
             u8g2.print(homeVal);
+            u8g2.setForegroundColor(0x07FF);  // Cyan
             u8g2.setCursor(_currentCanvas->width() / 2 - 10, y);
             u8g2.print("CO%");
+            u8g2.setForegroundColor(0xFFFF);
             awayWidth = u8g2.getUTF8Width(awayVal);
             u8g2.setCursor(_currentCanvas->width() - awayWidth - 2, y);
             u8g2.print(awayVal);
+            // y += 8;  // Don't advance y anymore - we're at the bottom
         }
-    } else {
-        u8g2.setFont(u8g2_font_profont12_tf);
-        u8g2.setForegroundColor(0xFFFF);
-        const char* msg = "No live matches";
-        int msgWidth = u8g2.getUTF8Width(msg);
-        u8g2.setCursor((_currentCanvas->width() - msgWidth) / 2, _currentCanvas->height() / 2);
-        u8g2.print(msg);
     }
 }
 
