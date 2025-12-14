@@ -684,40 +684,46 @@ void SofaScoreLiveModule::parseDailyEventsJson(const char* json, size_t len) {
         SofaScoreMatch match;
         match.eventId = event["id"] | 0;
         
-        // Use shortName if available, otherwise fall back to name
+        // FIXED: Safely get player names with proper NULL checks
+        // Try shortName first, fall back to name, handle NULL properly
         const char* homeName = event["homeTeam"]["shortName"];
-        if (!homeName || strlen(homeName) == 0) {
+        if (!homeName) {  // Check NULL first
+            homeName = event["homeTeam"]["name"];
+        } else if (*homeName == '\0') {  // Empty string, try name
             homeName = event["homeTeam"]["name"];
         }
         if (homeName) match.homePlayerName = psram_strdup(homeName);
         
         const char* awayName = event["awayTeam"]["shortName"];
-        if (!awayName || strlen(awayName) == 0) {
+        if (!awayName) {  // Check NULL first
+            awayName = event["awayTeam"]["name"];
+        } else if (*awayName == '\0') {  // Empty string, try name
             awayName = event["awayTeam"]["name"];
         }
         if (awayName) match.awayPlayerName = psram_strdup(awayName);
         
+        // FIXED: Check if score objects exist before accessing fields
         JsonObject homeScore = event["homeScore"];
-        if (!homeScore.isNull()) {
+        if (!homeScore.isNull() && homeScore.size() > 0) {
             match.homeScore = homeScore["current"] | 0;
             // Parse legs from period scores (period1 = set 1, period2 = set 2, etc.)
             // For live matches, find the current set being played
-            if (homeScore["period1"].is<int>()) match.homeLegs = homeScore["period1"] | 0;
-            if (homeScore["period2"].is<int>()) match.homeLegs = homeScore["period2"] | 0;
-            if (homeScore["period3"].is<int>()) match.homeLegs = homeScore["period3"] | 0;
-            if (homeScore["period4"].is<int>()) match.homeLegs = homeScore["period4"] | 0;
-            if (homeScore["period5"].is<int>()) match.homeLegs = homeScore["period5"] | 0;
+            if (homeScore.containsKey("period1")) match.homeLegs = homeScore["period1"] | 0;
+            if (homeScore.containsKey("period2")) match.homeLegs = homeScore["period2"] | 0;
+            if (homeScore.containsKey("period3")) match.homeLegs = homeScore["period3"] | 0;
+            if (homeScore.containsKey("period4")) match.homeLegs = homeScore["period4"] | 0;
+            if (homeScore.containsKey("period5")) match.homeLegs = homeScore["period5"] | 0;
         }
         
         JsonObject awayScore = event["awayScore"];
-        if (!awayScore.isNull()) {
+        if (!awayScore.isNull() && awayScore.size() > 0) {
             match.awayScore = awayScore["current"] | 0;
             // Parse legs from period scores
-            if (awayScore["period1"].is<int>()) match.awayLegs = awayScore["period1"] | 0;
-            if (awayScore["period2"].is<int>()) match.awayLegs = awayScore["period2"] | 0;
-            if (awayScore["period3"].is<int>()) match.awayLegs = awayScore["period3"] | 0;
-            if (awayScore["period4"].is<int>()) match.awayLegs = awayScore["period4"] | 0;
-            if (awayScore["period5"].is<int>()) match.awayLegs = awayScore["period5"] | 0;
+            if (awayScore.containsKey("period1")) match.awayLegs = awayScore["period1"] | 0;
+            if (awayScore.containsKey("period2")) match.awayLegs = awayScore["period2"] | 0;
+            if (awayScore.containsKey("period3")) match.awayLegs = awayScore["period3"] | 0;
+            if (awayScore.containsKey("period4")) match.awayLegs = awayScore["period4"] | 0;
+            if (awayScore.containsKey("period5")) match.awayLegs = awayScore["period5"] | 0;
         }
         
         const char* tournamentName = event["tournament"]["name"];
@@ -733,6 +739,9 @@ void SofaScoreLiveModule::parseDailyEventsJson(const char* json, size_t len) {
             } else {
                 match.status = MatchStatus::SCHEDULED;
             }
+        } else {
+            // If no status, assume scheduled
+            match.status = MatchStatus::SCHEDULED;
         }
         
         match.startTimestamp = event["startTimestamp"] | 0;
