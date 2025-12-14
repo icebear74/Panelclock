@@ -241,19 +241,20 @@ void SofaScoreLiveModule::onUpdate(std::function<void()> callback) {
 
 void SofaScoreLiveModule::setConfig(bool enabled, uint32_t fetchIntervalMinutes, unsigned long displaySec,
                                     const PsramString& enabledTournamentIds, bool fullscreen, bool interruptOnLive,
-                                    uint32_t playNextMinutes) {
+                                    uint32_t playNextMinutes, bool continuousLive) {
     if (!webClient) return;
     
     this->_enabled = enabled;
     this->_wantsFullscreen = fullscreen;
     this->_interruptOnLive = interruptOnLive;
     this->_playNextMinutes = playNextMinutes;
+    this->_continuousLiveDisplay = continuousLive;
     this->_displayDuration = displaySec > 0 ? displaySec * 1000UL : 20000;
     _currentTicksPerPage = _displayDuration / 100;
     if (_currentTicksPerPage == 0) _currentTicksPerPage = 1;
     
-    Log.printf("[SofaScore] Config updated: enabled=%d, fetch=%d min, display=%d sec, fullscreen=%d, interrupt=%d, playNext=%d min\n",
-               enabled, fetchIntervalMinutes, displaySec, fullscreen, interruptOnLive, playNextMinutes);
+    Log.printf("[SofaScore] Config updated: enabled=%d, fetch=%d min, display=%d sec, fullscreen=%d, interrupt=%d, playNext=%d min, continuousLive=%d\n",
+               enabled, fetchIntervalMinutes, displaySec, fullscreen, interruptOnLive, playNextMinutes, continuousLive);
     
     // Parse enabled tournament IDs
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
@@ -673,36 +674,27 @@ void SofaScoreLiveModule::processData() {
 }
 
 void SofaScoreLiveModule::parseTournamentsJson(const char* json, size_t len) {
-    Log.println("[SofaScore] Parsing tournaments JSON...");
-    Log.printf("[SofaScore] JSON size: %d bytes\n", len);
-    
     SpiRamAllocator allocator;
     JsonDocument doc(&allocator);
     
     DeserializationError error = deserializeJson(doc, json, len);
     if (error) {
-        Log.printf("[SofaScore] ❌ JSON parse error: %s\n", error.c_str());
+        Log.printf("[SofaScore] JSON parse error: %s\n", error.c_str());
         return;
     }
     
     availableTournaments.clear();
     
     JsonArray groups = doc["groups"].as<JsonArray>();
-    Log.printf("[SofaScore] 📊 Found %d tournament groups\n", groups.size());
     
-    int tournamentCount = 0;
     for (JsonObject group : groups) {
         JsonArray tournaments = group["uniqueTournaments"].as<JsonArray>();
-        Log.printf("[SofaScore] 📁 Processing group with %d tournaments\n", tournaments.size());
         
         for (JsonObject tournament : tournaments) {
             SofaScoreTournament t;
             t.id = tournament["id"] | 0;
             const char* name = tournament["name"];
-            if (name) {
-                t.name = psram_strdup(name);
-                Log.printf("[SofaScore]   🏆 Tournament: %s (ID: %d)\n", name, t.id);
-            }
+            if (name) t.name = psram_strdup(name);
             const char* slug = tournament["slug"];
             if (slug) t.slug = psram_strdup(slug);
             
@@ -711,38 +703,22 @@ void SofaScoreLiveModule::parseTournamentsJson(const char* json, size_t len) {
             for (int enabledId : enabledTournamentIds) {
                 if (enabledId == t.id) {
                     t.isEnabled = true;
-                    Log.printf("[SofaScore]     ✅ Tournament is ENABLED in filter\n");
                     break;
                 }
             }
             
             availableTournaments.push_back(std::move(t));
-            tournamentCount++;
         }
-    }
-    
-    Log.printf("[SofaScore] ✅ Parsed %d tournaments total\n", availableTournaments.size());
-    if (!enabledTournamentIds.empty()) {
-        int enabledCount = 0;
-        for (const auto& t : availableTournaments) {
-            if (t.isEnabled) enabledCount++;
-        }
-        Log.printf("[SofaScore] 🎯 Enabled tournaments: %d of %d\n", enabledCount, availableTournaments.size());
-    } else {
-        Log.printf("[SofaScore] 🌐 No tournament filter - all tournaments enabled\n");
     }
 }
 
 void SofaScoreLiveModule::parseDailyEventsJson(const char* json, size_t len) {
-    Log.println("[SofaScore] Parsing daily events JSON...");
-    Log.printf("[SofaScore] JSON size: %d bytes\n", len);
-    
     SpiRamAllocator allocator;
     JsonDocument doc(&allocator);
     
     DeserializationError error = deserializeJson(doc, json, len);
     if (error) {
-        Log.printf("[SofaScore] ❌ JSON parse error: %s\n", error.c_str());
+        Log.printf("[SofaScore] JSON parse error: %s\n", error.c_str());
         return;
     }
     
@@ -753,13 +729,7 @@ void SofaScoreLiveModule::parseDailyEventsJson(const char* json, size_t len) {
     time_t now = time(nullptr);
     time_t nowLocal = timeConverter.toLocal(now);
     
-    struct tm nowTm;
-    gmtime_r(&nowLocal, &nowTm);
-    Log.printf("[SofaScore] 📅 Current date (local): %04d-%02d-%02d\n", 
-               nowTm.tm_year + 1900, nowTm.tm_mon + 1, nowTm.tm_mday);
-    
     JsonArray events = doc["events"].as<JsonArray>();
-    Log.printf("[SofaScore] 📊 Found %d events in JSON\n", events.size());
     
     int skippedNotToday = 0;
     int skippedTournamentFilter = 0;
@@ -799,139 +769,112 @@ void SofaScoreLiveModule::parseDailyEventsJson(const char* json, size_t len) {
         SofaScoreMatch match;
         match.eventId = event["id"] | 0;
         
-        Log.printf("[SofaScore] 🎯 Parsing event ID %d\n", match.eventId);
-        
-        // FIXED: Safely get player names with proper NULL checks
-        // Try shortName first, fall back to name, handle NULL properly
+        // Get player names (with NULL checks)
         const char* homeName = event["homeTeam"]["shortName"];
-        if (!homeName) {  // Check NULL first
+        if (!homeName) {
             homeName = event["homeTeam"]["name"];
-            Log.printf("[SofaScore]   ⚠️  Home shortName is NULL, using full name\n");
-        } else if (*homeName == '\0') {  // Empty string, try name
+        } else if (*homeName == '\0') {
             homeName = event["homeTeam"]["name"];
-            Log.printf("[SofaScore]   ⚠️  Home shortName is empty, using full name\n");
         }
-        if (homeName) {
-            match.homePlayerName = psram_strdup(homeName);
-            Log.printf("[SofaScore]   👤 Home: %s\n", homeName);
-        } else {
-            Log.printf("[SofaScore]   ❌ Home name is NULL!\n");
-        }
+        if (homeName) match.homePlayerName = psram_strdup(homeName);
         
         const char* awayName = event["awayTeam"]["shortName"];
-        if (!awayName) {  // Check NULL first
+        if (!awayName) {
             awayName = event["awayTeam"]["name"];
-            Log.printf("[SofaScore]   ⚠️  Away shortName is NULL, using full name\n");
-        } else if (*awayName == '\0') {  // Empty string, try name
+        } else if (*awayName == '\0') {
             awayName = event["awayTeam"]["name"];
-            Log.printf("[SofaScore]   ⚠️  Away shortName is empty, using full name\n");
         }
-        if (awayName) {
-            match.awayPlayerName = psram_strdup(awayName);
-            Log.printf("[SofaScore]   👤 Away: %s\n", awayName);
-        } else {
-            Log.printf("[SofaScore]   ❌ Away name is NULL!\n");
-        }
+        if (awayName) match.awayPlayerName = psram_strdup(awayName);
         
-        // FIXED: Check if score objects exist before accessing fields
+        // Check if score objects exist before accessing fields
         JsonObject homeScore = event["homeScore"];
         if (!homeScore.isNull() && homeScore.size() > 0) {
             match.homeScore = homeScore["current"] | 0;
-            Log.printf("[SofaScore]   📊 Home score: %d sets\n", match.homeScore);
-            // Parse legs from period scores (period1 = set 1, period2 = set 2, etc.)
-            // For live matches, find the current set being played
+            // Parse legs from period scores
             if (homeScore.containsKey("period1")) match.homeLegs = homeScore["period1"] | 0;
             if (homeScore.containsKey("period2")) match.homeLegs = homeScore["period2"] | 0;
             if (homeScore.containsKey("period3")) match.homeLegs = homeScore["period3"] | 0;
             if (homeScore.containsKey("period4")) match.homeLegs = homeScore["period4"] | 0;
             if (homeScore.containsKey("period5")) match.homeLegs = homeScore["period5"] | 0;
-        } else {
-            Log.printf("[SofaScore]   ⚠️  Home score object is empty (scheduled match)\n");
+            if (homeScore.containsKey("period6")) match.homeLegs = homeScore["period6"] | 0;
+            if (homeScore.containsKey("period7")) match.homeLegs = homeScore["period7"] | 0;
         }
         
         JsonObject awayScore = event["awayScore"];
         if (!awayScore.isNull() && awayScore.size() > 0) {
             match.awayScore = awayScore["current"] | 0;
-            Log.printf("[SofaScore]   📊 Away score: %d sets\n", match.awayScore);
             // Parse legs from period scores
             if (awayScore.containsKey("period1")) match.awayLegs = awayScore["period1"] | 0;
             if (awayScore.containsKey("period2")) match.awayLegs = awayScore["period2"] | 0;
             if (awayScore.containsKey("period3")) match.awayLegs = awayScore["period3"] | 0;
             if (awayScore.containsKey("period4")) match.awayLegs = awayScore["period4"] | 0;
             if (awayScore.containsKey("period5")) match.awayLegs = awayScore["period5"] | 0;
-        } else {
-            Log.printf("[SofaScore]   ⚠️  Away score object is empty (scheduled match)\n");
+            if (awayScore.containsKey("period6")) match.awayLegs = awayScore["period6"] | 0;
+            if (awayScore.containsKey("period7")) match.awayLegs = awayScore["period7"] | 0;
         }
         
         const char* tournamentName = event["tournament"]["name"];
-        if (tournamentName) {
-            match.tournamentName = psram_strdup(tournamentName);
-            Log.printf("[SofaScore]   🏆 Tournament: %s (ID: %d)\n", tournamentName, tournamentId);
-        } else {
-            Log.printf("[SofaScore]   ⚠️  Tournament name is NULL\n");
-        }
+        if (tournamentName) match.tournamentName = psram_strdup(tournamentName);
         
         const char* statusType = event["status"]["type"];
         if (statusType) {
             if (strcmp(statusType, "inprogress") == 0) {
                 match.status = MatchStatus::LIVE;
                 liveMatches.push_back(match);  // Also add to live matches
-                Log.printf("[SofaScore]   🔴 Status: LIVE\n");
             } else if (strcmp(statusType, "finished") == 0) {
                 match.status = MatchStatus::FINISHED;
-                Log.printf("[SofaScore]   ✅ Status: FINISHED\n");
             } else {
                 match.status = MatchStatus::SCHEDULED;
-                Log.printf("[SofaScore]   ⏰ Status: SCHEDULED (%s)\n", statusType);
             }
         } else {
-            // If no status, assume scheduled
             match.status = MatchStatus::SCHEDULED;
-            Log.printf("[SofaScore]   ⚠️  Status is NULL, assuming SCHEDULED\n");
         }
         
         match.startTimestamp = event["startTimestamp"] | 0;
-        struct tm matchTm;
-        gmtime_r(&matchLocal, &matchTm);
-        Log.printf("[SofaScore]   🕐 Match time (local): %04d-%02d-%02d %02d:%02d\n",
-                   matchTm.tm_year + 1900, matchTm.tm_mon + 1, matchTm.tm_mday,
-                   matchTm.tm_hour, matchTm.tm_min);
         
         dailyMatches.push_back(std::move(match));
         parsedCount++;
     }
     
-    Log.printf("[SofaScore] ✅ Parsed %d matches for today\n", parsedCount);
-    Log.printf("[SofaScore] 📋 Summary: %d total events, %d skipped (not today), %d skipped (tournament filter), %d parsed\n",
-               events.size(), skippedNotToday, skippedTournamentFilter, parsedCount);
-    Log.printf("[SofaScore] 🔴 Live matches: %d\n", liveMatches.size());
+    Log.printf("[SofaScore] Parsed %d matches (%d live)\n", parsedCount, liveMatches.size());
     
-    // Re-group matches by tournament after parsing (to update page counts and skip empty tournaments)
-    // NOTE: parseDailyEventsJson() is called from processData() which already holds dataMutex
+    // Re-group matches by tournament after parsing
     groupMatchesByTournament();
-    _totalPages = calculateTotalPages();  // Update total pages after grouping
-    
-    Log.printf("[SofaScore] 📄 Total pages calculated: %d\n", _totalPages);
+    _totalPages = calculateTotalPages();
 }
 
 void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
-    Log.println("[SofaScore] 🔴 Parsing LIVE events JSON...");
-    Log.printf("[SofaScore] JSON size: %d bytes\n", len);
-    
     SpiRamAllocator allocator;
     JsonDocument doc(&allocator);
     
     DeserializationError error = deserializeJson(doc, json, len);
     if (error) {
-        Log.printf("[SofaScore] ❌ JSON parse error: %s\n", error.c_str());
+        Log.printf("[SofaScore] JSON parse error: %s\n", error.c_str());
+        return;
+    }
+    
+    JsonArray events = doc["events"].as<JsonArray>();
+    
+    // Check if events array is empty - no live matches
+    if (events.size() == 0) {
+        Log.println("[SofaScore] No live events");
+        
+        // Clear live matches and update state
+        liveMatches.clear();
+        
+        bool hadLiveEvents = _hasLiveEvents;
+        _hasLiveEvents = false;
+        
+        if (hadLiveEvents) {
+            _dailySchedulesPaused = false;
+            Log.println("[SofaScore] Live events ended - Resuming daily schedules");
+        }
+        
         return;
     }
     
     // Clear and rebuild liveMatches from live endpoint
     liveMatches.clear();
-    
-    JsonArray events = doc["events"].as<JsonArray>();
-    Log.printf("[SofaScore] 🔴 Found %d LIVE events in JSON\n", events.size());
     
     bool foundConfiguredEvent = false;
     int parsedCount = 0;
@@ -941,7 +884,7 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
         int tournamentId = event["tournament"]["id"] | 0;
         
         // Check if this tournament is enabled
-        bool isEnabled = enabledTournamentIds.empty();  // If no filter, show all
+        bool isEnabled = enabledTournamentIds.empty();
         if (!isEnabled) {
             for (int enabledId : enabledTournamentIds) {
                 if (enabledId == tournamentId) {
@@ -951,52 +894,32 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
             }
         }
         
-        if (!isEnabled) continue;  // Skip tournaments not in filter
+        if (!isEnabled) continue;
         
         foundConfiguredEvent = true;
         
         SofaScoreMatch match;
         match.eventId = event["id"] | 0;
         
-        Log.printf("[SofaScore] 🔴 Parsing LIVE event ID %d\n", match.eventId);
-        
         // Get player names (with NULL checks)
         const char* homeName = event["homeTeam"]["shortName"];
-        if (!homeName) {
-            homeName = event["homeTeam"]["name"];
-            Log.printf("[SofaScore]   ⚠️  Home shortName is NULL, using full name\n");
-        } else if (*homeName == '\0') {
+        if (!homeName || *homeName == '\0') {
             homeName = event["homeTeam"]["name"];
         }
-        if (homeName) {
-            match.homePlayerName = psram_strdup(homeName);
-            Log.printf("[SofaScore]   👤 Home: %s\n", homeName);
-        }
+        if (homeName) match.homePlayerName = psram_strdup(homeName);
         
         const char* awayName = event["awayTeam"]["shortName"];
-        if (!awayName) {
-            awayName = event["awayTeam"]["name"];
-            Log.printf("[SofaScore]   ⚠️  Away shortName is NULL, using full name\n");
-        } else if (*awayName == '\0') {
+        if (!awayName || *awayName == '\0') {
             awayName = event["awayTeam"]["name"];
         }
-        if (awayName) {
-            match.awayPlayerName = psram_strdup(awayName);
-            Log.printf("[SofaScore]   👤 Away: %s\n", awayName);
-        }
+        if (awayName) match.awayPlayerName = psram_strdup(awayName);
         
-        // Parse scores - live endpoint has current set scores in "current" field
-        // and legs in period1, period2, etc.
+        // Parse scores - sets and legs
         JsonObject homeScore = event["homeScore"];
         if (!homeScore.isNull() && homeScore.size() > 0) {
-            match.homeScore = homeScore["current"] | 0;  // Sets won
+            match.homeScore = homeScore["current"] | 0;
             
-            // Parse legs for each set - need to find which set is currently active
-            // period1 = legs in set 1, period2 = legs in set 2, etc.
-            // The current set being played will have the latest period data
-            int currentSet = match.homeScore + match.awayScore;  // Total sets played + current set
-            
-            // Parse all available period (set) scores to get legs
+            // Parse legs for each set (period1-7)
             if (homeScore.containsKey("period1")) match.homeLegs = homeScore["period1"] | 0;
             if (homeScore.containsKey("period2")) match.homeLegs = homeScore["period2"] | 0;
             if (homeScore.containsKey("period3")) match.homeLegs = homeScore["period3"] | 0;
@@ -1004,15 +927,12 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
             if (homeScore.containsKey("period5")) match.homeLegs = homeScore["period5"] | 0;
             if (homeScore.containsKey("period6")) match.homeLegs = homeScore["period6"] | 0;
             if (homeScore.containsKey("period7")) match.homeLegs = homeScore["period7"] | 0;
-            
-            Log.printf("[SofaScore]   📊 Home: %d sets, %d legs in current set\n", match.homeScore, match.homeLegs);
         }
         
         JsonObject awayScore = event["awayScore"];
         if (!awayScore.isNull() && awayScore.size() > 0) {
-            match.awayScore = awayScore["current"] | 0;  // Sets won
+            match.awayScore = awayScore["current"] | 0;
             
-            // Parse legs for current set
             if (awayScore.containsKey("period1")) match.awayLegs = awayScore["period1"] | 0;
             if (awayScore.containsKey("period2")) match.awayLegs = awayScore["period2"] | 0;
             if (awayScore.containsKey("period3")) match.awayLegs = awayScore["period3"] | 0;
@@ -1020,23 +940,16 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
             if (awayScore.containsKey("period5")) match.awayLegs = awayScore["period5"] | 0;
             if (awayScore.containsKey("period6")) match.awayLegs = awayScore["period6"] | 0;
             if (awayScore.containsKey("period7")) match.awayLegs = awayScore["period7"] | 0;
-            
-            Log.printf("[SofaScore]   📊 Away: %d sets, %d legs in current set\n", match.awayScore, match.awayLegs);
         }
         
         const char* tournamentName = event["tournament"]["name"];
-        if (tournamentName) {
-            match.tournamentName = psram_strdup(tournamentName);
-            Log.printf("[SofaScore]   🏆 Tournament: %s (ID: %d)\n", tournamentName, tournamentId);
-        }
+        if (tournamentName) match.tournamentName = psram_strdup(tournamentName);
         
         const char* statusType = event["status"]["type"];
         if (statusType && strcmp(statusType, "inprogress") == 0) {
             match.status = MatchStatus::LIVE;
-            Log.printf("[SofaScore]   🔴 Status: LIVE\n");
         } else {
-            // If not in progress, don't add to live matches
-            continue;
+            continue;  // Only add truly live matches
         }
         
         match.startTimestamp = event["startTimestamp"] | 0;
@@ -1050,34 +963,28 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
     _hasLiveEvents = foundConfiguredEvent && !liveMatches.empty();
     
     if (_hasLiveEvents && !hadLiveEvents) {
-        // Just detected live events - pause daily schedules
         _dailySchedulesPaused = true;
-        Log.println("[SofaScore] 🔴 LIVE EVENTS DETECTED - Pausing daily schedules");
+        Log.println("[SofaScore] Live events detected - Pausing daily schedules");
         
-        // Trigger urgent display
         if (_interruptOnLive && updateCallback) {
             updateCallback();
         }
     } else if (!_hasLiveEvents && hadLiveEvents) {
-        // Live events ended - resume daily schedules
         _dailySchedulesPaused = false;
-        Log.println("[SofaScore] ✅ Live events ended - Resuming daily schedules");
+        Log.println("[SofaScore] Live events ended - Resuming daily schedules");
     }
     
-    Log.printf("[SofaScore] 🔴 Parsed %d LIVE matches for configured tournaments\n", parsedCount);
-    Log.printf("[SofaScore] 📊 Live events active: %s\n", _hasLiveEvents ? "YES" : "NO");
+    if (parsedCount > 0) {
+        Log.printf("[SofaScore] Parsed %d live matches\n", parsedCount);
+    }
 }
 
 void SofaScoreLiveModule::parseMatchStatistics(int eventId, const char* json, size_t len) {
-    Log.printf("[SofaScore] 📊 Parsing statistics for event %d...\n", eventId);
-    Log.printf("[SofaScore] JSON size: %d bytes\n", len);
-    
     SpiRamAllocator allocator;
     JsonDocument doc(&allocator);
     
     DeserializationError error = deserializeJson(doc, json, len);
     if (error) {
-        Log.printf("[SofaScore] ❌ JSON parse error: %s\n", error.c_str());
         return;
     }
     
@@ -1088,13 +995,10 @@ void SofaScoreLiveModule::parseMatchStatistics(int eventId, const char* json, si
         for (auto& match : liveMatches) {
             if (match.eventId == eventId) {
                 matchFound = true;
-                Log.printf("[SofaScore]   ✅ Found match in liveMatches\n");
                 
                 // Parse statistics
                 JsonArray statistics = doc["statistics"].as<JsonArray>();
-                Log.printf("[SofaScore]   📈 Processing %d statistic periods\n", statistics.size());
                 
-                int statsFound = 0;
                 for (JsonObject period : statistics) {
                     JsonArray groups = period["groups"].as<JsonArray>();
                     for (JsonObject group : groups) {
@@ -1172,29 +1076,16 @@ void SofaScoreLiveModule::parseMatchStatistics(int eventId, const char* json, si
                                 } else {
                                     match.awayCheckoutPercent = getAwayValue();
                                 }
-                                statsFound++;
-                                Log.printf("[SofaScore]     💯 Checkout %%: %.1f%% vs %.1f%%\n", 
-                                           match.homeCheckoutPercent, match.awayCheckoutPercent);
                             }
                         }
                     }
                 }
                 
-                Log.printf("[SofaScore] ✅ Updated %d statistics for event %d\n", statsFound, eventId);
-                Log.printf("[SofaScore]   Final: Avg %.1f vs %.1f, 180s %d vs %d, CO%% %.1f vs %.1f\n",
-                          match.homeAverage, match.awayAverage, match.home180s, match.away180s,
-                          match.homeCheckoutPercent, match.awayCheckoutPercent);
                 break;
             }
         }
         
-        if (!matchFound) {
-            Log.printf("[SofaScore] ⚠️  Event %d not found in liveMatches!\n", eventId);
-        }
-        
         xSemaphoreGive(dataMutex);
-    } else {
-        Log.printf("[SofaScore] ❌ Could not acquire mutex for parsing statistics (event %d)\n", eventId);
     }
 }
 
@@ -1464,51 +1355,50 @@ void SofaScoreLiveModule::drawLiveMatch() {
         
         int y = 24;
         
-        // Two-column layout for players (use shortName directly from JSON)
+        // NEW LAYOUT: Names at top with averages below
         u8g2.setFont(u8g2_font_profont10_tf);
         u8g2.setForegroundColor(0xFFFF);
         
-        // Player 1 (Home) - Left column
+        // Home player (left) - Name
         if (match.homePlayerName) {
             u8g2.setCursor(2, y);
             u8g2.print(match.homePlayerName);
-            
-            // Average below name
-            if (match.homeAverage > 0) {
-                u8g2.setFont(u8g2_font_5x8_tf);
-                char avgStr[16];
-                snprintf(avgStr, sizeof(avgStr), "%.1f", match.homeAverage);
-                u8g2.setCursor(2, y + 9);
-                u8g2.print(avgStr);
-            }
         }
         
-        // Player 2 (Away) - Right column
-        u8g2.setFont(u8g2_font_profont10_tf);
+        // Away player (right) - Name  
         if (match.awayPlayerName) {
             int nameWidth = u8g2.getUTF8Width(match.awayPlayerName);
             u8g2.setCursor(_currentCanvas->width() - nameWidth - 2, y);
             u8g2.print(match.awayPlayerName);
-            
-            // Average below name
-            if (match.awayAverage > 0) {
-                u8g2.setFont(u8g2_font_5x8_tf);
-                char avgStr[16];
-                snprintf(avgStr, sizeof(avgStr), "%.1f", match.awayAverage);
-                int avgWidth = u8g2.getUTF8Width(avgStr);
-                u8g2.setCursor(_currentCanvas->width() - avgWidth - 2, y + 9);
-                u8g2.print(avgStr);
-            }
         }
         
-        y += 22;
+        y += 10;
         
-        // Score centered - ALWAYS show legs if available
+        // Averages below names
+        u8g2.setFont(u8g2_font_5x8_tf);
+        if (match.homeAverage > 0) {
+            char avgStr[16];
+            snprintf(avgStr, sizeof(avgStr), "%.1f", match.homeAverage);
+            u8g2.setCursor(2, y);
+            u8g2.print(avgStr);
+        }
+        
+        if (match.awayAverage > 0) {
+            char avgStr[16];
+            snprintf(avgStr, sizeof(avgStr), "%.1f", match.awayAverage);
+            int avgWidth = u8g2.getUTF8Width(avgStr);
+            u8g2.setCursor(_currentCanvas->width() - avgWidth - 2, y);
+            u8g2.print(avgStr);
+        }
+        
+        y += 10;
+        
+        // Score centered - NO LABEL, just the score with legs
         u8g2.setFont(u8g2_font_profont12_tf);
         u8g2.setForegroundColor(0xFFFF);
         char scoreStr[32];
-        // Show legs in parentheses if any legs have been played
         if (match.homeLegs > 0 || match.awayLegs > 0) {
+            // Show: "3:2 (4:3)" = Sets (Legs)
             snprintf(scoreStr, sizeof(scoreStr), "%d:%d (%d:%d)", 
                      match.homeScore, match.awayScore, match.homeLegs, match.awayLegs);
         } else {
@@ -1518,63 +1408,90 @@ void SofaScoreLiveModule::drawLiveMatch() {
         u8g2.setCursor((_currentCanvas->width() - scoreWidth) / 2, y);
         u8g2.print(scoreStr);
         
-        u8g2.setFont(u8g2_font_5x8_tf);
-        y += 10;
-        const char* scoreLabel = (match.homeLegs > 0 || match.awayLegs > 0) ? "Sets (Legs)" : "Sets";
-        u8g2.setCursor((_currentCanvas->width() - u8g2.getUTF8Width(scoreLabel)) / 2, y);
-        u8g2.print(scoreLabel);
+        y += 12;  // More space for statistics
         
-        y += 8;  // Reduced spacing
-        
-        // Statistics table - OPTIMIZED to fit fullscreen (96px height)
+        // Statistics table - MORE ROWS NOW
         if (wantsFullscreen()) {
             u8g2.setFont(u8g2_font_5x8_tf);
             
-            // Compact 3-row layout: Avg, 180s, CO%
-            // Row 1: Average
-            u8g2.setForegroundColor(0xFFE0);  // Yellow for stat labels
+            // Left column (home values), Center (labels), Right column (away values)
+            // No "Home" and "Away" headers - just the stats
+            
             char homeVal[12], awayVal[12];
-            snprintf(homeVal, sizeof(homeVal), "%.1f", match.homeAverage);
-            snprintf(awayVal, sizeof(awayVal), "%.1f", match.awayAverage);
+            
+            // Row 1: 180s
+            snprintf(homeVal, sizeof(homeVal), "%d", match.home180s);
+            snprintf(awayVal, sizeof(awayVal), "%d", match.away180s);
             u8g2.setForegroundColor(0xFFFF);
             u8g2.setCursor(2, y);
             u8g2.print(homeVal);
-            u8g2.setForegroundColor(0xFFE0);
+            u8g2.setForegroundColor(0xFFE0);  // Yellow for label
             u8g2.setCursor(_currentCanvas->width() / 2 - 10, y);
-            u8g2.print("Avg");
+            u8g2.print("180");
             u8g2.setForegroundColor(0xFFFF);
             int awayWidth = u8g2.getUTF8Width(awayVal);
             u8g2.setCursor(_currentCanvas->width() - awayWidth - 2, y);
             u8g2.print(awayVal);
             y += 8;
             
-            // Row 2: 180s
-            snprintf(homeVal, sizeof(homeVal), "%d", match.home180s);
-            snprintf(awayVal, sizeof(awayVal), "%d", match.away180s);
+            // Row 2: >140
+            snprintf(homeVal, sizeof(homeVal), "%d", match.homeOver140);
+            snprintf(awayVal, sizeof(awayVal), "%d", match.awayOver140);
+            u8g2.setForegroundColor(0xFFFF);
             u8g2.setCursor(2, y);
             u8g2.print(homeVal);
             u8g2.setForegroundColor(0xFFE0);
-            u8g2.setCursor(_currentCanvas->width() / 2 - 10, y);
-            u8g2.print("180");
+            u8g2.setCursor(_currentCanvas->width() / 2 - 12, y);
+            u8g2.print(">140");
             u8g2.setForegroundColor(0xFFFF);
             awayWidth = u8g2.getUTF8Width(awayVal);
             u8g2.setCursor(_currentCanvas->width() - awayWidth - 2, y);
             u8g2.print(awayVal);
             y += 8;
             
-            // Row 3: Checkout %
-            snprintf(homeVal, sizeof(homeVal), "%.0f%%", match.homeCheckoutPercent);
-            snprintf(awayVal, sizeof(awayVal), "%.0f%%", match.awayCheckoutPercent);
+            // Row 3: >100
+            snprintf(homeVal, sizeof(homeVal), "%d", match.homeOver100);
+            snprintf(awayVal, sizeof(awayVal), "%d", match.awayOver100);
+            u8g2.setForegroundColor(0xFFFF);
             u8g2.setCursor(2, y);
             u8g2.print(homeVal);
-            u8g2.setForegroundColor(0x07FF);  // Cyan
+            u8g2.setForegroundColor(0xFFE0);
+            u8g2.setCursor(_currentCanvas->width() / 2 - 12, y);
+            u8g2.print(">100");
+            u8g2.setForegroundColor(0xFFFF);
+            awayWidth = u8g2.getUTF8Width(awayVal);
+            u8g2.setCursor(_currentCanvas->width() - awayWidth - 2, y);
+            u8g2.print(awayVal);
+            y += 8;
+            
+            // Row 4: CO>100
+            snprintf(homeVal, sizeof(homeVal), "%d", match.homeCheckoutsOver100);
+            snprintf(awayVal, sizeof(awayVal), "%d", match.awayCheckoutsOver100);
+            u8g2.setForegroundColor(0xFFFF);
+            u8g2.setCursor(2, y);
+            u8g2.print(homeVal);
+            u8g2.setForegroundColor(0xFFE0);
+            u8g2.setCursor(_currentCanvas->width() / 2 - 15, y);
+            u8g2.print("CO>100");
+            u8g2.setForegroundColor(0xFFFF);
+            awayWidth = u8g2.getUTF8Width(awayVal);
+            u8g2.setCursor(_currentCanvas->width() - awayWidth - 2, y);
+            u8g2.print(awayVal);
+            y += 8;
+            
+            // Row 5: CO% (Checkout percentage)
+            snprintf(homeVal, sizeof(homeVal), "%.0f%%", match.homeCheckoutPercent);
+            snprintf(awayVal, sizeof(awayVal), "%.0f%%", match.awayCheckoutPercent);
+            u8g2.setForegroundColor(0xFFFF);
+            u8g2.setCursor(2, y);
+            u8g2.print(homeVal);
+            u8g2.setForegroundColor(0x07FF);  // Cyan for CO%
             u8g2.setCursor(_currentCanvas->width() / 2 - 10, y);
             u8g2.print("CO%");
             u8g2.setForegroundColor(0xFFFF);
             awayWidth = u8g2.getUTF8Width(awayVal);
             u8g2.setCursor(_currentCanvas->width() - awayWidth - 2, y);
             u8g2.print(awayVal);
-            // y += 8;  // Don't advance y anymore - we're at the bottom
         }
     }
 }
@@ -1719,24 +1636,14 @@ uint16_t SofaScoreLiveModule::dimColor(uint16_t color) {
 
 void SofaScoreLiveModule::groupMatchesByTournament() {
     // NOTE: This function expects dataMutex to already be held by the caller
-    Log.println("[SofaScore] 📁 Grouping matches by tournament...");
     _tournamentGroups.clear();
     
     // Fullscreen (192x96) vs Normal (192x64) - same width, different height
-    // Fullscreen has more vertical space: 96px vs 64px = ~50% more
-    // Each match takes ~10-11px height
-    // Fullscreen: 7 matches per page (96px / ~13px per match line)
-    // Normal: 5 matches per page (64px / ~12px per match line)
     const int MATCHES_PER_PAGE = wantsFullscreen() ? 7 : 5;
-    Log.printf("[SofaScore]   Matches per page: %d (%s mode)\n", 
-               MATCHES_PER_PAGE, wantsFullscreen() ? "Fullscreen" : "Normal");
     
     if (dailyMatches.empty()) {
-        Log.println("[SofaScore]   ⚠️  No daily matches to group");
         return;
     }
-    
-    Log.printf("[SofaScore]   Processing %d daily matches\n", dailyMatches.size());
     
     // Group matches by tournament
     for (size_t i = 0; i < dailyMatches.size(); i++) {
@@ -1745,7 +1652,7 @@ void SofaScoreLiveModule::groupMatchesByTournament() {
         // Find or create tournament group
         TournamentGroup* group = nullptr;
         for (auto& tg : _tournamentGroups) {
-            // Match by tournament name (could also use ID if available)
+            // Match by tournament name
             if (match.tournamentName && tg.tournamentName == match.tournamentName) {
                 group = &tg;
                 break;
@@ -1757,7 +1664,6 @@ void SofaScoreLiveModule::groupMatchesByTournament() {
             TournamentGroup newGroup;
             if (match.tournamentName) {
                 newGroup.tournamentName = match.tournamentName;
-                Log.printf("[SofaScore]   📂 New tournament group: %s\n", match.tournamentName);
             }
             _tournamentGroups.push_back(newGroup);
             group = &_tournamentGroups.back();
@@ -1767,28 +1673,18 @@ void SofaScoreLiveModule::groupMatchesByTournament() {
         group->matchIndices.push_back(i);
     }
     
-    Log.printf("[SofaScore]   📊 Created %d tournament groups\n", _tournamentGroups.size());
-    
     // Calculate pages needed for each tournament and remove empty tournaments
     auto it = _tournamentGroups.begin();
-    int groupIndex = 0;
     while (it != _tournamentGroups.end()) {
         int matchCount = it->matchIndices.size();
         if (matchCount == 0) {
-            // Skip tournaments with no matches today
-            Log.printf("[SofaScore]   ⚠️  Group %d has 0 matches, removing\n", groupIndex);
             it = _tournamentGroups.erase(it);
         } else {
-            it->pagesNeeded = (matchCount + MATCHES_PER_PAGE - 1) / MATCHES_PER_PAGE;  // Ceiling division
+            it->pagesNeeded = (matchCount + MATCHES_PER_PAGE - 1) / MATCHES_PER_PAGE;
             if (it->pagesNeeded < 1) it->pagesNeeded = 1;
-            Log.printf("[SofaScore]   📄 Group %d '%s': %d matches, %d pages\n",
-                       groupIndex, it->tournamentName.c_str(), matchCount, it->pagesNeeded);
             ++it;
-            groupIndex++;
         }
     }
-    
-    Log.printf("[SofaScore] ✅ Grouped into %d tournaments with matches\n", _tournamentGroups.size());
 }
 
 int SofaScoreLiveModule::calculateTotalPages() {

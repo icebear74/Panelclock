@@ -91,7 +91,7 @@ public:
     void onUpdate(std::function<void()> callback);
     void setConfig(bool enabled, uint32_t fetchIntervalMinutes, unsigned long displaySec,
                    const PsramString& enabledTournamentIds, bool fullscreen, bool interruptOnLive,
-                   uint32_t playNextMinutes);
+                   uint32_t playNextMinutes, bool continuousLive);
     void queueData();
     void processData();
 
@@ -133,10 +133,14 @@ private:
     
     // Live event monitoring
     bool _hasLiveEvents = false;
+    bool _continuousLiveDisplay = false;  // Show live match continuously while active
     unsigned long _lastLiveCheckTime = 0;
     unsigned long _lastLiveDataFetchTime = 0;
+    unsigned long _lastLiveDisplayTime = 0;  // For repeating live display every minute
     const unsigned long LIVE_CHECK_INTERVAL_MS = 60000;  // Check for live events every 60 seconds
     const unsigned long LIVE_DATA_FETCH_INTERVAL_MS = 30000;  // Fetch live data every 30 seconds when active
+    const unsigned long LIVE_DISPLAY_REPEAT_MS = 60000;  // Repeat live display every 60 seconds
+    const unsigned long LIVE_MIN_DISPLAY_MS = 20000;  // Minimum 20 seconds display for live stats
     bool _dailySchedulesPaused = false;
     
     // Paging
