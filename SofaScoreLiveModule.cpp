@@ -887,7 +887,13 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
             // Clear registered event IDs for statistics
             _registeredEventIds.clear();
             
-            Log.println("[SofaScore] Live events ended - Resuming daily schedules, switched to 60s polling");
+            // Reset mode to DAILY_RESULTS to avoid showing empty live page
+            _currentMode = SofaScoreDisplayMode::DAILY_RESULTS;
+            _currentPage = 0;
+            _currentTournamentIndex = 0;
+            _currentTournamentPage = 0;
+            
+            Log.println("[SofaScore] Live events ended - Resuming daily schedules, switched to 60s polling, reset to DAILY_RESULTS mode");
             
             // Trigger update to refresh display and remove stale live stats
             if (updateCallback) {
