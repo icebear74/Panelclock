@@ -1,0 +1,282 @@
+Log-Ausgabe
+[22:54:01] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:54:02] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:54:03] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:54:04] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:54:04] [PanelStreamer::streamerTask] Running, loops=26993, clients=1
+[22:54:04] [PanelStreamer::streamerTask] - Client #0 connected
+[22:54:05] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:54:06] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:54:06] [WebSocket] Event received: type=10, num=0
+[22:54:06] [WebSocket] Client #0 pong
+[22:54:07] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:54:08] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:54:09] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:54:10] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:54:11] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:54:11] [SofaScore] Released interrupt, cycle complete
+[22:54:14] [PanelStreamer::streamerTask] Running, loops=27181, clients=1
+[22:54:14] [PanelStreamer::streamerTask] - Client #0 connected
+[22:54:22] [WebSocket] Event received: type=10, num=0
+[22:54:22] [WebSocket] Client #0 pong
+[22:54:25] [PanelStreamer::streamerTask] Running, loops=27346, clients=1
+[22:54:25] [PanelStreamer::streamerTask] - Client #0 connected
+[22:54:35] [PanelStreamer::streamerTask] Running, loops=27502, clients=1
+[22:54:35] [PanelStreamer::streamerTask] - Client #0 connected
+[22:54:36] [WebDataManager] Starte Update für https://calendar.google.com/calendar/ical/07kpkqe1smsqa84u9dritdhkf0%40group.calendar.google.com/private-7995046dc8216494232c3ee88ef3dcb9/basic.ics...
+[22:54:36] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://calendar.google.com/calendar/ical/07kpkqe1smsqa84u9dritdhkf0%40group.calendar.google.com/private-7995046dc8216494232c3ee88ef3dcb9/basic.ics.
+[22:54:37] [WebSocket] Event received: type=10, num=0
+[22:54:37] [WebSocket] Client #0 pong
+[22:54:37] [WebDataManager] ERFOLG: https://calendar.google.com/calendar/ical/07kpkqe1smsqa84u9dritdhkf0%40group.calendar.google.com/private-7995046dc8216494232c3ee88ef3dcb9/basic.ics aktualisiert (25180 Bytes).
+[22:54:45] [PanelStreamer::streamerTask] Running, loops=27660, clients=1
+[22:54:45] [PanelStreamer::streamerTask] - Client #0 connected
+[22:54:46] [WebDataManager] Starte Update für https://www.dartsrankings.com/...
+[22:54:46] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://www.dartsrankings.com/.
+[22:54:47] [WebDataManager] ERFOLG: https://www.dartsrankings.com/ aktualisiert (82780 Bytes).
+[22:54:51] [AnimationsModule] Zeit abgelaufen für Weihnachtsbaum (UID=2007)
+[22:54:51] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[22:54:51] [SofaScore] Requesting interrupt for live match statistics
+[22:54:52] [SofaScore] Interrupt requested with UID 5733 for 20000 ms (periodic update every minute)
+[22:54:52] [WebSocket] Event received: type=10, num=0
+[22:54:52] [WebSocket] Client #0 pong
+[22:54:52] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[22:54:53] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[22:54:54] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[22:54:55] [PanelStreamer::streamerTask] Running, loops=27832, clients=1
+[22:54:55] [PanelStreamer::streamerTask] - Client #0 connected
+[22:54:55] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[22:54:56] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[22:54:57] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[22:54:58] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[22:54:59] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[22:55:00] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[22:55:01] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[22:55:02] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[22:55:03] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[22:55:04] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[22:55:05] [PanelStreamer::streamerTask] Running, loops=28027, clients=1
+[22:55:05] [PanelStreamer::streamerTask] - Client #0 connected
+[22:55:05] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[22:55:06] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[22:55:07] [WebSocket] Event received: type=10, num=0
+[22:55:07] [WebSocket] Client #0 pong
+[22:55:07] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[22:55:08] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[22:55:09] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[22:55:10] [SofaScore] draw() - mode=1, page=1/1, canvas=FULLSCREEN
+[22:55:11] [SofaScore] Switched to LIVE_MATCH mode
+[22:55:11] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:55:11] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:55:12] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:55:13] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:55:14] [WebDataManager] Starte Update für https://api.wartezeiten.app/v1/waitingtimes...
+[22:55:14] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://api.wartezeiten.app/v1/waitingtimes.
+[22:55:14] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:55:14] [WebDataManager] Added header: accept: application/json
+[22:55:14] [WebDataManager] Added header: park: movieparkgermany
+[22:55:14] [WebDataManager] Added header: language: de
+[22:55:15] [PanelStreamer::streamerTask] Running, loops=28209, clients=1
+[22:55:15] [PanelStreamer::streamerTask] - Client #0 connected
+[22:55:15] [ThemePark] parseWaitTimes called for park: movieparkgermany
+[22:55:15] [WebDataManager] ERFOLG: https://api.wartezeiten.app/v1/waitingtimes aktualisiert (4332 Bytes).
+[22:55:15] [ThemePark] About to lookup name for: movieparkgermany
+[22:55:15] [ThemePark] getParkNameFromCache: searching 46 parks for movieparkgermany
+[22:55:15] [ThemePark] Found name for movieparkgermany: Movie Park Germany
+[22:55:15] [ThemePark] About to lookup country for: movieparkgermany
+[22:55:15] [ThemePark] getParkCountryFromCache: searching 46 parks for movieparkgermany
+[22:55:15] [ThemePark] Found country for movieparkgermany: Deutschland
+[22:55:15] [ThemePark] Park Movie Park Germany is closed (all attractions closed)
+[22:55:15] [ThemePark] Updated park Movie Park Germany with 21 attractions (0 open), 4 pages, total pages: 2
+[22:55:15] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:55:15] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:55:16] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:55:17] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:55:18] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:55:19] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:55:20] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:55:21] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:55:22] [WebSocket] Event received: type=10, num=0
+[22:55:22] [WebSocket] Client #0 pong
+[22:55:22] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:55:23] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:55:24] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:55:25] [PanelStreamer::streamerTask] Running, loops=28403, clients=1
+[22:55:25] [PanelStreamer::streamerTask] - Client #0 connected
+[22:55:25] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:55:26] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:55:27] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:55:28] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:55:29] [SofaScore] PlayNext request failed
+[22:55:29] [WebDataManager] Starte Update für https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14...
+[22:55:29] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14.
+[22:55:29] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:55:30] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:55:31] [WebDataManager] ERFOLG: https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14 aktualisiert (64573 Bytes).
+[22:55:31] [SofaScore] Released interrupt, cycle complete
+[22:55:31] [SofaScore] Parsing daily events - Total events in JSON: 16
+[22:55:31] [SofaScore] Parsed 2 matches (1 live, skipped: 8 not today, 6 wrong tournament)
+[22:55:31] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:55:31] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:55:32] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:55:33] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:55:34] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:55:35] [PanelStreamer::streamerTask] Running, loops=28577, clients=1
+[22:55:35] [PanelStreamer::streamerTask] - Client #0 connected
+[22:55:37] [WebSocket] Event received: type=10, num=0
+[22:55:37] [WebSocket] Client #0 pong
+[22:55:45] [WebDataManager] Starte Update für https://api.wartezeiten.app/v1/waitingtimes...
+[22:55:45] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://api.wartezeiten.app/v1/waitingtimes.
+[22:55:45] [PanelStreamer::streamerTask] Running, loops=28764, clients=1
+[22:55:45] [PanelStreamer::streamerTask] - Client #0 connected
+[22:55:45] [WebDataManager] Added header: accept: application/json
+[22:55:45] [WebDataManager] Added header: park: phantasialand
+[22:55:45] [WebDataManager] Added header: language: de
+[22:55:46] [ThemePark] parseWaitTimes called for park: phantasialand
+[22:55:46] [WebDataManager] ERFOLG: https://api.wartezeiten.app/v1/waitingtimes aktualisiert (6874 Bytes).
+[22:55:46] [ThemePark] About to lookup name for: phantasialand
+[22:55:46] [ThemePark] getParkNameFromCache: searching 46 parks for phantasialand
+[22:55:46] [ThemePark] Found name for phantasialand: Phantasialand
+[22:55:46] [ThemePark] About to lookup country for: phantasialand
+[22:55:46] [ThemePark] getParkCountryFromCache: searching 46 parks for phantasialand
+[22:55:46] [ThemePark] Found country for phantasialand: Deutschland
+[22:55:46] [ThemePark] Park Phantasialand is closed (all attractions closed)
+[22:55:46] [ThemePark] Updated park Phantasialand with 35 attractions (0 open), 6 pages, total pages: 2
+[22:55:51] [SofaScore] Requesting interrupt for live match statistics
+[22:55:52] [SofaScore] Interrupt requested with UID 5733 for 20000 ms (periodic update every minute)
+[22:55:52] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:55:52] [WebSocket] Event received: type=10, num=0
+[22:55:52] [WebSocket] Client #0 pong
+[22:55:53] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:55:54] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:55:55] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:55:55] [PanelStreamer::streamerTask] Running, loops=28946, clients=1
+[22:55:55] [PanelStreamer::streamerTask] - Client #0 connected
+[22:55:56] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:55:57] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:55:58] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:55:59] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:56:00] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:56:01] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:56:02] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:56:03] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:56:04] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:56:05] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:56:05] [PanelStreamer::streamerTask] Running, loops=29141, clients=1
+[22:56:05] [PanelStreamer::streamerTask] - Client #0 connected
+[22:56:06] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:56:07] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:56:07] [WebSocket] Event received: type=10, num=0
+[22:56:07] [WebSocket] Client #0 pong
+[22:56:07] [SofaScore] Released interrupt, cycle complete
+[22:56:15] [PanelStreamer::streamerTask] Running, loops=29315, clients=1
+[22:56:15] [PanelStreamer::streamerTask] - Client #0 connected
+[22:56:16] [WebDataManager] Starte Update für https://api.wartezeiten.app/v1/waitingtimes...
+[22:56:16] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://api.wartezeiten.app/v1/waitingtimes.
+[22:56:16] [WebDataManager] Added header: accept: application/json
+[22:56:16] [WebDataManager] Added header: park: walibiholland
+[22:56:16] [WebDataManager] Added header: language: de
+[22:56:17] [ThemePark] parseWaitTimes called for park: walibiholland
+[22:56:17] [WebDataManager] ERFOLG: https://api.wartezeiten.app/v1/waitingtimes aktualisiert (9942 Bytes).
+[22:56:17] [ThemePark] About to lookup name for: walibiholland
+[22:56:17] [ThemePark] getParkNameFromCache: searching 46 parks for walibiholland
+[22:56:17] [ThemePark] Found name for walibiholland: Walibi Holland
+[22:56:17] [ThemePark] About to lookup country for: walibiholland
+[22:56:17] [ThemePark] getParkCountryFromCache: searching 46 parks for walibiholland
+[22:56:17] [ThemePark] Found country for walibiholland: Niederlande
+[22:56:17] [ThemePark] Park Walibi Holland is closed (all attractions closed)
+[22:56:17] [ThemePark] Updated park Walibi Holland with 38 attractions (0 open), 7 pages, total pages: 2
+[22:56:22] [WebSocket] Event received: type=10, num=0
+[22:56:22] [WebSocket] Client #0 pong
+[22:56:25] [PanelStreamer::streamerTask] Running, loops=29473, clients=1
+[22:56:25] [PanelStreamer::streamerTask] - Client #0 connected
+[22:56:36] [PanelStreamer::streamerTask] Running, loops=29663, clients=1
+[22:56:36] [PanelStreamer::streamerTask] - Client #0 connected
+[22:56:37] [WebSocket] Event received: type=10, num=0
+[22:56:37] [WebSocket] Client #0 pong
+[22:56:46] [PanelStreamer::streamerTask] Running, loops=29852, clients=1
+[22:56:46] [PanelStreamer::streamerTask] - Client #0 connected
+[22:56:51] [SofaScore] Requesting interrupt for live match statistics
+[22:56:52] [SofaScore] Interrupt requested with UID 5733 for 20000 ms (periodic update every minute)
+[22:56:52] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:56:52] [WebSocket] Event received: type=10, num=0
+[22:56:52] [WebSocket] Client #0 pong
+[22:56:53] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:56:54] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:56:55] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:56:56] [PanelStreamer::streamerTask] Running, loops=30044, clients=1
+[22:56:56] [PanelStreamer::streamerTask] - Client #0 connected
+[22:56:56] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:56:57] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:56:58] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:56:59] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:57:00] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:57:01] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:57:02] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:57:03] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:57:04] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:57:05] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:57:06] [PanelStreamer::streamerTask] Running, loops=30238, clients=1
+[22:57:06] [PanelStreamer::streamerTask] - Client #0 connected
+[22:57:06] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:57:07] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:57:07] [WebSocket] Event received: type=10, num=0
+[22:57:07] [WebSocket] Client #0 pong
+[22:57:08] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:57:09] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:57:10] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:57:11] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:57:11] [SofaScore] Released interrupt, cycle complete
+[22:57:16] [PanelStreamer::streamerTask] Running, loops=30428, clients=1
+[22:57:16] [PanelStreamer::streamerTask] - Client #0 connected
+[22:57:22] [WebSocket] Event received: type=10, num=0
+[22:57:22] [WebSocket] Client #0 pong
+[22:57:26] [PanelStreamer::streamerTask] Running, loops=30617, clients=1
+[22:57:26] [PanelStreamer::streamerTask] - Client #0 connected
+[22:57:29] [SofaScore] PlayNext request failed
+[22:57:29] [WebDataManager] Starte Update für https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14...
+[22:57:29] [WebDataManager] WARNUNG: Kein Zertifikat gefunden. Verwende unsichere Verbindung für https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14.
+[22:57:31] [WebDataManager] ERFOLG: https://api.sofascore.com/api/v1/sport/darts/scheduled-events/2025-12-14 aktualisiert (64565 Bytes).
+[22:57:31] [SofaScore] Parsing daily events - Total events in JSON: 16
+[22:57:31] [SofaScore] Parsed 2 matches (1 live, skipped: 8 not today, 6 wrong tournament)
+[22:57:36] [PanelStreamer::streamerTask] Running, loops=30778, clients=1
+[22:57:36] [PanelStreamer::streamerTask] - Client #0 connected
+[22:57:37] [WebSocket] Event received: type=10, num=0
+[22:57:37] [WebSocket] Client #0 pong
+[22:57:46] [PanelStreamer::streamerTask] Running, loops=30967, clients=1
+[22:57:46] [PanelStreamer::streamerTask] - Client #0 connected
+[22:57:51] [SofaScore] Requesting interrupt for live match statistics
+[22:57:52] [SofaScore] Interrupt requested with UID 5733 for 20000 ms (periodic update every minute)
+[22:57:52] [WebSocket] Event received: type=10, num=0
+[22:57:52] [WebSocket] Client #0 pong
+[22:57:52] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:57:53] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:57:54] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:57:55] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:57:56] [PanelStreamer::streamerTask] Running, loops=31110, clients=1
+[22:57:56] [PanelStreamer::streamerTask] - Client #0 connected
+[22:57:56] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:57:57] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:57:58] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:57:59] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:58:00] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:58:01] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:58:02] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:58:03] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:58:04] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:58:05] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:58:06] [PanelStreamer::streamerTask] Running, loops=31297, clients=1
+[22:58:06] [PanelStreamer::streamerTask] - Client #0 connected
+[22:58:06] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:58:07] [WebSocket] Event received: type=10, num=0
+[22:58:07] [WebSocket] Client #0 pong
+[22:58:07] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:58:08] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:58:09] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:58:10] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:58:11] [SofaScore] draw() - mode=2, page=1/1, canvas=FULLSCREEN
+[22:58:11] [SofaScore] Released interrupt, cycle complete
+[22:58:16] [PanelStreamer::streamerTask] Running, loops=31489, clients=1
+[22:58:16] [PanelStreamer::streamerTask] - Client #0 connected
+[22:58:22] [WebSocket] Event received: type=10, num=0
+[22:58:22] [WebSocket] Client #0 pong
+[System] WebSocket getrennt (Code: 1000)
