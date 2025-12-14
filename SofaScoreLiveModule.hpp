@@ -115,7 +115,7 @@ public:
 private:
     U8G2_FOR_ADAFRUIT_GFX& u8g2;
     GFXcanvas16& canvas;
-    GFXcanvas16* _fullscreenCanvas = nullptr;
+    // Note: _fullscreenCanvas is inherited from DrawableModule base class
     GFXcanvas16* _currentCanvas = nullptr;  // Points to either &canvas or _fullscreenCanvas
     const GeneralTimeConverter& timeConverter;
     WebClientModule* webClient;
