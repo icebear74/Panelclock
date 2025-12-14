@@ -1033,6 +1033,7 @@ void SofaScoreLiveModule::parseMatchStatistics(int eventId, const char* json, si
     
     DeserializationError error = deserializeJson(doc, json, len);
     if (error) {
+        Log.printf("[SofaScore] Statistics JSON parse error for eventId=%d: %s\n", eventId, error.c_str());
         return;
     }
     
@@ -1043,6 +1044,8 @@ void SofaScoreLiveModule::parseMatchStatistics(int eventId, const char* json, si
         for (auto& match : liveMatches) {
             if (match.eventId == eventId) {
                 matchFound = true;
+                
+                Log.printf("[SofaScore] Parsing statistics for eventId=%d\n", eventId);
                 
                 // Parse statistics
                 JsonArray statistics = doc["statistics"].as<JsonArray>();
@@ -1122,8 +1125,17 @@ void SofaScoreLiveModule::parseMatchStatistics(int eventId, const char* json, si
                     }
                 }
                 
+                Log.printf("[SofaScore] Statistics parsed for eventId=%d: Avg=%.1f/%.1f, 180s=%d/%d, CO%%=%.1f/%.1f\n", 
+                           eventId, match.homeAverage, match.awayAverage, 
+                           match.home180s, match.away180s,
+                           match.homeCheckoutPercent, match.awayCheckoutPercent);
+                
                 break;
             }
+        }
+        
+        if (!matchFound) {
+            Log.printf("[SofaScore] WARNING: No match found in liveMatches for eventId=%d\n", eventId);
         }
         
         xSemaphoreGive(dataMutex);
