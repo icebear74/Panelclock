@@ -46,10 +46,13 @@ struct ManagedResource {
     size_t data_size = 0;
     time_t last_successful_update = 0;
     time_t last_check_attempt = 0;
+    unsigned long last_check_attempt_ms = 0;  // Millisecond-precise timestamp for second-precise intervals
     SemaphoreHandle_t mutex;
     uint8_t retry_count = 0;
     bool is_in_retry_mode = false;
     bool is_data_stale = true;
+    bool is_paused = false;          // When true, resource polling is paused
+    bool has_priority = false;       // When true, resource is checked with priority when due
 
     ManagedResource(const PsramString& u, uint32_t interval, const char* ca);
     ManagedResource(const PsramString& u, const PsramString& headers, uint32_t interval, const char* ca);
@@ -76,10 +79,21 @@ public:
     void begin();
     void registerResource(const String& url, uint32_t update_interval_minutes, const char* root_ca = nullptr);
     void registerResourceWithHeaders(const String& url, const String& customHeaders, uint32_t update_interval_minutes, const char* root_ca = nullptr);
+    
+    // Second-precise registration (interval in seconds, with priority option)
+    void registerResourceSeconds(const String& url, uint32_t update_interval_seconds, bool with_priority = false, const char* root_ca = nullptr);
+    void registerResourceSecondsWithHeaders(const String& url, const String& customHeaders, uint32_t update_interval_seconds, bool with_priority = false, const char* root_ca = nullptr);
+    
     void updateResourceUrl(const String& old_url, const String& new_url);
     void accessResource(const String& url, std::function<void(const char* data, size_t size, time_t last_update, bool is_stale)> callback);
     void accessResource(const String& url, const String& customHeaders, std::function<void(const char* data, size_t size, time_t last_update, bool is_stale)> callback);
     void updateResourceCertificateByHost(const String& host, const String& cert_filename);
+    
+    // Pause/Resume control for resources
+    void pauseResource(const String& url);
+    void pauseResourceWithHeaders(const String& url, const String& customHeaders);
+    void resumeResource(const String& url);
+    void resumeResourceWithHeaders(const String& url, const String& customHeaders);
     
     void getRequest(const PsramString& url, std::function<void(const char* buffer, size_t size)> callback);
     void getRequest(const PsramString& url, std::function<void(int httpCode, const char* payload, size_t len)> detailed_callback);
