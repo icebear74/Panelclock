@@ -81,8 +81,8 @@ public:
     void registerResource(const String& url, uint32_t update_interval_minutes, const char* root_ca = nullptr);
     void registerResourceWithHeaders(const String& url, const String& customHeaders, uint32_t update_interval_minutes, const char* root_ca = nullptr);
     
-    // Second-precise registration (interval in seconds, with priority option)
-    void registerResourceSeconds(const String& url, uint32_t update_interval_seconds, bool with_priority = false, const char* root_ca = nullptr);
+    // Second-precise registration (interval in seconds, with priority option, force_new to avoid URL replacement)
+    void registerResourceSeconds(const String& url, uint32_t update_interval_seconds, bool with_priority = false, bool force_new = false, const char* root_ca = nullptr);
     void registerResourceSecondsWithHeaders(const String& url, const String& customHeaders, uint32_t update_interval_seconds, bool with_priority = false, const char* root_ca = nullptr);
     
     void updateResourceUrl(const String& old_url, const String& new_url);

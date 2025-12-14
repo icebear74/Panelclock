@@ -515,9 +515,10 @@ void SofaScoreLiveModule::queueData() {
         // Register only if URL changed (new day)
         if (dailyUrl != _lastRegisteredDailyUrl) {
             uint32_t fetchInterval = config->dartsSofascoreFetchIntervalMin > 0 ? config->dartsSofascoreFetchIntervalMin : 60;
-            webClient->registerResource(dailyUrl.c_str(), fetchInterval, nullptr);  // Use configured interval
+            // Convert minutes to seconds and use registerResourceSeconds for consistency with live events
+            webClient->registerResourceSeconds(dailyUrl.c_str(), fetchInterval * 60, false, nullptr);
             _lastRegisteredDailyUrl = dailyUrl;
-            Log.printf("[SofaScore] Registered daily events: interval=%d min\n", fetchInterval);
+            Log.printf("[SofaScore] Registered daily events: interval=%d min (%d sec)\n", fetchInterval, fetchInterval * 60);
         }
         
         webClient->accessResource(dailyUrl.c_str(),
@@ -623,12 +624,13 @@ void SofaScoreLiveModule::updateLiveMatchStats() {
         xSemaphoreGive(dataMutex);
     }
     
-    // Register new resources with PRIORITY mode (outside mutex to avoid holding mutex during registration)
+    // Register new resources with PRIORITY mode and force_new=true (outside mutex to avoid holding mutex during registration)
+    // force_new=true allows multiple statistics resources with same base URL but different event IDs
     for (int eventId : eventIdsToRegister) {
         char statsUrl[128];
         snprintf(statsUrl, sizeof(statsUrl), "https://api.sofascore.com/api/v1/event/%d/statistics", eventId);
-        // Use registerResourceSeconds with priority=true for 30-second updates
-        webClient->registerResourceSeconds(statsUrl, 30, true, nullptr);  // Priority pull, 30 second updates
+        // Use registerResourceSeconds with priority=true and force_new=true for 30-second updates
+        webClient->registerResourceSeconds(statsUrl, 30, true, true, nullptr);  // Priority pull, 30 second updates, force new
         Log.printf("[SofaScore] Registered PRIORITY live match statistics: eventId=%d (30s interval)\n", eventId);
     }
     
@@ -789,27 +791,29 @@ void SofaScoreLiveModule::parseDailyEventsJson(const char* json, size_t len) {
         JsonObject homeScore = event["homeScore"];
         if (!homeScore.isNull() && homeScore.size() > 0) {
             match.homeScore = homeScore["current"] | 0;
-            // Parse legs from period scores
-            if (homeScore.containsKey("period1")) match.homeLegs = homeScore["period1"] | 0;
-            if (homeScore.containsKey("period2")) match.homeLegs = homeScore["period2"] | 0;
-            if (homeScore.containsKey("period3")) match.homeLegs = homeScore["period3"] | 0;
-            if (homeScore.containsKey("period4")) match.homeLegs = homeScore["period4"] | 0;
-            if (homeScore.containsKey("period5")) match.homeLegs = homeScore["period5"] | 0;
-            if (homeScore.containsKey("period6")) match.homeLegs = homeScore["period6"] | 0;
-            if (homeScore.containsKey("period7")) match.homeLegs = homeScore["period7"] | 0;
+            // Parse legs - get the LAST/HIGHEST period that exists (current leg score)
+            for (int p = 7; p >= 1; p--) {
+                char periodKey[10];
+                snprintf(periodKey, sizeof(periodKey), "period%d", p);
+                if (homeScore.containsKey(periodKey)) {
+                    match.homeLegs = homeScore[periodKey] | 0;
+                    break;
+                }
+            }
         }
         
         JsonObject awayScore = event["awayScore"];
         if (!awayScore.isNull() && awayScore.size() > 0) {
             match.awayScore = awayScore["current"] | 0;
-            // Parse legs from period scores
-            if (awayScore.containsKey("period1")) match.awayLegs = awayScore["period1"] | 0;
-            if (awayScore.containsKey("period2")) match.awayLegs = awayScore["period2"] | 0;
-            if (awayScore.containsKey("period3")) match.awayLegs = awayScore["period3"] | 0;
-            if (awayScore.containsKey("period4")) match.awayLegs = awayScore["period4"] | 0;
-            if (awayScore.containsKey("period5")) match.awayLegs = awayScore["period5"] | 0;
-            if (awayScore.containsKey("period6")) match.awayLegs = awayScore["period6"] | 0;
-            if (awayScore.containsKey("period7")) match.awayLegs = awayScore["period7"] | 0;
+            // Parse legs - get the LAST/HIGHEST period that exists (current leg score)
+            for (int p = 7; p >= 1; p--) {
+                char periodKey[10];
+                snprintf(periodKey, sizeof(periodKey), "period%d", p);
+                if (awayScore.containsKey(periodKey)) {
+                    match.awayLegs = awayScore[periodKey] | 0;
+                    break;
+                }
+            }
         }
         
         const char* tournamentName = event["tournament"]["name"];
@@ -875,6 +879,11 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
             _registeredEventIds.clear();
             
             Log.println("[SofaScore] Live events ended - Resuming daily schedules, switched to 60s polling");
+            
+            // Trigger update to refresh display and remove stale live stats
+            if (updateCallback) {
+                updateCallback();
+            }
         }
         
         return;
@@ -926,27 +935,30 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
         if (!homeScore.isNull() && homeScore.size() > 0) {
             match.homeScore = homeScore["current"] | 0;
             
-            // Parse legs for each set (period1-7)
-            if (homeScore.containsKey("period1")) match.homeLegs = homeScore["period1"] | 0;
-            if (homeScore.containsKey("period2")) match.homeLegs = homeScore["period2"] | 0;
-            if (homeScore.containsKey("period3")) match.homeLegs = homeScore["period3"] | 0;
-            if (homeScore.containsKey("period4")) match.homeLegs = homeScore["period4"] | 0;
-            if (homeScore.containsKey("period5")) match.homeLegs = homeScore["period5"] | 0;
-            if (homeScore.containsKey("period6")) match.homeLegs = homeScore["period6"] | 0;
-            if (homeScore.containsKey("period7")) match.homeLegs = homeScore["period7"] | 0;
+            // Parse legs - get the LAST/HIGHEST period that exists (current leg score)
+            for (int p = 7; p >= 1; p--) {
+                char periodKey[10];
+                snprintf(periodKey, sizeof(periodKey), "period%d", p);
+                if (homeScore.containsKey(periodKey)) {
+                    match.homeLegs = homeScore[periodKey] | 0;
+                    break;
+                }
+            }
         }
         
         JsonObject awayScore = event["awayScore"];
         if (!awayScore.isNull() && awayScore.size() > 0) {
             match.awayScore = awayScore["current"] | 0;
             
-            if (awayScore.containsKey("period1")) match.awayLegs = awayScore["period1"] | 0;
-            if (awayScore.containsKey("period2")) match.awayLegs = awayScore["period2"] | 0;
-            if (awayScore.containsKey("period3")) match.awayLegs = awayScore["period3"] | 0;
-            if (awayScore.containsKey("period4")) match.awayLegs = awayScore["period4"] | 0;
-            if (awayScore.containsKey("period5")) match.awayLegs = awayScore["period5"] | 0;
-            if (awayScore.containsKey("period6")) match.awayLegs = awayScore["period6"] | 0;
-            if (awayScore.containsKey("period7")) match.awayLegs = awayScore["period7"] | 0;
+            // Parse legs - get the LAST/HIGHEST period that exists (current leg score)
+            for (int p = 7; p >= 1; p--) {
+                char periodKey[10];
+                snprintf(periodKey, sizeof(periodKey), "period%d", p);
+                if (awayScore.containsKey(periodKey)) {
+                    match.awayLegs = awayScore[periodKey] | 0;
+                    break;
+                }
+            }
         }
         
         const char* tournamentName = event["tournament"]["name"];

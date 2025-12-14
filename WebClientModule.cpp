@@ -217,54 +217,39 @@ void WebClientModule::registerResourceWithHeaders(const String& url, const Strin
                new_res.url.c_str(), new_res.customHeaders.c_str(), new_res.cert_filename.c_str());
 }
 
-void WebClientModule::registerResourceSeconds(const String& url, uint32_t update_interval_seconds, bool with_priority, const char* root_ca) {
+void WebClientModule::registerResourceSeconds(const String& url, uint32_t update_interval_seconds, bool with_priority, bool force_new, const char* root_ca) {
     if (url.isEmpty() || update_interval_seconds == 0) return;
     
     uint32_t interval_ms = update_interval_seconds * 1000UL;
     
-    // Extract host from URL for comparison
-    String host;
-    int hostStart = url.indexOf("://");
-    if (hostStart != -1) hostStart += 3; else hostStart = 0;
-    int pathStart = url.indexOf("/", hostStart);
-    host = (pathStart != -1) ? url.substring(hostStart, pathStart) : url.substring(hostStart);
-    int colonPos = host.indexOf(":");
-    if (colonPos != -1) {
-        host = host.substring(0, colonPos);
-    }
-    
-    // Check if a resource with the same host already exists
-    for(auto& res : resources) {
-        // Extract host from existing resource URL
-        PsramString existingHost;
-        int existingHostStart = indexOf(res.url, "://");
-        if (existingHostStart != -1) existingHostStart += 3; else existingHostStart = 0;
-        int existingPathStart = indexOf(res.url, "/", existingHostStart);
-        existingHost = (existingPathStart != -1) ? res.url.substr(existingHostStart, existingPathStart - existingHostStart) : res.url.substr(existingHostStart);
-        int existingColonPos = indexOf(existingHost, ":");
-        if (existingColonPos != -1) {
-            existingHost = existingHost.substr(0, existingColonPos);
-        }
-        
-        // If same host, update the URL but keep other parameters
-        if (existingHost.compare(host.c_str()) == 0) {
-            if (xSemaphoreTake(res.mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
-                res.url = url.c_str();
-                res.update_interval_ms = interval_ms;
-                res.has_priority = with_priority;
-                res.use_ms_timing = true;  // Enable millisecond-precise timing
-                Log.printf("[WebDataManager] URL aktualisiert für Host %s: %s (Intervall: %u Sek, Priorität: %d)\n", 
-                          host.c_str(), url.c_str(), update_interval_seconds, with_priority);
-                xSemaphoreGive(res.mutex);
+    // If force_new is FALSE: normal logic - check if URL exists and update it
+    if (!force_new) {
+        // Check if a resource with the exact same URL already exists - if so, update its parameters
+        for(auto& res : resources) {
+            if (res.url.compare(url.c_str()) == 0) {
+                if (xSemaphoreTake(res.mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+                    res.update_interval_ms = interval_ms;
+                    res.has_priority = with_priority;
+                    res.use_ms_timing = true;  // Enable millisecond-precise timing
+                    Log.printf("[WebDataManager] Resource parameters updated: %s (Intervall: %u Sek, Priorität: %d)\n", 
+                              url.c_str(), update_interval_seconds, with_priority);
+                    xSemaphoreGive(res.mutex);
+                }
+                return;
             }
-            return;
         }
     }
     
-    // No existing resource with same host, check for exact URL match
-    for(const auto& res : resources) {
-        if (res.url.compare(url.c_str()) == 0) return;
-    }
+    // If force_new is TRUE: always create new resource, even if URL already exists
+    // This allows multiple resources with same URL (e.g., for different live events)
+    resources.emplace_back(url.c_str(), interval_ms, root_ca);
+    ManagedResource& new_res = resources.back();
+    new_res.has_priority = with_priority;
+    new_res.use_ms_timing = true;  // Enable millisecond-precise timing
+
+    Log.printf("[WebDataManager] Ressource registriert (Sekunden-genau): %s, Intervall: %u Sek, Priorität: %d, ForceNew: %d (Cert-File: '%s')\n", 
+               new_res.url.c_str(), update_interval_seconds, with_priority, force_new, new_res.cert_filename.c_str());
+}
 
     resources.emplace_back(url.c_str(), interval_ms, root_ca);
     ManagedResource& new_res = resources.back();
