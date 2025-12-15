@@ -221,6 +221,7 @@ private:
     void checkForPlayNext();
     void groupMatchesByTournament();  // New: group and calculate pages
     int calculateTotalPages();         // New: calculate total pages across all tournaments
+    bool areAllLiveMatchesFinished() const;  // NEW: Check if all live matches are finished
     
     // Drawing helpers
     void drawTournamentList();

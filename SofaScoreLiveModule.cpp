@@ -318,6 +318,11 @@ bool SofaScoreLiveModule::isEnabled() {
 }
 
 unsigned long SofaScoreLiveModule::getDisplayDuration() {
+    // If continuous live display is enabled and we're in live mode, return 0 (no timeout)
+    if (_continuousLiveDisplay && _currentMode == SofaScoreDisplayMode::LIVE_MATCH) {
+        return 0;  // Continuous display - module controls its own lifetime
+    }
+    
     // Total duration depends on number of pages
     return _displayDuration * _totalPages;
 }
@@ -440,6 +445,14 @@ void SofaScoreLiveModule::logicTick() {
                     break;
             }
             
+            // In continuous live display mode, check if all matches are finished
+            // This check happens on every page switch, not just at the end of the cycle
+            if (_continuousLiveDisplay && _currentMode == SofaScoreDisplayMode::LIVE_MATCH && 
+                !needsModeSwitch && areAllLiveMatchesFinished()) {
+                needsModeSwitch = true;  // Force mode switch to exit continuous display
+                Log.println("[SofaScore] All live matches finished - exiting continuous display");
+            }
+            
             if (needsModeSwitch) {
                 switchToNextMode();
             }
@@ -456,6 +469,22 @@ void SofaScoreLiveModule::logicTick() {
     if (needsRedraw && updateCallback) {
         updateCallback();
     }
+}
+
+bool SofaScoreLiveModule::areAllLiveMatchesFinished() const {
+    // Check if all live matches have finished status
+    // Note: This function is called while holding dataMutex from switchToNextMode
+    if (liveMatches.empty()) {
+        return true;  // No live matches means nothing to show
+    }
+    
+    for (const auto& match : liveMatches) {
+        if (match.status != MatchStatus::FINISHED) {
+            return false;  // Found a match that's not finished
+        }
+    }
+    
+    return true;  // All matches are finished
 }
 
 void SofaScoreLiveModule::switchToNextMode() {
@@ -477,10 +506,24 @@ void SofaScoreLiveModule::switchToNextMode() {
     } else if (_currentMode == SofaScoreDisplayMode::LIVE_MATCH) {
         // Check if continuous live display is enabled
         if (_continuousLiveDisplay && !liveMatches.empty()) {
-            // Keep showing live matches - loop back to first page
-            _currentPage = 0;
-            _logicTicksSincePageSwitch = 0;
-            Log.println("[SofaScore] Continuous live display - looping live matches");
+            // Check if all live matches are finished
+            if (areAllLiveMatchesFinished()) {
+                // All live matches are finished - exit continuous mode
+                _isFinished = true;
+                Log.println("[SofaScore] Continuous live display ended - all matches finished");
+                
+                // Release interrupt if active
+                if (_hasActiveInterrupt && _interruptUID > 0) {
+                    releasePriorityEx(_interruptUID);
+                    _hasActiveInterrupt = false;
+                    Log.println("[SofaScore] Released interrupt after all matches finished");
+                }
+            } else {
+                // Keep showing live matches - loop back to first page
+                _currentPage = 0;
+                _logicTicksSincePageSwitch = 0;
+                Log.println("[SofaScore] Continuous live display - looping live matches");
+            }
         } else {
             // After showing live matches, cycle is complete
             _isFinished = true;

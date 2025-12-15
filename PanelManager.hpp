@@ -133,6 +133,11 @@ struct PlaylistEntry {
         // 3. Timeout-Check - DYNAMISCH Duration holen!
         unsigned long maxDuration = module->getDisplayDuration();
         
+        // Duration 0 = kein Timeout (kontinuierliche Anzeige)
+        if (maxDuration == 0) {
+            return false;
+        }
+        
         // Sicherheitspuffer hinzufügen (10% oder min 1 Sekunde)
         unsigned long safetyBuffer = max(1000UL, maxDuration / 10);
         maxDuration += safetyBuffer;
