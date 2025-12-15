@@ -475,20 +475,28 @@ void SofaScoreLiveModule::switchToNextMode() {
             Log.println("[SofaScore] Cycle complete (no live matches)");
         }
     } else if (_currentMode == SofaScoreDisplayMode::LIVE_MATCH) {
-        // After showing live matches, cycle is complete
-        _isFinished = true;
-        
-        // Release interrupt if we were showing live matches via interrupt
-        if (_hasActiveInterrupt && _interruptUID > 0) {
-            releasePriorityEx(_interruptUID);
-            _hasActiveInterrupt = false;
-            Log.println("[SofaScore] Released interrupt, cycle complete");
+        // Check if continuous live display is enabled
+        if (_continuousLiveDisplay && !liveMatches.empty()) {
+            // Keep showing live matches - loop back to first page
+            _currentPage = 0;
+            _logicTicksSincePageSwitch = 0;
+            Log.println("[SofaScore] Continuous live display - looping live matches");
         } else {
-            Log.println("[SofaScore] Cycle complete after live matches");
+            // After showing live matches, cycle is complete
+            _isFinished = true;
+            
+            // Release interrupt if we were showing live matches via interrupt
+            if (_hasActiveInterrupt && _interruptUID > 0) {
+                releasePriorityEx(_interruptUID);
+                _hasActiveInterrupt = false;
+                Log.println("[SofaScore] Released interrupt, cycle complete");
+            } else {
+                Log.println("[SofaScore] Cycle complete after live matches");
+            }
         }
     }
     
-    // Release PlayNext when cycle finishes
+    // Release PlayNext when cycle finishes (but not when looping in continuous mode)
     if (_isFinished && _hasActivePlayNext && _playNextUID > 0) {
         releasePriorityEx(_playNextUID);
         _hasActivePlayNext = false;
@@ -565,7 +573,7 @@ void SofaScoreLiveModule::checkAndFetchLiveEvents() {
     // Access the resource to fetch latest data
     webClient->accessResource(liveUrl,
             [this](const char* buffer, size_t size, time_t last_update, bool is_stale) {
-                if (buffer && size > 0) {
+                if (buffer && size > 0 && last_update > this->live_last_processed_update) {
                     if (live_pending_buffer) free(live_pending_buffer);
                     live_pending_buffer = (char*)ps_malloc(size + 1);
                     if (live_pending_buffer) {
@@ -587,7 +595,7 @@ void SofaScoreLiveModule::fetchLiveData() {
     
     webClient->accessResource(liveUrl,
         [this](const char* buffer, size_t size, time_t last_update, bool is_stale) {
-            if (buffer && size > 0) {
+            if (buffer && size > 0 && last_update > this->live_last_processed_update) {
                 if (live_pending_buffer) free(live_pending_buffer);
                 live_pending_buffer = (char*)ps_malloc(size + 1);
                 if (live_pending_buffer) {
@@ -738,7 +746,11 @@ void SofaScoreLiveModule::parseDailyEventsJson(const char* json, size_t len) {
     }
     
     dailyMatches.clear();
-    liveMatches.clear();
+    // IMPORTANT: Don't clear liveMatches here if we have active live events from the live endpoint
+    // The live endpoint is the source of truth for live match scores/legs when _hasLiveEvents is true
+    if (!_hasLiveEvents) {
+        liveMatches.clear();
+    }
     
     // Get today's time for comparison using GeneralTimeConverter
     time_t now = time(nullptr);
@@ -840,7 +852,11 @@ void SofaScoreLiveModule::parseDailyEventsJson(const char* json, size_t len) {
         if (statusType) {
             if (strcmp(statusType, "inprogress") == 0) {
                 match.status = MatchStatus::LIVE;
-                liveMatches.push_back(match);  // Also add to live matches
+                // Only add to liveMatches from daily events if we DON'T have active live events
+                // When _hasLiveEvents is true, the live endpoint is the source of truth for live matches
+                if (!_hasLiveEvents) {
+                    liveMatches.push_back(match);  // Add to live matches
+                }
             } else if (strcmp(statusType, "finished") == 0) {
                 match.status = MatchStatus::FINISHED;
             } else {

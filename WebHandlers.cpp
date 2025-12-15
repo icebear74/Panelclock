@@ -253,6 +253,7 @@ void handleConfigModules() {
     replaceAll(content, "{dartsSofascoreFullscreen_checked}", deviceConfig->dartsSofascoreFullscreen ? "checked" : "");
     replaceAll(content, "{dartsSofascoreInterruptOnLive_checked}", deviceConfig->dartsSofascoreInterruptOnLive ? "checked" : "");
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->dartsSofascorePlayNextMinutes); replaceAll(content, "{dartsSofascorePlayNextMinutes}", num_buf);
+    replaceAll(content, "{dartsSofascoreContinuousLive_checked}", deviceConfig->dartsSofascoreContinuousLive ? "checked" : "");
     
     replaceAll(content, "{fritzboxEnabled_checked}", deviceConfig->fritzboxEnabled ? "checked" : "");
     replaceAll(content, "{fritzboxIp}", deviceConfig->fritzboxIp.c_str());
@@ -533,6 +534,7 @@ void handleSaveModules() {
     deviceConfig->dartsSofascoreFullscreen = server->hasArg("dartsSofascoreFullscreen");
     deviceConfig->dartsSofascoreInterruptOnLive = server->hasArg("dartsSofascoreInterruptOnLive");
     deviceConfig->dartsSofascorePlayNextMinutes = server->arg("dartsSofascorePlayNextMinutes").toInt();
+    deviceConfig->dartsSofascoreContinuousLive = server->hasArg("dartsSofascoreContinuousLive");
     
     if (sofascoreMod) {
         sofascoreMod->setConfig(
