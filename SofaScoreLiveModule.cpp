@@ -1537,7 +1537,7 @@ void SofaScoreLiveModule::drawLiveMatch() {
         
         // Statistics table - MORE ROWS NOW
         if (wantsFullscreen()) {
-            u8g2.setFont(u8g2_font_5x8_tf);
+            u8g2.setFont(u8g2_font_6x10_tf);  // Increased from 5x8 to 6x10 for better readability
             
             // Left column (home values), Center (labels), Right column (away values)
             // No "Home" and "Away" headers - just the stats
@@ -1551,13 +1551,13 @@ void SofaScoreLiveModule::drawLiveMatch() {
             u8g2.setCursor(2, y);
             u8g2.print(homeVal);
             u8g2.setForegroundColor(0xFFE0);  // Yellow for label
-            u8g2.setCursor(_currentCanvas->width() / 2 - 10, y);
+            u8g2.setCursor(_currentCanvas->width() / 2 - 11, y);
             u8g2.print("180");
             u8g2.setForegroundColor(0xFFFF);
             int awayWidth = u8g2.getUTF8Width(awayVal);
             u8g2.setCursor(_currentCanvas->width() - awayWidth - 2, y);
             u8g2.print(awayVal);
-            y += 8;
+            y += 10;  // Increased spacing from 8 to 10 for larger font
             
             // Row 2: >140
             snprintf(homeVal, sizeof(homeVal), "%d", match.homeOver140);
@@ -1566,13 +1566,13 @@ void SofaScoreLiveModule::drawLiveMatch() {
             u8g2.setCursor(2, y);
             u8g2.print(homeVal);
             u8g2.setForegroundColor(0xFFE0);
-            u8g2.setCursor(_currentCanvas->width() / 2 - 12, y);
+            u8g2.setCursor(_currentCanvas->width() / 2 - 14, y);
             u8g2.print(">140");
             u8g2.setForegroundColor(0xFFFF);
             awayWidth = u8g2.getUTF8Width(awayVal);
             u8g2.setCursor(_currentCanvas->width() - awayWidth - 2, y);
             u8g2.print(awayVal);
-            y += 8;
+            y += 10;  // Increased spacing from 8 to 10 for larger font
             
             // Row 3: >100
             snprintf(homeVal, sizeof(homeVal), "%d", match.homeOver100);
@@ -1581,13 +1581,13 @@ void SofaScoreLiveModule::drawLiveMatch() {
             u8g2.setCursor(2, y);
             u8g2.print(homeVal);
             u8g2.setForegroundColor(0xFFE0);
-            u8g2.setCursor(_currentCanvas->width() / 2 - 12, y);
+            u8g2.setCursor(_currentCanvas->width() / 2 - 14, y);
             u8g2.print(">100");
             u8g2.setForegroundColor(0xFFFF);
             awayWidth = u8g2.getUTF8Width(awayVal);
             u8g2.setCursor(_currentCanvas->width() - awayWidth - 2, y);
             u8g2.print(awayVal);
-            y += 8;
+            y += 10;  // Increased spacing from 8 to 10 for larger font
             
             // Row 4: CO>100
             snprintf(homeVal, sizeof(homeVal), "%d", match.homeCheckoutsOver100);
@@ -1596,13 +1596,13 @@ void SofaScoreLiveModule::drawLiveMatch() {
             u8g2.setCursor(2, y);
             u8g2.print(homeVal);
             u8g2.setForegroundColor(0xFFE0);
-            u8g2.setCursor(_currentCanvas->width() / 2 - 15, y);
+            u8g2.setCursor(_currentCanvas->width() / 2 - 18, y);
             u8g2.print("CO>100");
             u8g2.setForegroundColor(0xFFFF);
             awayWidth = u8g2.getUTF8Width(awayVal);
             u8g2.setCursor(_currentCanvas->width() - awayWidth - 2, y);
             u8g2.print(awayVal);
-            y += 8;
+            y += 10;  // Increased spacing from 8 to 10 for larger font
             
             // Row 5: CO% (Checkout percentage)
             snprintf(homeVal, sizeof(homeVal), "%.0f%%", match.homeCheckoutPercent);
@@ -1611,7 +1611,7 @@ void SofaScoreLiveModule::drawLiveMatch() {
             u8g2.setCursor(2, y);
             u8g2.print(homeVal);
             u8g2.setForegroundColor(0x07FF);  // Cyan for CO%
-            u8g2.setCursor(_currentCanvas->width() / 2 - 10, y);
+            u8g2.setCursor(_currentCanvas->width() / 2 - 11, y);
             u8g2.print("CO%");
             u8g2.setForegroundColor(0xFFFF);
             awayWidth = u8g2.getUTF8Width(awayVal);
