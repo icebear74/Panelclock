@@ -614,7 +614,7 @@ void SofaScoreLiveModule::checkAndFetchLiveEvents() {
     } else {
         // Has live events: check every 30 seconds with priority
         if (shouldRegister) {
-            webClient->registerResourceSeconds(liveUrl, 30, false, true);
+            webClient->registerResourceSeconds(liveUrl, 30, true, false);  // Fixed: priority=true for live events
             _liveEventsRegistered = true;
         }
     }
