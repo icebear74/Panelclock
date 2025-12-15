@@ -542,7 +542,8 @@ void handleSaveModules() {
             deviceConfig->dartsSofascoreTournamentIds,
             deviceConfig->dartsSofascoreFullscreen,
             deviceConfig->dartsSofascoreInterruptOnLive,
-            deviceConfig->dartsSofascorePlayNextMinutes
+            deviceConfig->dartsSofascorePlayNextMinutes,
+            deviceConfig->dartsSofascoreContinuousLive
         );
     }
     
@@ -894,9 +895,43 @@ void handleNotFound() {
 void handleStreamPage() {
     if (!server) return;
     String page = FPSTR(HTML_PAGE_HEADER);
-    page += FPSTR(HTML_STREAM_PAGE);
+    String htmlContent = FPSTR(HTML_STREAM_PAGE);
+    
+    // Replace {debugFileChecked} placeholder
+    const char* checked = deviceConfig->debugFileEnabled ? "checked" : "";
+    htmlContent.replace("{debugFileChecked}", checked);
+    
+    page += htmlContent;
     page += FPSTR(HTML_PAGE_FOOTER);
     server->send(200, "text/html", page);
+}
+
+void handleToggleDebugFile() {
+    if (!server) return;
+    
+    if (!server->hasArg("plain")) {
+        server->send(400, "application/json", "{\"success\":false,\"error\":\"No body\"}");
+        return;
+    }
+    
+    String body = server->arg("plain");
+    DynamicJsonDocument doc(256);
+    DeserializationError error = deserializeJson(doc, body);
+    
+    if (error) {
+        server->send(400, "application/json", "{\"success\":false,\"error\":\"Invalid JSON\"}");
+        return;
+    }
+    
+    bool enabled = doc["enabled"] | false;
+    deviceConfig->debugFileEnabled = enabled;
+    // Don't save to config for security - only apply live
+    // saveDeviceConfig();
+    
+    // Apply immediately via the existing applyLiveConfig function
+    applyLiveConfig();
+    
+    server->send(200, "application/json", "{\"success\":true}");
 }
 
 // =============================================================================

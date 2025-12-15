@@ -11,7 +11,7 @@ MultiLogger Log;
 extern SemaphoreHandle_t serialMutex;
 
 MultiLogger::MultiLogger(size_t bufferSize) 
-    : _bufferSize(bufferSize), _writeIndex(0), _readIndex(0), _bufferFull(false) {
+    : _bufferSize(bufferSize), _writeIndex(0), _readIndex(0), _bufferFull(false), _debugFileEnabled(false) {
     
     // Pre-allocate ring buffer in PSRAM
     _ringBuffer.reserve(bufferSize);
@@ -27,6 +27,9 @@ MultiLogger::MultiLogger(size_t bufferSize)
 }
 
 MultiLogger::~MultiLogger() {
+    if (_debugFile) {
+        _debugFile.close();
+    }
     if (_mutex) {
         vSemaphoreDelete(_mutex);
     }
@@ -107,6 +110,9 @@ void MultiLogger::_finalizeLine() {
     }
     
     PsramString finalLine = PsramString(timeStr) + _currentLine;
+    
+    // Write to debug file if enabled
+    _writeToDebugFile(finalLine);
     
     // Add to ring buffer
     _ringBuffer[_writeIndex] = finalLine;
@@ -189,5 +195,59 @@ void MultiLogger::clearBuffer() {
         _currentLine.clear();
         
         xSemaphoreGive(_mutex);
+    }
+}
+
+void MultiLogger::setDebugFileEnabled(bool enabled) {
+    if (xSemaphoreTake(_mutex, portMAX_DELAY) == pdTRUE) {
+        if (enabled && !_debugFileEnabled) {
+            // Enable debug file logging
+            _debugFileEnabled = true;
+            // Open/create file in append mode
+            _debugFile = LittleFS.open(DEBUG_FILE_PATH, "a");
+            if (_debugFile) {
+                Serial.println("[MultiLogger] Debug file logging enabled");
+                _debugFile.println("\n=== Debug logging started ===");
+                _debugFile.flush();
+            } else {
+                Serial.println("[MultiLogger] ERROR: Failed to open debug file");
+                _debugFileEnabled = false;
+            }
+        } else if (!enabled && _debugFileEnabled) {
+            // Disable debug file logging
+            _debugFileEnabled = false;
+            if (_debugFile) {
+                _debugFile.println("=== Debug logging stopped ===\n");
+                _debugFile.close();
+                Serial.println("[MultiLogger] Debug file logging disabled");
+            }
+            // Delete the file to clear it
+            if (LittleFS.exists(DEBUG_FILE_PATH)) {
+                LittleFS.remove(DEBUG_FILE_PATH);
+            }
+        }
+        
+        xSemaphoreGive(_mutex);
+    }
+}
+
+void MultiLogger::_writeToDebugFile(const PsramString& line) {
+    if (!_debugFileEnabled || !_debugFile) {
+        return;
+    }
+    
+    // Check file size and truncate if needed
+    if (_debugFile.size() > MAX_DEBUG_FILE_SIZE) {
+        _debugFile.close();
+        LittleFS.remove(DEBUG_FILE_PATH);
+        _debugFile = LittleFS.open(DEBUG_FILE_PATH, "a");
+        if (_debugFile) {
+            _debugFile.println("=== Log file truncated (size limit reached) ===");
+        }
+    }
+    
+    if (_debugFile) {
+        _debugFile.println(line.c_str());
+        _debugFile.flush(); // Ensure data is written immediately
     }
 }

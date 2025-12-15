@@ -344,6 +344,9 @@ void Application::executeApplyLiveConfig() {
     if (!_tankerkoenigMod || !_calendarMod || !_dartsMod || !_fritzMod || !_curiousMod || !_weatherMod || !_themeParkMod || !_animationsMod || !timeConverter || !deviceConfig) return;
     Log.println("[Config] Wende Live-Konfiguration an...");
     
+    // Apply debug file logging setting (immediately active)
+    Log.setDebugFileEnabled(deviceConfig->debugFileEnabled);
+    
     if (!timeConverter->setTimezone(deviceConfig->timezone.c_str())) {
         timeConverter->setTimezone("UTC");
     }
@@ -352,7 +355,7 @@ void Application::executeApplyLiveConfig() {
     _calendarMod->setConfig(deviceConfig->icsUrl, deviceConfig->calendarFetchIntervalMin, deviceConfig->calendarDisplaySec, deviceConfig->globalScrollSpeedMs, deviceConfig->calendarDateColor, deviceConfig->calendarTextColor);
     _calendarMod->setUrgentParams(deviceConfig->calendarFastBlinkHours, deviceConfig->calendarUrgentThresholdHours, deviceConfig->calendarUrgentDurationSec, deviceConfig->calendarUrgentRepeatMin);
     _dartsMod->setConfig(deviceConfig->dartsOomEnabled, deviceConfig->dartsProTourEnabled, 5, deviceConfig->dartsDisplaySec, deviceConfig->trackedDartsPlayers);
-    _sofascoreMod->setConfig(deviceConfig->dartsSofascoreEnabled, deviceConfig->dartsSofascoreFetchIntervalMin, deviceConfig->dartsSofascoreDisplaySec, deviceConfig->dartsSofascoreTournamentIds, deviceConfig->dartsSofascoreFullscreen, deviceConfig->dartsSofascoreInterruptOnLive, deviceConfig->dartsSofascorePlayNextMinutes);
+    _sofascoreMod->setConfig(deviceConfig->dartsSofascoreEnabled, deviceConfig->dartsSofascoreFetchIntervalMin, deviceConfig->dartsSofascoreDisplaySec, deviceConfig->dartsSofascoreTournamentIds, deviceConfig->dartsSofascoreFullscreen, deviceConfig->dartsSofascoreInterruptOnLive, deviceConfig->dartsSofascorePlayNextMinutes, deviceConfig->dartsSofascoreContinuousLive);
     _fritzMod->setConfig(deviceConfig->fritzboxEnabled, deviceConfig->fritzboxIp);
     _curiousMod->setConfig();
     _weatherMod->setConfig(deviceConfig);

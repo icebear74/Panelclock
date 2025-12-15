@@ -19,6 +19,7 @@ void handleSaveHardware();
 void handleNotFound();
 void handleDebugData();
 void handleDebugStationHistory();
+void handleToggleDebugFile();
 void handleTankerkoenigSearchLive();
 void handleThemeParksList();
 void handleSofascoreTournamentsList();

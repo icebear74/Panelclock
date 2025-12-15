@@ -85,8 +85,10 @@ bool GeneralTimeConverter::isSameDay(time_t epoch1, time_t epoch2) const {
     time_t local2 = toLocal(epoch2);
 
     struct tm tm1, tm2;
-    localtime_r(&local1, &tm1);
-    localtime_r(&local2, &tm2);
+    // FIXED: Use gmtime_r instead of localtime_r to avoid double timezone conversion
+    // toLocal() already converted to local time, so we need to interpret as UTC
+    gmtime_r(&local1, &tm1);
+    gmtime_r(&local2, &tm2);
     
     return (tm1.tm_year == tm2.tm_year &&
             tm1.tm_mon == tm2.tm_mon &&

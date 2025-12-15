@@ -3,3 +3,6 @@
 
 # Ignore version file (build artifact)
 /Version.hpp
+
+# Ignore test data JSON files (but keep README.md)
+/test_data/sofascore/*.json

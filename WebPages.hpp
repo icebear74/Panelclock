@@ -794,6 +794,18 @@ const char HTML_STREAM_PAGE[] PROGMEM = R"rawliteral(
 </div>
 
 <div style="text-align: center; margin-top: 30px; padding: 0 20px;">
+    <h3>Debug-Optionen</h3>
+    <div style="display: flex; justify-content: center; margin-bottom: 20px;">
+        <div style="max-width: 1000px; width: 100%; background: #2a2a2a; border: 1px solid #444; border-radius: 8px; padding: 20px;">
+            <label style="display: flex; align-items: center; justify-content: center; cursor: pointer;">
+                <input type="checkbox" id="debugFileEnabled" {debugFileChecked} onchange="toggleDebugFile(this.checked)" style="margin-right: 10px; transform: scale(1.5);">
+                <span style="color: #bbb;">Debug-Datei in LittleFS schreiben (/debug.log, max 500KB)</span>
+            </label>
+            <p style="color: #888; font-size: 12px; margin-top: 10px; margin-bottom: 0;">
+                Wenn aktiviert, werden alle Logs in /debug.log gespeichert. Nach dem Reproduzieren des Problems können Sie die Datei über den Dateimanager herunterladen.
+            </p>
+        </div>
+    </div>
     <h3>Log-Ausgabe</h3>
     <div style="display: flex; justify-content: center;">
         <div style="max-width: 1000px; width: 100%;">
@@ -975,6 +987,25 @@ function decodeAndRenderPanel(data) {
             pixelIndex++;
         }
     }
+}
+
+function toggleDebugFile(enabled) {
+    fetch('/api/toggle_debug_file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: enabled })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            addLog('[System] Debug-Datei ' + (enabled ? 'aktiviert' : 'deaktiviert'));
+        } else {
+            addLog('[Error] Fehler beim Umschalten der Debug-Datei');
+        }
+    })
+    .catch(err => {
+        addLog('[Error] Fehler: ' + err.message);
+    });
 }
 
 // Initialize canvas on load
