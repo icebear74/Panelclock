@@ -473,7 +473,10 @@ void SofaScoreLiveModule::logicTick() {
 
 bool SofaScoreLiveModule::areAllLiveMatchesFinished() const {
     // Check if all live matches have finished status
-    // Note: This function is called while holding dataMutex from switchToNextMode
+    // IMPORTANT: Caller must hold dataMutex - this function accesses shared liveMatches vector
+    // Currently called from:
+    // - logicTick() at line ~451 (mutex held)
+    // - switchToNextMode() at line ~510 (called from logicTick, mutex held)
     if (liveMatches.empty()) {
         return true;  // No live matches means nothing to show
     }
