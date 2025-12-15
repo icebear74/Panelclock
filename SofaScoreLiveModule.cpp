@@ -447,6 +447,9 @@ void SofaScoreLiveModule::logicTick() {
             
             // In continuous live display mode, check if all matches are finished
             // This check happens on every page switch, not just at the end of the cycle
+            // Performance note: Live match count is typically small (1-3), and page switches
+            // occur every ~20 seconds, so the overhead is negligible compared to the benefit
+            // of quickly detecting when matches finish
             if (_continuousLiveDisplay && _currentMode == SofaScoreDisplayMode::LIVE_MATCH && 
                 !needsModeSwitch && areAllLiveMatchesFinished()) {
                 needsModeSwitch = true;  // Force mode switch to exit continuous display
