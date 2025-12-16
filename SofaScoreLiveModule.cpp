@@ -819,15 +819,18 @@ void SofaScoreLiveModule::parseDailyEventsJson(const char* json, size_t len) {
             continue;  // Skip matches not happening today
         }
         
-        // Get tournament slug for matching
-        // tournament.uniqueTournament.slug stays constant for the entire tournament
-        const char* tournamentSlug = event["tournament"]["uniqueTournament"]["slug"];
+        // Get tournament slugs for matching
+        // Check both tournament.slug (e.g., "pdc-world-championship-2026") 
+        // and tournament.uniqueTournament.slug (e.g., "pdc-world-championship")
+        const char* tournamentSlug = event["tournament"]["slug"];
+        const char* uniqueTournamentSlug = event["tournament"]["uniqueTournament"]["slug"];
         
         // Check if this tournament is enabled (by slug)
         bool isEnabled = enabledTournamentSlugs.empty();  // If no filter, show all
-        if (!isEnabled && tournamentSlug) {
+        if (!isEnabled) {
             for (const PsramString& enabledSlug : enabledTournamentSlugs) {
-                if (enabledSlug == tournamentSlug) {
+                if ((tournamentSlug && enabledSlug == tournamentSlug) ||
+                    (uniqueTournamentSlug && enabledSlug == uniqueTournamentSlug)) {
                     isEnabled = true;
                     break;
                 }
@@ -980,14 +983,18 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
     int parsedCount = 0;
     
     for (JsonObject event : events) {
-        // Get tournament slug for matching
-        const char* tournamentSlug = event["tournament"]["uniqueTournament"]["slug"];
+        // Get tournament slugs for matching
+        // Check both tournament.slug (e.g., "pdc-world-championship-2026") 
+        // and tournament.uniqueTournament.slug (e.g., "pdc-world-championship")
+        const char* tournamentSlug = event["tournament"]["slug"];
+        const char* uniqueTournamentSlug = event["tournament"]["uniqueTournament"]["slug"];
         
         // Check if this tournament is enabled (by slug)
         bool isEnabled = enabledTournamentSlugs.empty();
-        if (!isEnabled && tournamentSlug) {
+        if (!isEnabled) {
             for (const PsramString& enabledSlug : enabledTournamentSlugs) {
-                if (enabledSlug == tournamentSlug) {
+                if ((tournamentSlug && enabledSlug == tournamentSlug) ||
+                    (uniqueTournamentSlug && enabledSlug == uniqueTournamentSlug)) {
                     isEnabled = true;
                     break;
                 }
