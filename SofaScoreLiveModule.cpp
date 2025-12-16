@@ -75,7 +75,9 @@ SofaScoreMatch::SofaScoreMatch(const SofaScoreMatch& other)
       homeAverage(0.0f), awayAverage(0.0f), home180s(0), away180s(0),
       homeOver140(0), awayOver140(0), homeOver100(0), awayOver100(0),
       homeCheckoutsOver100(0), awayCheckoutsOver100(0),
-      homeCheckoutPercent(0.0f), awayCheckoutPercent(0.0f) {
+      homeCheckoutPercent(0.0f), awayCheckoutPercent(0.0f),
+      homeCheckoutHits(0), homeCheckoutAttempts(0),
+      awayCheckoutHits(0), awayCheckoutAttempts(0) {
     eventId = other.eventId;
     homePlayerName = other.homePlayerName ? psram_strdup(other.homePlayerName) : nullptr;
     awayPlayerName = other.awayPlayerName ? psram_strdup(other.awayPlayerName) : nullptr;
@@ -98,6 +100,10 @@ SofaScoreMatch::SofaScoreMatch(const SofaScoreMatch& other)
     awayCheckoutsOver100 = other.awayCheckoutsOver100;
     homeCheckoutPercent = other.homeCheckoutPercent;
     awayCheckoutPercent = other.awayCheckoutPercent;
+    homeCheckoutHits = other.homeCheckoutHits;
+    homeCheckoutAttempts = other.homeCheckoutAttempts;
+    awayCheckoutHits = other.awayCheckoutHits;
+    awayCheckoutAttempts = other.awayCheckoutAttempts;
 }
 
 SofaScoreMatch& SofaScoreMatch::operator=(const SofaScoreMatch& other) {
@@ -125,6 +131,10 @@ SofaScoreMatch& SofaScoreMatch::operator=(const SofaScoreMatch& other) {
         awayCheckoutsOver100 = other.awayCheckoutsOver100;
         homeCheckoutPercent = other.homeCheckoutPercent;
         awayCheckoutPercent = other.awayCheckoutPercent;
+        homeCheckoutHits = other.homeCheckoutHits;
+        homeCheckoutAttempts = other.homeCheckoutAttempts;
+        awayCheckoutHits = other.awayCheckoutHits;
+        awayCheckoutAttempts = other.awayCheckoutAttempts;
     }
     return *this;
 }
@@ -152,6 +162,10 @@ SofaScoreMatch::SofaScoreMatch(SofaScoreMatch&& other) noexcept {
     awayCheckoutsOver100 = other.awayCheckoutsOver100;
     homeCheckoutPercent = other.homeCheckoutPercent;
     awayCheckoutPercent = other.awayCheckoutPercent;
+    homeCheckoutHits = other.homeCheckoutHits;
+    homeCheckoutAttempts = other.homeCheckoutAttempts;
+    awayCheckoutHits = other.awayCheckoutHits;
+    awayCheckoutAttempts = other.awayCheckoutAttempts;
     other.homePlayerName = nullptr;
     other.awayPlayerName = nullptr;
     other.tournamentName = nullptr;
@@ -182,6 +196,10 @@ SofaScoreMatch& SofaScoreMatch::operator=(SofaScoreMatch&& other) noexcept {
         awayCheckoutsOver100 = other.awayCheckoutsOver100;
         homeCheckoutPercent = other.homeCheckoutPercent;
         awayCheckoutPercent = other.awayCheckoutPercent;
+        homeCheckoutHits = other.homeCheckoutHits;
+        homeCheckoutAttempts = other.homeCheckoutAttempts;
+        awayCheckoutHits = other.awayCheckoutHits;
+        awayCheckoutAttempts = other.awayCheckoutAttempts;
         other.homePlayerName = nullptr;
         other.awayPlayerName = nullptr;
         other.tournamentName = nullptr;
@@ -1189,9 +1207,15 @@ void SofaScoreLiveModule::parseMatchStatistics(int eventId, const char* json, si
                                 match.homeCheckoutsOver100 = (int)getHomeValue();
                                 match.awayCheckoutsOver100 = (int)getAwayValue();
                             } else if ((key && strcmp(key, "CheckoutsAccuracy") == 0) || (name && strcmp(name, "Checkout %") == 0) || (name && strcmp(name, "Checkouts accuracy") == 0)) {
-                                // For checkout accuracy, extract percentage from "2/3 (37%)" format if string
+                                // For checkout accuracy, extract both "2/3" format and percentage from "2/3 (37%)" format if string
                                 if (item["home"].is<const char*>()) {
                                     const char* homeStr = item["home"].as<const char*>();
+                                    // Parse "2/3" format first
+                                    int hits = 0, attempts = 0;
+                                    if (sscanf(homeStr, "%d/%d", &hits, &attempts) == 2) {
+                                        match.homeCheckoutHits = hits;
+                                        match.homeCheckoutAttempts = attempts;
+                                    }
                                     // Look for percentage in parentheses like "2/3 (37%)"
                                     const char* openParen = strchr(homeStr, '(');
                                     const char* closeParen = openParen ? strchr(openParen, ')') : nullptr;
@@ -1207,6 +1231,12 @@ void SofaScoreLiveModule::parseMatchStatistics(int eventId, const char* json, si
                                 }
                                 if (item["away"].is<const char*>()) {
                                     const char* awayStr = item["away"].as<const char*>();
+                                    // Parse "2/3" format first
+                                    int hits = 0, attempts = 0;
+                                    if (sscanf(awayStr, "%d/%d", &hits, &attempts) == 2) {
+                                        match.awayCheckoutHits = hits;
+                                        match.awayCheckoutAttempts = attempts;
+                                    }
                                     const char* openParen = strchr(awayStr, '(');
                                     const char* closeParen = openParen ? strchr(openParen, ')') : nullptr;
                                     if (openParen && closeParen && closeParen > openParen + 1) {
@@ -1542,7 +1572,7 @@ void SofaScoreLiveModule::drawLiveMatch() {
         y += 10;
         
         // Averages below names (left and right)
-        u8g2.setFont(u8g2_font_5x8_tf);
+        u8g2.setFont(u8g2_font_6x10_tf);  // Match the font used for the statistics list
         if (match.homeAverage > 0.1) {  // Use 0.1 to avoid floating point comparison issues
             char avgStr[16];
             snprintf(avgStr, sizeof(avgStr), "%.1f", match.homeAverage);
@@ -1629,9 +1659,18 @@ void SofaScoreLiveModule::drawLiveMatch() {
             u8g2.print(awayVal);
             y += 10;  // Increased spacing from 8 to 10 for larger font
             
-            // Row 5: CO% (Checkout percentage)
-            snprintf(homeVal, sizeof(homeVal), "%.0f%%", match.homeCheckoutPercent);
-            snprintf(awayVal, sizeof(awayVal), "%.0f%%", match.awayCheckoutPercent);
+            // Row 5: CO% (Checkout percentage with hits/attempts)
+            // Display format: "2/3" when available, otherwise just percentage
+            if (match.homeCheckoutAttempts > 0) {
+                snprintf(homeVal, sizeof(homeVal), "%d/%d", match.homeCheckoutHits, match.homeCheckoutAttempts);
+            } else {
+                snprintf(homeVal, sizeof(homeVal), "%.0f%%", match.homeCheckoutPercent);
+            }
+            if (match.awayCheckoutAttempts > 0) {
+                snprintf(awayVal, sizeof(awayVal), "%d/%d", match.awayCheckoutHits, match.awayCheckoutAttempts);
+            } else {
+                snprintf(awayVal, sizeof(awayVal), "%.0f%%", match.awayCheckoutPercent);
+            }
             u8g2.setForegroundColor(0xFFFF);
             u8g2.setCursor(2, y);
             u8g2.print(homeVal);

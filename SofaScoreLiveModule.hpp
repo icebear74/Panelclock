@@ -65,6 +65,10 @@ struct SofaScoreMatch {
     int awayCheckoutsOver100 = 0;
     float homeCheckoutPercent = 0.0f;
     float awayCheckoutPercent = 0.0f;
+    int homeCheckoutHits = 0;      // Checkouts made (numerator in "2/3")
+    int homeCheckoutAttempts = 0;  // Total checkout attempts (denominator in "2/3")
+    int awayCheckoutHits = 0;
+    int awayCheckoutAttempts = 0;
     
     SofaScoreMatch();
     SofaScoreMatch(const SofaScoreMatch& other);
