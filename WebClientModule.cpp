@@ -593,6 +593,9 @@ void WebClientModule::performJob(const WebJob& job) {
     if (connected) {
         if (using_https) {
             if (http.begin(secure_client, job.url.c_str())) {
+                // Set User-Agent header
+                http.setUserAgent(_userAgent.c_str());
+                
                 // Add custom headers if provided
                 if (!job.customHeaders.empty()) {
                     // Parse and add headers (format: "Header1: Value1\nHeader2: Value2")
@@ -628,6 +631,9 @@ void WebClientModule::performJob(const WebJob& job) {
             }
         } else {
             if (http.begin(plain_client, job.url.c_str())) {
+                // Set User-Agent header
+                http.setUserAgent(_userAgent.c_str());
+                
                 // Add custom headers if provided
                 if (!job.customHeaders.empty()) {
                     // Parse and add headers (format: "Header1: Value1\nHeader2: Value2")
@@ -969,6 +975,8 @@ void WebClientModule::performUpdate(ManagedResource& resource) {
                 httpCode = -1;
             } else {
                 if (http.begin(secure_client, resource.url.c_str())) {
+                     // Set User-Agent header
+                     http.setUserAgent(_userAgent.c_str());
                      http.setTimeout(15000);
                      // Add custom headers if present
                      if (!resource.customHeaders.empty()) {
@@ -1003,6 +1011,8 @@ void WebClientModule::performUpdate(ManagedResource& resource) {
             }
         } else {
             if (http.begin(plain_client, resource.url.c_str())) {
+                // Set User-Agent header
+                http.setUserAgent(_userAgent.c_str());
                 http.setTimeout(15000);
                 // Add custom headers if present
                 if (!resource.customHeaders.empty()) {
@@ -1114,4 +1124,13 @@ void WebClientModule::performUpdate(ManagedResource& resource) {
         max_growth_retries--;
     } while (retry_with_larger_buffer && max_growth_retries > 0);
     LOG_MEMORY_STRATEGIC("WebClient: End performUpdate");
+}
+// User-Agent configuration methods
+void WebClientModule::setUserAgent(const String& userAgent) {
+    _userAgent = userAgent;
+    Log.printf("[WebDataManager] User-Agent set to: %s\n", _userAgent.c_str());
+}
+
+String WebClientModule::getUserAgent() const {
+    return String(_userAgent.c_str());
 }

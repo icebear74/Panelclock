@@ -571,6 +571,9 @@ void SofaScoreLiveModule::switchToNextMode() {
 void SofaScoreLiveModule::queueData() {
     if (!webClient) return;
     
+    // Don't make web requests if module is disabled
+    if (!_enabled) return;
+    
     // Check for live events every minute
     checkAndFetchLiveEvents();
     

@@ -100,6 +100,10 @@ public:
     void getRequest(const PsramString& url, std::function<void(int httpCode, const char* payload, size_t len)> detailed_callback);
     void getRequest(const PsramString& url, const PsramString& customHeaders, std::function<void(int httpCode, const char* payload, size_t len)> detailed_callback);
     void postRequest(const PsramString& url, const PsramString& postBody, const PsramString& contentType, std::function<void(const char* buffer, size_t size)> callback);
+    
+    // User-Agent configuration
+    void setUserAgent(const String& userAgent);
+    String getUserAgent() const;
 
 private:
     char* _downloadBuffer = nullptr;
@@ -112,6 +116,9 @@ private:
     // Timing control: start delay and minimum pause between downloads (ms)
     unsigned long _startMs = 0;
     unsigned long _lastDownloadMs = 0;
+    
+    // Configurable User-Agent string
+    PsramString _userAgent = "ESP32-PanelClock/1.0";
 
     bool reallocateBuffer(size_t new_size);
     void performJob(const WebJob& job);
