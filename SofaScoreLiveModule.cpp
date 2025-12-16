@@ -1209,29 +1209,35 @@ void SofaScoreLiveModule::parseMatchStatistics(int eventId, const char* json, si
                                 match.homeCheckoutsOver100 = (int)getHomeValue();
                                 match.awayCheckoutsOver100 = (int)getAwayValue();
                             } else if ((key && strcmp(key, "CheckoutsAccuracy") == 0) || (name && strcmp(name, "Checkout %") == 0) || (name && strcmp(name, "Checkouts accuracy") == 0)) {
-                                // Use homeValue/homeTotal and awayValue/awayTotal fields for checkout accuracy
-                                // homeValue = successful checkouts, homeTotal = total checkout attempts
+                                // Only update checkout accuracy if compareCode is 2
+                                // compareCode indicates which team is leading (1=home, 2=away, 3=equal)
+                                int compareCode = item["compareCode"] | 0;
                                 
-                                // Get the numeric values from the JSON
-                                if (item["homeValue"].is<float>() || item["homeValue"].is<int>()) {
-                                    match.homeCheckoutHits = (int)item["homeValue"].as<float>();
-                                }
-                                if (item["homeTotal"].is<float>() || item["homeTotal"].is<int>()) {
-                                    match.homeCheckoutAttempts = (int)item["homeTotal"].as<float>();
-                                }
-                                if (item["awayValue"].is<float>() || item["awayValue"].is<int>()) {
-                                    match.awayCheckoutHits = (int)item["awayValue"].as<float>();
-                                }
-                                if (item["awayTotal"].is<float>() || item["awayTotal"].is<int>()) {
-                                    match.awayCheckoutAttempts = (int)item["awayTotal"].as<float>();
-                                }
-                                
-                                // Calculate percentage from the values (hits/attempts * 100)
-                                if (match.homeCheckoutAttempts > 0) {
-                                    match.homeCheckoutPercent = (float)match.homeCheckoutHits / match.homeCheckoutAttempts * 100.0f;
-                                }
-                                if (match.awayCheckoutAttempts > 0) {
-                                    match.awayCheckoutPercent = (float)match.awayCheckoutHits / match.awayCheckoutAttempts * 100.0f;
+                                if (compareCode == 2) {
+                                    // Use homeValue/homeTotal and awayValue/awayTotal fields for checkout accuracy
+                                    // homeValue = successful checkouts, homeTotal = total checkout attempts
+                                    
+                                    // Get the numeric values from the JSON
+                                    if (item["homeValue"].is<float>() || item["homeValue"].is<int>()) {
+                                        match.homeCheckoutHits = (int)item["homeValue"].as<float>();
+                                    }
+                                    if (item["homeTotal"].is<float>() || item["homeTotal"].is<int>()) {
+                                        match.homeCheckoutAttempts = (int)item["homeTotal"].as<float>();
+                                    }
+                                    if (item["awayValue"].is<float>() || item["awayValue"].is<int>()) {
+                                        match.awayCheckoutHits = (int)item["awayValue"].as<float>();
+                                    }
+                                    if (item["awayTotal"].is<float>() || item["awayTotal"].is<int>()) {
+                                        match.awayCheckoutAttempts = (int)item["awayTotal"].as<float>();
+                                    }
+                                    
+                                    // Calculate percentage from the values (hits/attempts * 100)
+                                    if (match.homeCheckoutAttempts > 0) {
+                                        match.homeCheckoutPercent = (float)match.homeCheckoutHits / match.homeCheckoutAttempts * 100.0f;
+                                    }
+                                    if (match.awayCheckoutAttempts > 0) {
+                                        match.awayCheckoutPercent = (float)match.awayCheckoutHits / match.awayCheckoutAttempts * 100.0f;
+                                    }
                                 }
                             }
                         }
