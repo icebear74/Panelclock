@@ -598,7 +598,7 @@ void SofaScoreLiveModule::checkAndFetchLiveEvents() {
     
     const char* liveUrl = "https://api.sofascore.com/api/v1/sport/darts/events/live";
     
-    // Register live events endpoint for periodic fetching (60s when idle, 30s when active)
+    // Register live events endpoint for periodic fetching (60s when idle, 15s when active)
     // Only register when unregistered or when state changes to prevent spam
     bool shouldRegister = !_liveEventsRegistered;
     
@@ -609,9 +609,9 @@ void SofaScoreLiveModule::checkAndFetchLiveEvents() {
             _liveEventsRegistered = true;
         }
     } else {
-        // Has live events: check every 30 seconds with priority
+        // Has live events: check every 15 seconds with priority
         if (shouldRegister) {
-            webClient->registerResourceSeconds(liveUrl, 30, true, false);  // Fixed: priority=true for live events
+            webClient->registerResourceSeconds(liveUrl, 15, true, false);  // Fixed: priority=true for live events
             _liveEventsRegistered = true;
         }
     }
@@ -1068,11 +1068,11 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
     if (_hasLiveEvents && !hadLiveEvents) {
         _dailySchedulesPaused = true;
         
-        // Switch to priority polling (30s interval)
+        // Switch to priority polling (15s interval)
         const char* liveUrl = "https://api.sofascore.com/api/v1/sport/darts/events/live";
-        webClient->registerResourceSeconds(liveUrl, 30, true, false);
+        webClient->registerResourceSeconds(liveUrl, 15, true, false);
         
-        Log.println("[SofaScore] Live events detected - Pausing daily schedules, switched to PRIORITY 30s polling");
+        Log.println("[SofaScore] Live events detected - Pausing daily schedules, switched to PRIORITY 15s polling");
         
         if (_interruptOnLive && updateCallback) {
             updateCallback();
@@ -1088,6 +1088,30 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
         _registeredEventIds.clear();
         
         Log.println("[SofaScore] Live events ended - Resuming daily schedules, switched to 60s polling");
+    }
+    
+    // Update scores in dailyMatches from live data
+    // This ensures dailyMatches shows current scores even when daily endpoint is paused
+    if (_hasLiveEvents && !liveMatches.empty()) {
+        int updatedCount = 0;
+        for (const SofaScoreMatch& liveMatch : liveMatches) {
+            // Find matching event in dailyMatches by eventId
+            for (SofaScoreMatch& dailyMatch : dailyMatches) {
+                if (dailyMatch.eventId == liveMatch.eventId) {
+                    // Update scores and status from live data
+                    dailyMatch.homeScore = liveMatch.homeScore;
+                    dailyMatch.awayScore = liveMatch.awayScore;
+                    dailyMatch.homeLegs = liveMatch.homeLegs;
+                    dailyMatch.awayLegs = liveMatch.awayLegs;
+                    dailyMatch.status = liveMatch.status;
+                    updatedCount++;
+                    break;
+                }
+            }
+        }
+        if (updatedCount > 0) {
+            Log.printf("[SofaScore] Updated %d daily match scores from live data\n", updatedCount);
+        }
     }
     
     if (parsedCount > 0) {
