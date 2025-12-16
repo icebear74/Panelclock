@@ -1662,16 +1662,16 @@ void SofaScoreLiveModule::drawLiveMatch() {
             y += 10;  // Increased spacing from 8 to 10 for larger font
             
             // Row 5: CO% (Checkout percentage with hits/attempts)
-            // Display format: "2/3 37%" when both available, or just percentage if not
+            // Display format: "44% (2/3)" when both available, or just percentage if not
             if (match.homeCheckoutAttempts > 0) {
-                snprintf(homeVal, sizeof(homeVal), "%d/%d %.0f%%", 
-                         match.homeCheckoutHits, match.homeCheckoutAttempts, match.homeCheckoutPercent);
+                snprintf(homeVal, sizeof(homeVal), "%.0f%% (%d/%d)", 
+                         match.homeCheckoutPercent, match.homeCheckoutHits, match.homeCheckoutAttempts);
             } else {
                 snprintf(homeVal, sizeof(homeVal), "%.0f%%", match.homeCheckoutPercent);
             }
             if (match.awayCheckoutAttempts > 0) {
-                snprintf(awayVal, sizeof(awayVal), "%d/%d %.0f%%", 
-                         match.awayCheckoutHits, match.awayCheckoutAttempts, match.awayCheckoutPercent);
+                snprintf(awayVal, sizeof(awayVal), "%.0f%% (%d/%d)", 
+                         match.awayCheckoutPercent, match.awayCheckoutHits, match.awayCheckoutAttempts);
             } else {
                 snprintf(awayVal, sizeof(awayVal), "%.0f%%", match.awayCheckoutPercent);
             }
