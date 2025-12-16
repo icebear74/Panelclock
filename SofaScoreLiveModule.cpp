@@ -617,7 +617,7 @@ void SofaScoreLiveModule::checkAndFetchLiveEvents() {
     const char* liveUrl = "https://api.sofascore.com/api/v1/sport/darts/events/live";
     
     // Register live events endpoint for periodic fetching (60s when idle, 15s when active)
-    // Only register when unregistered or when state changes to prevent spam
+    // Re-register when state changes to update the interval
     bool shouldRegister = !_liveEventsRegistered;
     
     if (!_hasLiveEvents) {
@@ -628,10 +628,9 @@ void SofaScoreLiveModule::checkAndFetchLiveEvents() {
         }
     } else {
         // Has live events: check every 15 seconds with priority
-        if (shouldRegister) {
-            webClient->registerResourceSeconds(liveUrl, 15, true, false);  // Fixed: priority=true for live events
-            _liveEventsRegistered = true;
-        }
+        // Always re-register when switching to live mode to ensure 15s interval
+        webClient->registerResourceSeconds(liveUrl, 15, true, false);  // Priority=true for live events
+        _liveEventsRegistered = true;
     }
     
     // Access the resource to fetch latest data
@@ -1660,14 +1659,16 @@ void SofaScoreLiveModule::drawLiveMatch() {
             y += 10;  // Increased spacing from 8 to 10 for larger font
             
             // Row 5: CO% (Checkout percentage with hits/attempts)
-            // Display format: "2/3" when available, otherwise just percentage
+            // Display format: "2/3 37%" when both available, or just percentage if not
             if (match.homeCheckoutAttempts > 0) {
-                snprintf(homeVal, sizeof(homeVal), "%d/%d", match.homeCheckoutHits, match.homeCheckoutAttempts);
+                snprintf(homeVal, sizeof(homeVal), "%d/%d %.0f%%", 
+                         match.homeCheckoutHits, match.homeCheckoutAttempts, match.homeCheckoutPercent);
             } else {
                 snprintf(homeVal, sizeof(homeVal), "%.0f%%", match.homeCheckoutPercent);
             }
             if (match.awayCheckoutAttempts > 0) {
-                snprintf(awayVal, sizeof(awayVal), "%d/%d", match.awayCheckoutHits, match.awayCheckoutAttempts);
+                snprintf(awayVal, sizeof(awayVal), "%d/%d %.0f%%", 
+                         match.awayCheckoutHits, match.awayCheckoutAttempts, match.awayCheckoutPercent);
             } else {
                 snprintf(awayVal, sizeof(awayVal), "%.0f%%", match.awayCheckoutPercent);
             }
