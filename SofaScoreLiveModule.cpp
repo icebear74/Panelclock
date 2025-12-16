@@ -318,6 +318,11 @@ bool SofaScoreLiveModule::isEnabled() {
 }
 
 unsigned long SofaScoreLiveModule::getDisplayDuration() {
+    // If continuous live display is enabled and we're in live mode, return 0 (no timeout)
+    if (_continuousLiveDisplay && _currentMode == SofaScoreDisplayMode::LIVE_MATCH) {
+        return 0;  // Continuous display - module controls its own lifetime
+    }
+    
     // Total duration depends on number of pages
     return _displayDuration * _totalPages;
 }
@@ -440,6 +445,17 @@ void SofaScoreLiveModule::logicTick() {
                     break;
             }
             
+            // In continuous live display mode, check if all matches are finished
+            // This check happens on every page switch, not just at the end of the cycle
+            // Performance note: Live match count is typically small (1-3), and page switches
+            // occur every ~20 seconds, so the overhead is negligible compared to the benefit
+            // of quickly detecting when matches finish
+            if (_continuousLiveDisplay && _currentMode == SofaScoreDisplayMode::LIVE_MATCH && 
+                !needsModeSwitch && areAllLiveMatchesFinished()) {
+                needsModeSwitch = true;  // Force mode switch to exit continuous display
+                Log.println("[SofaScore] All live matches finished - exiting continuous display");
+            }
+            
             if (needsModeSwitch) {
                 switchToNextMode();
             }
@@ -456,6 +472,25 @@ void SofaScoreLiveModule::logicTick() {
     if (needsRedraw && updateCallback) {
         updateCallback();
     }
+}
+
+bool SofaScoreLiveModule::areAllLiveMatchesFinished() const {
+    // Check if all live matches have finished status
+    // IMPORTANT: Caller must hold dataMutex - this function accesses shared liveMatches vector
+    // Currently called from:
+    // - logicTick() at line ~451 (mutex held)
+    // - switchToNextMode() at line ~510 (called from logicTick, mutex held)
+    if (liveMatches.empty()) {
+        return true;  // No live matches means nothing to show
+    }
+    
+    for (const auto& match : liveMatches) {
+        if (match.status != MatchStatus::FINISHED) {
+            return false;  // Found a match that's not finished
+        }
+    }
+    
+    return true;  // All matches are finished
 }
 
 void SofaScoreLiveModule::switchToNextMode() {
@@ -477,10 +512,24 @@ void SofaScoreLiveModule::switchToNextMode() {
     } else if (_currentMode == SofaScoreDisplayMode::LIVE_MATCH) {
         // Check if continuous live display is enabled
         if (_continuousLiveDisplay && !liveMatches.empty()) {
-            // Keep showing live matches - loop back to first page
-            _currentPage = 0;
-            _logicTicksSincePageSwitch = 0;
-            Log.println("[SofaScore] Continuous live display - looping live matches");
+            // Check if all live matches are finished
+            if (areAllLiveMatchesFinished()) {
+                // All live matches are finished - exit continuous mode
+                _isFinished = true;
+                Log.println("[SofaScore] Continuous live display ended - all matches finished");
+                
+                // Release interrupt if active
+                if (_hasActiveInterrupt && _interruptUID > 0) {
+                    releasePriorityEx(_interruptUID);
+                    _hasActiveInterrupt = false;
+                    Log.println("[SofaScore] Released interrupt after all matches finished");
+                }
+            } else {
+                // Keep showing live matches - loop back to first page
+                _currentPage = 0;
+                _logicTicksSincePageSwitch = 0;
+                Log.println("[SofaScore] Continuous live display - looping live matches");
+            }
         } else {
             // After showing live matches, cycle is complete
             _isFinished = true;
@@ -565,7 +614,7 @@ void SofaScoreLiveModule::checkAndFetchLiveEvents() {
     } else {
         // Has live events: check every 30 seconds with priority
         if (shouldRegister) {
-            webClient->registerResourceSeconds(liveUrl, 30, false, true);
+            webClient->registerResourceSeconds(liveUrl, 30, true, false);  // Fixed: priority=true for live events
             _liveEventsRegistered = true;
         }
     }
@@ -1488,7 +1537,7 @@ void SofaScoreLiveModule::drawLiveMatch() {
         
         // Statistics table - MORE ROWS NOW
         if (wantsFullscreen()) {
-            u8g2.setFont(u8g2_font_5x8_tf);
+            u8g2.setFont(u8g2_font_6x10_tf);  // Increased from 5x8 to 6x10 for better readability
             
             // Left column (home values), Center (labels), Right column (away values)
             // No "Home" and "Away" headers - just the stats
@@ -1502,13 +1551,13 @@ void SofaScoreLiveModule::drawLiveMatch() {
             u8g2.setCursor(2, y);
             u8g2.print(homeVal);
             u8g2.setForegroundColor(0xFFE0);  // Yellow for label
-            u8g2.setCursor(_currentCanvas->width() / 2 - 10, y);
+            u8g2.setCursor(_currentCanvas->width() / 2 - 11, y);
             u8g2.print("180");
             u8g2.setForegroundColor(0xFFFF);
             int awayWidth = u8g2.getUTF8Width(awayVal);
             u8g2.setCursor(_currentCanvas->width() - awayWidth - 2, y);
             u8g2.print(awayVal);
-            y += 8;
+            y += 10;  // Increased spacing from 8 to 10 for larger font
             
             // Row 2: >140
             snprintf(homeVal, sizeof(homeVal), "%d", match.homeOver140);
@@ -1517,13 +1566,13 @@ void SofaScoreLiveModule::drawLiveMatch() {
             u8g2.setCursor(2, y);
             u8g2.print(homeVal);
             u8g2.setForegroundColor(0xFFE0);
-            u8g2.setCursor(_currentCanvas->width() / 2 - 12, y);
+            u8g2.setCursor(_currentCanvas->width() / 2 - 14, y);
             u8g2.print(">140");
             u8g2.setForegroundColor(0xFFFF);
             awayWidth = u8g2.getUTF8Width(awayVal);
             u8g2.setCursor(_currentCanvas->width() - awayWidth - 2, y);
             u8g2.print(awayVal);
-            y += 8;
+            y += 10;  // Increased spacing from 8 to 10 for larger font
             
             // Row 3: >100
             snprintf(homeVal, sizeof(homeVal), "%d", match.homeOver100);
@@ -1532,13 +1581,13 @@ void SofaScoreLiveModule::drawLiveMatch() {
             u8g2.setCursor(2, y);
             u8g2.print(homeVal);
             u8g2.setForegroundColor(0xFFE0);
-            u8g2.setCursor(_currentCanvas->width() / 2 - 12, y);
+            u8g2.setCursor(_currentCanvas->width() / 2 - 14, y);
             u8g2.print(">100");
             u8g2.setForegroundColor(0xFFFF);
             awayWidth = u8g2.getUTF8Width(awayVal);
             u8g2.setCursor(_currentCanvas->width() - awayWidth - 2, y);
             u8g2.print(awayVal);
-            y += 8;
+            y += 10;  // Increased spacing from 8 to 10 for larger font
             
             // Row 4: CO>100
             snprintf(homeVal, sizeof(homeVal), "%d", match.homeCheckoutsOver100);
@@ -1547,13 +1596,13 @@ void SofaScoreLiveModule::drawLiveMatch() {
             u8g2.setCursor(2, y);
             u8g2.print(homeVal);
             u8g2.setForegroundColor(0xFFE0);
-            u8g2.setCursor(_currentCanvas->width() / 2 - 15, y);
+            u8g2.setCursor(_currentCanvas->width() / 2 - 18, y);
             u8g2.print("CO>100");
             u8g2.setForegroundColor(0xFFFF);
             awayWidth = u8g2.getUTF8Width(awayVal);
             u8g2.setCursor(_currentCanvas->width() - awayWidth - 2, y);
             u8g2.print(awayVal);
-            y += 8;
+            y += 10;  // Increased spacing from 8 to 10 for larger font
             
             // Row 5: CO% (Checkout percentage)
             snprintf(homeVal, sizeof(homeVal), "%.0f%%", match.homeCheckoutPercent);
@@ -1562,7 +1611,7 @@ void SofaScoreLiveModule::drawLiveMatch() {
             u8g2.setCursor(2, y);
             u8g2.print(homeVal);
             u8g2.setForegroundColor(0x07FF);  // Cyan for CO%
-            u8g2.setCursor(_currentCanvas->width() / 2 - 10, y);
+            u8g2.setCursor(_currentCanvas->width() / 2 - 11, y);
             u8g2.print("CO%");
             u8g2.setForegroundColor(0xFFFF);
             awayWidth = u8g2.getUTF8Width(awayVal);
