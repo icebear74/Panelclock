@@ -1127,7 +1127,7 @@ void WebClientModule::performUpdate(ManagedResource& resource) {
 }
 // User-Agent configuration methods
 void WebClientModule::setUserAgent(const String& userAgent) {
-    _userAgent = userAgent;
+    _userAgent = PsramString(userAgent.c_str());
     Log.printf("[WebDataManager] User-Agent set to: %s\n", _userAgent.c_str());
 }
 
