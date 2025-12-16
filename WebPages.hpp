@@ -667,14 +667,14 @@ function loadSofascoreTournaments() {
                 return;
             }
             
-            var currentIds = document.getElementById('dartsSofascoreTournamentIds').value.split(',').map(s => s.trim());
-            var html = '<table style="width:100%;"><tr><th>Auswahl</th><th>Turnier-Name</th><th>ID</th></tr>';
+            var currentSlugs = document.getElementById('dartsSofascoreTournamentIds').value.split(',').map(s => s.trim());
+            var html = '<table style="width:100%;"><tr><th>Auswahl</th><th>Turnier-Name</th><th>Slug</th></tr>';
             data.tournaments.forEach(tournament => {
-                var checked = currentIds.includes(tournament.id.toString()) ? 'checked' : '';
+                var checked = currentSlugs.includes(tournament.slug) ? 'checked' : '';
                 html += '<tr>';
-                html += '<td><input type="checkbox" class="tournament-checkbox" value="' + tournament.id + '" ' + checked + ' onchange="collectTournamentIds()"></td>';
+                html += '<td><input type="checkbox" class="tournament-checkbox" value="' + tournament.slug + '" ' + checked + ' onchange="collectTournamentIds()"></td>';
                 html += '<td>' + tournament.name + '</td>';
-                html += '<td>' + tournament.id + '</td>';
+                html += '<td>' + tournament.slug + '</td>';
                 html += '</tr>';
             });
             html += '</table>';

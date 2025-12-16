@@ -240,7 +240,7 @@ void SofaScoreLiveModule::onUpdate(std::function<void()> callback) {
 }
 
 void SofaScoreLiveModule::setConfig(bool enabled, uint32_t fetchIntervalMinutes, unsigned long displaySec,
-                                    const PsramString& enabledTournamentIds, bool fullscreen, bool interruptOnLive,
+                                    const PsramString& enabledTournamentSlugs, bool fullscreen, bool interruptOnLive,
                                     uint32_t playNextMinutes, bool continuousLive) {
     if (!webClient) return;
     
@@ -256,30 +256,27 @@ void SofaScoreLiveModule::setConfig(bool enabled, uint32_t fetchIntervalMinutes,
     Log.printf("[SofaScore] Config updated: enabled=%d, fetch=%d min, display=%d sec, fullscreen=%d, interrupt=%d, playNext=%d min, continuousLive=%d\n",
                enabled, fetchIntervalMinutes, displaySec, fullscreen, interruptOnLive, playNextMinutes, continuousLive);
     
-    // Parse enabled tournament IDs
+    // Parse enabled tournament slugs
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        this->enabledTournamentIds.clear();
+        this->enabledTournamentSlugs.clear();
         
-        if (!enabledTournamentIds.empty()) {
+        if (!enabledTournamentSlugs.empty()) {
             size_t pos = 0;
-            while (pos < enabledTournamentIds.length()) {
-                size_t commaPos = enabledTournamentIds.find(',', pos);
-                if (commaPos == PsramString::npos) commaPos = enabledTournamentIds.length();
+            while (pos < enabledTournamentSlugs.length()) {
+                size_t commaPos = enabledTournamentSlugs.find(',', pos);
+                if (commaPos == PsramString::npos) commaPos = enabledTournamentSlugs.length();
                 
-                PsramString idStr = enabledTournamentIds.substr(pos, commaPos - pos);
+                PsramString slug = enabledTournamentSlugs.substr(pos, commaPos - pos);
                 // Trim whitespace
-                while (!idStr.empty() && (idStr[0] == ' ' || idStr[0] == '\t')) {
-                    idStr = idStr.substr(1);
+                while (!slug.empty() && (slug[0] == ' ' || slug[0] == '\t')) {
+                    slug = slug.substr(1);
                 }
-                while (!idStr.empty() && (idStr[idStr.length()-1] == ' ' || idStr[idStr.length()-1] == '\t')) {
-                    idStr = idStr.substr(0, idStr.length()-1);
+                while (!slug.empty() && (slug[slug.length()-1] == ' ' || slug[slug.length()-1] == '\t')) {
+                    slug = slug.substr(0, slug.length()-1);
                 }
                 
-                if (!idStr.empty()) {
-                    int tournamentId = atoi(idStr.c_str());
-                    if (tournamentId > 0) {
-                        this->enabledTournamentIds.push_back(tournamentId);
-                    }
+                if (!slug.empty()) {
+                    this->enabledTournamentSlugs.push_back(slug);
                 }
                 
                 pos = commaPos + 1;
@@ -770,10 +767,10 @@ void SofaScoreLiveModule::parseTournamentsJson(const char* json, size_t len) {
             const char* slug = tournament["slug"];
             if (slug) t.slug = psram_strdup(slug);
             
-            // Check if this tournament is in enabled list
+            // Check if this tournament is in enabled list (by slug)
             t.isEnabled = false;
-            for (int enabledId : enabledTournamentIds) {
-                if (enabledId == t.id) {
+            for (const PsramString& enabledSlug : enabledTournamentSlugs) {
+                if (t.slug && enabledSlug == t.slug) {
                     t.isEnabled = true;
                     break;
                 }
@@ -822,17 +819,15 @@ void SofaScoreLiveModule::parseDailyEventsJson(const char* json, size_t len) {
             continue;  // Skip matches not happening today
         }
         
-        // Get both tournament IDs for matching
-        // tournament.id changes per session/day (e.g., 169922 for tonight's matches, 171078 for afternoon)
-        // tournament.uniqueTournament.id stays constant for the entire event (e.g., 616 for PDC World Championship)
-        int tournamentId = event["tournament"]["id"] | 0;
-        int uniqueTournamentId = event["tournament"]["uniqueTournament"]["id"] | 0;
+        // Get tournament slug for matching
+        // tournament.uniqueTournament.slug stays constant for the entire tournament
+        const char* tournamentSlug = event["tournament"]["uniqueTournament"]["slug"];
         
-        // Check if this tournament is enabled (check BOTH IDs to catch all sessions of same tournament)
-        bool isEnabled = enabledTournamentIds.empty();  // If no filter, show all
-        if (!isEnabled) {
-            for (int enabledId : enabledTournamentIds) {
-                if (enabledId == tournamentId || enabledId == uniqueTournamentId) {
+        // Check if this tournament is enabled (by slug)
+        bool isEnabled = enabledTournamentSlugs.empty();  // If no filter, show all
+        if (!isEnabled && tournamentSlug) {
+            for (const PsramString& enabledSlug : enabledTournamentSlugs) {
+                if (enabledSlug == tournamentSlug) {
                     isEnabled = true;
                     break;
                 }
@@ -985,15 +980,14 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
     int parsedCount = 0;
     
     for (JsonObject event : events) {
-        // Get both tournament IDs for matching (see comment in parseDailyEventsJson)
-        int tournamentId = event["tournament"]["id"] | 0;
-        int uniqueTournamentId = event["tournament"]["uniqueTournament"]["id"] | 0;
+        // Get tournament slug for matching
+        const char* tournamentSlug = event["tournament"]["uniqueTournament"]["slug"];
         
-        // Check if this tournament is enabled (check BOTH IDs)
-        bool isEnabled = enabledTournamentIds.empty();
-        if (!isEnabled) {
-            for (int enabledId : enabledTournamentIds) {
-                if (enabledId == tournamentId || enabledId == uniqueTournamentId) {
+        // Check if this tournament is enabled (by slug)
+        bool isEnabled = enabledTournamentSlugs.empty();
+        if (!isEnabled && tournamentSlug) {
+            for (const PsramString& enabledSlug : enabledTournamentSlugs) {
+                if (enabledSlug == tournamentSlug) {
                     isEnabled = true;
                     break;
                 }
@@ -1740,7 +1734,7 @@ void SofaScoreLiveModule::checkForPlayNext() {
 
 void SofaScoreLiveModule::clearAllData() {
     availableTournaments.clear();
-    enabledTournamentIds.clear();
+    enabledTournamentSlugs.clear();
     dailyMatches.clear();
     liveMatches.clear();
 }

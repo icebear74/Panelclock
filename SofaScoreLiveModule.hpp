@@ -90,7 +90,7 @@ public:
 
     void onUpdate(std::function<void()> callback);
     void setConfig(bool enabled, uint32_t fetchIntervalMinutes, unsigned long displaySec,
-                   const PsramString& enabledTournamentIds, bool fullscreen, bool interruptOnLive,
+                   const PsramString& enabledTournamentSlugs, bool fullscreen, bool interruptOnLive,
                    uint32_t playNextMinutes, bool continuousLive);
     void queueData();
     void processData();
@@ -138,8 +138,8 @@ private:
     unsigned long _lastLiveCheckTime = 0;
     unsigned long _lastLiveDataFetchTime = 0;
     unsigned long _lastLiveDisplayTime = 0;  // For repeating live display every minute
-    const unsigned long LIVE_CHECK_INTERVAL_MS = 60000;  // Check for live events every 60 seconds
-    const unsigned long LIVE_DATA_FETCH_INTERVAL_MS = 30000;  // Fetch live data every 30 seconds when active
+    const unsigned long LIVE_CHECK_INTERVAL_MS = 60000;  // Check for live events every 60 seconds (when not live)
+    const unsigned long LIVE_DATA_FETCH_INTERVAL_MS = 15000;  // Fetch live data every 15 seconds when live
     const unsigned long LIVE_DISPLAY_REPEAT_MS = 60000;  // Repeat live display every 60 seconds
     const unsigned long LIVE_MIN_DISPLAY_MS = 20000;  // Minimum 20 seconds display for live stats
     bool _liveEventsRegistered = false;  // Track if live events endpoint is registered to prevent spam
@@ -188,7 +188,7 @@ private:
     
     // Parsed data
     std::vector<SofaScoreTournament, PsramAllocator<SofaScoreTournament>> availableTournaments;
-    std::vector<int, PsramAllocator<int>> enabledTournamentIds;
+    std::vector<PsramString, PsramAllocator<PsramString>> enabledTournamentSlugs;
     std::vector<SofaScoreMatch, PsramAllocator<SofaScoreMatch>> dailyMatches;
     std::vector<SofaScoreMatch, PsramAllocator<SofaScoreMatch>> liveMatches;
     

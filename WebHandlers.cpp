@@ -1339,12 +1339,14 @@ void handleSofascoreTournamentsList() {
     for (JsonObject tournament : tournaments) {
         int id = tournament["tournamentId"] | 0;
         const char* name = tournament["name"];
+        const char* slug = tournament["slug"];
         
-        if (id > 0 && name && strlen(name) > 0) {
+        if (id > 0 && name && strlen(name) > 0 && slug && strlen(slug) > 0) {
             JsonObject tournamentObj = tournamentsArray.createNestedObject();
             tournamentObj["id"] = id;
             tournamentObj["name"] = name;
-            Log.printf("[SofaScore] Added tournament: %s (ID: %d)\n", name, id);
+            tournamentObj["slug"] = slug;
+            Log.printf("[SofaScore] Added tournament: %s (ID: %d, Slug: %s)\n", name, id, slug);
         }
     }
     
