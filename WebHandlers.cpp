@@ -4,6 +4,7 @@
 #include "BackupManager.hpp"
 #include "ThemeParkModule.hpp"
 #include "SofaScoreLiveModule.hpp"
+#include "PanelManager.hpp"
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 #include <WiFi.h>

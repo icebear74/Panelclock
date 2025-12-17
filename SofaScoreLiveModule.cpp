@@ -4,6 +4,7 @@
 #include "MultiLogger.hpp"
 #include <Arduino.h>
 #include <ArduinoJson.h>
+#include <LittleFS.h>
 #include <algorithm>
 #include <time.h>
 
@@ -235,6 +236,32 @@ SofaScoreLiveModule::SofaScoreLiveModule(U8G2_FOR_ADAFRUIT_GFX& u8g2_ref, GFXcan
     scrollConfig.paddingPixels = 20;
     _nameScroller->setConfig(scrollConfig);
     _tournamentScroller->setConfig(scrollConfig);
+    
+#if SOFASCORE_DEBUG_JSON
+    // Clean up json_debug directory on startup to prevent file manager crashes
+    if (LittleFS.exists("/json_debug")) {
+        Log.println("[SofaScore] Cleaning up /json_debug directory...");
+        File dir = LittleFS.open("/json_debug", "r");
+        if (dir && dir.isDirectory()) {
+            File file = dir.openNextFile();
+            int deletedCount = 0;
+            while (file) {
+                String filename = String("/json_debug/") + file.name();
+                file.close();
+                if (LittleFS.remove(filename)) {
+                    deletedCount++;
+                }
+                file = dir.openNextFile();
+            }
+            dir.close();
+            Log.printf("[SofaScore] Deleted %d debug files from /json_debug\n", deletedCount);
+        }
+    } else {
+        // Create the directory if it doesn't exist
+        LittleFS.mkdir("/json_debug");
+        Log.println("[SofaScore] Created /json_debug directory");
+    }
+#endif
 }
 
 SofaScoreLiveModule::~SofaScoreLiveModule() {
