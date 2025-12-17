@@ -121,6 +121,11 @@ public:
     bool supportsFullscreen() const override { return true; }
     bool wantsFullscreen() const override { return _wantsFullscreen && _fullscreenCanvas != nullptr; }
 
+#if SOFASCORE_DEBUG_JSON
+    // Debug helpers to save current state on demand (via web interface)
+    void debugSaveCurrentState();
+#endif
+
 private:
     U8G2_FOR_ADAFRUIT_GFX& u8g2;
     GFXcanvas16& canvas;
@@ -231,11 +236,6 @@ private:
     void groupMatchesByTournament();  // New: group and calculate pages
     int calculateTotalPages();         // New: calculate total pages across all tournaments
     bool areAllLiveMatchesFinished() const;  // NEW: Check if all live matches are finished
-    
-#if SOFASCORE_DEBUG_JSON
-    // Debug helpers to save current state on demand (via web interface)
-    void debugSaveCurrentState();
-#endif
     
     // Drawing helpers
     void drawTournamentList();
