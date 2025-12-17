@@ -233,10 +233,8 @@ private:
     bool areAllLiveMatchesFinished() const;  // NEW: Check if all live matches are finished
     
 #if SOFASCORE_DEBUG_JSON
-    // Debug helpers to save JSON data for analysis
-    void debugSaveJson(const char* json, size_t len, const char* type, int eventId = 0);
-    void debugSaveParsedData(int eventId);
-    void ensureDebugDirectory();
+    // Debug helpers to save current state on demand (via web interface)
+    void debugSaveCurrentState();
 #endif
     
     // Drawing helpers

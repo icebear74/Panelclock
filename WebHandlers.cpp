@@ -1425,3 +1425,45 @@ void handleFirmwareUpload() {
     }
 }
 
+
+void handleSofascoreDebugSnapshot() {
+    if (!server) {
+        return;
+    }
+    
+#if SOFASCORE_DEBUG_JSON
+    Log.println("[SofaScore] Debug snapshot requested via web interface");
+    
+    // Get SofaScore module from panel manager
+    extern PanelManager* panelManager;
+    if (!panelManager) {
+        server->send(500, "application/json", "{\"ok\":false, \"message\":\"PanelManager not initialized\"}");
+        return;
+    }
+    
+    SofaScoreLiveModule* sofascoreModule = nullptr;
+    // Find SofaScore module in panel manager
+    for (int i = 0; i < panelManager->getModuleCount(); i++) {
+        DrawableModule* module = panelManager->getModule(i);
+        if (module) {
+            SofaScoreLiveModule* candidate = dynamic_cast<SofaScoreLiveModule*>(module);
+            if (candidate) {
+                sofascoreModule = candidate;
+                break;
+            }
+        }
+    }
+    
+    if (!sofascoreModule) {
+        server->send(404, "application/json", "{\"ok\":false, \"message\":\"SofaScore module not found\"}");
+        return;
+    }
+    
+    // Trigger debug snapshot
+    sofascoreModule->debugSaveCurrentState();
+    
+    server->send(200, "application/json", "{\"ok\":true, \"message\":\"Debug snapshot saved to /json_debug/\"}");
+#else
+    server->send(501, "application/json", "{\"ok\":false, \"message\":\"Debug feature not compiled (SOFASCORE_DEBUG_JSON=0)\"}");
+#endif
+}

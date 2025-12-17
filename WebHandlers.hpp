@@ -23,6 +23,7 @@ void handleToggleDebugFile();
 void handleTankerkoenigSearchLive();
 void handleThemeParksList();
 void handleSofascoreTournamentsList();
+void handleSofascoreDebugSnapshot();
 void handleStreamPage();
 
 // Backup handlers

@@ -954,11 +954,6 @@ void SofaScoreLiveModule::parseDailyEventsJson(const char* json, size_t len) {
 }
 
 void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
-#if SOFASCORE_DEBUG_JSON
-    // Save original JSON for debugging
-    debugSaveJson(json, len, "livedata");
-#endif
-    
     SpiRamAllocator allocator;
     JsonDocument doc(&allocator);
     
@@ -1158,11 +1153,6 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
 }
 
 void SofaScoreLiveModule::parseMatchStatistics(int eventId, const char* json, size_t len) {
-#if SOFASCORE_DEBUG_JSON
-    // Save original statistics JSON for debugging
-    debugSaveJson(json, len, "statistics", eventId);
-#endif
-    
     SpiRamAllocator allocator;
     JsonDocument doc(&allocator);
     
@@ -1275,13 +1265,6 @@ void SofaScoreLiveModule::parseMatchStatistics(int eventId, const char* json, si
         }
         
         xSemaphoreGive(dataMutex);
-        
-#if SOFASCORE_DEBUG_JSON
-        // Save parsed data after releasing mutex
-        if (matchFound) {
-            debugSaveParsedData(eventId);
-        }
-#endif
     }
 }
 
@@ -1910,104 +1893,137 @@ int SofaScoreLiveModule::calculateTotalPages() {
 #include <LittleFS.h>
 #include <time.h>
 
-void SofaScoreLiveModule::ensureDebugDirectory() {
+void SofaScoreLiveModule::debugSaveCurrentState() {
+    if (!webClient) return;
+    
+    Log.println("[SofaScore] DEBUG: Saving current state...");
+    
+    // Create /json_debug directory if it doesn't exist
     if (!LittleFS.exists("/json_debug")) {
-        if (LittleFS.mkdir("/json_debug")) {
-            Log.println("[SofaScore] Created debug directory: /json_debug");
-        } else {
-            Log.println("[SofaScore] ERROR: Failed to create /json_debug directory");
+        if (!LittleFS.mkdir("/json_debug")) {
+            Log.println("[SofaScore] DEBUG: ERROR: Failed to create /json_debug directory");
+            return;
         }
     }
-}
-
-void SofaScoreLiveModule::debugSaveJson(const char* json, size_t len, const char* type, int eventId) {
-    if (!json || len == 0) return;
-    
-    ensureDebugDirectory();
-    
-    // Use timestamp for filename
-    time_t now = time(nullptr);
-    char filename[128];
-    
-    if (eventId > 0) {
-        snprintf(filename, sizeof(filename), "/json_debug/%d_%ld_%s.json", eventId, (long)now, type);
-    } else {
-        snprintf(filename, sizeof(filename), "/json_debug/%ld_%s.json", (long)now, type);
-    }
-    
-    File file = LittleFS.open(filename, "w");
-    if (file) {
-        file.write((const uint8_t*)json, len);
-        file.close();
-        Log.printf("[SofaScore] DEBUG: Saved %s JSON to %s (%d bytes)\n", type, filename, len);
-    } else {
-        Log.printf("[SofaScore] DEBUG: ERROR: Failed to open %s for writing\n", filename);
-    }
-}
-
-void SofaScoreLiveModule::debugSaveParsedData(int eventId) {
-    ensureDebugDirectory();
     
     time_t now = time(nullptr);
-    char filename[128];
-    snprintf(filename, sizeof(filename), "/json_debug/%d_%ld_parsed.txt", eventId, (long)now);
     
-    File file = LittleFS.open(filename, "w");
-    if (!file) {
-        Log.printf("[SofaScore] DEBUG: ERROR: Failed to open %s for writing\n", filename);
+    // 1. Save live events JSON (if available)
+    const char* liveUrl = "https://api.sofascore.com/api/v1/sport/darts/events/live";
+    webClient->accessResource(liveUrl,
+        [this, now](const char* buffer, size_t size, time_t last_update, bool is_stale) {
+            if (buffer && size > 0) {
+                char filename[64];
+                snprintf(filename, sizeof(filename), "/json_debug/%ld_livedata.json", (long)now);
+                File file = LittleFS.open(filename, "w");
+                if (file) {
+                    file.write((const uint8_t*)buffer, size);
+                    file.close();
+                    Log.printf("[SofaScore] DEBUG: Saved live data to %s (%d bytes)\n", filename, size);
+                } else {
+                    Log.printf("[SofaScore] DEBUG: ERROR: Failed to save %s\n", filename);
+                }
+            }
+        });
+    
+    // 2. Save statistics JSON for all live matches
+    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(200)) == pdTRUE) {
+        for (const auto& match : liveMatches) {
+            int eventId = match.eventId;
+            xSemaphoreGive(dataMutex);  // Release while accessing web resource
+            
+            char statsUrl[128];
+            snprintf(statsUrl, sizeof(statsUrl), "https://api.sofascore.com/api/v1/event/%d/statistics", eventId);
+            
+            webClient->accessResource(statsUrl,
+                [this, now, eventId](const char* buffer, size_t size, time_t last_update, bool is_stale) {
+                    if (buffer && size > 0) {
+                        char filename[64];
+                        snprintf(filename, sizeof(filename), "/json_debug/%ld_stats_%d.json", (long)now, eventId);
+                        File file = LittleFS.open(filename, "w");
+                        if (file) {
+                            file.write((const uint8_t*)buffer, size);
+                            file.close();
+                            Log.printf("[SofaScore] DEBUG: Saved statistics to %s (%d bytes)\n", filename, size);
+                        } else {
+                            Log.printf("[SofaScore] DEBUG: ERROR: Failed to save %s\n", filename);
+                        }
+                    }
+                });
+            
+            if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(200)) != pdTRUE) {
+                return;  // Could not re-acquire mutex
+            }
+        }
+        xSemaphoreGive(dataMutex);
+    }
+    
+    // 3. Save parsed data (what will be displayed)
+    char parsedFilename[64];
+    snprintf(parsedFilename, sizeof(parsedFilename), "/json_debug/%ld_parsed.txt", (long)now);
+    File parsedFile = LittleFS.open(parsedFilename, "w");
+    if (!parsedFile) {
+        Log.printf("[SofaScore] DEBUG: ERROR: Failed to create %s\n", parsedFilename);
         return;
     }
     
-    // Find the match with this eventId
-    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        bool found = false;
+    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(200)) == pdTRUE) {
+        parsedFile.printf("=== SOFASCORE DEBUG SNAPSHOT ===\n");
+        parsedFile.printf("Timestamp: %ld\n", (long)now);
+        parsedFile.printf("Has Live Events: %s\n", _hasLiveEvents ? "YES" : "NO");
+        parsedFile.printf("Live Matches Count: %d\n\n", liveMatches.size());
         
         for (const auto& match : liveMatches) {
-            if (match.eventId == eventId) {
-                found = true;
-                file.printf("=== PARSED DATA FOR EVENT %d ===\n", eventId);
-                file.printf("Home Player: %s\n", match.homePlayerName ? match.homePlayerName : "N/A");
-                file.printf("Away Player: %s\n", match.awayPlayerName ? match.awayPlayerName : "N/A");
-                file.printf("Score (Sets): %d:%d\n", match.homeScore, match.awayScore);
-                file.printf("Legs: %d:%d\n", match.homeLegs, match.awayLegs);
-                file.printf("Status: %d\n", (int)match.status);
-                file.printf("\n--- Statistics ---\n");
-                file.printf("Average: %.1f vs %.1f\n", match.homeAverage, match.awayAverage);
-                file.printf("180s: %d vs %d\n", match.home180s, match.away180s);
-                file.printf(">140: %d vs %d\n", match.homeOver140, match.awayOver140);
-                file.printf(">100: %d vs %d\n", match.homeOver100, match.awayOver100);
-                file.printf("CO>100: %d vs %d\n", match.homeCheckoutsOver100, match.awayCheckoutsOver100);
-                file.printf("Checkout Accuracy: %.0f%% (%d/%d) vs %.0f%% (%d/%d)\n",
-                           match.homeCheckoutPercent, match.homeCheckoutHits, match.homeCheckoutAttempts,
-                           match.awayCheckoutPercent, match.awayCheckoutHits, match.awayCheckoutAttempts);
-                file.printf("\n--- Display Output ---\n");
-                file.printf("Will display: %s  %d:%d  %s\n",
-                           match.homePlayerName ? match.homePlayerName : "?",
-                           match.homeScore, match.awayScore,
-                           match.awayPlayerName ? match.awayPlayerName : "?");
-                if (match.homeLegs > 0 || match.awayLegs > 0) {
-                    file.printf("Legs: (%d:%d)\n", match.homeLegs, match.awayLegs);
-                }
-                if (match.homeAverage > 0.1 || match.awayAverage > 0.1) {
-                    file.printf("Averages: %.1f  vs  %.1f\n", match.homeAverage, match.awayAverage);
-                }
-                if (match.homeCheckoutAttempts > 0 || match.awayCheckoutAttempts > 0) {
-                    file.printf("Checkout: %.0f%% (%d/%d) vs %.0f%% (%d/%d)\n",
-                               match.homeCheckoutPercent, match.homeCheckoutHits, match.homeCheckoutAttempts,
-                               match.awayCheckoutPercent, match.awayCheckoutHits, match.awayCheckoutAttempts);
-                }
-                break;
+            parsedFile.printf("==========================================\n");
+            parsedFile.printf("EVENT ID: %d\n", match.eventId);
+            parsedFile.printf("==========================================\n\n");
+            
+            parsedFile.printf("--- Basic Info ---\n");
+            parsedFile.printf("Home Player: %s\n", match.homePlayerName ? match.homePlayerName : "N/A");
+            parsedFile.printf("Away Player: %s\n", match.awayPlayerName ? match.awayPlayerName : "N/A");
+            parsedFile.printf("Tournament: %s\n", match.tournamentName ? match.tournamentName : "N/A");
+            parsedFile.printf("Status: %d (%s)\n", (int)match.status, 
+                             match.status == MatchStatus::LIVE ? "LIVE" :
+                             match.status == MatchStatus::FINISHED ? "FINISHED" : "OTHER");
+            
+            parsedFile.printf("\n--- Scores ---\n");
+            parsedFile.printf("Sets: %d:%d\n", match.homeScore, match.awayScore);
+            parsedFile.printf("Legs: %d:%d\n", match.homeLegs, match.awayLegs);
+            
+            parsedFile.printf("\n--- Statistics ---\n");
+            parsedFile.printf("Average:         %.2f vs %.2f\n", match.homeAverage, match.awayAverage);
+            parsedFile.printf("180s:            %d vs %d\n", match.home180s, match.away180s);
+            parsedFile.printf(">140:            %d vs %d\n", match.homeOver140, match.awayOver140);
+            parsedFile.printf(">100:            %d vs %d\n", match.homeOver100, match.awayOver100);
+            parsedFile.printf("CO>100:          %d vs %d\n", match.homeCheckoutsOver100, match.awayCheckoutsOver100);
+            parsedFile.printf("CO Accuracy:     %.0f%% (%d/%d) vs %.0f%% (%d/%d)\n",
+                             match.homeCheckoutPercent, match.homeCheckoutHits, match.homeCheckoutAttempts,
+                             match.awayCheckoutPercent, match.awayCheckoutHits, match.awayCheckoutAttempts);
+            
+            parsedFile.printf("\n--- Display Output ---\n");
+            parsedFile.printf("Line 1: %s  %d:%d  %s\n",
+                             match.homePlayerName ? match.homePlayerName : "?",
+                             match.homeScore, match.awayScore,
+                             match.awayPlayerName ? match.awayPlayerName : "?");
+            if (match.homeLegs > 0 || match.awayLegs > 0) {
+                parsedFile.printf("Line 2: (%d:%d)\n", match.homeLegs, match.awayLegs);
             }
-        }
-        
-        if (!found) {
-            file.printf("=== EVENT %d NOT FOUND IN LIVE MATCHES ===\n", eventId);
+            if (match.homeAverage > 0.1 || match.awayAverage > 0.1) {
+                parsedFile.printf("Averages: %.1f  vs  %.1f\n", match.homeAverage, match.awayAverage);
+            }
+            if (match.homeCheckoutAttempts > 0 || match.awayCheckoutAttempts > 0) {
+                parsedFile.printf("Checkout: %.0f%% (%d/%d) vs %.0f%% (%d/%d)\n",
+                                 match.homeCheckoutPercent, match.homeCheckoutHits, match.homeCheckoutAttempts,
+                                 match.awayCheckoutPercent, match.awayCheckoutHits, match.awayCheckoutAttempts);
+            }
+            parsedFile.printf("\n");
         }
         
         xSemaphoreGive(dataMutex);
     }
     
-    file.close();
-    Log.printf("[SofaScore] DEBUG: Saved parsed data to %s\n", filename);
+    parsedFile.close();
+    Log.printf("[SofaScore] DEBUG: Saved parsed data to %s\n", parsedFilename);
+    Log.println("[SofaScore] DEBUG: Snapshot complete!");
 }
 #endif
