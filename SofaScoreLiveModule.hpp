@@ -17,6 +17,11 @@ struct DeviceConfig;
 // UID für SofaScore Live-Match Interrupts
 #define SOFASCORE_INTERRUPT_UID_BASE 5000
 
+// Debug feature: Save JSON data to LittleFS for analysis (default: enabled)
+#ifndef SOFASCORE_DEBUG_JSON
+#define SOFASCORE_DEBUG_JSON 1
+#endif
+
 // Tournament information
 struct SofaScoreTournament {
     int id = 0;
@@ -226,6 +231,13 @@ private:
     void groupMatchesByTournament();  // New: group and calculate pages
     int calculateTotalPages();         // New: calculate total pages across all tournaments
     bool areAllLiveMatchesFinished() const;  // NEW: Check if all live matches are finished
+    
+#if SOFASCORE_DEBUG_JSON
+    // Debug helpers to save JSON data for analysis
+    void debugSaveJson(const char* json, size_t len, const char* type, int eventId = 0);
+    void debugSaveParsedData(int eventId);
+    void ensureDebugDirectory();
+#endif
     
     // Drawing helpers
     void drawTournamentList();

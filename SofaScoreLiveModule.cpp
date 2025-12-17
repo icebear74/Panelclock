@@ -620,20 +620,26 @@ void SofaScoreLiveModule::checkAndFetchLiveEvents() {
     const char* liveUrl = "https://api.sofascore.com/api/v1/sport/darts/events/live";
     
     // Register live events endpoint for periodic fetching (60s when idle, 15s when active)
-    // Re-register when state changes to update the interval
-    bool shouldRegister = !_liveEventsRegistered;
+    // Only re-register when state changes or when not yet registered
+    static bool wasLiveLastCheck = false;  // Track previous state
+    bool stateChanged = (wasLiveLastCheck != _hasLiveEvents);
+    bool shouldRegister = !_liveEventsRegistered || stateChanged;
     
     if (!_hasLiveEvents) {
         // No live events: check every 60 seconds
         if (shouldRegister) {
             webClient->registerResourceSeconds(liveUrl, 60, false, false);
             _liveEventsRegistered = true;
+            wasLiveLastCheck = false;
         }
     } else {
         // Has live events: check every 15 seconds with priority
-        // Always re-register when switching to live mode to ensure 15s interval
-        webClient->registerResourceSeconds(liveUrl, 15, true, false);  // Priority=true for live events
-        _liveEventsRegistered = true;
+        // Only re-register when switching to live mode (state change)
+        if (shouldRegister) {
+            webClient->registerResourceSeconds(liveUrl, 15, true, false);  // Priority=true for live events
+            _liveEventsRegistered = true;
+            wasLiveLastCheck = true;
+        }
     }
     
     // Access the resource to fetch latest data
@@ -948,6 +954,11 @@ void SofaScoreLiveModule::parseDailyEventsJson(const char* json, size_t len) {
 }
 
 void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
+#if SOFASCORE_DEBUG_JSON
+    // Save original JSON for debugging
+    debugSaveJson(json, len, "livedata");
+#endif
+    
     SpiRamAllocator allocator;
     JsonDocument doc(&allocator);
     
@@ -1147,6 +1158,11 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
 }
 
 void SofaScoreLiveModule::parseMatchStatistics(int eventId, const char* json, size_t len) {
+#if SOFASCORE_DEBUG_JSON
+    // Save original statistics JSON for debugging
+    debugSaveJson(json, len, "statistics", eventId);
+#endif
+    
     SpiRamAllocator allocator;
     JsonDocument doc(&allocator);
     
@@ -1249,6 +1265,7 @@ void SofaScoreLiveModule::parseMatchStatistics(int eventId, const char* json, si
                            match.home180s, match.away180s,
                            match.homeCheckoutPercent, match.awayCheckoutPercent);
                 
+                matchFound = true;
                 break;
             }
         }
@@ -1258,6 +1275,13 @@ void SofaScoreLiveModule::parseMatchStatistics(int eventId, const char* json, si
         }
         
         xSemaphoreGive(dataMutex);
+        
+#if SOFASCORE_DEBUG_JSON
+        // Save parsed data after releasing mutex
+        if (matchFound) {
+            debugSaveParsedData(eventId);
+        }
+#endif
     }
 }
 
@@ -1881,3 +1905,109 @@ int SofaScoreLiveModule::calculateTotalPages() {
     }
     return total > 0 ? total : 1;
 }
+
+#if SOFASCORE_DEBUG_JSON
+#include <LittleFS.h>
+#include <time.h>
+
+void SofaScoreLiveModule::ensureDebugDirectory() {
+    if (!LittleFS.exists("/json_debug")) {
+        if (LittleFS.mkdir("/json_debug")) {
+            Log.println("[SofaScore] Created debug directory: /json_debug");
+        } else {
+            Log.println("[SofaScore] ERROR: Failed to create /json_debug directory");
+        }
+    }
+}
+
+void SofaScoreLiveModule::debugSaveJson(const char* json, size_t len, const char* type, int eventId) {
+    if (!json || len == 0) return;
+    
+    ensureDebugDirectory();
+    
+    // Use timestamp for filename
+    time_t now = time(nullptr);
+    char filename[128];
+    
+    if (eventId > 0) {
+        snprintf(filename, sizeof(filename), "/json_debug/%d_%ld_%s.json", eventId, (long)now, type);
+    } else {
+        snprintf(filename, sizeof(filename), "/json_debug/%ld_%s.json", (long)now, type);
+    }
+    
+    File file = LittleFS.open(filename, "w");
+    if (file) {
+        file.write((const uint8_t*)json, len);
+        file.close();
+        Log.printf("[SofaScore] DEBUG: Saved %s JSON to %s (%d bytes)\n", type, filename, len);
+    } else {
+        Log.printf("[SofaScore] DEBUG: ERROR: Failed to open %s for writing\n", filename);
+    }
+}
+
+void SofaScoreLiveModule::debugSaveParsedData(int eventId) {
+    ensureDebugDirectory();
+    
+    time_t now = time(nullptr);
+    char filename[128];
+    snprintf(filename, sizeof(filename), "/json_debug/%d_%ld_parsed.txt", eventId, (long)now);
+    
+    File file = LittleFS.open(filename, "w");
+    if (!file) {
+        Log.printf("[SofaScore] DEBUG: ERROR: Failed to open %s for writing\n", filename);
+        return;
+    }
+    
+    // Find the match with this eventId
+    if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        bool found = false;
+        
+        for (const auto& match : liveMatches) {
+            if (match.eventId == eventId) {
+                found = true;
+                file.printf("=== PARSED DATA FOR EVENT %d ===\n", eventId);
+                file.printf("Home Player: %s\n", match.homePlayerName ? match.homePlayerName : "N/A");
+                file.printf("Away Player: %s\n", match.awayPlayerName ? match.awayPlayerName : "N/A");
+                file.printf("Score (Sets): %d:%d\n", match.homeScore, match.awayScore);
+                file.printf("Legs: %d:%d\n", match.homeLegs, match.awayLegs);
+                file.printf("Status: %d\n", (int)match.status);
+                file.printf("\n--- Statistics ---\n");
+                file.printf("Average: %.1f vs %.1f\n", match.homeAverage, match.awayAverage);
+                file.printf("180s: %d vs %d\n", match.home180s, match.away180s);
+                file.printf(">140: %d vs %d\n", match.homeOver140, match.awayOver140);
+                file.printf(">100: %d vs %d\n", match.homeOver100, match.awayOver100);
+                file.printf("CO>100: %d vs %d\n", match.homeCheckoutsOver100, match.awayCheckoutsOver100);
+                file.printf("Checkout Accuracy: %.0f%% (%d/%d) vs %.0f%% (%d/%d)\n",
+                           match.homeCheckoutPercent, match.homeCheckoutHits, match.homeCheckoutAttempts,
+                           match.awayCheckoutPercent, match.awayCheckoutHits, match.awayCheckoutAttempts);
+                file.printf("\n--- Display Output ---\n");
+                file.printf("Will display: %s  %d:%d  %s\n",
+                           match.homePlayerName ? match.homePlayerName : "?",
+                           match.homeScore, match.awayScore,
+                           match.awayPlayerName ? match.awayPlayerName : "?");
+                if (match.homeLegs > 0 || match.awayLegs > 0) {
+                    file.printf("Legs: (%d:%d)\n", match.homeLegs, match.awayLegs);
+                }
+                if (match.homeAverage > 0.1 || match.awayAverage > 0.1) {
+                    file.printf("Averages: %.1f  vs  %.1f\n", match.homeAverage, match.awayAverage);
+                }
+                if (match.homeCheckoutAttempts > 0 || match.awayCheckoutAttempts > 0) {
+                    file.printf("Checkout: %.0f%% (%d/%d) vs %.0f%% (%d/%d)\n",
+                               match.homeCheckoutPercent, match.homeCheckoutHits, match.homeCheckoutAttempts,
+                               match.awayCheckoutPercent, match.awayCheckoutHits, match.awayCheckoutAttempts);
+                }
+                break;
+            }
+        }
+        
+        if (!found) {
+            file.printf("=== EVENT %d NOT FOUND IN LIVE MATCHES ===\n", eventId);
+        }
+        
+        xSemaphoreGive(dataMutex);
+    }
+    
+    file.close();
+    Log.printf("[SofaScore] DEBUG: Saved parsed data to %s\n", filename);
+}
+#endif
