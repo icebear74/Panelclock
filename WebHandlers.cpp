@@ -1446,12 +1446,10 @@ void handleSofascoreDebugSnapshot() {
     // Find SofaScore module in panel manager
     const auto& modules = panelManager->getAllModules();
     for (DrawableModule* module : modules) {
-        if (module) {
-            SofaScoreLiveModule* candidate = dynamic_cast<SofaScoreLiveModule*>(module);
-            if (candidate) {
-                sofascoreModule = candidate;
-                break;
-            }
+        if (module && strcmp(module->getModuleName(), "SofaScoreLiveModule") == 0) {
+            // Use static_cast since we verified the type via getModuleName()
+            sofascoreModule = static_cast<SofaScoreLiveModule*>(module);
+            break;
         }
     }
     
