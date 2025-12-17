@@ -1444,8 +1444,8 @@ void handleSofascoreDebugSnapshot() {
     
     SofaScoreLiveModule* sofascoreModule = nullptr;
     // Find SofaScore module in panel manager
-    for (int i = 0; i < panelManager->getModuleCount(); i++) {
-        DrawableModule* module = panelManager->getModule(i);
+    const auto& modules = panelManager->getAllModules();
+    for (DrawableModule* module : modules) {
         if (module) {
             SofaScoreLiveModule* candidate = dynamic_cast<SofaScoreLiveModule*>(module);
             if (candidate) {
