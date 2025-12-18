@@ -49,6 +49,8 @@ struct SofaScoreMatch {
     int eventId = 0;
     char* homePlayerName = nullptr;
     char* awayPlayerName = nullptr;
+    char* homeCountry = nullptr;       // Country name for home player
+    char* awayCountry = nullptr;       // Country name for away player
     int homeScore = 0;  // Sets won
     int awayScore = 0;  // Sets won
     int homeLegs = 0;   // Legs in current set
@@ -68,12 +70,14 @@ struct SofaScoreMatch {
     int awayOver100 = 0;
     int homeCheckoutsOver100 = 0;
     int awayCheckoutsOver100 = 0;
+    int homeHighestCheckout = 0;      // Highest checkout value
+    int awayHighestCheckout = 0;      // Highest checkout value
     float homeCheckoutPercent = 0.0f;
     float awayCheckoutPercent = 0.0f;
-    int homeCheckoutHits = 0;      // Checkouts made (numerator in "2/3")
-    int homeCheckoutAttempts = 0;  // Total checkout attempts (denominator in "2/3")
-    int awayCheckoutHits = 0;
-    int awayCheckoutAttempts = 0;
+    int homeCheckoutHits = 0;      // Checkouts made (numerator in "2/3") - DEPRECATED, use percent only now
+    int homeCheckoutAttempts = 0;  // Total checkout attempts (denominator in "2/3") - DEPRECATED
+    int awayCheckoutHits = 0;      // DEPRECATED
+    int awayCheckoutAttempts = 0;  // DEPRECATED
     
     SofaScoreMatch();
     SofaScoreMatch(const SofaScoreMatch& other);

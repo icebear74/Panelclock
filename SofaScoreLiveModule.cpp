@@ -70,18 +70,21 @@ SofaScoreTournament::~SofaScoreTournament() {
 SofaScoreMatch::SofaScoreMatch() = default;
 
 SofaScoreMatch::SofaScoreMatch(const SofaScoreMatch& other)
-    : eventId(0), homePlayerName(nullptr), awayPlayerName(nullptr),
+    : eventId(0), homePlayerName(nullptr), awayPlayerName(nullptr), homeCountry(nullptr), awayCountry(nullptr),
       homeScore(0), awayScore(0), homeLegs(0), awayLegs(0), tournamentName(nullptr),
       status(MatchStatus::SCHEDULED), startTimestamp(0),
       homeAverage(0.0f), awayAverage(0.0f), home180s(0), away180s(0),
       homeOver140(0), awayOver140(0), homeOver100(0), awayOver100(0),
       homeCheckoutsOver100(0), awayCheckoutsOver100(0),
+      homeHighestCheckout(0), awayHighestCheckout(0),
       homeCheckoutPercent(0.0f), awayCheckoutPercent(0.0f),
       homeCheckoutHits(0), homeCheckoutAttempts(0),
       awayCheckoutHits(0), awayCheckoutAttempts(0) {
     eventId = other.eventId;
     homePlayerName = other.homePlayerName ? psram_strdup(other.homePlayerName) : nullptr;
     awayPlayerName = other.awayPlayerName ? psram_strdup(other.awayPlayerName) : nullptr;
+    homeCountry = other.homeCountry ? psram_strdup(other.homeCountry) : nullptr;
+    awayCountry = other.awayCountry ? psram_strdup(other.awayCountry) : nullptr;
     homeScore = other.homeScore;
     awayScore = other.awayScore;
     homeLegs = other.homeLegs;
@@ -99,6 +102,8 @@ SofaScoreMatch::SofaScoreMatch(const SofaScoreMatch& other)
     awayOver100 = other.awayOver100;
     homeCheckoutsOver100 = other.homeCheckoutsOver100;
     awayCheckoutsOver100 = other.awayCheckoutsOver100;
+    homeHighestCheckout = other.homeHighestCheckout;
+    awayHighestCheckout = other.awayHighestCheckout;
     homeCheckoutPercent = other.homeCheckoutPercent;
     awayCheckoutPercent = other.awayCheckoutPercent;
     homeCheckoutHits = other.homeCheckoutHits;
@@ -109,10 +114,12 @@ SofaScoreMatch::SofaScoreMatch(const SofaScoreMatch& other)
 
 SofaScoreMatch& SofaScoreMatch::operator=(const SofaScoreMatch& other) {
     if (this != &other) {
-        free(homePlayerName); free(awayPlayerName); free(tournamentName);
+        free(homePlayerName); free(awayPlayerName); free(homeCountry); free(awayCountry); free(tournamentName);
         eventId = other.eventId;
         homePlayerName = other.homePlayerName ? psram_strdup(other.homePlayerName) : nullptr;
         awayPlayerName = other.awayPlayerName ? psram_strdup(other.awayPlayerName) : nullptr;
+        homeCountry = other.homeCountry ? psram_strdup(other.homeCountry) : nullptr;
+        awayCountry = other.awayCountry ? psram_strdup(other.awayCountry) : nullptr;
         homeScore = other.homeScore;
         awayScore = other.awayScore;
         homeLegs = other.homeLegs;
@@ -130,6 +137,8 @@ SofaScoreMatch& SofaScoreMatch::operator=(const SofaScoreMatch& other) {
         awayOver100 = other.awayOver100;
         homeCheckoutsOver100 = other.homeCheckoutsOver100;
         awayCheckoutsOver100 = other.awayCheckoutsOver100;
+        homeHighestCheckout = other.homeHighestCheckout;
+        awayHighestCheckout = other.awayHighestCheckout;
         homeCheckoutPercent = other.homeCheckoutPercent;
         awayCheckoutPercent = other.awayCheckoutPercent;
         homeCheckoutHits = other.homeCheckoutHits;
@@ -144,6 +153,8 @@ SofaScoreMatch::SofaScoreMatch(SofaScoreMatch&& other) noexcept {
     eventId = other.eventId;
     homePlayerName = other.homePlayerName;
     awayPlayerName = other.awayPlayerName;
+    homeCountry = other.homeCountry;
+    awayCountry = other.awayCountry;
     homeScore = other.homeScore;
     awayScore = other.awayScore;
     homeLegs = other.homeLegs;
@@ -161,6 +172,8 @@ SofaScoreMatch::SofaScoreMatch(SofaScoreMatch&& other) noexcept {
     awayOver100 = other.awayOver100;
     homeCheckoutsOver100 = other.homeCheckoutsOver100;
     awayCheckoutsOver100 = other.awayCheckoutsOver100;
+    homeHighestCheckout = other.homeHighestCheckout;
+    awayHighestCheckout = other.awayHighestCheckout;
     homeCheckoutPercent = other.homeCheckoutPercent;
     awayCheckoutPercent = other.awayCheckoutPercent;
     homeCheckoutHits = other.homeCheckoutHits;
@@ -168,16 +181,20 @@ SofaScoreMatch::SofaScoreMatch(SofaScoreMatch&& other) noexcept {
     awayCheckoutHits = other.awayCheckoutHits;
     awayCheckoutAttempts = other.awayCheckoutAttempts;
     other.homePlayerName = nullptr;
-    other.awayPlayerName = nullptr;
+    awayPlayerName = nullptr;
+    other.homeCountry = nullptr;
+    other.awayCountry = nullptr;
     other.tournamentName = nullptr;
 }
 
 SofaScoreMatch& SofaScoreMatch::operator=(SofaScoreMatch&& other) noexcept {
     if (this != &other) {
-        free(homePlayerName); free(awayPlayerName); free(tournamentName);
+        free(homePlayerName); free(awayPlayerName); free(homeCountry); free(awayCountry); free(tournamentName);
         eventId = other.eventId;
         homePlayerName = other.homePlayerName;
         awayPlayerName = other.awayPlayerName;
+        homeCountry = other.homeCountry;
+        awayCountry = other.awayCountry;
         homeScore = other.homeScore;
         awayScore = other.awayScore;
         homeLegs = other.homeLegs;
@@ -195,6 +212,8 @@ SofaScoreMatch& SofaScoreMatch::operator=(SofaScoreMatch&& other) noexcept {
         awayOver100 = other.awayOver100;
         homeCheckoutsOver100 = other.homeCheckoutsOver100;
         awayCheckoutsOver100 = other.awayCheckoutsOver100;
+        homeHighestCheckout = other.homeHighestCheckout;
+        awayHighestCheckout = other.awayHighestCheckout;
         homeCheckoutPercent = other.homeCheckoutPercent;
         awayCheckoutPercent = other.awayCheckoutPercent;
         homeCheckoutHits = other.homeCheckoutHits;
@@ -203,6 +222,8 @@ SofaScoreMatch& SofaScoreMatch::operator=(SofaScoreMatch&& other) noexcept {
         awayCheckoutAttempts = other.awayCheckoutAttempts;
         other.homePlayerName = nullptr;
         other.awayPlayerName = nullptr;
+        other.homeCountry = nullptr;
+        other.awayCountry = nullptr;
         other.tournamentName = nullptr;
     }
     return *this;
@@ -211,6 +232,8 @@ SofaScoreMatch& SofaScoreMatch::operator=(SofaScoreMatch&& other) noexcept {
 SofaScoreMatch::~SofaScoreMatch() {
     if (homePlayerName) free(homePlayerName);
     if (awayPlayerName) free(awayPlayerName);
+    if (homeCountry) free(homeCountry);
+    if (awayCountry) free(awayCountry);
     if (tournamentName) free(tournamentName);
 }
 
@@ -1074,6 +1097,13 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
         }
         if (awayName) match.awayPlayerName = psram_strdup(awayName);
         
+        // Get country names (with NULL checks)
+        const char* homeCountryName = event["homeTeam"]["country"]["name"];
+        if (homeCountryName) match.homeCountry = psram_strdup(homeCountryName);
+        
+        const char* awayCountryName = event["awayTeam"]["country"]["name"];
+        if (awayCountryName) match.awayCountry = psram_strdup(awayCountryName);
+        
         // Parse scores - sets and legs
         JsonObject homeScore = event["homeScore"];
         if (!homeScore.isNull() && homeScore.size() > 0) {
@@ -1241,35 +1271,38 @@ void SofaScoreLiveModule::parseMatchStatistics(int eventId, const char* json, si
                             } else if ((key && strcmp(key, "CheckoutsOver100") == 0) || (name && strcmp(name, "Checkouts over 100") == 0)) {
                                 match.homeCheckoutsOver100 = (int)getHomeValue();
                                 match.awayCheckoutsOver100 = (int)getAwayValue();
+                            } else if ((key && strcmp(key, "HighestCheckout") == 0) || (name && strcmp(name, "Highest checkout") == 0)) {
+                                // Parse highest checkout values
+                                match.homeHighestCheckout = (int)getHomeValue();
+                                match.awayHighestCheckout = (int)getAwayValue();
                             } else if ((key && strcmp(key, "CheckoutsAccuracy") == 0) || (name && strcmp(name, "Checkout %") == 0) || (name && strcmp(name, "Checkouts accuracy") == 0)) {
-                                // Only update checkout accuracy if compareCode is 2
-                                // compareCode indicates which team is leading (1=home, 2=away, 3=equal)
-                                int compareCode = item["compareCode"] | 0;
+                                // Parse checkout accuracy percentage directly from "home" and "away" string fields
+                                // No filtering by compareCode needed anymore - use every value
+                                const char* homeStr = item["home"];
+                                const char* awayStr = item["away"];
                                 
-                                if (compareCode == 2) {
-                                    // Use homeValue/homeTotal and awayValue/awayTotal fields for checkout accuracy
-                                    // homeValue = successful checkouts, homeTotal = total checkout attempts
-                                    
-                                    // Get the numeric values from the JSON
-                                    if (item["homeValue"].is<float>() || item["homeValue"].is<int>()) {
-                                        match.homeCheckoutHits = (int)item["homeValue"].as<float>();
+                                if (homeStr) {
+                                    // Parse percentage from string like "7/8 (42%)" or "42%"
+                                    // Find the percentage value
+                                    const char* pct = strchr(homeStr, '(');
+                                    if (pct) {
+                                        pct++;  // Skip '('
+                                        match.homeCheckoutPercent = atof(pct);
+                                    } else {
+                                        // Just a percentage without parentheses
+                                        match.homeCheckoutPercent = atof(homeStr);
                                     }
-                                    if (item["homeTotal"].is<float>() || item["homeTotal"].is<int>()) {
-                                        match.homeCheckoutAttempts = (int)item["homeTotal"].as<float>();
-                                    }
-                                    if (item["awayValue"].is<float>() || item["awayValue"].is<int>()) {
-                                        match.awayCheckoutHits = (int)item["awayValue"].as<float>();
-                                    }
-                                    if (item["awayTotal"].is<float>() || item["awayTotal"].is<int>()) {
-                                        match.awayCheckoutAttempts = (int)item["awayTotal"].as<float>();
-                                    }
-                                    
-                                    // Calculate percentage from the values (hits/attempts * 100)
-                                    if (match.homeCheckoutAttempts > 0) {
-                                        match.homeCheckoutPercent = (float)match.homeCheckoutHits / match.homeCheckoutAttempts * 100.0f;
-                                    }
-                                    if (match.awayCheckoutAttempts > 0) {
-                                        match.awayCheckoutPercent = (float)match.awayCheckoutHits / match.awayCheckoutAttempts * 100.0f;
+                                }
+                                
+                                if (awayStr) {
+                                    // Parse percentage from string like "7/7 (50%)" or "50%"
+                                    const char* pct = strchr(awayStr, '(');
+                                    if (pct) {
+                                        pct++;  // Skip '('
+                                        match.awayCheckoutPercent = atof(pct);
+                                    } else {
+                                        // Just a percentage without parentheses
+                                        match.awayCheckoutPercent = atof(awayStr);
                                     }
                                 }
                             }
@@ -1589,6 +1622,22 @@ void SofaScoreLiveModule::drawLiveMatch() {
         
         y += 10;
         
+        // Country names below player names (left and right)
+        u8g2.setFont(u8g2_font_profont10_tf);
+        u8g2.setForegroundColor(0xAAAA);  // Gray color for countries
+        if (match.homeCountry) {
+            u8g2.setCursor(2, y);
+            u8g2.print(match.homeCountry);
+        }
+        if (match.awayCountry) {
+            int countryWidth = u8g2.getUTF8Width(match.awayCountry);
+            u8g2.setCursor(_currentCanvas->width() - countryWidth - 2, y);
+            u8g2.print(match.awayCountry);
+        }
+        u8g2.setForegroundColor(0xFFFF);  // Reset to white
+        
+        y += 10;
+        
         // Display legs below sets if present (centered)
         if (match.homeLegs > 0 || match.awayLegs > 0) {
             u8g2.setFont(u8g2_font_profont12_tf);
@@ -1603,15 +1652,25 @@ void SofaScoreLiveModule::drawLiveMatch() {
         // Averages below names (left and right)
         u8g2.setFont(u8g2_font_6x10_tf);  // Match the font used for the statistics list
         if (match.homeAverage > 0.1) {  // Use 0.1 to avoid floating point comparison issues
-            char avgStr[16];
-            snprintf(avgStr, sizeof(avgStr), "%.1f", match.homeAverage);
+            char avgStr[32];
+            // Show average with highest checkout in parentheses if available
+            if (match.homeHighestCheckout > 0) {
+                snprintf(avgStr, sizeof(avgStr), "%.2f (%d)", match.homeAverage, match.homeHighestCheckout);
+            } else {
+                snprintf(avgStr, sizeof(avgStr), "%.2f", match.homeAverage);
+            }
             u8g2.setCursor(2, y);
             u8g2.print(avgStr);
         }
         
         if (match.awayAverage > 0.1) {  // Use 0.1 to avoid floating point comparison issues
-            char avgStr[16];
-            snprintf(avgStr, sizeof(avgStr), "%.1f", match.awayAverage);
+            char avgStr[32];
+            // Show average with highest checkout in parentheses if available
+            if (match.awayHighestCheckout > 0) {
+                snprintf(avgStr, sizeof(avgStr), "%.2f (%d)", match.awayAverage, match.awayHighestCheckout);
+            } else {
+                snprintf(avgStr, sizeof(avgStr), "%.2f", match.awayAverage);
+            }
             int avgWidth = u8g2.getUTF8Width(avgStr);
             u8g2.setCursor(_currentCanvas->width() - avgWidth - 2, y);
             u8g2.print(avgStr);
@@ -1688,20 +1747,9 @@ void SofaScoreLiveModule::drawLiveMatch() {
             u8g2.print(awayVal);
             y += 10;  // Increased spacing from 8 to 10 for larger font
             
-            // Row 5: CO% (Checkout percentage with hits/attempts)
-            // Display format: "44% (2/3)" when both available, or just percentage if not
-            if (match.homeCheckoutAttempts > 0) {
-                snprintf(homeVal, sizeof(homeVal), "%.0f%% (%d/%d)", 
-                         match.homeCheckoutPercent, match.homeCheckoutHits, match.homeCheckoutAttempts);
-            } else {
-                snprintf(homeVal, sizeof(homeVal), "%.0f%%", match.homeCheckoutPercent);
-            }
-            if (match.awayCheckoutAttempts > 0) {
-                snprintf(awayVal, sizeof(awayVal), "%.0f%% (%d/%d)", 
-                         match.awayCheckoutPercent, match.awayCheckoutHits, match.awayCheckoutAttempts);
-            } else {
-                snprintf(awayVal, sizeof(awayVal), "%.0f%%", match.awayCheckoutPercent);
-            }
+            // Row 5: CO% (Checkout percentage - percentage only, no hits/attempts)
+            snprintf(homeVal, sizeof(homeVal), "%.0f%%", match.homeCheckoutPercent);
+            snprintf(awayVal, sizeof(awayVal), "%.0f%%", match.awayCheckoutPercent);
             u8g2.setForegroundColor(0xFFFF);
             u8g2.setCursor(2, y);
             u8g2.print(homeVal);
