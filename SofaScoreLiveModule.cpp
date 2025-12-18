@@ -932,12 +932,13 @@ void SofaScoreLiveModule::parseDailyEventsJson(const char* json, size_t len) {
         if (homeName) match.homePlayerName = psram_strdup(homeName);
         
         const char* awayName = event["awayTeam"]["shortName"];
-        if (!awayName) {
-            awayName = event["awayTeam"]["name"];
-        } else if (*awayName == '\0') {
+        if (!awayName || *awayName == '\0') {
             awayName = event["awayTeam"]["name"];
         }
-        if (awayName) match.awayPlayerName = psram_strdup(awayName);
+        // Only set if we have a valid name (not empty, not just whitespace)
+        if (awayName && *awayName != '\0' && strcmp(awayName, "N/A") != 0) {
+            match.awayPlayerName = psram_strdup(awayName);
+        }
         
         // Check if score objects exist before accessing fields
         JsonObject homeScore = event["homeScore"];
@@ -1089,13 +1090,19 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
         if (!homeName || *homeName == '\0') {
             homeName = event["homeTeam"]["name"];
         }
-        if (homeName) match.homePlayerName = psram_strdup(homeName);
+        // Only set if we have a valid, meaningful name
+        if (homeName && *homeName != '\0' && strcmp(homeName, "N/A") != 0 && strcmp(homeName, "?") != 0) {
+            match.homePlayerName = psram_strdup(homeName);
+        }
         
         const char* awayName = event["awayTeam"]["shortName"];
         if (!awayName || *awayName == '\0') {
             awayName = event["awayTeam"]["name"];
         }
-        if (awayName) match.awayPlayerName = psram_strdup(awayName);
+        // Only set if we have a valid name (not empty, not just whitespace)
+        if (awayName && *awayName != '\0' && strcmp(awayName, "N/A") != 0 && strcmp(awayName, "?") != 0) {
+            match.awayPlayerName = psram_strdup(awayName);
+        }
         
         // Get country names (with NULL checks)
         const char* homeCountryName = event["homeTeam"]["country"]["name"];
