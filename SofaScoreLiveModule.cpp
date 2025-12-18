@@ -1090,18 +1090,22 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
         if (!homeName || *homeName == '\0') {
             homeName = event["homeTeam"]["name"];
         }
-        // Only set if we have a valid, meaningful name
-        if (homeName && *homeName != '\0' && strcmp(homeName, "N/A") != 0 && strcmp(homeName, "?") != 0) {
+        // Set player name (ArduinoJson returns nullptr for missing keys)
+        if (homeName) {
             match.homePlayerName = psram_strdup(homeName);
+        } else {
+            match.homePlayerName = nullptr;
         }
         
         const char* awayName = event["awayTeam"]["shortName"];
         if (!awayName || *awayName == '\0') {
             awayName = event["awayTeam"]["name"];
         }
-        // Only set if we have a valid name (not empty, not just whitespace)
-        if (awayName && *awayName != '\0' && strcmp(awayName, "N/A") != 0 && strcmp(awayName, "?") != 0) {
+        // Set player name (ArduinoJson returns nullptr for missing keys, not "N/A" or "?")
+        if (awayName) {
             match.awayPlayerName = psram_strdup(awayName);
+        } else {
+            match.awayPlayerName = nullptr;
         }
         
         // Get country names (with NULL checks)
