@@ -5,6 +5,7 @@
 #include "ThemeParkModule.hpp"
 #include "SofaScoreLiveModule.hpp"
 #include "PanelManager.hpp"
+#include "Application.hpp"
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 #include <WiFi.h>
@@ -1435,8 +1436,13 @@ void handleSofascoreDebugSnapshot() {
 #if SOFASCORE_DEBUG_JSON
     Log.println("[SofaScore] Debug snapshot requested via web interface");
     
-    // Get SofaScore module from panel manager
-    extern PanelManager* panelManager;
+    // Get PanelManager from Application instance
+    if (!Application::_instance) {
+        server->send(500, "application/json", "{\"ok\":false, \"message\":\"Application not initialized\"}");
+        return;
+    }
+    
+    PanelManager* panelManager = Application::_instance->getPanelManager();
     if (!panelManager) {
         server->send(500, "application/json", "{\"ok\":false, \"message\":\"PanelManager not initialized\"}");
         return;
