@@ -629,12 +629,14 @@ void SofaScoreLiveModule::queueData() {
     
     // Only fetch daily schedules if not paused (no live events active)
     if (!_dailySchedulesPaused) {
-        // Fetch today's events
-        time_t now;
-        time(&now);
-        struct tm* timeinfo = localtime(&now);
+        // Fetch today's events using GeneralTimeConverter for correct timezone handling
+        time_t now_utc;
+        time(&now_utc);
+        time_t now_local = timeConverter.toLocal(now_utc);
+        struct tm timeinfo;
+        gmtime_r(&now_local, &timeinfo);
         char dateStr[16];
-        strftime(dateStr, sizeof(dateStr), "%Y-%m-%d", timeinfo);
+        strftime(dateStr, sizeof(dateStr), "%Y-%m-%d", &timeinfo);
         
         PsramString dailyUrl = PsramString("https://api.sofascore.com/api/v1/sport/darts/scheduled-events/") + dateStr;
         
