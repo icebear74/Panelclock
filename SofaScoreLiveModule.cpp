@@ -1564,6 +1564,7 @@ void SofaScoreLiveModule::drawLiveMatch() {
     u8g2.setFont(u8g2_font_profont12_tf);
     u8g2.setForegroundColor(0xF800);  // Red
     
+    // Line 1: "LIVE" + Tournament name
     const char* title = "LIVE";
     u8g2.setCursor(2, 10);
     u8g2.print(title);
@@ -1579,7 +1580,8 @@ void SofaScoreLiveModule::drawLiveMatch() {
     if (_currentPage < liveMatches.size()) {
         const SofaScoreMatch& match = liveMatches[_currentPage];
         
-        // Tournament name
+        // Tournament name on line 1
+        u8g2.setFont(u8g2_font_profont10_tf);
         u8g2.setForegroundColor(0xAAAA);
         if (match.tournamentName) {
             int tournWidth = u8g2.getUTF8Width(match.tournamentName);
@@ -1594,25 +1596,25 @@ void SofaScoreLiveModule::drawLiveMatch() {
         
         int y = 24;
         
-        // NEW LAYOUT: Names at top (left/right) with score centered BETWEEN them
+        // Line 2: Home player (left-aligned) + Sets:Sets (center) + Away player (right-aligned)
         u8g2.setFont(u8g2_font_profont10_tf);
         u8g2.setForegroundColor(0xFFFF);
         
-        // Home player (left) - Name
+        // Home player (left)
         if (match.homePlayerName) {
             u8g2.setCursor(2, y);
             u8g2.print(match.homePlayerName);
         }
         
-        // Score centered BETWEEN names - NO LABEL
+        // Sets score (center)
         u8g2.setFont(u8g2_font_profont12_tf);
-        char scoreStr[32];
-        snprintf(scoreStr, sizeof(scoreStr), "%d:%d", match.homeScore, match.awayScore);
-        int scoreWidth = u8g2.getUTF8Width(scoreStr);
-        u8g2.setCursor((_currentCanvas->width() - scoreWidth) / 2, y);
-        u8g2.print(scoreStr);
+        char setsStr[32];
+        snprintf(setsStr, sizeof(setsStr), "%d:%d", match.homeScore, match.awayScore);
+        int setsWidth = u8g2.getUTF8Width(setsStr);
+        u8g2.setCursor((_currentCanvas->width() - setsWidth) / 2, y);
+        u8g2.print(setsStr);
         
-        // Away player (right) - Name (same line as home player and sets score)
+        // Away player (right)
         u8g2.setFont(u8g2_font_profont10_tf);
         if (match.awayPlayerName) {
             int nameWidth = u8g2.getUTF8Width(match.awayPlayerName);
@@ -1622,38 +1624,41 @@ void SofaScoreLiveModule::drawLiveMatch() {
         
         y += 10;
         
-        // Country names below player names (left and right)
+        // Line 3: Home country (left) + (Legs:Legs) (center) + Away country (right)
         u8g2.setFont(u8g2_font_profont10_tf);
         u8g2.setForegroundColor(0xAAAA);  // Gray color for countries
+        
+        // Home country (left)
         if (match.homeCountry) {
             u8g2.setCursor(2, y);
             u8g2.print(match.homeCountry);
         }
+        
+        // Legs (center) - always show, even if 0:0
+        u8g2.setForegroundColor(0xFFFF);  // White for legs
+        char legsStr[32];
+        snprintf(legsStr, sizeof(legsStr), "(%d:%d)", match.homeLegs, match.awayLegs);
+        int legsWidth = u8g2.getUTF8Width(legsStr);
+        u8g2.setCursor((_currentCanvas->width() - legsWidth) / 2, y);
+        u8g2.print(legsStr);
+        
+        // Away country (right)
+        u8g2.setForegroundColor(0xAAAA);  // Gray color for countries
         if (match.awayCountry) {
             int countryWidth = u8g2.getUTF8Width(match.awayCountry);
             u8g2.setCursor(_currentCanvas->width() - countryWidth - 2, y);
             u8g2.print(match.awayCountry);
         }
-        u8g2.setForegroundColor(0xFFFF);  // Reset to white
         
+        u8g2.setForegroundColor(0xFFFF);  // Reset to white
         y += 10;
         
-        // Display legs below sets if present (centered)
-        if (match.homeLegs > 0 || match.awayLegs > 0) {
-            u8g2.setFont(u8g2_font_profont12_tf);
-            char legsStr[32];
-            snprintf(legsStr, sizeof(legsStr), "(%d:%d)", match.homeLegs, match.awayLegs);
-            int legsWidth = u8g2.getUTF8Width(legsStr);
-            u8g2.setCursor((_currentCanvas->width() - legsWidth) / 2, y);
-            u8g2.print(legsStr);
-            y += 10;  // Only increment if we displayed legs
-        }
+        // Line 4: Average (maxCheckout) left-aligned + (maxCheckout) Average right-aligned
+        u8g2.setFont(u8g2_font_6x10_tf);
         
-        // Averages below names (left and right)
-        u8g2.setFont(u8g2_font_6x10_tf);  // Match the font used for the statistics list
-        if (match.homeAverage > 0.1) {  // Use 0.1 to avoid floating point comparison issues
+        // Home: Average (maxCheckout) left-aligned
+        if (match.homeAverage > 0.1) {
             char avgStr[32];
-            // Show average with highest checkout in parentheses if available
             if (match.homeHighestCheckout > 0) {
                 snprintf(avgStr, sizeof(avgStr), "%.2f (%d)", match.homeAverage, match.homeHighestCheckout);
             } else {
@@ -1663,11 +1668,11 @@ void SofaScoreLiveModule::drawLiveMatch() {
             u8g2.print(avgStr);
         }
         
-        if (match.awayAverage > 0.1) {  // Use 0.1 to avoid floating point comparison issues
+        // Away: (maxCheckout) Average right-aligned
+        if (match.awayAverage > 0.1) {
             char avgStr[32];
-            // Show average with highest checkout in parentheses if available
             if (match.awayHighestCheckout > 0) {
-                snprintf(avgStr, sizeof(avgStr), "%.2f (%d)", match.awayAverage, match.awayHighestCheckout);
+                snprintf(avgStr, sizeof(avgStr), "(%d) %.2f", match.awayHighestCheckout, match.awayAverage);
             } else {
                 snprintf(avgStr, sizeof(avgStr), "%.2f", match.awayAverage);
             }
