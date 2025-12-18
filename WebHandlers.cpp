@@ -4,6 +4,8 @@
 #include "BackupManager.hpp"
 #include "ThemeParkModule.hpp"
 #include "SofaScoreLiveModule.hpp"
+#include "PanelManager.hpp"
+#include "Application.hpp"
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 #include <WiFi.h>
@@ -1339,12 +1341,14 @@ void handleSofascoreTournamentsList() {
     for (JsonObject tournament : tournaments) {
         int id = tournament["tournamentId"] | 0;
         const char* name = tournament["name"];
+        const char* slug = tournament["slug"];
         
-        if (id > 0 && name && strlen(name) > 0) {
+        if (id > 0 && name && strlen(name) > 0 && slug && strlen(slug) > 0) {
             JsonObject tournamentObj = tournamentsArray.createNestedObject();
             tournamentObj["id"] = id;
             tournamentObj["name"] = name;
-            Log.printf("[SofaScore] Added tournament: %s (ID: %d)\n", name, id);
+            tournamentObj["slug"] = slug;
+            Log.printf("[SofaScore] Added tournament: %s (ID: %d, Slug: %s)\n", name, id, slug);
         }
     }
     
@@ -1423,3 +1427,48 @@ void handleFirmwareUpload() {
     }
 }
 
+
+void handleSofascoreDebugSnapshot() {
+    if (!server) {
+        return;
+    }
+    
+#if SOFASCORE_DEBUG_JSON
+    Log.println("[SofaScore] Debug snapshot requested via web interface");
+    
+    // Get PanelManager from Application instance
+    if (!Application::_instance) {
+        server->send(500, "application/json", "{\"ok\":false, \"message\":\"Application not initialized\"}");
+        return;
+    }
+    
+    PanelManager* panelManager = Application::_instance->getPanelManager();
+    if (!panelManager) {
+        server->send(500, "application/json", "{\"ok\":false, \"message\":\"PanelManager not initialized\"}");
+        return;
+    }
+    
+    SofaScoreLiveModule* sofascoreModule = nullptr;
+    // Find SofaScore module in panel manager
+    const auto& modules = panelManager->getAllModules();
+    for (DrawableModule* module : modules) {
+        if (module && strcmp(module->getModuleName(), "SofaScoreLiveModule") == 0) {
+            // Use static_cast since we verified the type via getModuleName()
+            sofascoreModule = static_cast<SofaScoreLiveModule*>(module);
+            break;
+        }
+    }
+    
+    if (!sofascoreModule) {
+        server->send(404, "application/json", "{\"ok\":false, \"message\":\"SofaScore module not found\"}");
+        return;
+    }
+    
+    // Trigger debug snapshot
+    sofascoreModule->debugSaveCurrentState();
+    
+    server->send(200, "application/json", "{\"ok\":true, \"message\":\"Debug snapshot saved to /json_debug/\"}");
+#else
+    server->send(501, "application/json", "{\"ok\":false, \"message\":\"Debug feature not compiled (SOFASCORE_DEBUG_JSON=0)\"}");
+#endif
+}

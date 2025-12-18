@@ -9,6 +9,11 @@
 #include "freertos/semphr.h"
 #include "PsramUtils.hpp"
 
+// Default User-Agent string (can be overridden by defining DEFAULT_USER_AGENT before including this header)
+#ifndef DEFAULT_USER_AGENT
+#define DEFAULT_USER_AGENT "ESP32-PanelClock/1.0"
+#endif
+
 // Vorwärtsdeklarationen, um Header-Abhängigkeiten zu minimieren
 struct DeviceConfig;
 extern DeviceConfig* deviceConfig;
@@ -100,6 +105,10 @@ public:
     void getRequest(const PsramString& url, std::function<void(int httpCode, const char* payload, size_t len)> detailed_callback);
     void getRequest(const PsramString& url, const PsramString& customHeaders, std::function<void(int httpCode, const char* payload, size_t len)> detailed_callback);
     void postRequest(const PsramString& url, const PsramString& postBody, const PsramString& contentType, std::function<void(const char* buffer, size_t size)> callback);
+    
+    // User-Agent configuration
+    void setUserAgent(const String& userAgent);
+    String getUserAgent() const;
 
 private:
     char* _downloadBuffer = nullptr;
@@ -112,6 +121,9 @@ private:
     // Timing control: start delay and minimum pause between downloads (ms)
     unsigned long _startMs = 0;
     unsigned long _lastDownloadMs = 0;
+    
+    // Configurable User-Agent string (initialized with default from define)
+    PsramString _userAgent = DEFAULT_USER_AGENT;
 
     bool reallocateBuffer(size_t new_size);
     void performJob(const WebJob& job);

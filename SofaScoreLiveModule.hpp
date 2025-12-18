@@ -17,6 +17,11 @@ struct DeviceConfig;
 // UID für SofaScore Live-Match Interrupts
 #define SOFASCORE_INTERRUPT_UID_BASE 5000
 
+// Debug feature: Save JSON data to LittleFS for analysis (default: enabled)
+#ifndef SOFASCORE_DEBUG_JSON
+#define SOFASCORE_DEBUG_JSON 1
+#endif
+
 // Tournament information
 struct SofaScoreTournament {
     int id = 0;
@@ -44,6 +49,8 @@ struct SofaScoreMatch {
     int eventId = 0;
     char* homePlayerName = nullptr;
     char* awayPlayerName = nullptr;
+    char* homeCountry = nullptr;       // Country name for home player
+    char* awayCountry = nullptr;       // Country name for away player
     int homeScore = 0;  // Sets won
     int awayScore = 0;  // Sets won
     int homeLegs = 0;   // Legs in current set
@@ -63,8 +70,14 @@ struct SofaScoreMatch {
     int awayOver100 = 0;
     int homeCheckoutsOver100 = 0;
     int awayCheckoutsOver100 = 0;
+    int homeHighestCheckout = 0;      // Highest checkout value
+    int awayHighestCheckout = 0;      // Highest checkout value
     float homeCheckoutPercent = 0.0f;
     float awayCheckoutPercent = 0.0f;
+    int homeCheckoutHits = 0;      // Checkouts made (numerator in "2/3") - DEPRECATED, use percent only now
+    int homeCheckoutAttempts = 0;  // Total checkout attempts (denominator in "2/3") - DEPRECATED
+    int awayCheckoutHits = 0;      // DEPRECATED
+    int awayCheckoutAttempts = 0;  // DEPRECATED
     
     SofaScoreMatch();
     SofaScoreMatch(const SofaScoreMatch& other);
@@ -90,7 +103,7 @@ public:
 
     void onUpdate(std::function<void()> callback);
     void setConfig(bool enabled, uint32_t fetchIntervalMinutes, unsigned long displaySec,
-                   const PsramString& enabledTournamentIds, bool fullscreen, bool interruptOnLive,
+                   const PsramString& enabledTournamentSlugs, bool fullscreen, bool interruptOnLive,
                    uint32_t playNextMinutes, bool continuousLive);
     void queueData();
     void processData();
@@ -111,6 +124,11 @@ public:
     // Fullscreen support
     bool supportsFullscreen() const override { return true; }
     bool wantsFullscreen() const override { return _wantsFullscreen && _fullscreenCanvas != nullptr; }
+
+#if SOFASCORE_DEBUG_JSON
+    // Debug helpers to save current state on demand (via web interface)
+    void debugSaveCurrentState();
+#endif
 
 private:
     U8G2_FOR_ADAFRUIT_GFX& u8g2;
@@ -138,8 +156,8 @@ private:
     unsigned long _lastLiveCheckTime = 0;
     unsigned long _lastLiveDataFetchTime = 0;
     unsigned long _lastLiveDisplayTime = 0;  // For repeating live display every minute
-    const unsigned long LIVE_CHECK_INTERVAL_MS = 60000;  // Check for live events every 60 seconds
-    const unsigned long LIVE_DATA_FETCH_INTERVAL_MS = 30000;  // Fetch live data every 30 seconds when active
+    const unsigned long LIVE_CHECK_INTERVAL_MS = 120000;  // Check for live events every 60 seconds (when not live)
+    const unsigned long LIVE_DATA_FETCH_INTERVAL_MS = 60000;  // Fetch live data every 15 seconds when live
     const unsigned long LIVE_DISPLAY_REPEAT_MS = 60000;  // Repeat live display every 60 seconds
     const unsigned long LIVE_MIN_DISPLAY_MS = 20000;  // Minimum 20 seconds display for live stats
     bool _liveEventsRegistered = false;  // Track if live events endpoint is registered to prevent spam
@@ -188,7 +206,7 @@ private:
     
     // Parsed data
     std::vector<SofaScoreTournament, PsramAllocator<SofaScoreTournament>> availableTournaments;
-    std::vector<int, PsramAllocator<int>> enabledTournamentIds;
+    std::vector<PsramString, PsramAllocator<PsramString>> enabledTournamentSlugs;
     std::vector<SofaScoreMatch, PsramAllocator<SofaScoreMatch>> dailyMatches;
     std::vector<SofaScoreMatch, PsramAllocator<SofaScoreMatch>> liveMatches;
     

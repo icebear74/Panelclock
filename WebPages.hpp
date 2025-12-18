@@ -191,6 +191,10 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
             <div id="sofascoreTournamentsList">Lade Turniere...</div>
         </div>
         
+        <label>Debug</label>
+        <button type="button" onclick="saveSofascoreDebugSnapshot()" style="margin-bottom:10px; background:#ff9800;">Debug-Snapshot speichern</button>
+        <div id="debugSnapshotStatus" style="margin-bottom:10px;"></div>
+        
         <label for="dartsSofascoreTournamentIds">Turnier-IDs (kommagetrennt, leer = alle)</label>
         <input type="text" id="dartsSofascoreTournamentIds" name="dartsSofascoreTournamentIds" value="{dartsSofascoreTournamentIds}" placeholder="z.B. 17,23,34">
         
@@ -667,14 +671,14 @@ function loadSofascoreTournaments() {
                 return;
             }
             
-            var currentIds = document.getElementById('dartsSofascoreTournamentIds').value.split(',').map(s => s.trim());
-            var html = '<table style="width:100%;"><tr><th>Auswahl</th><th>Turnier-Name</th><th>ID</th></tr>';
+            var currentSlugs = document.getElementById('dartsSofascoreTournamentIds').value.split(',').map(s => s.trim());
+            var html = '<table style="width:100%;"><tr><th>Auswahl</th><th>Turnier-Name</th><th>Slug</th></tr>';
             data.tournaments.forEach(tournament => {
-                var checked = currentIds.includes(tournament.id.toString()) ? 'checked' : '';
+                var checked = currentSlugs.includes(tournament.slug) ? 'checked' : '';
                 html += '<tr>';
-                html += '<td><input type="checkbox" class="tournament-checkbox" value="' + tournament.id + '" ' + checked + ' onchange="collectTournamentIds()"></td>';
+                html += '<td><input type="checkbox" class="tournament-checkbox" value="' + tournament.slug + '" ' + checked + ' onchange="collectTournamentIds()"></td>';
                 html += '<td>' + tournament.name + '</td>';
-                html += '<td>' + tournament.id + '</td>';
+                html += '<td>' + tournament.slug + '</td>';
                 html += '</tr>';
             });
             html += '</table>';
@@ -695,6 +699,25 @@ function collectTournamentIds() {
         }
     }
     document.getElementById('dartsSofascoreTournamentIds').value = ids.join(',');
+}
+
+function saveSofascoreDebugSnapshot() {
+    var statusDiv = document.getElementById('debugSnapshotStatus');
+    statusDiv.innerHTML = '<p style="color:blue;">Speichere Debug-Snapshot...</p>';
+    
+    fetch('/api/sofascore/debug_snapshot', { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+            if (data.ok) {
+                statusDiv.innerHTML = '<p style="color:green;">✓ Debug-Snapshot gespeichert! Dateien in /json_debug/</p>';
+            } else {
+                statusDiv.innerHTML = '<p style="color:red;">✗ Fehler: ' + data.message + '</p>';
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            statusDiv.innerHTML = '<p style="color:red;">✗ Fehler beim Speichern: ' + error.message + '</p>';
+        });
 }
 
 </script>
