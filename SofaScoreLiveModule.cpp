@@ -1478,11 +1478,11 @@ void SofaScoreLiveModule::drawDailyResults() {
     // Adjust line height and starting position based on screen size
     // Y-coordinates are BOTTOM-aligned for u8g2
     // Each match takes 2 lines now: player names (line 1) + countries (line 2)
-    // Normal (64px): header ~20px, need to fit 3 matches of 14px each (8px + 6px)
-    // Fullscreen (96px): header ~24px, need to fit 4 matches of 15px each (9px + 6px)
+    // Normal (64px): header ~20px, need to fit 3 matches of 16px each (8px + 8px)
+    // Fullscreen (96px): header ~24px, need to fit 4 matches of 17px each (9px + 8px)
     int y = wantsFullscreen() ? 33 : 30;  // Start below tournament name (bottom-aligned)
     const int LINE1_HEIGHT = wantsFullscreen() ? 9 : 8;  // Player names line
-    const int LINE2_HEIGHT = 6;  // Countries line (smaller font)
+    const int LINE2_HEIGHT = 8;  // Countries line (increased spacing for better readability)
     const int MATCH_HEIGHT = LINE1_HEIGHT + LINE2_HEIGHT;  // Total height per match
     u8g2.setFont(u8g2_font_5x8_tf);
     
