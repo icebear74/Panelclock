@@ -575,6 +575,21 @@ void SofaScoreLiveModule::switchToNextMode() {
             Log.println("[SofaScore] Cycle complete (no live matches)");
         }
     } else if (_currentMode == SofaScoreDisplayMode::LIVE_MATCH) {
+        // If liveMatches is empty (e.g., filtered out by tournament selection), 
+        // skip live mode and finish the cycle
+        if (liveMatches.empty()) {
+            _isFinished = true;
+            Log.println("[SofaScore] Live matches empty (filtered) - cycle complete");
+            
+            // Release interrupt if active
+            if (_hasActiveInterrupt && _interruptUID > 0) {
+                releasePriorityEx(_interruptUID);
+                _hasActiveInterrupt = false;
+                Log.println("[SofaScore] Released interrupt - no matching live matches");
+            }
+            return;
+        }
+        
         // Check if continuous live display is enabled
         if (_continuousLiveDisplay && !liveMatches.empty()) {
             // Check if all live matches are finished
@@ -1202,7 +1217,13 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
         // Clear registered event IDs
         _registeredEventIds.clear();
         
-        Log.println("[SofaScore] Live events ended - Resuming daily schedules, switched to 60s polling");
+        // Reset mode to DAILY_RESULTS to avoid showing empty live page
+        _currentMode = SofaScoreDisplayMode::DAILY_RESULTS;
+        _currentPage = 0;
+        _currentTournamentIndex = 0;
+        _currentTournamentPage = 0;
+        
+        Log.println("[SofaScore] Live events ended - Resuming daily schedules, switched to 60s polling, reset to DAILY_RESULTS mode");
     }
     
     // Update scores in dailyMatches from live data
@@ -1630,6 +1651,17 @@ void SofaScoreLiveModule::drawLiveMatch() {
     int pageInfoWidth = u8g2.getUTF8Width(pageInfo);
     u8g2.setCursor(_currentCanvas->width() - pageInfoWidth - 2, 8);
     u8g2.print(pageInfo);
+    
+    // Check if we have any live matches (they may have been filtered out)
+    if (liveMatches.empty()) {
+        u8g2.setFont(u8g2_font_profont12_tf);
+        u8g2.setForegroundColor(0xFFFF);
+        const char* msg = "No live matches";
+        int msgWidth = u8g2.getUTF8Width(msg);
+        u8g2.setCursor((_currentCanvas->width() - msgWidth) / 2, _currentCanvas->height() / 2);
+        u8g2.print(msg);
+        return;
+    }
     
     if (_currentPage < liveMatches.size()) {
         const SofaScoreMatch& match = liveMatches[_currentPage];
