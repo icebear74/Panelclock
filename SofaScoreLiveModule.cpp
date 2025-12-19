@@ -925,21 +925,21 @@ void SofaScoreLiveModule::parseDailyEventsJson(const char* json, size_t len) {
         match.eventId = event["id"] | 0;
         
         // Get player names (with NULL checks)
-        const char* homeName = event["homeTeam"]["shortName"];
-        if (!homeName) {
-            homeName = event["homeTeam"]["name"];
-        } else if (*homeName == '\0') {
-            homeName = event["homeTeam"]["name"];
+        const char* homeName = event["homeTeam"]["shortName"].as<const char*>();
+        if (!homeName || *homeName == '\0') {
+            homeName = event["homeTeam"]["name"].as<const char*>();
         }
-        if (homeName) match.homePlayerName = psram_strdup(homeName);
+        if (homeName && *homeName != '\0') {
+            match.homePlayerName = psram_strdup(homeName);
+        }
         
-        const char* awayName = event["awayTeam"]["shortName"];
-        if (!awayName) {
-            awayName = event["awayTeam"]["name"];
-        } else if (*awayName == '\0') {
-            awayName = event["awayTeam"]["name"];
+        const char* awayName = event["awayTeam"]["shortName"].as<const char*>();
+        if (!awayName || *awayName == '\0') {
+            awayName = event["awayTeam"]["name"].as<const char*>();
         }
-        if (awayName) match.awayPlayerName = psram_strdup(awayName);
+        if (awayName && *awayName != '\0') {
+            match.awayPlayerName = psram_strdup(awayName);
+        }
         
         // Check if score objects exist before accessing fields
         JsonObject homeScore = event["homeScore"];
@@ -1087,21 +1087,21 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
         match.eventId = event["id"] | 0;
         
         // Get player names (with NULL checks)
-        const char* homeName = event["homeTeam"]["shortName"];
-        if (!homeName) {
-            homeName = event["homeTeam"]["name"];
-        } else if (*homeName == '\0') {
-            homeName = event["homeTeam"]["name"];
+        const char* homeName = event["homeTeam"]["shortName"].as<const char*>();
+        if (!homeName || *homeName == '\0') {
+            homeName = event["homeTeam"]["name"].as<const char*>();
         }
-        if (homeName) match.homePlayerName = psram_strdup(homeName);
+        if (homeName && *homeName != '\0') {
+            match.homePlayerName = psram_strdup(homeName);
+        }
         
-        const char* awayName = event["awayTeam"]["shortName"];
-        if (!awayName) {
-            awayName = event["awayTeam"]["name"];
-        } else if (*awayName == '\0') {
-            awayName = event["awayTeam"]["name"];
+        const char* awayName = event["awayTeam"]["shortName"].as<const char*>();
+        if (!awayName || *awayName == '\0') {
+            awayName = event["awayTeam"]["name"].as<const char*>();
         }
-        if (awayName) match.awayPlayerName = psram_strdup(awayName);
+        if (awayName && *awayName != '\0') {
+            match.awayPlayerName = psram_strdup(awayName);
+        }
         
         // Get country names (with NULL checks)
         const char* homeCountryName = event["homeTeam"]["country"]["name"];
