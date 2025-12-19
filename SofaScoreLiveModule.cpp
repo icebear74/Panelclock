@@ -1607,6 +1607,9 @@ void SofaScoreLiveModule::drawDailyResults() {
             u8g2.print(match.awayCountry);
         }
         
+        // Reset color for next match
+        u8g2.setForegroundColor(0xFFFF);
+        
         y += LINE2_HEIGHT;
     }
 }
