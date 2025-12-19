@@ -941,6 +941,17 @@ void SofaScoreLiveModule::parseDailyEventsJson(const char* json, size_t len) {
             match.awayPlayerName = psram_strdup(awayName);
         }
         
+        // Get country names (with NULL checks)
+        const char* homeCountryName = event["homeTeam"]["country"]["name"].as<const char*>();
+        if (homeCountryName && *homeCountryName != '\0') {
+            match.homeCountry = psram_strdup(homeCountryName);
+        }
+        
+        const char* awayCountryName = event["awayTeam"]["country"]["name"].as<const char*>();
+        if (awayCountryName && *awayCountryName != '\0') {
+            match.awayCountry = psram_strdup(awayCountryName);
+        }
+        
         // Check if score objects exist before accessing fields
         JsonObject homeScore = event["homeScore"];
         if (!homeScore.isNull() && homeScore.size() > 0) {
@@ -1449,8 +1460,9 @@ void SofaScoreLiveModule::drawDailyResults() {
     }
     
     // Calculate matches for this page
-    // Fullscreen: 192x96 allows 7 lines, Normal: 192x64 allows 5 lines
-    const int MATCHES_PER_PAGE = wantsFullscreen() ? 7 : 5;
+    // Each match now uses 2 lines (player names + countries)
+    // Fullscreen: 192x96 allows ~4 matches (8 lines), Normal: 192x64 allows ~3 matches (6 lines)
+    const int MATCHES_PER_PAGE = wantsFullscreen() ? 4 : 3;
     int startIdx = _currentTournamentPage * MATCHES_PER_PAGE;
     int endIdx = startIdx + MATCHES_PER_PAGE;
     if (endIdx > currentGroup.matchIndices.size()) endIdx = currentGroup.matchIndices.size();
@@ -1465,10 +1477,13 @@ void SofaScoreLiveModule::drawDailyResults() {
     
     // Adjust line height and starting position based on screen size
     // Y-coordinates are BOTTOM-aligned for u8g2
-    // Normal (64px): header ~20px, need to fit 5 matches of 8px each
-    // Fullscreen (96px): header ~24px, need to fit 7 matches of 9px each
+    // Each match takes 2 lines now: player names (line 1) + countries (line 2)
+    // Normal (64px): header ~20px, need to fit 3 matches of 14px each (8px + 6px)
+    // Fullscreen (96px): header ~24px, need to fit 4 matches of 15px each (9px + 6px)
     int y = wantsFullscreen() ? 33 : 30;  // Start below tournament name (bottom-aligned)
-    const int LINE_HEIGHT = wantsFullscreen() ? 9 : 8;
+    const int LINE1_HEIGHT = wantsFullscreen() ? 9 : 8;  // Player names line
+    const int LINE2_HEIGHT = 6;  // Countries line (smaller font)
+    const int MATCH_HEIGHT = LINE1_HEIGHT + LINE2_HEIGHT;  // Total height per match
     u8g2.setFont(u8g2_font_5x8_tf);
     
     // Ensure we have enough scrollers (2 per match: home + away)
@@ -1505,6 +1520,9 @@ void SofaScoreLiveModule::drawDailyResults() {
         
         const SofaScoreMatch& match = dailyMatches[matchIdx];
         int scrollerIdx = (i - startIdx) * 2;  // 2 scrollers per match
+        
+        // === LINE 1: Time | Player Names | Score ===
+        u8g2.setFont(u8g2_font_5x8_tf);
         
         // LEFT: Time (5 chars fixed)
         char timeStr[6] = "     ";
@@ -1570,7 +1588,26 @@ void SofaScoreLiveModule::drawDailyResults() {
         u8g2.setCursor(_currentCanvas->width() - scoreWidth - 2, y);
         u8g2.print(scoreStr);
         
-        y += LINE_HEIGHT;
+        y += LINE1_HEIGHT;
+        
+        // === LINE 2: Countries (smaller font, gray) ===
+        u8g2.setFont(u8g2_font_4x6_tf);  // Smaller font for countries
+        u8g2.setForegroundColor(0xAAAA);  // Gray color
+        
+        // Home country (left)
+        if (match.homeCountry) {
+            u8g2.setCursor(MIDDLE_START, y);
+            u8g2.print(match.homeCountry);
+        }
+        
+        // Away country (right)
+        if (match.awayCountry) {
+            int countryWidth = u8g2.getUTF8Width(match.awayCountry);
+            u8g2.setCursor(awayStart, y);
+            u8g2.print(match.awayCountry);
+        }
+        
+        y += LINE2_HEIGHT;
     }
 }
 
