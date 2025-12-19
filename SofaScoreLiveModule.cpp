@@ -784,12 +784,18 @@ void SofaScoreLiveModule::updateLiveMatchStats() {
     
     // Register new resources with PRIORITY mode and force_new=true (outside mutex to avoid holding mutex during registration)
     // force_new=true allows multiple statistics resources with same base URL but different event IDs
+    // Use configured fetch interval with a minimum of 10 seconds for timely statistics updates
+    uint32_t statsIntervalMin = config->dartsSofascoreFetchIntervalMin > 0 ? config->dartsSofascoreFetchIntervalMin : 60;
+    uint32_t statsIntervalSec = statsIntervalMin * 60;  // Convert minutes to seconds
+    // Ensure minimum of 10 seconds for timely statistics updates
+    if (statsIntervalSec < 10) statsIntervalSec = 10;
+    
     for (int eventId : eventIdsToRegister) {
         char statsUrl[128];
         snprintf(statsUrl, sizeof(statsUrl), "https://api.sofascore.com/api/v1/event/%d/statistics", eventId);
-        // Use registerResourceSeconds with priority=true and force_new=true for 30-second updates
-        webClient->registerResourceSeconds(statsUrl, 30, true, true, nullptr);  // Priority pull, 30 second updates, force new
-        Log.printf("[SofaScore] Registered PRIORITY live match statistics: eventId=%d (30s interval)\n", eventId);
+        // Use registerResourceSeconds with priority=true and force_new=true for configured interval updates
+        webClient->registerResourceSeconds(statsUrl, statsIntervalSec, true, true, nullptr);  // Priority pull, configured interval, force new
+        Log.printf("[SofaScore] Registered PRIORITY live match statistics: eventId=%d (%d sec interval)\n", eventId, statsIntervalSec);
     }
     
     // Fetch statistics for all live matches WITHOUT holding dataMutex to avoid nested mutex locks
