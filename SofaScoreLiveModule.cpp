@@ -976,7 +976,7 @@ void SofaScoreLiveModule::parseDailyEventsJson(const char* json, size_t len) {
         }
         
         const char* statusType = event["status"]["type"].as<const char*>();
-        if (statusType) {
+        if (statusType && *statusType != '\0') {
             if (strcmp(statusType, "inprogress") == 0) {
                 match.status = MatchStatus::LIVE;
                 // Only add to liveMatches from daily events if we DON'T have active live events
@@ -1153,7 +1153,7 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
         }
         
         const char* statusType = event["status"]["type"].as<const char*>();
-        if (statusType && strcmp(statusType, "inprogress") == 0) {
+        if (statusType && *statusType != '\0' && strcmp(statusType, "inprogress") == 0) {
             match.status = MatchStatus::LIVE;
         } else {
             continue;  // Only add truly live matches
