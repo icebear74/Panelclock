@@ -693,22 +693,17 @@ void SofaScoreLiveModule::checkAndFetchLiveEvents() {
     bool shouldRegister = !_liveEventsRegistered || stateChanged;
     
     if (!_hasLiveEvents) {
-        // No live events: check every 60 seconds
+        // No live events: check for live events at LIVE_CHECK_INTERVAL_MS
         if (shouldRegister) {
-            webClient->registerResourceSeconds(liveUrl, 60, false, false);
+            webClient->registerResourceSeconds(liveUrl, LIVE_CHECK_INTERVAL_MS / 1000, false, false);
             _liveEventsRegistered = true;
             wasLiveLastCheck = false;
         }
     } else {
-        // Has live events: use configured interval with priority
+        // Has live events: fetch live data at LIVE_DATA_FETCH_INTERVAL_MS with priority
         // Only re-register when switching to live mode (state change)
         if (shouldRegister) {
-            uint32_t liveIntervalMin = config->dartsSofascoreFetchIntervalMin > 0 ? config->dartsSofascoreFetchIntervalMin : 60;
-            uint32_t liveIntervalSec = liveIntervalMin * 60;  // Convert minutes to seconds
-            // Ensure minimum of 10 seconds for timely live updates
-            if (liveIntervalSec < 10) liveIntervalSec = 10;
-            
-            webClient->registerResourceSeconds(liveUrl, liveIntervalSec, true, false);  // Priority=true for live events
+            webClient->registerResourceSeconds(liveUrl, LIVE_DATA_FETCH_INTERVAL_MS / 1000, true, false);  // Priority=true for live events
             _liveEventsRegistered = true;
             wasLiveLastCheck = true;
         }
@@ -784,17 +779,14 @@ void SofaScoreLiveModule::updateLiveMatchStats() {
     
     // Register new resources with PRIORITY mode and force_new=true (outside mutex to avoid holding mutex during registration)
     // force_new=true allows multiple statistics resources with same base URL but different event IDs
-    // Use configured fetch interval with a minimum of 10 seconds for timely statistics updates
-    uint32_t statsIntervalMin = config->dartsSofascoreFetchIntervalMin > 0 ? config->dartsSofascoreFetchIntervalMin : 60;
-    uint32_t statsIntervalSec = statsIntervalMin * 60;  // Convert minutes to seconds
-    // Ensure minimum of 10 seconds for timely statistics updates
-    if (statsIntervalSec < 10) statsIntervalSec = 10;
+    // Statistics are only fetched during live events at LIVE_DATA_FETCH_INTERVAL_MS
+    uint32_t statsIntervalSec = LIVE_DATA_FETCH_INTERVAL_MS / 1000;
     
     for (int eventId : eventIdsToRegister) {
         char statsUrl[128];
         snprintf(statsUrl, sizeof(statsUrl), "https://api.sofascore.com/api/v1/event/%d/statistics", eventId);
-        // Use registerResourceSeconds with priority=true and force_new=true for configured interval updates
-        webClient->registerResourceSeconds(statsUrl, statsIntervalSec, true, true, nullptr);  // Priority pull, configured interval, force new
+        // Use registerResourceSeconds with priority=true and force_new=true for live data fetch interval
+        webClient->registerResourceSeconds(statsUrl, statsIntervalSec, true, true, nullptr);  // Priority pull, live data interval, force new
         Log.printf("[SofaScore] Registered PRIORITY live match statistics: eventId=%d (%d sec interval)\n", eventId, statsIntervalSec);
     }
     
@@ -1209,16 +1201,11 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
     if (_hasLiveEvents && !hadLiveEvents) {
         _dailySchedulesPaused = true;
         
-        // Use configured fetch interval for live polling, with a reasonable minimum of 10 seconds
-        uint32_t liveIntervalMin = config->dartsSofascoreFetchIntervalMin > 0 ? config->dartsSofascoreFetchIntervalMin : 60;
-        uint32_t liveIntervalSec = liveIntervalMin * 60;  // Convert minutes to seconds
-        // Ensure minimum of 10 seconds for timely live updates
-        if (liveIntervalSec < 10) liveIntervalSec = 10;
-        
+        // Switch to live data fetching at LIVE_DATA_FETCH_INTERVAL_MS
         const char* liveUrl = "https://api.sofascore.com/api/v1/sport/darts/events/live";
-        webClient->registerResourceSeconds(liveUrl, liveIntervalSec, true, false);
+        webClient->registerResourceSeconds(liveUrl, LIVE_DATA_FETCH_INTERVAL_MS / 1000, true, false);
         
-        Log.printf("[SofaScore] Live events detected - Pausing daily schedules, switched to PRIORITY %d sec polling\n", liveIntervalSec);
+        Log.printf("[SofaScore] Live events detected - Pausing daily schedules, switched to PRIORITY %d sec polling\n", LIVE_DATA_FETCH_INTERVAL_MS / 1000);
         
         if (_interruptOnLive && updateCallback) {
             updateCallback();
@@ -1226,9 +1213,9 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
     } else if (!_hasLiveEvents && hadLiveEvents) {
         _dailySchedulesPaused = false;
         
-        // Switch back to normal polling (60s, non-priority)
+        // Switch back to live event checking at LIVE_CHECK_INTERVAL_MS (non-priority)
         const char* liveUrl = "https://api.sofascore.com/api/v1/sport/darts/events/live";
-        webClient->registerResourceSeconds(liveUrl, 60, false, false);
+        webClient->registerResourceSeconds(liveUrl, LIVE_CHECK_INTERVAL_MS / 1000, false, false);
         
         // Clear registered event IDs
         _registeredEventIds.clear();
@@ -1239,7 +1226,7 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
         _currentTournamentIndex = 0;
         _currentTournamentPage = 0;
         
-        Log.println("[SofaScore] Live events ended - Resuming daily schedules, switched to 60s polling, reset to DAILY_RESULTS mode");
+        Log.printf("[SofaScore] Live events ended - Resuming daily schedules, switched to %d sec check interval, reset to DAILY_RESULTS mode\n", LIVE_CHECK_INTERVAL_MS / 1000);
     }
     
     // Update scores in dailyMatches from live data
