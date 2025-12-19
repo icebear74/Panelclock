@@ -72,6 +72,8 @@ void loadDeviceConfig() {
                 deviceConfig->dartsSofascoreInterruptOnLive = doc["dartsSofascoreInterruptOnLive"] | true;
                 deviceConfig->dartsSofascorePlayNextMinutes = doc["dartsSofascorePlayNextMinutes"] | 0;
                 deviceConfig->dartsSofascoreContinuousLive = doc["dartsSofascoreContinuousLive"] | false;
+                deviceConfig->dartsSofascoreLiveCheckIntervalSec = doc["dartsSofascoreLiveCheckIntervalSec"] | 120;
+                deviceConfig->dartsSofascoreLiveDataFetchIntervalSec = doc["dartsSofascoreLiveDataFetchIntervalSec"] | 60;
                 // debugFileEnabled is not persisted for security reasons - always starts as false
 
                 deviceConfig->fritzboxEnabled = doc["fritzboxEnabled"] | false;
@@ -224,6 +226,8 @@ void saveDeviceConfig() {
     doc["dartsSofascoreInterruptOnLive"] = deviceConfig->dartsSofascoreInterruptOnLive;
     doc["dartsSofascorePlayNextMinutes"] = deviceConfig->dartsSofascorePlayNextMinutes;
     doc["dartsSofascoreContinuousLive"] = deviceConfig->dartsSofascoreContinuousLive;
+    doc["dartsSofascoreLiveCheckIntervalSec"] = deviceConfig->dartsSofascoreLiveCheckIntervalSec;
+    doc["dartsSofascoreLiveDataFetchIntervalSec"] = deviceConfig->dartsSofascoreLiveDataFetchIntervalSec;
     // debugFileEnabled is not persisted for security reasons
 
     doc["fritzboxEnabled"] = deviceConfig->fritzboxEnabled;

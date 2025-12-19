@@ -309,7 +309,8 @@ void SofaScoreLiveModule::onUpdate(std::function<void()> callback) {
 
 void SofaScoreLiveModule::setConfig(bool enabled, uint32_t fetchIntervalMinutes, unsigned long displaySec,
                                     const PsramString& enabledTournamentSlugs, bool fullscreen, bool interruptOnLive,
-                                    uint32_t playNextMinutes, bool continuousLive) {
+                                    uint32_t playNextMinutes, bool continuousLive,
+                                    uint32_t liveCheckIntervalSec, uint32_t liveDataFetchIntervalSec) {
     if (!webClient) return;
     
     this->_enabled = enabled;
@@ -321,8 +322,12 @@ void SofaScoreLiveModule::setConfig(bool enabled, uint32_t fetchIntervalMinutes,
     _currentTicksPerPage = _displayDuration / 100;
     if (_currentTicksPerPage == 0) _currentTicksPerPage = 1;
     
-    Log.printf("[SofaScore] Config updated: enabled=%d, fetch=%d min, display=%d sec, fullscreen=%d, interrupt=%d, playNext=%d min, continuousLive=%d\n",
-               enabled, fetchIntervalMinutes, displaySec, fullscreen, interruptOnLive, playNextMinutes, continuousLive);
+    // Set configurable live intervals (convert seconds to milliseconds)
+    this->_liveCheckIntervalMs = liveCheckIntervalSec * 1000UL;
+    this->_liveDataFetchIntervalMs = liveDataFetchIntervalSec * 1000UL;
+    
+    Log.printf("[SofaScore] Config updated: enabled=%d, fetch=%d min, display=%d sec, fullscreen=%d, interrupt=%d, playNext=%d min, continuousLive=%d, liveCheck=%d sec, liveFetch=%d sec\n",
+               enabled, fetchIntervalMinutes, displaySec, fullscreen, interruptOnLive, playNextMinutes, continuousLive, liveCheckIntervalSec, liveDataFetchIntervalSec);
     
     // Parse enabled tournament slugs
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
@@ -693,17 +698,17 @@ void SofaScoreLiveModule::checkAndFetchLiveEvents() {
     bool shouldRegister = !_liveEventsRegistered || stateChanged;
     
     if (!_hasLiveEvents) {
-        // No live events: check for live events at LIVE_CHECK_INTERVAL_MS
+        // No live events: check for live events at configured interval
         if (shouldRegister) {
-            webClient->registerResourceSeconds(liveUrl, LIVE_CHECK_INTERVAL_MS / 1000, false, false);
+            webClient->registerResourceSeconds(liveUrl, _liveCheckIntervalMs / 1000, false, false);
             _liveEventsRegistered = true;
             wasLiveLastCheck = false;
         }
     } else {
-        // Has live events: fetch live data at LIVE_DATA_FETCH_INTERVAL_MS with priority
+        // Has live events: fetch live data at configured interval with priority
         // Only re-register when switching to live mode (state change)
         if (shouldRegister) {
-            webClient->registerResourceSeconds(liveUrl, LIVE_DATA_FETCH_INTERVAL_MS / 1000, true, false);  // Priority=true for live events
+            webClient->registerResourceSeconds(liveUrl, _liveDataFetchIntervalMs / 1000, true, false);  // Priority=true for live events
             _liveEventsRegistered = true;
             wasLiveLastCheck = true;
         }
@@ -779,8 +784,8 @@ void SofaScoreLiveModule::updateLiveMatchStats() {
     
     // Register new resources with PRIORITY mode and force_new=true (outside mutex to avoid holding mutex during registration)
     // force_new=true allows multiple statistics resources with same base URL but different event IDs
-    // Statistics are only fetched during live events at LIVE_DATA_FETCH_INTERVAL_MS
-    uint32_t statsIntervalSec = LIVE_DATA_FETCH_INTERVAL_MS / 1000;
+    // Statistics are only fetched during live events at configured interval
+    uint32_t statsIntervalSec = _liveDataFetchIntervalMs / 1000;
     
     for (int eventId : eventIdsToRegister) {
         char statsUrl[128];
@@ -1201,11 +1206,11 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
     if (_hasLiveEvents && !hadLiveEvents) {
         _dailySchedulesPaused = true;
         
-        // Switch to live data fetching at LIVE_DATA_FETCH_INTERVAL_MS
+        // Switch to live data fetching at configured interval
         const char* liveUrl = "https://api.sofascore.com/api/v1/sport/darts/events/live";
-        webClient->registerResourceSeconds(liveUrl, LIVE_DATA_FETCH_INTERVAL_MS / 1000, true, false);
+        webClient->registerResourceSeconds(liveUrl, _liveDataFetchIntervalMs / 1000, true, false);
         
-        Log.printf("[SofaScore] Live events detected - Pausing daily schedules, switched to PRIORITY %d sec polling\n", LIVE_DATA_FETCH_INTERVAL_MS / 1000);
+        Log.printf("[SofaScore] Live events detected - Pausing daily schedules, switched to PRIORITY %d sec polling\n", _liveDataFetchIntervalMs / 1000);
         
         if (_interruptOnLive && updateCallback) {
             updateCallback();
@@ -1213,9 +1218,9 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
     } else if (!_hasLiveEvents && hadLiveEvents) {
         _dailySchedulesPaused = false;
         
-        // Switch back to live event checking at LIVE_CHECK_INTERVAL_MS (non-priority)
+        // Switch back to live event checking at configured interval (non-priority)
         const char* liveUrl = "https://api.sofascore.com/api/v1/sport/darts/events/live";
-        webClient->registerResourceSeconds(liveUrl, LIVE_CHECK_INTERVAL_MS / 1000, false, false);
+        webClient->registerResourceSeconds(liveUrl, _liveCheckIntervalMs / 1000, false, false);
         
         // Clear registered event IDs
         _registeredEventIds.clear();
@@ -1226,7 +1231,7 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
         _currentTournamentIndex = 0;
         _currentTournamentPage = 0;
         
-        Log.printf("[SofaScore] Live events ended - Resuming daily schedules, switched to %d sec check interval, reset to DAILY_RESULTS mode\n", LIVE_CHECK_INTERVAL_MS / 1000);
+        Log.printf("[SofaScore] Live events ended - Resuming daily schedules, switched to %d sec check interval, reset to DAILY_RESULTS mode\n", _liveCheckIntervalMs / 1000);
     }
     
     // Update scores in dailyMatches from live data
@@ -1618,16 +1623,19 @@ void SofaScoreLiveModule::drawDailyResults() {
         u8g2.setFont(u8g2_font_4x6_tf);  // Smaller font for countries
         u8g2.setForegroundColor(0xAAAA);  // Gray color
         
+        // Move country text 1 pixel higher for better spacing
+        int countryY = y - 1;
+        
         // Home country (left)
         if (match.homeCountry) {
-            u8g2.setCursor(MIDDLE_START, y);
+            u8g2.setCursor(MIDDLE_START, countryY);
             u8g2.print(match.homeCountry);
         }
         
         // Away country (right)
         if (match.awayCountry) {
             int countryWidth = u8g2.getUTF8Width(match.awayCountry);
-            u8g2.setCursor(awayStart, y);
+            u8g2.setCursor(awayStart, countryY);
             u8g2.print(match.awayCountry);
         }
         

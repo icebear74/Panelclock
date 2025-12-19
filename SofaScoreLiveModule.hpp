@@ -104,7 +104,8 @@ public:
     void onUpdate(std::function<void()> callback);
     void setConfig(bool enabled, uint32_t fetchIntervalMinutes, unsigned long displaySec,
                    const PsramString& enabledTournamentSlugs, bool fullscreen, bool interruptOnLive,
-                   uint32_t playNextMinutes, bool continuousLive);
+                   uint32_t playNextMinutes, bool continuousLive,
+                   uint32_t liveCheckIntervalSec = 120, uint32_t liveDataFetchIntervalSec = 60);
     void queueData();
     void processData();
 
@@ -156,8 +157,8 @@ private:
     unsigned long _lastLiveCheckTime = 0;
     unsigned long _lastLiveDataFetchTime = 0;
     unsigned long _lastLiveDisplayTime = 0;  // For repeating live display every minute
-    const unsigned long LIVE_CHECK_INTERVAL_MS = 120000;  // Check for live events every 60 seconds (when not live)
-    const unsigned long LIVE_DATA_FETCH_INTERVAL_MS = 60000;  // Fetch live data every 15 seconds when live
+    unsigned long _liveCheckIntervalMs = 120000;  // Check for live events (configurable, default 120s)
+    unsigned long _liveDataFetchIntervalMs = 60000;  // Fetch live data when active (configurable, default 60s)
     const unsigned long LIVE_DISPLAY_REPEAT_MS = 60000;  // Repeat live display every 60 seconds
     const unsigned long LIVE_MIN_DISPLAY_MS = 20000;  // Minimum 20 seconds display for live stats
     bool _liveEventsRegistered = false;  // Track if live events endpoint is registered to prevent spam
