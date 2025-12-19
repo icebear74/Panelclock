@@ -181,7 +181,7 @@ SofaScoreMatch::SofaScoreMatch(SofaScoreMatch&& other) noexcept {
     awayCheckoutHits = other.awayCheckoutHits;
     awayCheckoutAttempts = other.awayCheckoutAttempts;
     other.homePlayerName = nullptr;
-    awayPlayerName = nullptr;
+    other.awayPlayerName = nullptr;
     other.homeCountry = nullptr;
     other.awayCountry = nullptr;
     other.tournamentName = nullptr;
