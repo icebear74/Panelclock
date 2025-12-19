@@ -700,10 +700,15 @@ void SofaScoreLiveModule::checkAndFetchLiveEvents() {
             wasLiveLastCheck = false;
         }
     } else {
-        // Has live events: check every 15 seconds with priority
+        // Has live events: use configured interval with priority
         // Only re-register when switching to live mode (state change)
         if (shouldRegister) {
-            webClient->registerResourceSeconds(liveUrl, 15, true, false);  // Priority=true for live events
+            uint32_t liveIntervalMin = config->dartsSofascoreFetchIntervalMin > 0 ? config->dartsSofascoreFetchIntervalMin : 60;
+            uint32_t liveIntervalSec = liveIntervalMin * 60;  // Convert minutes to seconds
+            // Ensure minimum of 10 seconds for timely live updates
+            if (liveIntervalSec < 10) liveIntervalSec = 10;
+            
+            webClient->registerResourceSeconds(liveUrl, liveIntervalSec, true, false);  // Priority=true for live events
             _liveEventsRegistered = true;
             wasLiveLastCheck = true;
         }
@@ -1198,11 +1203,16 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
     if (_hasLiveEvents && !hadLiveEvents) {
         _dailySchedulesPaused = true;
         
-        // Switch to priority polling (15s interval)
-        const char* liveUrl = "https://api.sofascore.com/api/v1/sport/darts/events/live";
-        webClient->registerResourceSeconds(liveUrl, 15, true, false);
+        // Use configured fetch interval for live polling, with a reasonable minimum of 10 seconds
+        uint32_t liveIntervalMin = config->dartsSofascoreFetchIntervalMin > 0 ? config->dartsSofascoreFetchIntervalMin : 60;
+        uint32_t liveIntervalSec = liveIntervalMin * 60;  // Convert minutes to seconds
+        // Ensure minimum of 10 seconds for timely live updates
+        if (liveIntervalSec < 10) liveIntervalSec = 10;
         
-        Log.println("[SofaScore] Live events detected - Pausing daily schedules, switched to PRIORITY 15s polling");
+        const char* liveUrl = "https://api.sofascore.com/api/v1/sport/darts/events/live";
+        webClient->registerResourceSeconds(liveUrl, liveIntervalSec, true, false);
+        
+        Log.printf("[SofaScore] Live events detected - Pausing daily schedules, switched to PRIORITY %d sec polling\n", liveIntervalSec);
         
         if (_interruptOnLive && updateCallback) {
             updateCallback();
