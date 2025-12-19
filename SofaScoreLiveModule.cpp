@@ -970,10 +970,12 @@ void SofaScoreLiveModule::parseDailyEventsJson(const char* json, size_t len) {
             }
         }
         
-        const char* tournamentName = event["tournament"]["name"];
-        if (tournamentName) match.tournamentName = psram_strdup(tournamentName);
+        const char* tournamentName = event["tournament"]["name"].as<const char*>();
+        if (tournamentName && *tournamentName != '\0') {
+            match.tournamentName = psram_strdup(tournamentName);
+        }
         
-        const char* statusType = event["status"]["type"];
+        const char* statusType = event["status"]["type"].as<const char*>();
         if (statusType) {
             if (strcmp(statusType, "inprogress") == 0) {
                 match.status = MatchStatus::LIVE;
@@ -1104,11 +1106,15 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
         }
         
         // Get country names (with NULL checks)
-        const char* homeCountryName = event["homeTeam"]["country"]["name"];
-        if (homeCountryName) match.homeCountry = psram_strdup(homeCountryName);
+        const char* homeCountryName = event["homeTeam"]["country"]["name"].as<const char*>();
+        if (homeCountryName && *homeCountryName != '\0') {
+            match.homeCountry = psram_strdup(homeCountryName);
+        }
         
-        const char* awayCountryName = event["awayTeam"]["country"]["name"];
-        if (awayCountryName) match.awayCountry = psram_strdup(awayCountryName);
+        const char* awayCountryName = event["awayTeam"]["country"]["name"].as<const char*>();
+        if (awayCountryName && *awayCountryName != '\0') {
+            match.awayCountry = psram_strdup(awayCountryName);
+        }
         
         // Parse scores - sets and legs
         JsonObject homeScore = event["homeScore"];
@@ -1141,10 +1147,12 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
             }
         }
         
-        const char* tournamentName = event["tournament"]["name"];
-        if (tournamentName) match.tournamentName = psram_strdup(tournamentName);
+        const char* tournamentName = event["tournament"]["name"].as<const char*>();
+        if (tournamentName && *tournamentName != '\0') {
+            match.tournamentName = psram_strdup(tournamentName);
+        }
         
-        const char* statusType = event["status"]["type"];
+        const char* statusType = event["status"]["type"].as<const char*>();
         if (statusType && strcmp(statusType, "inprogress") == 0) {
             match.status = MatchStatus::LIVE;
         } else {
