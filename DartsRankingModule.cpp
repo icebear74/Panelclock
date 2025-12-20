@@ -516,6 +516,33 @@ void DartsRankingModule::clearAllData() {
     if (protour_subTitleText) { free(protour_subTitleText); protour_subTitleText = nullptr; }
 }
 
+// Helper function to get sorting priority for a round
+// Higher values mean better/further progression
+// F=1000, HF=900, QF=800, R9=109, R8=108, ..., R1=101, "--"=0
+int DartsRankingModule::getRoundSortValue(const char* round) {
+    if (!round || strcmp(round, "--") == 0) {
+        return 0;  // Did not play - lowest priority
+    }
+    
+    // Check for special rounds (finals)
+    if (strcmp(round, "F") == 0) return 1000;
+    if (strcmp(round, "HF") == 0) return 900;
+    if (strcmp(round, "QF") == 0) return 800;
+    
+    // Check for round numbers (R1, R2, R3, etc.)
+    if (round[0] == 'R' && strlen(round) > 1) {
+        // Extract the number after 'R'
+        int roundNum = atoi(round + 1);
+        if (roundNum > 0) {
+            // R1=101, R2=102, R3=103, etc.
+            return 100 + roundNum;
+        }
+    }
+    
+    // Unknown format - treat as no participation
+    return 0;
+}
+
 void DartsRankingModule::filterAndSortPlayers(DartsRankingType type) {
     auto& players_list = (type == DartsRankingType::ORDER_OF_MERIT) ? oom_players : protour_players;
     bool isLiveFormat = (type == DartsRankingType::ORDER_OF_MERIT) ? oom_isLiveFormat : protour_isLiveFormat;
@@ -541,14 +568,19 @@ void DartsRankingModule::filterAndSortPlayers(DartsRankingType type) {
     
     // Sort players based on whether this is a live tournament
     if (isLiveFormat) {
-        // During live tournament: participating players first, then non-participating
-        // Both groups sorted by rank
-        std::sort(players_list.begin(), players_list.end(), [](const DartsPlayer& a, const DartsPlayer& b) {
-            // If participation status differs, participating players come first
-            if (a.didParticipate != b.didParticipate) {
-                return a.didParticipate > b.didParticipate;  // true > false
+        // During live tournament: sort by round progression first, then by rank
+        // Criterion 1: Round (F > HF > QF > R9 > R8 > ... > R1 > --)
+        // Criterion 2: Ranking position
+        std::sort(players_list.begin(), players_list.end(), [this](const DartsPlayer& a, const DartsPlayer& b) {
+            int roundValueA = getRoundSortValue(a.currentRound);
+            int roundValueB = getRoundSortValue(b.currentRound);
+            
+            // Primary: Sort by round (higher value = better round)
+            if (roundValueA != roundValueB) {
+                return roundValueA > roundValueB;
             }
-            // Within same participation group, sort by rank
+            
+            // Secondary: Sort by rank (lower rank number = better position)
             return a.rank < b.rank;
         });
     } else {
