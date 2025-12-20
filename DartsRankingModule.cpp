@@ -520,8 +520,8 @@ void DartsRankingModule::clearAllData() {
 // Higher values mean better/further progression
 // F=1000, HF=900, QF=800, R9=109, R8=108, ..., R1=101, "--"=0
 int DartsRankingModule::getRoundSortValue(const char* round) {
-    if (!round || strcmp(round, "--") == 0) {
-        return 0;  // Did not play - lowest priority
+    if (!round || round[0] == '\0' || strcmp(round, "--") == 0) {
+        return 0;  // Did not play or empty - lowest priority
     }
     
     // Check for special rounds (finals)
@@ -531,11 +531,13 @@ int DartsRankingModule::getRoundSortValue(const char* round) {
     
     // Check for round numbers (R1, R2, R3, etc.)
     if (round[0] == 'R' && strlen(round) > 1) {
-        // Extract the number after 'R'
-        int roundNum = atoi(round + 1);
-        if (roundNum > 0) {
+        // Extract the number after 'R' - use strtol for better error handling
+        char* endptr;
+        long roundNum = strtol(round + 1, &endptr, 10);
+        // Check if conversion was successful and the number is valid
+        if (endptr != round + 1 && roundNum > 0 && roundNum <= 999) {
             // R1=101, R2=102, R3=103, etc.
-            return 100 + roundNum;
+            return 100 + (int)roundNum;
         }
     }
     
