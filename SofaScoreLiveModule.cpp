@@ -181,7 +181,7 @@ SofaScoreMatch::SofaScoreMatch(SofaScoreMatch&& other) noexcept {
     awayCheckoutHits = other.awayCheckoutHits;
     awayCheckoutAttempts = other.awayCheckoutAttempts;
     other.homePlayerName = nullptr;
-    awayPlayerName = nullptr;
+    other.awayPlayerName = nullptr;
     other.homeCountry = nullptr;
     other.awayCountry = nullptr;
     other.tournamentName = nullptr;
@@ -309,7 +309,8 @@ void SofaScoreLiveModule::onUpdate(std::function<void()> callback) {
 
 void SofaScoreLiveModule::setConfig(bool enabled, uint32_t fetchIntervalMinutes, unsigned long displaySec,
                                     const PsramString& enabledTournamentSlugs, bool fullscreen, bool interruptOnLive,
-                                    uint32_t playNextMinutes, bool continuousLive) {
+                                    uint32_t playNextMinutes, bool continuousLive,
+                                    uint32_t liveCheckIntervalSec, uint32_t liveDataFetchIntervalSec) {
     if (!webClient) return;
     
     this->_enabled = enabled;
@@ -321,8 +322,12 @@ void SofaScoreLiveModule::setConfig(bool enabled, uint32_t fetchIntervalMinutes,
     _currentTicksPerPage = _displayDuration / 100;
     if (_currentTicksPerPage == 0) _currentTicksPerPage = 1;
     
-    Log.printf("[SofaScore] Config updated: enabled=%d, fetch=%d min, display=%d sec, fullscreen=%d, interrupt=%d, playNext=%d min, continuousLive=%d\n",
-               enabled, fetchIntervalMinutes, displaySec, fullscreen, interruptOnLive, playNextMinutes, continuousLive);
+    // Set configurable live intervals (convert seconds to milliseconds)
+    this->_liveCheckIntervalMs = liveCheckIntervalSec * 1000UL;
+    this->_liveDataFetchIntervalMs = liveDataFetchIntervalSec * 1000UL;
+    
+    Log.printf("[SofaScore] Config updated: enabled=%d, fetch=%d min, display=%d sec, fullscreen=%d, interrupt=%d, playNext=%d min, continuousLive=%d, liveCheck=%d sec, liveFetch=%d sec\n",
+               enabled, fetchIntervalMinutes, displaySec, fullscreen, interruptOnLive, playNextMinutes, continuousLive, liveCheckIntervalSec, liveDataFetchIntervalSec);
     
     // Parse enabled tournament slugs
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
@@ -575,6 +580,21 @@ void SofaScoreLiveModule::switchToNextMode() {
             Log.println("[SofaScore] Cycle complete (no live matches)");
         }
     } else if (_currentMode == SofaScoreDisplayMode::LIVE_MATCH) {
+        // If liveMatches is empty (e.g., filtered out by tournament selection), 
+        // skip live mode and finish the cycle
+        if (liveMatches.empty()) {
+            _isFinished = true;
+            Log.println("[SofaScore] Live matches empty (filtered) - cycle complete");
+            
+            // Release interrupt if active
+            if (_hasActiveInterrupt && _interruptUID > 0) {
+                releasePriorityEx(_interruptUID);
+                _hasActiveInterrupt = false;
+                Log.println("[SofaScore] Released interrupt - no matching live matches");
+            }
+            return;
+        }
+        
         // Check if continuous live display is enabled
         if (_continuousLiveDisplay && !liveMatches.empty()) {
             // Check if all live matches are finished
@@ -678,17 +698,17 @@ void SofaScoreLiveModule::checkAndFetchLiveEvents() {
     bool shouldRegister = !_liveEventsRegistered || stateChanged;
     
     if (!_hasLiveEvents) {
-        // No live events: check every 60 seconds
+        // No live events: check for live events at configured interval
         if (shouldRegister) {
-            webClient->registerResourceSeconds(liveUrl, 60, false, false);
+            webClient->registerResourceSeconds(liveUrl, _liveCheckIntervalMs / 1000, false, false);
             _liveEventsRegistered = true;
             wasLiveLastCheck = false;
         }
     } else {
-        // Has live events: check every 15 seconds with priority
+        // Has live events: fetch live data at configured interval with priority
         // Only re-register when switching to live mode (state change)
         if (shouldRegister) {
-            webClient->registerResourceSeconds(liveUrl, 15, true, false);  // Priority=true for live events
+            webClient->registerResourceSeconds(liveUrl, _liveDataFetchIntervalMs / 1000, true, false);  // Priority=true for live events
             _liveEventsRegistered = true;
             wasLiveLastCheck = true;
         }
@@ -764,12 +784,15 @@ void SofaScoreLiveModule::updateLiveMatchStats() {
     
     // Register new resources with PRIORITY mode and force_new=true (outside mutex to avoid holding mutex during registration)
     // force_new=true allows multiple statistics resources with same base URL but different event IDs
+    // Statistics are only fetched during live events at configured interval
+    uint32_t statsIntervalSec = _liveDataFetchIntervalMs / 1000;
+    
     for (int eventId : eventIdsToRegister) {
         char statsUrl[128];
         snprintf(statsUrl, sizeof(statsUrl), "https://api.sofascore.com/api/v1/event/%d/statistics", eventId);
-        // Use registerResourceSeconds with priority=true and force_new=true for 30-second updates
-        webClient->registerResourceSeconds(statsUrl, 30, true, true, nullptr);  // Priority pull, 30 second updates, force new
-        Log.printf("[SofaScore] Registered PRIORITY live match statistics: eventId=%d (30s interval)\n", eventId);
+        // Use registerResourceSeconds with priority=true and force_new=true for live data fetch interval
+        webClient->registerResourceSeconds(statsUrl, statsIntervalSec, true, true, nullptr);  // Priority pull, live data interval, force new
+        Log.printf("[SofaScore] Registered PRIORITY live match statistics: eventId=%d (%d sec interval)\n", eventId, statsIntervalSec);
     }
     
     // Fetch statistics for all live matches WITHOUT holding dataMutex to avoid nested mutex locks
@@ -925,21 +948,31 @@ void SofaScoreLiveModule::parseDailyEventsJson(const char* json, size_t len) {
         match.eventId = event["id"] | 0;
         
         // Get player names (with NULL checks)
-        const char* homeName = event["homeTeam"]["shortName"];
-        if (!homeName) {
-            homeName = event["homeTeam"]["name"];
-        } else if (*homeName == '\0') {
-            homeName = event["homeTeam"]["name"];
+        const char* homeName = event["homeTeam"]["shortName"].as<const char*>();
+        if (!homeName || *homeName == '\0') {
+            homeName = event["homeTeam"]["name"].as<const char*>();
         }
-        if (homeName) match.homePlayerName = psram_strdup(homeName);
+        if (homeName && *homeName != '\0') {
+            match.homePlayerName = psram_strdup(homeName);
+        }
         
-        const char* awayName = event["awayTeam"]["shortName"];
+        const char* awayName = event["awayTeam"]["shortName"].as<const char*>();
         if (!awayName || *awayName == '\0') {
-            awayName = event["awayTeam"]["name"];
+            awayName = event["awayTeam"]["name"].as<const char*>();
         }
-        // Only set if we have a valid name (not empty, not just whitespace)
-        if (awayName && *awayName != '\0' && strcmp(awayName, "N/A") != 0) {
+        if (awayName && *awayName != '\0') {
             match.awayPlayerName = psram_strdup(awayName);
+        }
+        
+        // Get country names (with NULL checks)
+        const char* homeCountryName = event["homeTeam"]["country"]["name"].as<const char*>();
+        if (homeCountryName && *homeCountryName != '\0') {
+            match.homeCountry = psram_strdup(homeCountryName);
+        }
+        
+        const char* awayCountryName = event["awayTeam"]["country"]["name"].as<const char*>();
+        if (awayCountryName && *awayCountryName != '\0') {
+            match.awayCountry = psram_strdup(awayCountryName);
         }
         
         // Check if score objects exist before accessing fields
@@ -971,11 +1004,13 @@ void SofaScoreLiveModule::parseDailyEventsJson(const char* json, size_t len) {
             }
         }
         
-        const char* tournamentName = event["tournament"]["name"];
-        if (tournamentName) match.tournamentName = psram_strdup(tournamentName);
+        const char* tournamentName = event["tournament"]["name"].as<const char*>();
+        if (tournamentName && *tournamentName != '\0') {
+            match.tournamentName = psram_strdup(tournamentName);
+        }
         
-        const char* statusType = event["status"]["type"];
-        if (statusType) {
+        const char* statusType = event["status"]["type"].as<const char*>();
+        if (statusType && *statusType != '\0') {
             if (strcmp(statusType, "inprogress") == 0) {
                 match.status = MatchStatus::LIVE;
                 // Only add to liveMatches from daily events if we DON'T have active live events
@@ -1088,34 +1123,32 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
         match.eventId = event["id"] | 0;
         
         // Get player names (with NULL checks)
-        const char* homeName = event["homeTeam"]["shortName"];
+        const char* homeName = event["homeTeam"]["shortName"].as<const char*>();
         if (!homeName || *homeName == '\0') {
-            homeName = event["homeTeam"]["name"];
+            homeName = event["homeTeam"]["name"].as<const char*>();
         }
-        // Set player name (ArduinoJson returns nullptr for missing keys)
-        if (homeName) {
+        if (homeName && *homeName != '\0') {
             match.homePlayerName = psram_strdup(homeName);
-        } else {
-            match.homePlayerName = nullptr;
         }
         
-        const char* awayName = event["awayTeam"]["shortName"];
+        const char* awayName = event["awayTeam"]["shortName"].as<const char*>();
         if (!awayName || *awayName == '\0') {
-            awayName = event["awayTeam"]["name"];
+            awayName = event["awayTeam"]["name"].as<const char*>();
         }
-        // Set player name (ArduinoJson returns nullptr for missing keys, not "N/A" or "?")
-        if (awayName) {
+        if (awayName && *awayName != '\0') {
             match.awayPlayerName = psram_strdup(awayName);
-        } else {
-            match.awayPlayerName = nullptr;
         }
         
         // Get country names (with NULL checks)
-        const char* homeCountryName = event["homeTeam"]["country"]["name"];
-        if (homeCountryName) match.homeCountry = psram_strdup(homeCountryName);
+        const char* homeCountryName = event["homeTeam"]["country"]["name"].as<const char*>();
+        if (homeCountryName && *homeCountryName != '\0') {
+            match.homeCountry = psram_strdup(homeCountryName);
+        }
         
-        const char* awayCountryName = event["awayTeam"]["country"]["name"];
-        if (awayCountryName) match.awayCountry = psram_strdup(awayCountryName);
+        const char* awayCountryName = event["awayTeam"]["country"]["name"].as<const char*>();
+        if (awayCountryName && *awayCountryName != '\0') {
+            match.awayCountry = psram_strdup(awayCountryName);
+        }
         
         // Parse scores - sets and legs
         JsonObject homeScore = event["homeScore"];
@@ -1148,11 +1181,13 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
             }
         }
         
-        const char* tournamentName = event["tournament"]["name"];
-        if (tournamentName) match.tournamentName = psram_strdup(tournamentName);
+        const char* tournamentName = event["tournament"]["name"].as<const char*>();
+        if (tournamentName && *tournamentName != '\0') {
+            match.tournamentName = psram_strdup(tournamentName);
+        }
         
-        const char* statusType = event["status"]["type"];
-        if (statusType && strcmp(statusType, "inprogress") == 0) {
+        const char* statusType = event["status"]["type"].as<const char*>();
+        if (statusType && *statusType != '\0' && strcmp(statusType, "inprogress") == 0) {
             match.status = MatchStatus::LIVE;
         } else {
             continue;  // Only add truly live matches
@@ -1171,11 +1206,11 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
     if (_hasLiveEvents && !hadLiveEvents) {
         _dailySchedulesPaused = true;
         
-        // Switch to priority polling (15s interval)
+        // Switch to live data fetching at configured interval
         const char* liveUrl = "https://api.sofascore.com/api/v1/sport/darts/events/live";
-        webClient->registerResourceSeconds(liveUrl, 15, true, false);
+        webClient->registerResourceSeconds(liveUrl, _liveDataFetchIntervalMs / 1000, true, false);
         
-        Log.println("[SofaScore] Live events detected - Pausing daily schedules, switched to PRIORITY 15s polling");
+        Log.printf("[SofaScore] Live events detected - Pausing daily schedules, switched to PRIORITY %d sec polling\n", _liveDataFetchIntervalMs / 1000);
         
         if (_interruptOnLive && updateCallback) {
             updateCallback();
@@ -1183,14 +1218,20 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
     } else if (!_hasLiveEvents && hadLiveEvents) {
         _dailySchedulesPaused = false;
         
-        // Switch back to normal polling (60s, non-priority)
+        // Switch back to live event checking at configured interval (non-priority)
         const char* liveUrl = "https://api.sofascore.com/api/v1/sport/darts/events/live";
-        webClient->registerResourceSeconds(liveUrl, 60, false, false);
+        webClient->registerResourceSeconds(liveUrl, _liveCheckIntervalMs / 1000, false, false);
         
         // Clear registered event IDs
         _registeredEventIds.clear();
         
-        Log.println("[SofaScore] Live events ended - Resuming daily schedules, switched to 60s polling");
+        // Reset mode to DAILY_RESULTS to avoid showing empty live page
+        _currentMode = SofaScoreDisplayMode::DAILY_RESULTS;
+        _currentPage = 0;
+        _currentTournamentIndex = 0;
+        _currentTournamentPage = 0;
+        
+        Log.printf("[SofaScore] Live events ended - Resuming daily schedules, switched to %d sec check interval, reset to DAILY_RESULTS mode\n", _liveCheckIntervalMs / 1000);
     }
     
     // Update scores in dailyMatches from live data
@@ -1448,8 +1489,9 @@ void SofaScoreLiveModule::drawDailyResults() {
     }
     
     // Calculate matches for this page
-    // Fullscreen: 192x96 allows 7 lines, Normal: 192x64 allows 5 lines
-    const int MATCHES_PER_PAGE = wantsFullscreen() ? 7 : 5;
+    // Each match now uses 2 lines (player names + countries)
+    // Fullscreen: 192x96 allows ~4 matches (8 lines), Normal: 192x64 allows ~3 matches (6 lines)
+    const int MATCHES_PER_PAGE = wantsFullscreen() ? 4 : 3;
     int startIdx = _currentTournamentPage * MATCHES_PER_PAGE;
     int endIdx = startIdx + MATCHES_PER_PAGE;
     if (endIdx > currentGroup.matchIndices.size()) endIdx = currentGroup.matchIndices.size();
@@ -1464,10 +1506,13 @@ void SofaScoreLiveModule::drawDailyResults() {
     
     // Adjust line height and starting position based on screen size
     // Y-coordinates are BOTTOM-aligned for u8g2
-    // Normal (64px): header ~20px, need to fit 5 matches of 8px each
-    // Fullscreen (96px): header ~24px, need to fit 7 matches of 9px each
+    // Each match takes 2 lines now: player names (line 1) + countries (line 2)
+    // Normal (64px): header ~20px, need to fit 3 matches of 16px each (8px + 8px)
+    // Fullscreen (96px): header ~24px, need to fit 4 matches of 17px each (9px + 8px)
     int y = wantsFullscreen() ? 33 : 30;  // Start below tournament name (bottom-aligned)
-    const int LINE_HEIGHT = wantsFullscreen() ? 9 : 8;
+    const int LINE1_HEIGHT = wantsFullscreen() ? 9 : 8;  // Player names line
+    const int LINE2_HEIGHT = 8;  // Countries line (increased spacing for better readability)
+    const int MATCH_HEIGHT = LINE1_HEIGHT + LINE2_HEIGHT;  // Total height per match
     u8g2.setFont(u8g2_font_5x8_tf);
     
     // Ensure we have enough scrollers (2 per match: home + away)
@@ -1504,6 +1549,9 @@ void SofaScoreLiveModule::drawDailyResults() {
         
         const SofaScoreMatch& match = dailyMatches[matchIdx];
         int scrollerIdx = (i - startIdx) * 2;  // 2 scrollers per match
+        
+        // === LINE 1: Time | Player Names | Score ===
+        u8g2.setFont(u8g2_font_5x8_tf);
         
         // LEFT: Time (5 chars fixed)
         char timeStr[6] = "     ";
@@ -1569,7 +1617,32 @@ void SofaScoreLiveModule::drawDailyResults() {
         u8g2.setCursor(_currentCanvas->width() - scoreWidth - 2, y);
         u8g2.print(scoreStr);
         
-        y += LINE_HEIGHT;
+        y += LINE1_HEIGHT;
+        
+        // === LINE 2: Countries (smaller font, gray) ===
+        u8g2.setFont(u8g2_font_4x6_tf);  // Smaller font for countries
+        u8g2.setForegroundColor(0xAAAA);  // Gray color
+        
+        // Move country text 1 pixel higher for better spacing
+        int countryY = y - 1;
+        
+        // Home country (left)
+        if (match.homeCountry) {
+            u8g2.setCursor(MIDDLE_START, countryY);
+            u8g2.print(match.homeCountry);
+        }
+        
+        // Away country (right)
+        if (match.awayCountry) {
+            int countryWidth = u8g2.getUTF8Width(match.awayCountry);
+            u8g2.setCursor(awayStart, countryY);
+            u8g2.print(match.awayCountry);
+        }
+        
+        // Reset color for next match
+        u8g2.setForegroundColor(0xFFFF);
+        
+        y += LINE2_HEIGHT;
     }
 }
 
@@ -1589,6 +1662,17 @@ void SofaScoreLiveModule::drawLiveMatch() {
     int pageInfoWidth = u8g2.getUTF8Width(pageInfo);
     u8g2.setCursor(_currentCanvas->width() - pageInfoWidth - 2, 8);
     u8g2.print(pageInfo);
+    
+    // Check if we have any live matches (they may have been filtered out)
+    if (liveMatches.empty()) {
+        u8g2.setFont(u8g2_font_profont12_tf);
+        u8g2.setForegroundColor(0xFFFF);
+        const char* msg = "No live matches";
+        int msgWidth = u8g2.getUTF8Width(msg);
+        u8g2.setCursor((_currentCanvas->width() - msgWidth) / 2, _currentCanvas->height() / 2);
+        u8g2.print(msg);
+        return;
+    }
     
     if (_currentPage < liveMatches.size()) {
         const SofaScoreMatch& match = liveMatches[_currentPage];
@@ -2001,7 +2085,33 @@ void SofaScoreLiveModule::debugSaveCurrentState() {
     
     time_t now = time(nullptr);
     
-    // 1. Save live events JSON (if available)
+    // 1a. Save daily scheduled events JSON (if available)
+    time_t now_local = timeConverter.toLocal(now);
+    struct tm timeinfo;
+    gmtime_r(&now_local, &timeinfo);
+    char dateStr[16];
+    strftime(dateStr, sizeof(dateStr), "%Y-%m-%d", &timeinfo);
+    
+    char dailyUrl[128];
+    snprintf(dailyUrl, sizeof(dailyUrl), "https://api.sofascore.com/api/v1/sport/darts/scheduled-events/%s", dateStr);
+    
+    webClient->accessResource(dailyUrl,
+        [this, now](const char* buffer, size_t size, time_t last_update, bool is_stale) {
+            if (buffer && size > 0) {
+                char filename[64];
+                snprintf(filename, sizeof(filename), "/json_debug/%ld_dailydata.json", (long)now);
+                File file = LittleFS.open(filename, "w");
+                if (file) {
+                    file.write((const uint8_t*)buffer, size);
+                    file.close();
+                    Log.printf("[SofaScore] DEBUG: Saved daily scheduled data to %s (%d bytes)\n", filename, size);
+                } else {
+                    Log.printf("[SofaScore] DEBUG: ERROR: Failed to save %s\n", filename);
+                }
+            }
+        });
+    
+    // 1b. Save live events JSON (if available)
     const char* liveUrl = "https://api.sofascore.com/api/v1/sport/darts/events/live";
     webClient->accessResource(liveUrl,
         [this, now](const char* buffer, size_t size, time_t last_update, bool is_stale) {
@@ -2063,53 +2173,110 @@ void SofaScoreLiveModule::debugSaveCurrentState() {
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(200)) == pdTRUE) {
         parsedFile.printf("=== SOFASCORE DEBUG SNAPSHOT ===\n");
         parsedFile.printf("Timestamp: %ld\n", (long)now);
+        parsedFile.printf("Current Display Mode: %s\n", 
+                         _currentMode == SofaScoreDisplayMode::DAILY_RESULTS ? "DAILY_RESULTS" :
+                         _currentMode == SofaScoreDisplayMode::LIVE_MATCH ? "LIVE_MATCH" : "OTHER");
+        parsedFile.printf("Current Page: %d/%d\n", _currentPage + 1, _totalPages);
         parsedFile.printf("Has Live Events: %s\n", _hasLiveEvents ? "YES" : "NO");
+        parsedFile.printf("Daily Matches Count: %d\n", dailyMatches.size());
         parsedFile.printf("Live Matches Count: %d\n\n", liveMatches.size());
         
-        for (const auto& match : liveMatches) {
-            parsedFile.printf("==========================================\n");
-            parsedFile.printf("EVENT ID: %d\n", match.eventId);
-            parsedFile.printf("==========================================\n\n");
+        // Save daily matches (Today's screen)
+        if (!dailyMatches.empty()) {
+            parsedFile.printf("##########################################\n");
+            parsedFile.printf("### DAILY MATCHES (Today's Darts)      ###\n");
+            parsedFile.printf("##########################################\n\n");
             
-            parsedFile.printf("--- Basic Info ---\n");
-            parsedFile.printf("Home Player: %s\n", match.homePlayerName ? match.homePlayerName : "N/A");
-            parsedFile.printf("Away Player: %s\n", match.awayPlayerName ? match.awayPlayerName : "N/A");
-            parsedFile.printf("Tournament: %s\n", match.tournamentName ? match.tournamentName : "N/A");
-            parsedFile.printf("Status: %d (%s)\n", (int)match.status, 
-                             match.status == MatchStatus::LIVE ? "LIVE" :
-                             match.status == MatchStatus::FINISHED ? "FINISHED" : "OTHER");
-            
-            parsedFile.printf("\n--- Scores ---\n");
-            parsedFile.printf("Sets: %d:%d\n", match.homeScore, match.awayScore);
-            parsedFile.printf("Legs: %d:%d\n", match.homeLegs, match.awayLegs);
-            
-            parsedFile.printf("\n--- Statistics ---\n");
-            parsedFile.printf("Average:         %.2f vs %.2f\n", match.homeAverage, match.awayAverage);
-            parsedFile.printf("180s:            %d vs %d\n", match.home180s, match.away180s);
-            parsedFile.printf(">140:            %d vs %d\n", match.homeOver140, match.awayOver140);
-            parsedFile.printf(">100:            %d vs %d\n", match.homeOver100, match.awayOver100);
-            parsedFile.printf("CO>100:          %d vs %d\n", match.homeCheckoutsOver100, match.awayCheckoutsOver100);
-            parsedFile.printf("CO Accuracy:     %.0f%% (%d/%d) vs %.0f%% (%d/%d)\n",
-                             match.homeCheckoutPercent, match.homeCheckoutHits, match.homeCheckoutAttempts,
-                             match.awayCheckoutPercent, match.awayCheckoutHits, match.awayCheckoutAttempts);
-            
-            parsedFile.printf("\n--- Display Output ---\n");
-            parsedFile.printf("Line 1: %s  %d:%d  %s\n",
-                             match.homePlayerName ? match.homePlayerName : "?",
-                             match.homeScore, match.awayScore,
-                             match.awayPlayerName ? match.awayPlayerName : "?");
-            if (match.homeLegs > 0 || match.awayLegs > 0) {
-                parsedFile.printf("Line 2: (%d:%d)\n", match.homeLegs, match.awayLegs);
-            }
-            if (match.homeAverage > 0.1 || match.awayAverage > 0.1) {
-                parsedFile.printf("Averages: %.1f  vs  %.1f\n", match.homeAverage, match.awayAverage);
-            }
-            if (match.homeCheckoutAttempts > 0 || match.awayCheckoutAttempts > 0) {
-                parsedFile.printf("Checkout: %.0f%% (%d/%d) vs %.0f%% (%d/%d)\n",
-                                 match.homeCheckoutPercent, match.homeCheckoutHits, match.homeCheckoutAttempts,
-                                 match.awayCheckoutPercent, match.awayCheckoutHits, match.awayCheckoutAttempts);
+            for (const auto& match : dailyMatches) {
+                parsedFile.printf("==========================================\n");
+                parsedFile.printf("EVENT ID: %d\n", match.eventId);
+                parsedFile.printf("==========================================\n\n");
+                
+                parsedFile.printf("--- Basic Info ---\n");
+                parsedFile.printf("Home Player: %s\n", match.homePlayerName ? match.homePlayerName : "N/A");
+                parsedFile.printf("Away Player: %s\n", match.awayPlayerName ? match.awayPlayerName : "N/A");
+                parsedFile.printf("Tournament: %s\n", match.tournamentName ? match.tournamentName : "N/A");
+                parsedFile.printf("Status: %d (%s)\n", (int)match.status, 
+                                 match.status == MatchStatus::LIVE ? "LIVE" :
+                                 match.status == MatchStatus::FINISHED ? "FINISHED" : 
+                                 match.status == MatchStatus::SCHEDULED ? "SCHEDULED" : "OTHER");
+                parsedFile.printf("Start Time: %ld\n", match.startTimestamp);
+                
+                // Convert timestamp to readable time
+                if (match.startTimestamp > 0) {
+                    time_t localTime = timeConverter.toLocal(match.startTimestamp);
+                    struct tm timeinfo_local;
+                    gmtime_r(&localTime, &timeinfo_local);
+                    char timeStr[32];
+                    strftime(timeStr, sizeof(timeStr), "%H:%M", &timeinfo_local);
+                    parsedFile.printf("Start Time (Local): %s\n", timeStr);
+                }
+                
+                parsedFile.printf("\n--- Scores ---\n");
+                parsedFile.printf("Sets: %d:%d\n", match.homeScore, match.awayScore);
+                parsedFile.printf("Legs: %d:%d\n", match.homeLegs, match.awayLegs);
+                
+                parsedFile.printf("\n--- Display Output (Today's screen) ---\n");
+                parsedFile.printf("Line: %s  %d:%d  %s\n",
+                                 match.homePlayerName ? match.homePlayerName : "?",
+                                 match.homeScore, match.awayScore,
+                                 match.awayPlayerName ? match.awayPlayerName : "?");
+                parsedFile.printf("\n");
             }
             parsedFile.printf("\n");
+        }
+        
+        // Save live matches
+        if (!liveMatches.empty()) {
+            parsedFile.printf("##########################################\n");
+            parsedFile.printf("### LIVE MATCHES                       ###\n");
+            parsedFile.printf("##########################################\n\n");
+            
+            for (const auto& match : liveMatches) {
+                parsedFile.printf("==========================================\n");
+                parsedFile.printf("EVENT ID: %d\n", match.eventId);
+                parsedFile.printf("==========================================\n\n");
+                
+                parsedFile.printf("--- Basic Info ---\n");
+                parsedFile.printf("Home Player: %s\n", match.homePlayerName ? match.homePlayerName : "N/A");
+                parsedFile.printf("Away Player: %s\n", match.awayPlayerName ? match.awayPlayerName : "N/A");
+                parsedFile.printf("Tournament: %s\n", match.tournamentName ? match.tournamentName : "N/A");
+                parsedFile.printf("Status: %d (%s)\n", (int)match.status, 
+                                 match.status == MatchStatus::LIVE ? "LIVE" :
+                                 match.status == MatchStatus::FINISHED ? "FINISHED" : "OTHER");
+                
+                parsedFile.printf("\n--- Scores ---\n");
+                parsedFile.printf("Sets: %d:%d\n", match.homeScore, match.awayScore);
+                parsedFile.printf("Legs: %d:%d\n", match.homeLegs, match.awayLegs);
+                
+                parsedFile.printf("\n--- Statistics ---\n");
+                parsedFile.printf("Average:         %.2f vs %.2f\n", match.homeAverage, match.awayAverage);
+                parsedFile.printf("180s:            %d vs %d\n", match.home180s, match.away180s);
+                parsedFile.printf(">140:            %d vs %d\n", match.homeOver140, match.awayOver140);
+                parsedFile.printf(">100:            %d vs %d\n", match.homeOver100, match.awayOver100);
+                parsedFile.printf("CO>100:          %d vs %d\n", match.homeCheckoutsOver100, match.awayCheckoutsOver100);
+                parsedFile.printf("CO Accuracy:     %.0f%% (%d/%d) vs %.0f%% (%d/%d)\n",
+                                 match.homeCheckoutPercent, match.homeCheckoutHits, match.homeCheckoutAttempts,
+                                 match.awayCheckoutPercent, match.awayCheckoutHits, match.awayCheckoutAttempts);
+                
+                parsedFile.printf("\n--- Display Output (LIVE screen) ---\n");
+                parsedFile.printf("Line 1: %s  %d:%d  %s\n",
+                                 match.homePlayerName ? match.homePlayerName : "?",
+                                 match.homeScore, match.awayScore,
+                                 match.awayPlayerName ? match.awayPlayerName : "?");
+                if (match.homeLegs > 0 || match.awayLegs > 0) {
+                    parsedFile.printf("Line 2: (%d:%d)\n", match.homeLegs, match.awayLegs);
+                }
+                if (match.homeAverage > 0.1 || match.awayAverage > 0.1) {
+                    parsedFile.printf("Averages: %.1f  vs  %.1f\n", match.homeAverage, match.awayAverage);
+                }
+                if (match.homeCheckoutAttempts > 0 || match.awayCheckoutAttempts > 0) {
+                    parsedFile.printf("Checkout: %.0f%% (%d/%d) vs %.0f%% (%d/%d)\n",
+                                     match.homeCheckoutPercent, match.homeCheckoutHits, match.homeCheckoutAttempts,
+                                     match.awayCheckoutPercent, match.awayCheckoutHits, match.awayCheckoutAttempts);
+                }
+                parsedFile.printf("\n");
+            }
         }
         
         xSemaphoreGive(dataMutex);

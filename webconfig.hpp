@@ -84,6 +84,10 @@ struct DeviceConfig {
     int dartsSofascorePlayNextMinutes = 0;
     /// @brief Live-Match dauerhaft anzeigen während es läuft (statt zu rotieren).
     bool dartsSofascoreContinuousLive = false;
+    /// @brief Intervall zum Prüfen auf Live-Events in Sekunden (wenn kein Live-Event aktiv).
+    int dartsSofascoreLiveCheckIntervalSec = 120;
+    /// @brief Intervall zum Abrufen von Live-Daten und Statistiken in Sekunden (während Live-Event).
+    int dartsSofascoreLiveDataFetchIntervalSec = 60;
     /// @brief Debug-Logging für SofaScore in Datei aktivieren.
     bool sofascoreDebugEnabled = false;
     /// @brief Debug-Logging in Datei aktivieren (alle Module via MultiLogger).

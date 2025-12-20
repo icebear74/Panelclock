@@ -202,6 +202,8 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
         <input type="checkbox" id="dartsSofascoreInterruptOnLive" name="dartsSofascoreInterruptOnLive" {dartsSofascoreInterruptOnLive_checked}><label for="dartsSofascoreInterruptOnLive" style="display:inline;">Live-Spiele unterbrechend anzeigen</label><br>
         <label for="dartsSofascorePlayNextMinutes">PlayNext-Intervall (Minuten, 0=aus):</label> <input type="number" id="dartsSofascorePlayNextMinutes" name="dartsSofascorePlayNextMinutes" value="{dartsSofascorePlayNextMinutes}" min="0" max="1440" style="width:60px;"><br>
         <input type="checkbox" id="dartsSofascoreContinuousLive" name="dartsSofascoreContinuousLive" {dartsSofascoreContinuousLive_checked}><label for="dartsSofascoreContinuousLive" style="display:inline;">Live-Spiel dauerhaft anzeigen (statt zu rotieren)</label><br>
+        <label for="dartsSofascoreLiveCheckIntervalSec">Live-Check-Intervall (Sekunden):</label> <input type="number" id="dartsSofascoreLiveCheckIntervalSec" name="dartsSofascoreLiveCheckIntervalSec" value="{dartsSofascoreLiveCheckIntervalSec}" min="10" max="600" style="width:60px;"><br>
+        <label for="dartsSofascoreLiveDataFetchIntervalSec">Live-Daten-Abruf-Intervall (Sekunden):</label> <input type="number" id="dartsSofascoreLiveDataFetchIntervalSec" name="dartsSofascoreLiveDataFetchIntervalSec" value="{dartsSofascoreLiveDataFetchIntervalSec}" min="10" max="300" style="width:60px;"><br>
     </div>
 </div>
 

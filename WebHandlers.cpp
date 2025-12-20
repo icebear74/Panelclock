@@ -256,6 +256,8 @@ void handleConfigModules() {
     replaceAll(content, "{dartsSofascoreInterruptOnLive_checked}", deviceConfig->dartsSofascoreInterruptOnLive ? "checked" : "");
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->dartsSofascorePlayNextMinutes); replaceAll(content, "{dartsSofascorePlayNextMinutes}", num_buf);
     replaceAll(content, "{dartsSofascoreContinuousLive_checked}", deviceConfig->dartsSofascoreContinuousLive ? "checked" : "");
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->dartsSofascoreLiveCheckIntervalSec); replaceAll(content, "{dartsSofascoreLiveCheckIntervalSec}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->dartsSofascoreLiveDataFetchIntervalSec); replaceAll(content, "{dartsSofascoreLiveDataFetchIntervalSec}", num_buf);
     
     replaceAll(content, "{fritzboxEnabled_checked}", deviceConfig->fritzboxEnabled ? "checked" : "");
     replaceAll(content, "{fritzboxIp}", deviceConfig->fritzboxIp.c_str());
@@ -537,6 +539,8 @@ void handleSaveModules() {
     deviceConfig->dartsSofascoreInterruptOnLive = server->hasArg("dartsSofascoreInterruptOnLive");
     deviceConfig->dartsSofascorePlayNextMinutes = server->arg("dartsSofascorePlayNextMinutes").toInt();
     deviceConfig->dartsSofascoreContinuousLive = server->hasArg("dartsSofascoreContinuousLive");
+    deviceConfig->dartsSofascoreLiveCheckIntervalSec = server->arg("dartsSofascoreLiveCheckIntervalSec").toInt();
+    deviceConfig->dartsSofascoreLiveDataFetchIntervalSec = server->arg("dartsSofascoreLiveDataFetchIntervalSec").toInt();
     
     if (sofascoreMod) {
         sofascoreMod->setConfig(
@@ -547,7 +551,9 @@ void handleSaveModules() {
             deviceConfig->dartsSofascoreFullscreen,
             deviceConfig->dartsSofascoreInterruptOnLive,
             deviceConfig->dartsSofascorePlayNextMinutes,
-            deviceConfig->dartsSofascoreContinuousLive
+            deviceConfig->dartsSofascoreContinuousLive,
+            deviceConfig->dartsSofascoreLiveCheckIntervalSec,
+            deviceConfig->dartsSofascoreLiveDataFetchIntervalSec
         );
     }
     
