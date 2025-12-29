@@ -1465,11 +1465,11 @@ void SofaScoreLiveModule::drawTournamentList() {
 void SofaScoreLiveModule::drawDailyResults() {
     // Recalculate pages needed for tournament groups based on current display mode
     // This handles cases where wantsFullscreen() state changes after initial grouping
-    const int MATCHES_PER_PAGE = getMatchesPerPage();
+    const int matchesPerPage = getMatchesPerPage();
     for (auto& group : _tournamentGroups) {
         int matchCount = group.matchIndices.size();
         if (matchCount > 0) {
-            group.pagesNeeded = (matchCount + MATCHES_PER_PAGE - 1) / MATCHES_PER_PAGE;
+            group.pagesNeeded = (matchCount + matchesPerPage - 1) / matchesPerPage;
             if (group.pagesNeeded < 1) group.pagesNeeded = 1;
         }
     }
@@ -1514,9 +1514,9 @@ void SofaScoreLiveModule::drawDailyResults() {
     }
     
     // Calculate matches for this page
-    // Using the same MATCHES_PER_PAGE as calculated above (already stored in local variable)
-    int startIdx = _currentTournamentPage * MATCHES_PER_PAGE;
-    int endIdx = startIdx + MATCHES_PER_PAGE;
+    // Use the matchesPerPage value calculated at the start of this function
+    int startIdx = _currentTournamentPage * matchesPerPage;
+    int endIdx = startIdx + matchesPerPage;
     if (endIdx > currentGroup.matchIndices.size()) endIdx = currentGroup.matchIndices.size();
     
     // Layout: Time(5 chars left) | Home Player | Away Player | Score(5 chars right)
@@ -1539,7 +1539,7 @@ void SofaScoreLiveModule::drawDailyResults() {
     u8g2.setFont(u8g2_font_5x8_tf);
     
     // Ensure we have enough scrollers (2 per match: home + away)
-    size_t requiredScrollers = MATCHES_PER_PAGE * 2;
+    size_t requiredScrollers = matchesPerPage * 2;
     while (_matchScrollers.size() < requiredScrollers) {
         void* mem = ps_malloc(sizeof(PixelScroller));
         if (!mem) {
@@ -2031,7 +2031,7 @@ void SofaScoreLiveModule::groupMatchesByTournament() {
     // NOTE: This function expects dataMutex to already be held by the caller
     _tournamentGroups.clear();
     
-    const int MATCHES_PER_PAGE = getMatchesPerPage();
+    const int matchesPerPage = getMatchesPerPage();
     
     if (dailyMatches.empty()) {
         return;
@@ -2072,7 +2072,7 @@ void SofaScoreLiveModule::groupMatchesByTournament() {
         if (matchCount == 0) {
             it = _tournamentGroups.erase(it);
         } else {
-            it->pagesNeeded = (matchCount + MATCHES_PER_PAGE - 1) / MATCHES_PER_PAGE;
+            it->pagesNeeded = (matchCount + matchesPerPage - 1) / matchesPerPage;
             if (it->pagesNeeded < 1) it->pagesNeeded = 1;
             ++it;
         }
