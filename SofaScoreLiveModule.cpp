@@ -1465,7 +1465,7 @@ void SofaScoreLiveModule::drawTournamentList() {
 void SofaScoreLiveModule::drawDailyResults() {
     // Recalculate pages needed for tournament groups based on current display mode
     // This handles cases where wantsFullscreen() state changes after initial grouping
-    const int MATCHES_PER_PAGE = wantsFullscreen() ? 4 : 3;
+    const int MATCHES_PER_PAGE = getMatchesPerPage();
     for (auto& group : _tournamentGroups) {
         int matchCount = group.matchIndices.size();
         if (matchCount > 0) {
@@ -1514,9 +1514,7 @@ void SofaScoreLiveModule::drawDailyResults() {
     }
     
     // Calculate matches for this page
-    // Each match now uses 2 lines (player names + countries)
-    // Fullscreen: 192x96 allows ~4 matches (8 lines), Normal: 192x64 allows ~3 matches (6 lines)
-    const int MATCHES_PER_PAGE = wantsFullscreen() ? 4 : 3;
+    // Using the same MATCHES_PER_PAGE as calculated above (already stored in local variable)
     int startIdx = _currentTournamentPage * MATCHES_PER_PAGE;
     int endIdx = startIdx + MATCHES_PER_PAGE;
     if (endIdx > currentGroup.matchIndices.size()) endIdx = currentGroup.matchIndices.size();
@@ -2033,10 +2031,7 @@ void SofaScoreLiveModule::groupMatchesByTournament() {
     // NOTE: This function expects dataMutex to already be held by the caller
     _tournamentGroups.clear();
     
-    // Fullscreen (192x96) vs Normal (192x64) - same width, different height
-    // IMPORTANT: Must match MATCHES_PER_PAGE in drawDailyResults() for correct paging
-    // Each match uses 2 lines (player names + countries)
-    const int MATCHES_PER_PAGE = wantsFullscreen() ? 4 : 3;
+    const int MATCHES_PER_PAGE = getMatchesPerPage();
     
     if (dailyMatches.empty()) {
         return;
@@ -2091,6 +2086,14 @@ int SofaScoreLiveModule::calculateTotalPages() {
         total += group.pagesNeeded;
     }
     return total > 0 ? total : 1;
+}
+
+int SofaScoreLiveModule::getMatchesPerPage() const {
+    // Fullscreen (192x96) vs Normal (192x64) - same width, different height
+    // Each match uses 2 lines (player names + countries)
+    // Fullscreen: 96px height allows ~4 matches (8 lines)
+    // Normal: 64px height allows ~3 matches (6 lines)
+    return wantsFullscreen() ? 4 : 3;
 }
 
 #if SOFASCORE_DEBUG_JSON
