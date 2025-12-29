@@ -1465,11 +1465,12 @@ void SofaScoreLiveModule::drawTournamentList() {
 void SofaScoreLiveModule::drawDailyResults() {
     // Recalculate pages needed for tournament groups based on current display mode
     // This handles cases where wantsFullscreen() state changes after initial grouping
-    const int matchesPerPage = getMatchesPerPage();
     for (auto& group : _tournamentGroups) {
         int matchCount = group.matchIndices.size();
         if (matchCount > 0) {
-            group.pagesNeeded = (matchCount + matchesPerPage - 1) / matchesPerPage;
+            // Recalculate balanced matches per page
+            group.matchesPerPage = getBalancedMatchesPerPage(matchCount);
+            group.pagesNeeded = (matchCount + group.matchesPerPage - 1) / group.matchesPerPage;
             if (group.pagesNeeded < 1) group.pagesNeeded = 1;
         }
     }
@@ -1513,8 +1514,10 @@ void SofaScoreLiveModule::drawDailyResults() {
         u8g2.print(currentGroup.tournamentName.c_str());
     }
     
+    // Get the balanced matches per page for this tournament group
+    const int matchesPerPage = currentGroup.matchesPerPage;
+    
     // Calculate matches for this page
-    // Use the matchesPerPage value calculated at the start of this function
     int startIdx = _currentTournamentPage * matchesPerPage;
     int endIdx = startIdx + matchesPerPage;
     if (endIdx > currentGroup.matchIndices.size()) endIdx = currentGroup.matchIndices.size();
@@ -2072,7 +2075,10 @@ void SofaScoreLiveModule::groupMatchesByTournament() {
         if (matchCount == 0) {
             it = _tournamentGroups.erase(it);
         } else {
-            it->pagesNeeded = (matchCount + matchesPerPage - 1) / matchesPerPage;
+            // Calculate balanced matches per page for this tournament
+            it->matchesPerPage = getBalancedMatchesPerPage(matchCount);
+            // Calculate pages needed based on balanced distribution
+            it->pagesNeeded = (matchCount + it->matchesPerPage - 1) / it->matchesPerPage;
             if (it->pagesNeeded < 1) it->pagesNeeded = 1;
             ++it;
         }
@@ -2094,6 +2100,31 @@ int SofaScoreLiveModule::getMatchesPerPage() const {
     // Fullscreen: 96px height allows ~4 matches (8 lines)
     // Normal: 64px height allows ~3 matches (6 lines)
     return wantsFullscreen() ? 4 : 3;
+}
+
+int SofaScoreLiveModule::getBalancedMatchesPerPage(int totalMatches) const {
+    // Get the maximum matches per page based on screen size
+    int maxPerPage = getMatchesPerPage();
+    
+    if (totalMatches <= maxPerPage) {
+        // All matches fit on one page
+        return totalMatches;
+    }
+    
+    // Calculate minimum number of pages needed
+    int minPages = (totalMatches + maxPerPage - 1) / maxPerPage;
+    
+    // Calculate balanced matches per page by distributing evenly
+    // This ensures more balanced distribution across pages
+    // Example: 6 matches, max 4 per page → 2 pages, 3 matches each (not 4+2)
+    int balancedPerPage = (totalMatches + minPages - 1) / minPages;
+    
+    // Make sure we don't exceed the maximum
+    if (balancedPerPage > maxPerPage) {
+        balancedPerPage = maxPerPage;
+    }
+    
+    return balancedPerPage;
 }
 
 #if SOFASCORE_DEBUG_JSON
