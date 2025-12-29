@@ -1063,6 +1063,33 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
         bool hadLiveEvents = _hasLiveEvents;
         _hasLiveEvents = false;
         
+        // ALWAYS check if we're in LIVE_MATCH mode and force exit
+        // This prevents showing "No live matches" page
+        if (_currentMode == SofaScoreDisplayMode::LIVE_MATCH) {
+            _isFinished = true;
+            Log.println("[SofaScore] Forcing exit from LIVE_MATCH mode - no live events");
+            
+            // Release interrupt if active
+            if (_hasActiveInterrupt && _interruptUID > 0) {
+                releasePriorityEx(_interruptUID);
+                _hasActiveInterrupt = false;
+                Log.println("[SofaScore] Released interrupt - no live events");
+            }
+            
+            // Reset mode to DAILY_RESULTS to avoid showing empty live page
+            _currentMode = SofaScoreDisplayMode::DAILY_RESULTS;
+            _currentPage = 0;
+            _currentTournamentIndex = 0;
+            _currentTournamentPage = 0;
+            
+            Log.println("[SofaScore] Reset to DAILY_RESULTS mode to avoid empty live page");
+            
+            // Trigger update to refresh display
+            if (updateCallback) {
+                updateCallback();
+            }
+        }
+        
         if (hadLiveEvents) {
             _dailySchedulesPaused = false;
             
@@ -1073,31 +1100,7 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
             // Clear registered event IDs for statistics
             _registeredEventIds.clear();
             
-            // If currently in LIVE_MATCH mode, force exit by setting _isFinished
-            if (_currentMode == SofaScoreDisplayMode::LIVE_MATCH) {
-                _isFinished = true;
-                Log.println("[SofaScore] Forcing exit from LIVE_MATCH mode - no more live events");
-                
-                // Release interrupt if active
-                if (_hasActiveInterrupt && _interruptUID > 0) {
-                    releasePriorityEx(_interruptUID);
-                    _hasActiveInterrupt = false;
-                    Log.println("[SofaScore] Released interrupt - no more live events");
-                }
-            }
-            
-            // Reset mode to DAILY_RESULTS to avoid showing empty live page
-            _currentMode = SofaScoreDisplayMode::DAILY_RESULTS;
-            _currentPage = 0;
-            _currentTournamentIndex = 0;
-            _currentTournamentPage = 0;
-            
-            Log.println("[SofaScore] Live events ended - Resuming daily schedules, switched to 60s polling, reset to DAILY_RESULTS mode");
-            
-            // Trigger update to refresh display and remove stale live stats
-            if (updateCallback) {
-                updateCallback();
-            }
+            Log.println("[SofaScore] Live events ended - Resuming daily schedules, switched to 60s polling");
         }
         
         return;
@@ -1424,7 +1427,19 @@ void SofaScoreLiveModule::draw() {
             drawDailyResults();
             break;
         case SofaScoreDisplayMode::LIVE_MATCH:
-            drawLiveMatch();
+            // Safety check: if we're in LIVE_MATCH mode but have no live matches,
+            // force mode switch to DAILY_RESULTS to avoid showing "No live matches" page
+            if (liveMatches.empty()) {
+                Log.println("[SofaScore] draw() - LIVE_MATCH mode but no live matches, forcing mode switch");
+                _currentMode = SofaScoreDisplayMode::DAILY_RESULTS;
+                _currentPage = 0;
+                _currentTournamentIndex = 0;
+                _currentTournamentPage = 0;
+                _isFinished = true;  // Signal to exit this module cycle
+                drawDailyResults();  // Draw daily results instead
+            } else {
+                drawLiveMatch();
+            }
             break;
     }
     
