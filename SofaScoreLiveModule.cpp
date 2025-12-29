@@ -580,11 +580,11 @@ void SofaScoreLiveModule::switchToNextMode() {
             Log.println("[SofaScore] Cycle complete (no live matches)");
         }
     } else if (_currentMode == SofaScoreDisplayMode::LIVE_MATCH) {
-        // If liveMatches is empty (e.g., filtered out by tournament selection), 
+        // If liveMatches is empty (e.g., filtered out by tournament selection, or matches ended), 
         // skip live mode and finish the cycle
         if (liveMatches.empty()) {
             _isFinished = true;
-            Log.println("[SofaScore] Live matches empty (filtered) - cycle complete");
+            Log.println("[SofaScore] Live matches empty - cycle complete");
             
             // Release interrupt if active
             if (_hasActiveInterrupt && _interruptUID > 0) {
@@ -1073,6 +1073,19 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
             // Clear registered event IDs for statistics
             _registeredEventIds.clear();
             
+            // If currently in LIVE_MATCH mode, force exit by setting _isFinished
+            if (_currentMode == SofaScoreDisplayMode::LIVE_MATCH) {
+                _isFinished = true;
+                Log.println("[SofaScore] Forcing exit from LIVE_MATCH mode - no more live events");
+                
+                // Release interrupt if active
+                if (_hasActiveInterrupt && _interruptUID > 0) {
+                    releasePriorityEx(_interruptUID);
+                    _hasActiveInterrupt = false;
+                    Log.println("[SofaScore] Released interrupt - no more live events");
+                }
+            }
+            
             // Reset mode to DAILY_RESULTS to avoid showing empty live page
             _currentMode = SofaScoreDisplayMode::DAILY_RESULTS;
             _currentPage = 0;
@@ -1450,6 +1463,18 @@ void SofaScoreLiveModule::drawTournamentList() {
 }
 
 void SofaScoreLiveModule::drawDailyResults() {
+    // Recalculate pages needed for tournament groups based on current display mode
+    // This handles cases where wantsFullscreen() state changes after initial grouping
+    const int MATCHES_PER_PAGE = wantsFullscreen() ? 4 : 3;
+    for (auto& group : _tournamentGroups) {
+        int matchCount = group.matchIndices.size();
+        if (matchCount > 0) {
+            group.pagesNeeded = (matchCount + MATCHES_PER_PAGE - 1) / MATCHES_PER_PAGE;
+            if (group.pagesNeeded < 1) group.pagesNeeded = 1;
+        }
+    }
+    _totalPages = calculateTotalPages();
+    
     // Header with title
     u8g2.setFont(u8g2_font_profont12_tf);
     u8g2.setForegroundColor(0xFFFF);
@@ -2009,7 +2034,9 @@ void SofaScoreLiveModule::groupMatchesByTournament() {
     _tournamentGroups.clear();
     
     // Fullscreen (192x96) vs Normal (192x64) - same width, different height
-    const int MATCHES_PER_PAGE = wantsFullscreen() ? 7 : 5;
+    // IMPORTANT: Must match MATCHES_PER_PAGE in drawDailyResults() for correct paging
+    // Each match uses 2 lines (player names + countries)
+    const int MATCHES_PER_PAGE = wantsFullscreen() ? 4 : 3;
     
     if (dailyMatches.empty()) {
         return;
