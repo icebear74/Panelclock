@@ -123,6 +123,7 @@ private:
     void setTrackedPlayers(const PsramString& playerNames);
     uint16_t dimColor(uint16_t color);
     void clearAllData();
+    int getRoundSortValue(const char* round);
     void filterAndSortPlayers(DartsRankingType type);
     // Helper: Extract text from HTML fragment (allocates on heap - short-lived)
     PsramString extractText(const char* htmlFragment, size_t maxLen);
