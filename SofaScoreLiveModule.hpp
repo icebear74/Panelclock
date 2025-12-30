@@ -217,6 +217,7 @@ private:
         PsramString tournamentName;
         std::vector<int, PsramAllocator<int>> matchIndices;  // Indices into dailyMatches
         int pagesNeeded = 0;  // Number of pages for this tournament
+        int matchesPerPage = 0;  // Balanced matches per page for this tournament
         
         TournamentGroup() : matchIndices(PsramAllocator<int>()) {}
     };
@@ -241,6 +242,8 @@ private:
     void groupMatchesByTournament();  // New: group and calculate pages
     int calculateTotalPages();         // New: calculate total pages across all tournaments
     bool areAllLiveMatchesFinished() const;  // NEW: Check if all live matches are finished
+    int getMatchesPerPage() const;     // Helper: Get matches per page based on fullscreen state
+    int getBalancedMatchesPerPage(int totalMatches) const;  // Helper: Get balanced matches per page for a given total
     
     // Drawing helpers
     void drawTournamentList();
