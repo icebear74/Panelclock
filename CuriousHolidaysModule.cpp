@@ -3,6 +3,12 @@
 #include <algorithm>
 #include <cctype>
 
+// Deutsche Monatsnamen
+static const char* GERMAN_MONTH_NAMES[] = {
+    "Januar", "Februar", "März", "April", "Mai", "Juni", 
+    "Juli", "August", "September", "Oktober", "November", "Dezember"
+};
+
 // Hilfsfunktionen
 static PsramString trim(const PsramString& str) {
     size_t start = str.find_first_not_of(" \t\n\r\f\v");
@@ -367,9 +373,8 @@ void CuriousHolidaysModule::parseAndProcessHtml(const char* buffer, size_t size)
     struct tm tm_tomorrow;
     localtime_r(&tomorrow_epoch, &tm_tomorrow);
 
-    const char* monthNames[] = {"Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"};
-    PsramString todayMonthName = monthNames[tm_today.tm_mon];
-    PsramString tomorrowMonthName = monthNames[tm_tomorrow.tm_mon];
+    PsramString todayMonthName = GERMAN_MONTH_NAMES[tm_today.tm_mon];
+    PsramString tomorrowMonthName = GERMAN_MONTH_NAMES[tm_tomorrow.tm_mon];
 
     int h2Pos = 0;
     while ((h2Pos = indexOf(html, "<h2>", h2Pos)) != -1) {
@@ -544,10 +549,8 @@ void CuriousHolidaysModule::draw() {
     struct tm tm_now;
     localtime_r(&local_time, &tm_now);
 
-    const char* germanMonthNames[] = {"Januar", "Februar", "März", "April", "Mai", "Juni", 
-                                       "Juli", "August", "September", "Oktober", "November", "Dezember"};
     char dateStr[32];
-    snprintf(dateStr, sizeof(dateStr), "%d. %s", tm_now.tm_mday, germanMonthNames[tm_now.tm_mon]);
+    snprintf(dateStr, sizeof(dateStr), "%d. %s", tm_now.tm_mday, GERMAN_MONTH_NAMES[tm_now.tm_mon]);
 
     u8g2.setFont(u8g2_font_helvB14_tf);
     u8g2.setForegroundColor(rgb565(255, 255, 0));
