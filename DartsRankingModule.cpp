@@ -527,6 +527,7 @@ int DartsRankingModule::getRoundSortValue(const char* round) {
     // Check for special rounds (finals)
     if (strcmp(round, "F") == 0) return 1000;
     if (strcmp(round, "HF") == 0) return 900;
+    if (strcmp(round, "SF") == 0) return 900;
     if (strcmp(round, "QF") == 0) return 800;
     
     // Check for round numbers (R1, R2, R3, etc.)
