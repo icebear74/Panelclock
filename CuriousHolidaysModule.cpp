@@ -43,6 +43,10 @@ static PsramString decodeHtmlEntities(const PsramString& input) {
                     // UTF-8 Umwandlung für wichtige Zeichen
                     if (code == 8211 || code == 8212) {
                         output += '-'; // En-dash oder Em-dash
+                    } else if (code == 8216 || code == 8217) {
+                        output += '\''; // Linke/rechte einfache Anführungszeichen
+                    } else if (code == 8220 || code == 8221) {
+                        output += '"'; // Linke/rechte doppelte Anführungszeichen
                     } else if (code == 228) {
                         output += "\xC3\xA4"; // ä
                     } else if (code == 196) {
@@ -109,6 +113,14 @@ static PsramString decodeHtmlEntities(const PsramString& input) {
                     output += '-'; // En-dash
                 } else if (entity == "&mdash;") {
                     output += '-'; // Em-dash
+                } else if (entity == "&lsquo;") {
+                    output += '\''; // Linke einfache Anführungszeichen
+                } else if (entity == "&rsquo;") {
+                    output += '\''; // Rechte einfache Anführungszeichen
+                } else if (entity == "&ldquo;") {
+                    output += '"'; // Linke doppelte Anführungszeichen
+                } else if (entity == "&rdquo;") {
+                    output += '"'; // Rechte doppelte Anführungszeichen
                 } else if (entity == "&amp;") {
                     output += '&';
                 } else if (entity == "&lt;") {
