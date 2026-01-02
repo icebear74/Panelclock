@@ -11,6 +11,122 @@ static PsramString trim(const PsramString& str) {
     return str.substr(start, end - start + 1);
 }
 
+// HTML-Entity-Decoder für die wichtigsten Zeichen
+static PsramString decodeHtmlEntities(const PsramString& input) {
+    PsramString output = "";
+    output.reserve(input.length());
+    
+    for (size_t i = 0; i < input.length(); ++i) {
+        if (input[i] == '&') {
+            // Suche nach dem Ende der Entity
+            size_t endPos = input.find(';', i);
+            if (endPos != PsramString::npos && endPos - i < 10) {
+                PsramString entity = input.substr(i, endPos - i + 1);
+                
+                // Numerische Entities (&#XXXX;)
+                if (entity.length() > 3 && entity[1] == '#') {
+                    int code = 0;
+                    if (entity[2] == 'x' || entity[2] == 'X') {
+                        // Hexadezimal
+                        code = strtol(entity.c_str() + 3, nullptr, 16);
+                    } else {
+                        // Dezimal
+                        code = atoi(entity.c_str() + 2);
+                    }
+                    
+                    // UTF-8 Umwandlung für wichtige Zeichen
+                    if (code == 8211 || code == 8212) {
+                        output += '-'; // En-dash oder Em-dash
+                    } else if (code == 228) {
+                        output += "\xC3\xA4"; // ä
+                    } else if (code == 196) {
+                        output += "\xC3\x84"; // Ä
+                    } else if (code == 246) {
+                        output += "\xC3\xB6"; // ö
+                    } else if (code == 214) {
+                        output += "\xC3\x96"; // Ö
+                    } else if (code == 252) {
+                        output += "\xC3\xBC"; // ü
+                    } else if (code == 220) {
+                        output += "\xC3\x9C"; // Ü
+                    } else if (code == 223) {
+                        output += "\xC3\x9F"; // ß
+                    } else if (code == 233) {
+                        output += "\xC3\xA9"; // é
+                    } else if (code == 232) {
+                        output += "\xC3\xA8"; // è
+                    } else if (code == 234) {
+                        output += "\xC3\xAA"; // ê
+                    } else if (code == 224) {
+                        output += "\xC3\xA0"; // à
+                    } else if (code == 226) {
+                        output += "\xC3\xA2"; // â
+                    } else if (code == 39) {
+                        output += '\''; // Apostroph
+                    } else if (code == 34) {
+                        output += '"'; // Anführungszeichen
+                    } else if (code >= 32 && code < 127) {
+                        output += (char)code; // ASCII
+                    } else {
+                        output += ' '; // Unbekanntes Zeichen
+                    }
+                    i = endPos;
+                    continue;
+                }
+                
+                // Benannte Entities
+                if (entity == "&uuml;") {
+                    output += "\xC3\xBC"; // ü
+                } else if (entity == "&Uuml;") {
+                    output += "\xC3\x9C"; // Ü
+                } else if (entity == "&auml;") {
+                    output += "\xC3\xA4"; // ä
+                } else if (entity == "&Auml;") {
+                    output += "\xC3\x84"; // Ä
+                } else if (entity == "&ouml;") {
+                    output += "\xC3\xB6"; // ö
+                } else if (entity == "&Ouml;") {
+                    output += "\xC3\x96"; // Ö
+                } else if (entity == "&szlig;") {
+                    output += "\xC3\x9F"; // ß
+                } else if (entity == "&eacute;") {
+                    output += "\xC3\xA9"; // é
+                } else if (entity == "&egrave;") {
+                    output += "\xC3\xA8"; // è
+                } else if (entity == "&ecirc;") {
+                    output += "\xC3\xAA"; // ê
+                } else if (entity == "&agrave;") {
+                    output += "\xC3\xA0"; // à
+                } else if (entity == "&acirc;") {
+                    output += "\xC3\xA2"; // â
+                } else if (entity == "&ndash;") {
+                    output += '-'; // En-dash
+                } else if (entity == "&mdash;") {
+                    output += '-'; // Em-dash
+                } else if (entity == "&amp;") {
+                    output += '&';
+                } else if (entity == "&lt;") {
+                    output += '<';
+                } else if (entity == "&gt;") {
+                    output += '>';
+                } else if (entity == "&quot;") {
+                    output += '"';
+                } else if (entity == "&apos;") {
+                    output += '\'';
+                } else if (entity == "&nbsp;") {
+                    output += ' ';
+                } else {
+                    output += entity; // Unbekannte Entity beibehalten
+                }
+                i = endPos;
+                continue;
+            }
+        }
+        output += input[i];
+    }
+    return output;
+}
+
 // Bereinigungs-Funktion, die nur erlaubte Zeichen durchlässt
 static PsramString sanitizeString(const PsramString& input) {
     PsramString output = "";
@@ -304,15 +420,18 @@ void CuriousHolidaysModule::parseAndProcessHtml(const char* buffer, size_t size)
 
             PsramString rawFullText = aText.substr(textStart);
             
+            // HTML-Entities dekodieren
+            rawFullText = decodeHtmlEntities(rawFullText);
+            
             HolidayEntry entry;
             PsramString rawName, rawDescription;
 
             int dashPos = indexOf(rawFullText, "–");
-            if (dashPos == -1) dashPos = indexOf(rawFullText, "&#8211;");
+            if (dashPos == -1) dashPos = indexOf(rawFullText, "-"); // Nach normalen Bindestrich suchen
 
             if (dashPos != -1) {
                 rawName = rawFullText.substr(0, dashPos);
-                int descStart = rawFullText.find_first_not_of(" –&;#8211;", dashPos);
+                int descStart = rawFullText.find_first_not_of(" –-", dashPos);
                 if(descStart != -1) rawDescription = rawFullText.substr(descStart);
 
             } else {
@@ -425,8 +544,10 @@ void CuriousHolidaysModule::draw() {
     struct tm tm_now;
     localtime_r(&local_time, &tm_now);
 
+    const char* germanMonthNames[] = {"Januar", "Februar", "März", "April", "Mai", "Juni", 
+                                       "Juli", "August", "September", "Oktober", "November", "Dezember"};
     char dateStr[32];
-    strftime(dateStr, sizeof(dateStr), "%d. %B", &tm_now);
+    snprintf(dateStr, sizeof(dateStr), "%d. %s", tm_now.tm_mday, germanMonthNames[tm_now.tm_mon]);
 
     u8g2.setFont(u8g2_font_helvB14_tf);
     u8g2.setForegroundColor(rgb565(255, 255, 0));
