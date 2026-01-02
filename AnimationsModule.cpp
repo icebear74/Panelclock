@@ -475,22 +475,26 @@ void AnimationsModule::periodicTick() {
             }
             
             int activeCount = (wreathActive ? 1 : 0) + (treeActive ? 1 : 0) + (fireplaceActive ? 1 : 0);
-            int modeIndex = _displayCounter % activeCount;
             
             _showTree = false;
             _showFireplace = false;
             
-            int current = 0;
-            if (wreathActive) {
-                if (current == modeIndex) { /* Kranz */ }
-                current++;
-            }
-            if (treeActive && current <= modeIndex) {
-                if (current == modeIndex) { _showTree = true; }
-                current++;
-            }
-            if (fireplaceActive && current <= modeIndex) {
-                if (current == modeIndex) { _showFireplace = true; _showTree = false; }
+            // Verhindere Division durch Null wenn keine Animationen aktiv sind
+            if (activeCount > 0) {
+                int modeIndex = _displayCounter % activeCount;
+                
+                int current = 0;
+                if (wreathActive) {
+                    if (current == modeIndex) { /* Kranz */ }
+                    current++;
+                }
+                if (treeActive && current <= modeIndex) {
+                    if (current == modeIndex) { _showTree = true; }
+                    current++;
+                }
+                if (fireplaceActive && current <= modeIndex) {
+                    if (current == modeIndex) { _showFireplace = true; _showTree = false; }
+                }
             }
         } else if (mode == ChristmasDisplayMode::Tree) {
             _showTree = true;
