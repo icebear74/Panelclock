@@ -2854,18 +2854,19 @@ void AnimationsModule::drawAutumnAnimation() {
 }
 
 void AnimationsModule::initWinterAnimation() {
-    int canvasW = _currentCanvas->width();
-    int canvasH = _currentCanvas->height();
-    
-    // Initialize snowflakes
-    for (int i = 0; i < MAX_SNOWFLAKES; i++) {
-        _snowflakes[i].x = (float)(rand() % canvasW);
-        _snowflakes[i].y = (float)(rand() % canvasH);
-        _snowflakes[i].speed = 0.5f + (float)(rand() % 15) / 10.0f;
-        _snowflakes[i].size = 1 + (rand() % 2);
+    // Reuse existing snowflake initialization
+    if (!_snowflakesInitialized) {
+        int canvasW = _currentCanvas->width();
+        
+        for (int i = 0; i < MAX_SNOWFLAKES; i++) {
+            _snowflakes[i].x = (float)(rand() % canvasW);
+            _snowflakes[i].y = (float)(rand() % _currentCanvas->height());
+            _snowflakes[i].speed = 0.5f + (float)(rand() % 15) / 10.0f;
+            _snowflakes[i].size = 1 + (rand() % 2);
+        }
+        
+        _snowflakesInitialized = true;
     }
-    
-    _snowflakesInitialized = true;
 }
 
 void AnimationsModule::drawWinterAnimation() {
@@ -2878,16 +2879,19 @@ void AnimationsModule::drawWinterAnimation() {
         _lastSnowflakeUpdate = millis();
     }
     
+    // Constants for winter scene
+    const int SNOW_HEIGHT = 8;
+    const int SNOWMAN_TREE_MIN_DISTANCE = 15;
+    
     // Draw snowy ground at bottom (accumulated snow)
     uint16_t snowColor = rgb565(255, 255, 255);
     uint16_t snowShadow = rgb565(200, 220, 240);
     
     // Snow layer with some variation
-    int snowHeight = 8;
     for (int x = 0; x < canvasW; x++) {
         uint32_t seed = simpleRandom(x * 17 + 123);
         int yVariation = (seed % 3) - 1;
-        int snowTop = canvasH - snowHeight + yVariation;
+        int snowTop = canvasH - SNOW_HEIGHT + yVariation;
         
         for (int y = snowTop; y < canvasH; y++) {
             // Slight color variation for depth
@@ -2904,13 +2908,13 @@ void AnimationsModule::drawWinterAnimation() {
     
     // Draw snowman
     int snowmanX = canvasW / 2;
-    int snowmanY = canvasH - snowHeight - 2;
+    int snowmanY = canvasH - SNOW_HEIGHT - 2;
     drawSnowman(snowmanX, snowmanY, 1.0f);
     
     // Draw falling snowflakes
     drawSnowflakes();
     
-    // Optional: Draw icicles on trees if night time
+    // Optional: Draw stars if night time
     if (TimeUtilities::isNightTime()) {
         // Add some stars for night sky
         for (int i = 0; i < 8; i++) {
@@ -2990,12 +2994,13 @@ void AnimationsModule::drawSnowyTrees() {
     uint16_t snowWhite = rgb565(255, 255, 255);
     uint16_t trunkBrown = rgb565(101, 67, 33);
     
-    int snowHeight = 8;
-    int groundY = canvasH - snowHeight;
+    const int SNOW_HEIGHT = 8;
+    const int SNOWMAN_TREE_MIN_DISTANCE = 15;
+    int groundY = canvasH - SNOW_HEIGHT;
     
-    // Draw 2-3 simple evergreen trees at different positions
-    int treePosX[] = {canvasW / 4, canvasW * 3 / 4, canvasW / 8};
-    int treeSizes[] = {10, 12, 8};
+    // Tree positions and sizes
+    const int treePosX[3] = {canvasW / 4, canvasW * 3 / 4, canvasW / 8};
+    const int treeSizes[3] = {10, 12, 8};
     
     for (int t = 0; t < 3; t++) {
         int treeX = treePosX[t];
@@ -3003,7 +3008,7 @@ void AnimationsModule::drawSnowyTrees() {
         int treeY = groundY;
         
         // Skip if snowman would overlap
-        if (abs(treeX - canvasW / 2) < 15) continue;
+        if (abs(treeX - canvasW / 2) < SNOWMAN_TREE_MIN_DISTANCE) continue;
         
         // Trunk
         int trunkWidth = 2;
