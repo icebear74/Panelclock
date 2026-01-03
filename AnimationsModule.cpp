@@ -2854,34 +2854,18 @@ void AnimationsModule::drawAutumnAnimation() {
 }
 
 void AnimationsModule::initWinterAnimation() {
-    // Reuse existing snowflake initialization
-    if (!_snowflakesInitialized) {
-        int canvasW = _currentCanvas->width();
-        
-        for (int i = 0; i < MAX_SNOWFLAKES; i++) {
-            _snowflakes[i].x = (float)(rand() % canvasW);
-            _snowflakes[i].y = (float)(rand() % _currentCanvas->height());
-            _snowflakes[i].speed = 0.5f + (float)(rand() % 15) / 10.0f;
-            _snowflakes[i].size = 1 + (rand() % 2);
-        }
-        
-        _snowflakesInitialized = true;
-    }
+    // Snowflakes will be initialized by drawSnowflakes() on first call
+    // This method is kept for potential future winter-specific initialization
 }
 
 void AnimationsModule::drawWinterAnimation() {
     int canvasW = _currentCanvas->width();
     int canvasH = _currentCanvas->height();
     
-    // Initialize on first call
-    if (!_snowflakesInitialized) {
-        initWinterAnimation();
-        _lastSnowflakeUpdate = millis();
-    }
-    
     // Constants for winter scene
     const int SNOW_HEIGHT = 8;
     const int SNOWMAN_TREE_MIN_DISTANCE = 15;
+    const int NUM_TREES = 3;
     
     // Draw snowy ground at bottom (accumulated snow)
     uint16_t snowColor = rgb565(255, 255, 255);
@@ -2996,13 +2980,14 @@ void AnimationsModule::drawSnowyTrees() {
     
     const int SNOW_HEIGHT = 8;
     const int SNOWMAN_TREE_MIN_DISTANCE = 15;
+    const int NUM_TREES = 3;
     int groundY = canvasH - SNOW_HEIGHT;
     
     // Tree positions and sizes
-    const int treePosX[3] = {canvasW / 4, canvasW * 3 / 4, canvasW / 8};
-    const int treeSizes[3] = {10, 12, 8};
+    const int treePosX[NUM_TREES] = {canvasW / 4, canvasW * 3 / 4, canvasW / 8};
+    const int treeSizes[NUM_TREES] = {10, 12, 8};
     
-    for (int t = 0; t < 3; t++) {
+    for (int t = 0; t < NUM_TREES; t++) {
         int treeX = treePosX[t];
         int treeHeight = treeSizes[t];
         int treeY = groundY;
