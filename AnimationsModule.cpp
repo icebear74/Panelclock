@@ -2530,8 +2530,7 @@ void AnimationsModule::drawSeasonalAnimations() {
             drawAutumnAnimation();
             break;
         case TimeUtilities::Season::WINTER:
-            // Winter already has snowflakes on the tree
-            // Could add more winter elements here if desired
+            drawWinterAnimation();
             break;
     }
 }
@@ -2851,5 +2850,192 @@ void AnimationsModule::drawAutumnAnimation() {
         } else {
             _currentCanvas->fillCircle(lx, ly, 1, _leaves[i].color);
         }
+    }
+}
+
+void AnimationsModule::initWinterAnimation() {
+    int canvasW = _currentCanvas->width();
+    int canvasH = _currentCanvas->height();
+    
+    // Initialize snowflakes
+    for (int i = 0; i < MAX_SNOWFLAKES; i++) {
+        _snowflakes[i].x = (float)(rand() % canvasW);
+        _snowflakes[i].y = (float)(rand() % canvasH);
+        _snowflakes[i].speed = 0.5f + (float)(rand() % 15) / 10.0f;
+        _snowflakes[i].size = 1 + (rand() % 2);
+    }
+    
+    _snowflakesInitialized = true;
+}
+
+void AnimationsModule::drawWinterAnimation() {
+    int canvasW = _currentCanvas->width();
+    int canvasH = _currentCanvas->height();
+    
+    // Initialize on first call
+    if (!_snowflakesInitialized) {
+        initWinterAnimation();
+        _lastSnowflakeUpdate = millis();
+    }
+    
+    // Draw snowy ground at bottom (accumulated snow)
+    uint16_t snowColor = rgb565(255, 255, 255);
+    uint16_t snowShadow = rgb565(200, 220, 240);
+    
+    // Snow layer with some variation
+    int snowHeight = 8;
+    for (int x = 0; x < canvasW; x++) {
+        uint32_t seed = simpleRandom(x * 17 + 123);
+        int yVariation = (seed % 3) - 1;
+        int snowTop = canvasH - snowHeight + yVariation;
+        
+        for (int y = snowTop; y < canvasH; y++) {
+            // Slight color variation for depth
+            if (y > snowTop + 2) {
+                _currentCanvas->drawPixel(x, y, snowShadow);
+            } else {
+                _currentCanvas->drawPixel(x, y, snowColor);
+            }
+        }
+    }
+    
+    // Draw snowy trees (2-3 simple evergreen trees)
+    drawSnowyTrees();
+    
+    // Draw snowman
+    int snowmanX = canvasW / 2;
+    int snowmanY = canvasH - snowHeight - 2;
+    drawSnowman(snowmanX, snowmanY, 1.0f);
+    
+    // Draw falling snowflakes
+    drawSnowflakes();
+    
+    // Optional: Draw icicles on trees if night time
+    if (TimeUtilities::isNightTime()) {
+        // Add some stars for night sky
+        for (int i = 0; i < 8; i++) {
+            uint32_t seed = simpleRandom(i * 113 + 456);
+            int sx = (seed % (canvasW - 10)) + 5;
+            int sy = (seed / 17) % (canvasH / 3);
+            
+            // Twinkling effect
+            if ((seed + _seasonAnimationPhase) % 40 < 25) {
+                _currentCanvas->drawPixel(sx, sy, snowColor);
+            }
+        }
+    }
+}
+
+void AnimationsModule::drawSnowman(int x, int y, float scale) {
+    uint16_t snowWhite = rgb565(255, 255, 255);
+    uint16_t snowShadow = rgb565(220, 230, 240);
+    uint16_t orange = rgb565(255, 140, 0);
+    uint16_t black = rgb565(0, 0, 0);
+    uint16_t brown = rgb565(139, 69, 19);
+    
+    int baseRadius = (int)(5 * scale);
+    int middleRadius = (int)(4 * scale);
+    int headRadius = (int)(3 * scale);
+    
+    // Bottom ball
+    int bottomY = y;
+    _currentCanvas->fillCircle(x, bottomY, baseRadius, snowWhite);
+    _currentCanvas->drawCircle(x, bottomY, baseRadius, snowShadow);
+    
+    // Middle ball
+    int middleY = bottomY - baseRadius - middleRadius + 2;
+    _currentCanvas->fillCircle(x, middleY, middleRadius, snowWhite);
+    _currentCanvas->drawCircle(x, middleY, middleRadius, snowShadow);
+    
+    // Head
+    int headY = middleY - middleRadius - headRadius + 2;
+    _currentCanvas->fillCircle(x, headY, headRadius, snowWhite);
+    _currentCanvas->drawCircle(x, headY, headRadius, snowShadow);
+    
+    // Eyes (coal)
+    _currentCanvas->drawPixel(x - 1, headY - 1, black);
+    _currentCanvas->drawPixel(x + 1, headY - 1, black);
+    
+    // Carrot nose
+    _currentCanvas->drawPixel(x, headY, orange);
+    _currentCanvas->drawPixel(x + 1, headY, orange);
+    
+    // Smile (coal)
+    _currentCanvas->drawPixel(x - 1, headY + 2, black);
+    _currentCanvas->drawPixel(x, headY + 2, black);
+    _currentCanvas->drawPixel(x + 1, headY + 2, black);
+    
+    // Buttons (coal)
+    _currentCanvas->drawPixel(x, middleY - 1, black);
+    _currentCanvas->drawPixel(x, middleY + 1, black);
+    
+    // Stick arms
+    if (scale >= 1.0f) {
+        // Left arm
+        _currentCanvas->drawLine(x - middleRadius, middleY, x - middleRadius - 3, middleY - 2, brown);
+        _currentCanvas->drawLine(x - middleRadius - 3, middleY - 2, x - middleRadius - 4, middleY - 3, brown);
+        
+        // Right arm
+        _currentCanvas->drawLine(x + middleRadius, middleY, x + middleRadius + 3, middleY - 2, brown);
+        _currentCanvas->drawLine(x + middleRadius + 3, middleY - 2, x + middleRadius + 4, middleY - 1, brown);
+    }
+}
+
+void AnimationsModule::drawSnowyTrees() {
+    int canvasW = _currentCanvas->width();
+    int canvasH = _currentCanvas->height();
+    
+    uint16_t treeGreen = rgb565(0, 100, 0);
+    uint16_t treeDarkGreen = rgb565(0, 70, 0);
+    uint16_t snowWhite = rgb565(255, 255, 255);
+    uint16_t trunkBrown = rgb565(101, 67, 33);
+    
+    int snowHeight = 8;
+    int groundY = canvasH - snowHeight;
+    
+    // Draw 2-3 simple evergreen trees at different positions
+    int treePosX[] = {canvasW / 4, canvasW * 3 / 4, canvasW / 8};
+    int treeSizes[] = {10, 12, 8};
+    
+    for (int t = 0; t < 3; t++) {
+        int treeX = treePosX[t];
+        int treeHeight = treeSizes[t];
+        int treeY = groundY;
+        
+        // Skip if snowman would overlap
+        if (abs(treeX - canvasW / 2) < 15) continue;
+        
+        // Trunk
+        int trunkWidth = 2;
+        int trunkHeight = 4;
+        _currentCanvas->fillRect(treeX - trunkWidth/2, treeY - trunkHeight, trunkWidth, trunkHeight, trunkBrown);
+        
+        // Triangular tree shape (3 layers)
+        int layerHeight = treeHeight / 3;
+        
+        for (int layer = 0; layer < 3; layer++) {
+            int layerY = treeY - trunkHeight - (layer + 1) * layerHeight;
+            int layerWidth = (8 - layer * 2);
+            
+            // Draw tree layer as triangle
+            for (int dy = 0; dy < layerHeight; dy++) {
+                int width = layerWidth - (dy * layerWidth / layerHeight);
+                for (int dx = -width; dx <= width; dx++) {
+                    uint16_t color = (dx == -width || dx == width) ? treeDarkGreen : treeGreen;
+                    _currentCanvas->drawPixel(treeX + dx, layerY + dy, color);
+                }
+            }
+            
+            // Snow on top of each layer
+            int snowWidth = layerWidth + 1;
+            for (int dx = -snowWidth; dx <= snowWidth; dx++) {
+                _currentCanvas->drawPixel(treeX + dx, layerY, snowWhite);
+            }
+        }
+        
+        // Snow on very top
+        _currentCanvas->drawPixel(treeX, treeY - trunkHeight - treeHeight, snowWhite);
+        _currentCanvas->drawPixel(treeX - 1, treeY - trunkHeight - treeHeight + 1, snowWhite);
+        _currentCanvas->drawPixel(treeX + 1, treeY - trunkHeight - treeHeight + 1, snowWhite);
     }
 }

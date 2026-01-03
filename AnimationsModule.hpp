@@ -37,7 +37,7 @@ enum class ChristmasDisplayMode {
  * - Frühling: Blumen und Schmetterlinge
  * - Sommer: Sonne/Mond mit Vögeln und Sternen (Tag/Nacht-Wechsel)
  * - Herbst: Fallende Blätter
- * - Winter: Schneeflocken (Teil der Weihnachtsbaum-Animation)
+ * - Winter: Schneeflocken, Schneemann, verschneite Bäume, Schnee am Boden
  * 
  * Das Modul verwendet Priority::PlayNext (OneShot),
  * um regelmäßig als nächstes nach dem aktuellen Modul angezeigt zu werden.
@@ -355,6 +355,11 @@ private:
     void drawAutumnAnimation();
     
     /**
+     * @brief Zeichnet Winteranimation (Schneeflocken, Schneemann, verschneite Landschaft)
+     */
+    void drawWinterAnimation();
+    
+    /**
      * @brief Initialisiert Frühlingsanimation
      */
     void initSpringAnimation();
@@ -368,6 +373,21 @@ private:
      * @brief Initialisiert Herbstanimation
      */
     void initAutumnAnimation();
+    
+    /**
+     * @brief Initialisiert Winteranimation
+     */
+    void initWinterAnimation();
+    
+    /**
+     * @brief Zeichnet einen Schneemann
+     */
+    void drawSnowman(int x, int y, float scale);
+    
+    /**
+     * @brief Zeichnet verschneite Bäume
+     */
+    void drawSnowyTrees();
     
     /**
      * @brief Zeichnet Countdown bis Silvester
