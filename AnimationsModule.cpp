@@ -463,23 +463,31 @@ void AnimationsModule::periodicTick() {
         shuffleCandleOrder();
         
         ChristmasDisplayMode mode = getCurrentDisplayMode();
+        
+        // Berechne aktive Animationen (mit Nachtmodus-Prüfung für Kamin)
+        bool wreathActive = config->adventWreathEnabled && isAdventSeason();
+        bool treeActive = config->christmasTreeEnabled && isChristmasSeason();
+        bool fireplaceActive = config->fireplaceEnabled && isFireplaceSeason();
+        
+        // Prüfe Nachtmodus für Kamin
+        if (fireplaceActive && config->fireplaceNightModeOnly && !TimeUtilities::isNightTime()) {
+            fireplaceActive = false;
+        }
+        
+        // Prüfe ob überhaupt etwas anzuzeigen ist
+        if (!wreathActive && !treeActive && !fireplaceActive) {
+            Log.println("[AnimationsModule] Nichts anzuzeigen - kein Request");
+            return;
+        }
+        
+        // Setze Anzeige-Flags basierend auf Modus
+        _showTree = false;
+        _showFireplace = false;
+        
         if (mode == ChristmasDisplayMode::Alternate) {
             // Rotiere durch alle aktiven Modi
-            bool wreathActive = config->adventWreathEnabled && isAdventSeason();
-            bool treeActive = config->christmasTreeEnabled && isChristmasSeason();
-            bool fireplaceActive = config->fireplaceEnabled && isFireplaceSeason();
-            
-            // Prüfe Nachtmodus für Kamin
-            if (fireplaceActive && config->fireplaceNightModeOnly && !TimeUtilities::isNightTime()) {
-                fireplaceActive = false;
-            }
-            
             int activeCount = (wreathActive ? 1 : 0) + (treeActive ? 1 : 0) + (fireplaceActive ? 1 : 0);
             
-            _showTree = false;
-            _showFireplace = false;
-            
-            // Verhindere Division durch Null wenn keine Animationen aktiv sind
             if (activeCount > 0) {
                 int modeIndex = _displayCounter % activeCount;
                 
@@ -497,49 +505,11 @@ void AnimationsModule::periodicTick() {
                 }
             }
         } else if (mode == ChristmasDisplayMode::Tree) {
-            _showTree = true;
-            _showFireplace = false;
+            _showTree = treeActive;
         } else if (mode == ChristmasDisplayMode::Fireplace) {
-            _showTree = false;
-            // Prüfe Nachtmodus für Kamin
-            if (config->fireplaceNightModeOnly && !TimeUtilities::isNightTime()) {
-                _showFireplace = false;  // Nicht anzeigen wenn Nachtmodus aktiv und es ist Tag
-            } else {
-                _showFireplace = true;
-            }
-        } else {
-            _showTree = false;
-            _showFireplace = false;
-        }
-        
-        // Prüfe ob tatsächlich etwas angezeigt werden soll
-        bool hasContentToDisplay = false;
-        
-        if (mode == ChristmasDisplayMode::Alternate) {
-            // Im Alternate-Modus: prüfe ob mindestens eine Animation aktiv ist
-            bool wreathActive = config->adventWreathEnabled && isAdventSeason();
-            bool treeActive = config->christmasTreeEnabled && isChristmasSeason();
-            bool fireplaceActive = config->fireplaceEnabled && isFireplaceSeason();
-            
-            // Prüfe Nachtmodus für Kamin
-            if (fireplaceActive && config->fireplaceNightModeOnly && !TimeUtilities::isNightTime()) {
-                fireplaceActive = false;
-            }
-            
-            hasContentToDisplay = wreathActive || treeActive || fireplaceActive;
-        } else if (mode == ChristmasDisplayMode::Tree) {
-            hasContentToDisplay = _showTree;
-        } else if (mode == ChristmasDisplayMode::Fireplace) {
-            hasContentToDisplay = _showFireplace;
-        } else {
-            // Wreath-Modus
-            hasContentToDisplay = config->adventWreathEnabled && isAdventSeason();
-        }
-        
-        // Nur Request machen wenn tatsächlich was anzuzeigen ist
-        if (!hasContentToDisplay) {
-            Log.println("[AnimationsModule] Nichts anzuzeigen - kein Request");
-            return;
+            _showFireplace = fireplaceActive;
+        } else if (mode == ChristmasDisplayMode::Wreath) {
+            // Kranz-Modus: beide Flags bleiben false (Kranz ist der Default)
         }
         
         // Feste UID für diese Anzeige-Session (nicht vom Advent-Woche abhängig)
