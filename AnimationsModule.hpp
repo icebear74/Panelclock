@@ -4,6 +4,7 @@
 #include "DrawableModule.hpp"
 #include "GeneralTimeConverter.hpp"
 #include "PsramUtils.hpp"
+#include "TimeUtilities.hpp"
 #include <U8g2_for_Adafruit_GFX.h>
 #include <Adafruit_GFX.h>
 #include <functional>
@@ -122,6 +123,54 @@ private:
     Snowflake _snowflakes[MAX_SNOWFLAKES];
     bool _snowflakesInitialized = false;
     unsigned long _lastSnowflakeUpdate = 0;
+    
+    // Season animations
+    struct Flower {
+        float x, y;
+        uint16_t color;
+        int size;
+        float swayPhase;
+    };
+    static const int MAX_FLOWERS = 12;
+    Flower _flowers[MAX_FLOWERS];
+    bool _flowersInitialized = false;
+    
+    struct Butterfly {
+        float x, y;
+        float vx, vy;
+        uint16_t color;
+        int wingPhase;
+    };
+    static const int MAX_BUTTERFLIES = 3;
+    Butterfly _butterflies[MAX_BUTTERFLIES];
+    bool _butterfliesInitialized = false;
+    unsigned long _lastButterflyUpdate = 0;
+    
+    struct Leaf {
+        float x, y;
+        float vx, vy;
+        float rotation;
+        uint16_t color;
+        int size;
+    };
+    static const int MAX_LEAVES = 15;
+    Leaf _leaves[MAX_LEAVES];
+    bool _leavesInitialized = false;
+    unsigned long _lastLeafUpdate = 0;
+    
+    struct Bird {
+        float x, y;
+        float vx;
+        int wingPhase;
+        bool facingRight;
+    };
+    static const int MAX_BIRDS = 2;
+    Bird _birds[MAX_BIRDS];
+    bool _birdsInitialized = false;
+    unsigned long _lastBirdUpdate = 0;
+    
+    int _seasonAnimationPhase = 0;
+    unsigned long _lastSeasonAnimUpdate = 0;
     
     // Zufällige Kerzenreihenfolge für jeden Durchgang
     int _candleOrder[4] = {0, 1, 2, 3};
@@ -278,6 +327,41 @@ private:
      * @brief Zeichnet fallende Schneeflocken
      */
     void drawSnowflakes();
+    
+    /**
+     * @brief Zeichnet jahreszeiten-spezifische Animationen
+     */
+    void drawSeasonalAnimations();
+    
+    /**
+     * @brief Zeichnet Frühlingsanimation (Blumen, Schmetterlinge)
+     */
+    void drawSpringAnimation();
+    
+    /**
+     * @brief Zeichnet Sommeranimation (Sonne, Vögel)
+     */
+    void drawSummerAnimation();
+    
+    /**
+     * @brief Zeichnet Herbstanimation (fallende Blätter)
+     */
+    void drawAutumnAnimation();
+    
+    /**
+     * @brief Initialisiert Frühlingsanimation
+     */
+    void initSpringAnimation();
+    
+    /**
+     * @brief Initialisiert Sommeranimation
+     */
+    void initSummerAnimation();
+    
+    /**
+     * @brief Initialisiert Herbstanimation
+     */
+    void initAutumnAnimation();
     
     /**
      * @brief Zeichnet Countdown bis Silvester

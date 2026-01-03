@@ -262,6 +262,14 @@ struct DeviceConfig {
     /// @brief Kamin: Zeige analoge Uhr auf dem Kaminsims
     bool fireplaceClockEnabled = false;
 
+    // --- Jahreszeiten Animationen ---
+    /// @brief Aktiviert jahreszeiten-spezifische Animationen (Frühling, Sommer, Herbst)
+    bool seasonalAnimationsEnabled = true;
+    /// @brief Anzeigedauer der Jahreszeiten-Animation in Sekunden
+    int seasonalAnimationsDisplaySec = 15;
+    /// @brief Wiederholungsintervall für Jahreszeiten-Animationen in Minuten
+    int seasonalAnimationsRepeatMin = 60;
+
     // --- Globale Scrolling-Einstellungen ---
     /// @brief Globale Scroll-Geschwindigkeit in Millisekunden pro Pixel für alle Module.
     int globalScrollSpeedMs = 50;

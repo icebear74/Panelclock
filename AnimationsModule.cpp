@@ -435,18 +435,25 @@ time_t AnimationsModule::calculateFourthAdvent(int year) {
 void AnimationsModule::periodicTick() {
     if (!config) return;
     
-    if (!config->adventWreathEnabled && !config->christmasTreeEnabled) return;
+    bool hasHolidayAnimations = config->adventWreathEnabled || config->christmasTreeEnabled || config->fireplaceEnabled;
+    bool hasSeasonalAnimations = config->seasonalAnimationsEnabled;
+    
+    if (!hasHolidayAnimations && !hasSeasonalAnimations) return;
     
     unsigned long now = millis();
     if (now - _lastPeriodicCheck < 1000) return;
     _lastPeriodicCheck = now;
     
-    if (!isHolidaySeason()) {
+    bool inHolidaySeason = isHolidaySeason();
+    bool showSeasonalAnimation = hasSeasonalAnimations && !inHolidaySeason;
+    
+    // If not in holiday season and no seasonal animations, release if active
+    if (!inHolidaySeason && !showSeasonalAnimation) {
         if (_isAdventViewActive) {
             releasePriorityEx(_currentAdventUID);
             _isAdventViewActive = false;
             _requestPending = false;
-            Log.println("[AnimationsModule] Keine Weihnachtszeit mehr");
+            Log.println("[AnimationsModule] Keine Animations-Saison mehr");
         }
         return;
     }
@@ -456,74 +463,88 @@ void AnimationsModule::periodicTick() {
         return;
     }
     
-    unsigned long minInterval = (_lastAdventDisplayTime == 0) ? 0 : _repeatIntervalMs;
+    // Use appropriate interval for seasonal vs holiday animations
+    unsigned long repeatInterval = showSeasonalAnimation ? 
+        (config->seasonalAnimationsRepeatMin * 60UL * 1000UL) : _repeatIntervalMs;
+    unsigned long displayDuration = showSeasonalAnimation ?
+        (config->seasonalAnimationsDisplaySec * 1000UL) : _displayDurationMs;
+    
+    unsigned long minInterval = (_lastAdventDisplayTime == 0) ? 0 : repeatInterval;
     
     if (!_isAdventViewActive && (now - _lastAdventDisplayTime > minInterval)) {
-        // Entscheide WAS angezeigt wird BEVOR der Request gemacht wird
-        shuffleCandleOrder();
-        
-        ChristmasDisplayMode mode = getCurrentDisplayMode();
-        
-        // Berechne aktive Animationen (mit Nachtmodus-Prüfung für Kamin)
-        bool wreathActive = config->adventWreathEnabled && isAdventSeason();
-        bool treeActive = config->christmasTreeEnabled && isChristmasSeason();
-        bool fireplaceActive = config->fireplaceEnabled && isFireplaceSeason();
-        
-        // Prüfe Nachtmodus für Kamin
-        if (fireplaceActive && config->fireplaceNightModeOnly && !TimeUtilities::isNightTime()) {
-            fireplaceActive = false;
-        }
-        
-        // Prüfe ob überhaupt etwas anzuzeigen ist
-        if (!wreathActive && !treeActive && !fireplaceActive) {
-            Log.println("[AnimationsModule] Nichts anzuzeigen - kein Request");
-            return;
-        }
-        
-        // Setze Anzeige-Flags basierend auf Modus
-        _showTree = false;
-        _showFireplace = false;
-        
-        if (mode == ChristmasDisplayMode::Alternate) {
-            // Rotiere durch alle aktiven Modi
-            int activeCount = (wreathActive ? 1 : 0) + (treeActive ? 1 : 0) + (fireplaceActive ? 1 : 0);
+        // For holiday season, determine which animation to show
+        if (inHolidaySeason) {
+            // Entscheide WAS angezeigt wird BEVOR der Request gemacht wird
+            shuffleCandleOrder();
             
-            if (activeCount > 0) {
-                int modeIndex = _displayCounter % activeCount;
-                
-                int current = 0;
-                if (wreathActive) {
-                    if (current == modeIndex) { /* Kranz */ }
-                    current++;
-                }
-                if (treeActive && current <= modeIndex) {
-                    if (current == modeIndex) { _showTree = true; }
-                    current++;
-                }
-                if (fireplaceActive && current <= modeIndex) {
-                    if (current == modeIndex) { _showFireplace = true; _showTree = false; }
-                }
+            ChristmasDisplayMode mode = getCurrentDisplayMode();
+            
+            // Berechne aktive Animationen (mit Nachtmodus-Prüfung für Kamin)
+            bool wreathActive = config->adventWreathEnabled && isAdventSeason();
+            bool treeActive = config->christmasTreeEnabled && isChristmasSeason();
+            bool fireplaceActive = config->fireplaceEnabled && isFireplaceSeason();
+            
+            // Prüfe Nachtmodus für Kamin
+            if (fireplaceActive && config->fireplaceNightModeOnly && !TimeUtilities::isNightTime()) {
+                fireplaceActive = false;
             }
-        } else if (mode == ChristmasDisplayMode::Tree) {
-            _showTree = treeActive;
-        } else if (mode == ChristmasDisplayMode::Fireplace) {
-            _showFireplace = fireplaceActive;
-        } else if (mode == ChristmasDisplayMode::Wreath) {
-            // Kranz-Modus: beide Flags bleiben false (Kranz ist der Default)
+            
+            // Prüfe ob überhaupt etwas anzuzeigen ist
+            if (!wreathActive && !treeActive && !fireplaceActive) {
+                Log.println("[AnimationsModule] Nichts anzuzeigen - kein Request");
+                return;
+            }
+            
+            // Setze Anzeige-Flags basierend auf Modus
+            _showTree = false;
+            _showFireplace = false;
+            
+            if (mode == ChristmasDisplayMode::Alternate) {
+                // Rotiere durch alle aktiven Modi
+                int activeCount = (wreathActive ? 1 : 0) + (treeActive ? 1 : 0) + (fireplaceActive ? 1 : 0);
+                
+                if (activeCount > 0) {
+                    int modeIndex = _displayCounter % activeCount;
+                    
+                    int current = 0;
+                    if (wreathActive) {
+                        if (current == modeIndex) { /* Kranz */ }
+                        current++;
+                    }
+                    if (treeActive && current <= modeIndex) {
+                        if (current == modeIndex) { _showTree = true; }
+                        current++;
+                    }
+                    if (fireplaceActive && current <= modeIndex) {
+                        if (current == modeIndex) { _showFireplace = true; _showTree = false; }
+                    }
+                }
+            } else if (mode == ChristmasDisplayMode::Tree) {
+                _showTree = treeActive;
+            } else if (mode == ChristmasDisplayMode::Fireplace) {
+                _showFireplace = fireplaceActive;
+            } else if (mode == ChristmasDisplayMode::Wreath) {
+                // Kranz-Modus: beide Flags bleiben false (Kranz ist der Default)
+            }
+        } else {
+            // Seasonal animation - flags stay false, we'll draw seasonal animations instead
+            _showTree = false;
+            _showFireplace = false;
         }
         
         // Feste UID für diese Anzeige-Session (nicht vom Advent-Woche abhängig)
         // Verwende eine einfache UID basierend auf dem Display-Counter
         _currentAdventUID = ADVENT_WREATH_UID_BASE + (_displayCounter % 100);
         
-        unsigned long safeDuration = _displayDurationMs + 5000UL;
+        unsigned long safeDuration = displayDuration + 5000UL;
         Priority prio = config->adventWreathInterrupt ? Priority::Low : Priority::PlayNext;
         
         _requestPending = true;  // Markiere Request als ausstehend
         bool success = requestPriorityEx(prio, _currentAdventUID, safeDuration);
         
         if (success) {
-            const char* modeName = _showFireplace ? "Kamin" : (_showTree ? "Weihnachtsbaum" : "Adventskranz");
+            const char* modeName = showSeasonalAnimation ? TimeUtilities::getSeasonName(TimeUtilities::getCurrentSeason()) :
+                                   (_showFireplace ? "Kamin" : (_showTree ? "Weihnachtsbaum" : "Adventskranz"));
             Log.printf("[AnimationsModule] %s %s angefordert (UID=%lu, Counter=%d)\n", 
                        modeName,
                        config->adventWreathInterrupt ? "Interrupt" : "PlayNext",
@@ -534,7 +555,7 @@ void AnimationsModule::periodicTick() {
             _requestPending = false;  // Request fehlgeschlagen, zurücksetzen
         }
     }
-    else if (_isAdventViewActive && (now - _adventViewStartTime > _displayDurationMs)) {
+    else if (_isAdventViewActive && (now - _adventViewStartTime > displayDuration)) {
         releasePriorityEx(_currentAdventUID);
         _isAdventViewActive = false;
         _requestPending = false;
@@ -578,6 +599,13 @@ void AnimationsModule::tick() {
         needsUpdate = true;
     }
     
+    // Seasonal animation phase (for general seasonal animation counter)
+    if (now - _lastSeasonAnimUpdate > 50) {
+        _lastSeasonAnimUpdate = now;
+        _seasonAnimationPhase = (_seasonAnimationPhase + 1) % 360;
+        needsUpdate = true;
+    }
+    
     if (needsUpdate && _updateCallback) {
         _updateCallback();
     }
@@ -595,6 +623,10 @@ void AnimationsModule::draw() {
     // Wähle den richtigen Canvas basierend auf Fullscreen-Modus
     _currentCanvas = wantsFullscreen() ? _fullscreenCanvas : &canvas;
     
+    // Check if we should show seasonal animation instead of holiday animations
+    bool inHolidaySeason = isHolidaySeason();
+    bool showSeasonalAnimation = config && config->seasonalAnimationsEnabled && !inHolidaySeason;
+    
     // Hintergrundfarbe basierend auf Modus
     uint16_t bgColor = 0;
     if (_showFireplace && config && config->fireplaceBgColor.length() > 0) {
@@ -608,7 +640,10 @@ void AnimationsModule::draw() {
     _currentCanvas->fillScreen(bgColor);
     u8g2.begin(*_currentCanvas);
     
-    if (_showFireplace) {
+    if (showSeasonalAnimation) {
+        // Draw seasonal animations based on current season
+        drawSeasonalAnimations();
+    } else if (_showFireplace) {
         drawFireplace();
     } else if (_showTree) {
         // Mische Kugeln und Lichter nur EINMAL bei neuer Anzeige, nicht bei jedem Tick
@@ -1531,17 +1566,26 @@ void AnimationsModule::drawBerries() {
 }
 
 unsigned long AnimationsModule::getDisplayDuration() {
+    // Return appropriate duration based on whether we're in holiday season or showing seasonal animations
+    if (config && config->seasonalAnimationsEnabled && !isHolidaySeason()) {
+        return config->seasonalAnimationsDisplaySec * 1000UL;
+    }
     return _displayDurationMs;
 }
 
 bool AnimationsModule::isEnabled() {
     if (!config) return false;
     
-    if (!config->adventWreathEnabled && !config->christmasTreeEnabled && !config->fireplaceEnabled) {
+    // Check if any animation is enabled
+    bool hasHolidayAnimations = config->adventWreathEnabled || config->christmasTreeEnabled || config->fireplaceEnabled;
+    bool hasSeasonalAnimations = config->seasonalAnimationsEnabled;
+    
+    if (!hasHolidayAnimations && !hasSeasonalAnimations) {
         return false;
     }
     
-    return isHolidaySeason();
+    // Enable if in holiday season OR if seasonal animations are enabled
+    return isHolidaySeason() || hasSeasonalAnimations;
 }
 
 void AnimationsModule::resetPaging() {
@@ -1557,13 +1601,26 @@ void AnimationsModule::onActivate() {
     _flamePhase = 0;
     _treeLightPhase = 0;
     _fireplaceFlamePhase = 0;
-    const char* modeName = _showFireplace ? "Kamin" : (_showTree ? "Weihnachtsbaum" : "Adventskranz");
-    Log.printf("[AnimationsModule] Aktiviert: %s (UID=%lu)\n", modeName, _currentAdventUID);
+    
+    bool inHolidaySeason = isHolidaySeason();
+    if (!inHolidaySeason && config && config->seasonalAnimationsEnabled) {
+        const char* seasonName = TimeUtilities::getSeasonName(TimeUtilities::getCurrentSeason());
+        Log.printf("[AnimationsModule] Aktiviert: %s Animation (UID=%lu)\n", seasonName, _currentAdventUID);
+    } else {
+        const char* modeName = _showFireplace ? "Kamin" : (_showTree ? "Weihnachtsbaum" : "Adventskranz");
+        Log.printf("[AnimationsModule] Aktiviert: %s (UID=%lu)\n", modeName, _currentAdventUID);
+    }
 }
 
 void AnimationsModule::timeIsUp() {
-    const char* modeName = _showFireplace ? "Kamin" : (_showTree ? "Weihnachtsbaum" : "Adventskranz");
-    Log.printf("[AnimationsModule] Zeit abgelaufen für %s (UID=%lu)\n", modeName, _currentAdventUID);
+    bool inHolidaySeason = isHolidaySeason();
+    if (!inHolidaySeason && config && config->seasonalAnimationsEnabled) {
+        const char* seasonName = TimeUtilities::getSeasonName(TimeUtilities::getCurrentSeason());
+        Log.printf("[AnimationsModule] Zeit abgelaufen für %s Animation (UID=%lu)\n", seasonName, _currentAdventUID);
+    } else {
+        const char* modeName = _showFireplace ? "Kamin" : (_showTree ? "Weihnachtsbaum" : "Adventskranz");
+        Log.printf("[AnimationsModule] Zeit abgelaufen für %s (UID=%lu)\n", modeName, _currentAdventUID);
+    }
     _isAdventViewActive = false;
     _requestPending = false;
     _lastAdventDisplayTime = millis();
@@ -2456,3 +2513,307 @@ void AnimationsModule::drawWoodStorage(int x, int y, int width, int height, floa
     }
 }
 */
+
+// ============== SEASON ANIMATIONS ==============
+
+void AnimationsModule::drawSeasonalAnimations() {
+    TimeUtilities::Season currentSeason = TimeUtilities::getCurrentSeason();
+    
+    switch (currentSeason) {
+        case TimeUtilities::Season::SPRING:
+            drawSpringAnimation();
+            break;
+        case TimeUtilities::Season::SUMMER:
+            drawSummerAnimation();
+            break;
+        case TimeUtilities::Season::AUTUMN:
+            drawAutumnAnimation();
+            break;
+        case TimeUtilities::Season::WINTER:
+            // Winter already has snowflakes on the tree
+            // Could add more winter elements here if desired
+            break;
+    }
+}
+
+void AnimationsModule::initSpringAnimation() {
+    int canvasW = _currentCanvas->width();
+    int canvasH = _currentCanvas->height();
+    
+    // Initialize flowers at the bottom
+    for (int i = 0; i < MAX_FLOWERS; i++) {
+        _flowers[i].x = (float)(rand() % canvasW);
+        _flowers[i].y = (float)(canvasH - 5 - (rand() % 10));
+        _flowers[i].size = 2 + (rand() % 2);
+        _flowers[i].swayPhase = (float)(rand() % 360);
+        
+        // Various flower colors (pink, yellow, red, white, purple)
+        uint16_t flowerColors[] = {
+            rgb565(255, 105, 180), // Pink
+            rgb565(255, 255, 100), // Yellow
+            rgb565(255, 50, 50),   // Red
+            rgb565(255, 255, 255), // White
+            rgb565(200, 100, 255)  // Purple
+        };
+        _flowers[i].color = flowerColors[rand() % 5];
+    }
+    
+    // Initialize butterflies
+    for (int i = 0; i < MAX_BUTTERFLIES; i++) {
+        _butterflies[i].x = (float)(rand() % canvasW);
+        _butterflies[i].y = (float)(10 + rand() % (canvasH - 20));
+        _butterflies[i].vx = 0.3f + (float)(rand() % 10) / 20.0f;
+        _butterflies[i].vy = ((rand() % 3) - 1) * 0.2f;
+        _butterflies[i].wingPhase = rand() % 10;
+        
+        // Butterfly colors
+        uint16_t butterflyColors[] = {
+            rgb565(255, 200, 0),   // Yellow
+            rgb565(255, 100, 150), // Pink
+            rgb565(100, 150, 255), // Blue
+        };
+        _butterflies[i].color = butterflyColors[rand() % 3];
+    }
+    
+    _flowersInitialized = true;
+    _butterfliesInitialized = true;
+}
+
+void AnimationsModule::drawSpringAnimation() {
+    int canvasW = _currentCanvas->width();
+    int canvasH = _currentCanvas->height();
+    
+    // Initialize on first call
+    if (!_flowersInitialized || !_butterfliesInitialized) {
+        initSpringAnimation();
+        _lastButterflyUpdate = millis();
+    }
+    
+    // Draw flowers (static, slightly swaying)
+    for (int i = 0; i < MAX_FLOWERS; i++) {
+        int fx = (int)(_flowers[i].x + sin(_flowers[i].swayPhase + _seasonAnimationPhase * 0.1f) * 2);
+        int fy = (int)_flowers[i].y;
+        
+        // Stem
+        uint16_t stemColor = rgb565(50, 150, 50);
+        _currentCanvas->drawLine(fx, fy, fx, fy - 4 - _flowers[i].size, stemColor);
+        
+        // Flower petals (simple circle)
+        _currentCanvas->fillCircle(fx, fy - 4 - _flowers[i].size, _flowers[i].size, _flowers[i].color);
+        
+        // Center
+        uint16_t centerColor = rgb565(255, 200, 50);
+        if (_flowers[i].size > 1) {
+            _currentCanvas->drawPixel(fx, fy - 4 - _flowers[i].size, centerColor);
+        }
+    }
+    
+    // Update and draw butterflies
+    unsigned long now = millis();
+    if (now - _lastButterflyUpdate > 100) {
+        for (int i = 0; i < MAX_BUTTERFLIES; i++) {
+            _butterflies[i].x += _butterflies[i].vx;
+            _butterflies[i].y += _butterflies[i].vy;
+            _butterflies[i].wingPhase = (_butterflies[i].wingPhase + 1) % 10;
+            
+            // Gentle up/down motion
+            if (rand() % 10 < 3) {
+                _butterflies[i].vy = ((rand() % 3) - 1) * 0.3f;
+            }
+            
+            // Wrap around screen
+            if (_butterflies[i].x > canvasW) {
+                _butterflies[i].x = -5;
+                _butterflies[i].y = (float)(10 + rand() % (canvasH - 20));
+            }
+            if (_butterflies[i].y < 5) _butterflies[i].y = 5;
+            if (_butterflies[i].y > canvasH - 10) _butterflies[i].y = canvasH - 10;
+        }
+        _lastButterflyUpdate = now;
+    }
+    
+    // Draw butterflies
+    for (int i = 0; i < MAX_BUTTERFLIES; i++) {
+        int bx = (int)_butterflies[i].x;
+        int by = (int)_butterflies[i].y;
+        
+        // Wing animation (flapping)
+        int wingSpread = (_butterflies[i].wingPhase < 5) ? 2 : 1;
+        
+        // Body
+        _currentCanvas->drawPixel(bx, by, rgb565(50, 50, 50));
+        
+        // Wings
+        _currentCanvas->drawPixel(bx - wingSpread, by, _butterflies[i].color);
+        _currentCanvas->drawPixel(bx + wingSpread, by, _butterflies[i].color);
+        if (wingSpread == 2) {
+            _currentCanvas->drawPixel(bx - 1, by - 1, _butterflies[i].color);
+            _currentCanvas->drawPixel(bx + 1, by - 1, _butterflies[i].color);
+        }
+    }
+}
+
+void AnimationsModule::initSummerAnimation() {
+    int canvasW = _currentCanvas->width();
+    int canvasH = _currentCanvas->height();
+    
+    // Initialize birds
+    for (int i = 0; i < MAX_BIRDS; i++) {
+        _birds[i].x = (float)(rand() % canvasW);
+        _birds[i].y = (float)(5 + rand() % (canvasH / 3));
+        _birds[i].vx = 0.5f + (float)(rand() % 10) / 10.0f;
+        _birds[i].wingPhase = rand() % 8;
+        _birds[i].facingRight = (rand() % 2) == 0;
+    }
+    
+    _birdsInitialized = true;
+}
+
+void AnimationsModule::drawSummerAnimation() {
+    int canvasW = _currentCanvas->width();
+    int canvasH = _currentCanvas->height();
+    
+    // Initialize on first call
+    if (!_birdsInitialized) {
+        initSummerAnimation();
+        _lastBirdUpdate = millis();
+    }
+    
+    // Draw sun in corner
+    int sunX = canvasW - 12;
+    int sunY = 8;
+    uint16_t sunColor = rgb565(255, 255, 0);
+    uint16_t sunGlow = rgb565(255, 200, 100);
+    
+    _currentCanvas->fillCircle(sunX, sunY, 4, sunColor);
+    // Sun rays
+    for (int angle = 0; angle < 360; angle += 45) {
+        float rad = angle * 3.14159f / 180.0f;
+        int rayLen = 6 + (_seasonAnimationPhase % 2);
+        int rx = sunX + (int)(cos(rad) * rayLen);
+        int ry = sunY + (int)(sin(rad) * rayLen);
+        _currentCanvas->drawLine(sunX, sunY, rx, ry, sunGlow);
+    }
+    
+    // Update and draw birds
+    unsigned long now = millis();
+    if (now - _lastBirdUpdate > 120) {
+        for (int i = 0; i < MAX_BIRDS; i++) {
+            if (_birds[i].facingRight) {
+                _birds[i].x += _birds[i].vx;
+            } else {
+                _birds[i].x -= _birds[i].vx;
+            }
+            _birds[i].wingPhase = (_birds[i].wingPhase + 1) % 8;
+            
+            // Wrap around
+            if (_birds[i].x > canvasW + 5) {
+                _birds[i].x = -5;
+                _birds[i].y = (float)(5 + rand() % (canvasH / 3));
+            }
+            if (_birds[i].x < -5) {
+                _birds[i].x = canvasW + 5;
+                _birds[i].y = (float)(5 + rand() % (canvasH / 3));
+            }
+        }
+        _lastBirdUpdate = now;
+    }
+    
+    // Draw birds
+    uint16_t birdColor = rgb565(100, 100, 100);
+    for (int i = 0; i < MAX_BIRDS; i++) {
+        int bx = (int)_birds[i].x;
+        int by = (int)_birds[i].y;
+        
+        // Simple bird shape (V-shape)
+        int wingPos = (_birds[i].wingPhase < 4) ? 1 : 2;
+        
+        if (_birds[i].facingRight) {
+            _currentCanvas->drawLine(bx, by, bx - 2, by - wingPos, birdColor);
+            _currentCanvas->drawLine(bx, by, bx - 2, by + wingPos, birdColor);
+        } else {
+            _currentCanvas->drawLine(bx, by, bx + 2, by - wingPos, birdColor);
+            _currentCanvas->drawLine(bx, by, bx + 2, by + wingPos, birdColor);
+        }
+    }
+}
+
+void AnimationsModule::initAutumnAnimation() {
+    int canvasW = _currentCanvas->width();
+    int canvasH = _currentCanvas->height();
+    
+    // Initialize falling leaves
+    for (int i = 0; i < MAX_LEAVES; i++) {
+        _leaves[i].x = (float)(rand() % canvasW);
+        _leaves[i].y = (float)(rand() % canvasH);
+        _leaves[i].vx = ((rand() % 3) - 1) * 0.2f;
+        _leaves[i].vy = 0.3f + (float)(rand() % 10) / 20.0f;
+        _leaves[i].rotation = (float)(rand() % 360);
+        _leaves[i].size = 2 + (rand() % 2);
+        
+        // Autumn leaf colors (brown, orange, red, yellow)
+        uint16_t leafColors[] = {
+            rgb565(139, 69, 19),   // Brown
+            rgb565(255, 140, 0),   // Orange
+            rgb565(200, 50, 50),   // Red
+            rgb565(255, 215, 0),   // Yellow
+            rgb565(178, 34, 34)    // Dark red
+        };
+        _leaves[i].color = leafColors[rand() % 5];
+    }
+    
+    _leavesInitialized = true;
+}
+
+void AnimationsModule::drawAutumnAnimation() {
+    int canvasW = _currentCanvas->width();
+    int canvasH = _currentCanvas->height();
+    
+    // Initialize on first call
+    if (!_leavesInitialized) {
+        initAutumnAnimation();
+        _lastLeafUpdate = millis();
+    }
+    
+    // Update leaves
+    unsigned long now = millis();
+    if (now - _lastLeafUpdate > 60) {
+        for (int i = 0; i < MAX_LEAVES; i++) {
+            _leaves[i].x += _leaves[i].vx;
+            _leaves[i].y += _leaves[i].vy;
+            _leaves[i].rotation += 5.0f;
+            
+            // Gentle sideways drift
+            if (rand() % 10 < 2) {
+                _leaves[i].vx = ((rand() % 3) - 1) * 0.3f;
+            }
+            
+            // Reset at bottom
+            if (_leaves[i].y > canvasH) {
+                _leaves[i].y = -5;
+                _leaves[i].x = (float)(rand() % canvasW);
+                _leaves[i].vx = ((rand() % 3) - 1) * 0.2f;
+                _leaves[i].vy = 0.3f + (float)(rand() % 10) / 20.0f;
+            }
+            
+            // Wrap horizontally
+            if (_leaves[i].x < -5) _leaves[i].x = canvasW + 5;
+            if (_leaves[i].x > canvasW + 5) _leaves[i].x = -5;
+        }
+        _lastLeafUpdate = now;
+    }
+    
+    // Draw leaves
+    for (int i = 0; i < MAX_LEAVES; i++) {
+        int lx = (int)_leaves[i].x;
+        int ly = (int)_leaves[i].y;
+        
+        // Simple leaf shape (oval-ish with stem)
+        if (_leaves[i].size == 2) {
+            _currentCanvas->fillCircle(lx, ly, 2, _leaves[i].color);
+            _currentCanvas->drawPixel(lx, ly + 1, rgb565(100, 69, 19)); // Stem
+        } else {
+            _currentCanvas->fillCircle(lx, ly, 1, _leaves[i].color);
+        }
+    }
+}
