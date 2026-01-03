@@ -512,6 +512,36 @@ void AnimationsModule::periodicTick() {
             _showFireplace = false;
         }
         
+        // Prüfe ob tatsächlich etwas angezeigt werden soll
+        bool hasContentToDisplay = false;
+        
+        if (mode == ChristmasDisplayMode::Alternate) {
+            // Im Alternate-Modus: prüfe ob mindestens eine Animation aktiv ist
+            bool wreathActive = config->adventWreathEnabled && isAdventSeason();
+            bool treeActive = config->christmasTreeEnabled && isChristmasSeason();
+            bool fireplaceActive = config->fireplaceEnabled && isFireplaceSeason();
+            
+            // Prüfe Nachtmodus für Kamin
+            if (fireplaceActive && config->fireplaceNightModeOnly && !TimeUtilities::isNightTime()) {
+                fireplaceActive = false;
+            }
+            
+            hasContentToDisplay = wreathActive || treeActive || fireplaceActive;
+        } else if (mode == ChristmasDisplayMode::Tree) {
+            hasContentToDisplay = _showTree;
+        } else if (mode == ChristmasDisplayMode::Fireplace) {
+            hasContentToDisplay = _showFireplace;
+        } else {
+            // Wreath-Modus
+            hasContentToDisplay = config->adventWreathEnabled && isAdventSeason();
+        }
+        
+        // Nur Request machen wenn tatsächlich was anzuzeigen ist
+        if (!hasContentToDisplay) {
+            Log.println("[AnimationsModule] Nichts anzuzeigen - kein Request");
+            return;
+        }
+        
         // Feste UID für diese Anzeige-Session (nicht vom Advent-Woche abhängig)
         // Verwende eine einfache UID basierend auf dem Display-Counter
         _currentAdventUID = ADVENT_WREATH_UID_BASE + (_displayCounter % 100);
