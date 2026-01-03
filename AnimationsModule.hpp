@@ -24,17 +24,23 @@ enum class ChristmasDisplayMode {
 };
 
 /**
- * @brief Modul zur Anzeige verschiedener Weihnachtsanimationen.
+ * @brief Modul zur Anzeige verschiedener Weihnachts- und Jahreszeiten-Animationen.
  * 
- * Zeigt einen Adventskranz mit 4 Kerzen in verschiedenen Farben.
- * Je nach aktuellem Advent (1-4) brennen die entsprechenden Kerzen
- * mit animierten Flammen. Der Kranz ist mit Tannengrün dekoriert.
+ * Weihnachts-Animationen:
+ * - Adventskranz mit 4 Kerzen in verschiedenen Farben.
+ *   Je nach aktuellem Advent (1-4) brennen die entsprechenden Kerzen
+ *   mit animierten Flammen. Der Kranz ist mit Tannengrün dekoriert.
+ * - Weihnachtsbaum mit Lichtern, Kugeln und Geschenken.
+ * - Kamin mit animiertem Feuer und dekorativen Elementen.
  * 
- * Zusätzlich wird ein Weihnachtsbaum mit Lichtern und Kugeln gezeigt.
+ * Jahreszeiten-Animationen (ganzjährig):
+ * - Frühling: Blumen und Schmetterlinge
+ * - Sommer: Sonne/Mond mit Vögeln und Sternen (Tag/Nacht-Wechsel)
+ * - Herbst: Fallende Blätter
+ * - Winter: Schneeflocken (Teil der Weihnachtsbaum-Animation)
  * 
  * Das Modul verwendet Priority::PlayNext (OneShot),
- * um während der Adventszeit regelmäßig als nächstes nach dem
- * aktuellen Modul angezeigt zu werden.
+ * um regelmäßig als nächstes nach dem aktuellen Modul angezeigt zu werden.
  */
 class AnimationsModule : public DrawableModule {
 public:

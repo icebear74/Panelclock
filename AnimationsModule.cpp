@@ -2679,30 +2679,65 @@ void AnimationsModule::drawSummerAnimation() {
         _lastBirdUpdate = millis();
     }
     
-    // Draw sun in corner
-    int sunX = canvasW - 12;
-    int sunY = 8;
-    uint16_t sunColor = rgb565(255, 255, 0);
-    uint16_t sunGlow = rgb565(255, 200, 100);
+    // Check if it's night time for day/night variations
+    bool isNight = TimeUtilities::isNightTime();
     
-    _currentCanvas->fillCircle(sunX, sunY, 4, sunColor);
-    // Sun rays
-    for (int angle = 0; angle < 360; angle += 45) {
-        float rad = angle * 3.14159f / 180.0f;
-        int rayLen = 6 + (_seasonAnimationPhase % 2);
-        int rx = sunX + (int)(cos(rad) * rayLen);
-        int ry = sunY + (int)(sin(rad) * rayLen);
-        _currentCanvas->drawLine(sunX, sunY, rx, ry, sunGlow);
+    if (isNight) {
+        // Draw moon and stars at night
+        int moonX = canvasW - 12;
+        int moonY = 8;
+        uint16_t moonColor = rgb565(220, 220, 255);
+        uint16_t moonGlow = rgb565(180, 180, 220);
+        
+        _currentCanvas->fillCircle(moonX, moonY, 4, moonColor);
+        _currentCanvas->fillCircle(moonX - 1, moonY - 1, 4, 0); // Crescent effect
+        
+        // Draw some stars
+        for (int i = 0; i < 10; i++) {
+            uint32_t seed = simpleRandom(i * 97 + 42);
+            int sx = (seed % (canvasW - 10)) + 5;
+            int sy = (seed / 13) % (canvasH / 2);
+            uint16_t starColor = rgb565(255, 255, 255);
+            
+            // Twinkling effect
+            if ((seed + _seasonAnimationPhase) % 30 < 20) {
+                _currentCanvas->drawPixel(sx, sy, starColor);
+                // Add cross pattern for brighter stars
+                if (i % 3 == 0) {
+                    if (sx > 0) _currentCanvas->drawPixel(sx - 1, sy, starColor);
+                    if (sx < canvasW - 1) _currentCanvas->drawPixel(sx + 1, sy, starColor);
+                }
+            }
+        }
+    } else {
+        // Draw sun during day
+        int sunX = canvasW - 12;
+        int sunY = 8;
+        uint16_t sunColor = rgb565(255, 255, 0);
+        uint16_t sunGlow = rgb565(255, 200, 100);
+        
+        _currentCanvas->fillCircle(sunX, sunY, 4, sunColor);
+        // Sun rays
+        for (int angle = 0; angle < 360; angle += 45) {
+            float rad = angle * 3.14159f / 180.0f;
+            int rayLen = 6 + (_seasonAnimationPhase % 2);
+            int rx = sunX + (int)(cos(rad) * rayLen);
+            int ry = sunY + (int)(sin(rad) * rayLen);
+            _currentCanvas->drawLine(sunX, sunY, rx, ry, sunGlow);
+        }
     }
     
-    // Update and draw birds
+    // Update and draw birds (less active at night)
     unsigned long now = millis();
     if (now - _lastBirdUpdate > 120) {
         for (int i = 0; i < MAX_BIRDS; i++) {
+            // Birds slower at night
+            float speed = isNight ? _birds[i].vx * 0.5f : _birds[i].vx;
+            
             if (_birds[i].facingRight) {
-                _birds[i].x += _birds[i].vx;
+                _birds[i].x += speed;
             } else {
-                _birds[i].x -= _birds[i].vx;
+                _birds[i].x -= speed;
             }
             _birds[i].wingPhase = (_birds[i].wingPhase + 1) % 8;
             
@@ -2719,14 +2754,15 @@ void AnimationsModule::drawSummerAnimation() {
         _lastBirdUpdate = now;
     }
     
-    // Draw birds
-    uint16_t birdColor = rgb565(100, 100, 100);
-    for (int i = 0; i < MAX_BIRDS; i++) {
-        int bx = (int)_birds[i].x;
-        int by = (int)_birds[i].y;
-        
-        // Simple bird shape (V-shape)
-        int wingPos = (_birds[i].wingPhase < 4) ? 1 : 2;
+    // Draw birds (only during day, or fewer at night)
+    if (!isNight || rand() % 10 < 3) {
+        uint16_t birdColor = isNight ? rgb565(70, 70, 70) : rgb565(100, 100, 100);
+        for (int i = 0; i < MAX_BIRDS; i++) {
+            int bx = (int)_birds[i].x;
+            int by = (int)_birds[i].y;
+            
+            // Simple bird shape (V-shape)
+            int wingPos = (_birds[i].wingPhase < 4) ? 1 : 2;
         
         if (_birds[i].facingRight) {
             _currentCanvas->drawLine(bx, by, bx - 2, by - wingPos, birdColor);
