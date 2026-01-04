@@ -536,20 +536,34 @@ void AnimationsModule::periodicTick() {
                 fireplaceActive = false;
             }
             
+            // Seasonal animation als zusätzliche Option im Wechsel (wenn aktiviert und erlaubt)
+            bool seasonalActive = showSeasonalAnimation;
+            if (seasonalActive) {
+                // Check if winter seasonal should be hidden during holidays
+                TimeUtilities::Season currentSeason = config->seasonalAnimationsTestMode ? 
+                    (TimeUtilities::Season)_testModeSeasonIndex : TimeUtilities::getCurrentSeason();
+                
+                if (currentSeason == TimeUtilities::Season::WINTER && !config->seasonalWinterWithHolidays) {
+                    seasonalActive = false;
+                }
+            }
+            
             // Setze Anzeige-Flags basierend auf Modus
             _showTree = false;
             _showFireplace = false;
+            _showSeasonalAnimation = false;
             
             if (mode == ChristmasDisplayMode::Alternate) {
-                // Rotiere durch alle aktiven Modi
-                int activeCount = (wreathActive ? 1 : 0) + (treeActive ? 1 : 0) + (fireplaceActive ? 1 : 0);
+                // Rotiere durch alle aktiven Modi (inkl. Seasonal wenn aktiviert)
+                int activeCount = (wreathActive ? 1 : 0) + (treeActive ? 1 : 0) + 
+                                (fireplaceActive ? 1 : 0) + (seasonalActive ? 1 : 0);
                 
                 if (activeCount > 0) {
                     int modeIndex = _displayCounter % activeCount;
                     
                     int current = 0;
                     if (wreathActive) {
-                        if (current == modeIndex) { /* Kranz */ }
+                        if (current == modeIndex) { /* Kranz - default, beide flags bleiben false */ }
                         current++;
                     }
                     if (treeActive && current <= modeIndex) {
@@ -558,6 +572,14 @@ void AnimationsModule::periodicTick() {
                     }
                     if (fireplaceActive && current <= modeIndex) {
                         if (current == modeIndex) { _showFireplace = true; _showTree = false; }
+                        current++;
+                    }
+                    if (seasonalActive && current <= modeIndex) {
+                        if (current == modeIndex) { 
+                            _showSeasonalAnimation = true; 
+                            _showTree = false; 
+                            _showFireplace = false; 
+                        }
                     }
                 }
             } else if (mode == ChristmasDisplayMode::Tree) {
@@ -565,12 +587,13 @@ void AnimationsModule::periodicTick() {
             } else if (mode == ChristmasDisplayMode::Fireplace) {
                 _showFireplace = fireplaceActive;
             } else if (mode == ChristmasDisplayMode::Wreath) {
-                // Kranz-Modus: beide Flags bleiben false (Kranz ist der Default)
+                // Kranz-Modus: alle Flags bleiben false (Kranz ist der Default)
             }
         } else {
             // Not in holiday season - seasonal animation only
             _showTree = false;
             _showFireplace = false;
+            _showSeasonalAnimation = showSeasonalAnimation;
         }
         
         // Prüfe ob überhaupt etwas anzuzeigen ist (Holiday-Animationen ODER Seasonal-Animationen)
@@ -592,8 +615,21 @@ void AnimationsModule::periodicTick() {
         bool success = requestPriorityEx(prio, _currentAdventUID, safeDuration);
         
         if (success) {
-            const char* modeName = showSeasonalAnimation ? TimeUtilities::getSeasonName(TimeUtilities::getCurrentSeason()) :
-                                   (_showFireplace ? "Kamin" : (_showTree ? "Weihnachtsbaum" : "Adventskranz"));
+            const char* modeName;
+            if (_showSeasonalAnimation) {
+                modeName = TimeUtilities::getSeasonName(
+                    config->seasonalAnimationsTestMode ? 
+                    (TimeUtilities::Season)_testModeSeasonIndex : 
+                    TimeUtilities::getCurrentSeason()
+                );
+            } else if (_showFireplace) {
+                modeName = "Kamin";
+            } else if (_showTree) {
+                modeName = "Weihnachtsbaum";
+            } else {
+                modeName = "Adventskranz";
+            }
+            
             Log.printf("[AnimationsModule] %s %s angefordert (UID=%lu, Counter=%d)\n", 
                        modeName,
                        config->adventWreathInterrupt ? "Interrupt" : "PlayNext",
@@ -672,36 +708,25 @@ void AnimationsModule::draw() {
     // Wähle den richtigen Canvas basierend auf Fullscreen-Modus
     _currentCanvas = wantsFullscreen() ? _fullscreenCanvas : &canvas;
     
-    // Check if we should show seasonal animation
-    bool inHolidaySeason = isHolidaySeason();
-    bool showSeasonalAnimation = config && config->seasonalAnimationsEnabled;
-    
-    // Check if winter seasonal should be hidden during holidays
-    if (showSeasonalAnimation && inHolidaySeason) {
-        TimeUtilities::Season currentSeason = config->seasonalAnimationsTestMode ? 
-            (TimeUtilities::Season)_testModeSeasonIndex : TimeUtilities::getCurrentSeason();
-        
-        if (currentSeason == TimeUtilities::Season::WINTER && 
-            config && !config->seasonalWinterWithHolidays) {
-            showSeasonalAnimation = false;
-        }
-    }
-    
     // Hintergrundfarbe basierend auf Modus
     uint16_t bgColor = 0;
     if (_showFireplace && config && config->fireplaceBgColor.length() > 0) {
         bgColor = hexToRgb565(config->fireplaceBgColor.c_str());
     } else if (_showTree && config && config->christmasTreeBgColor.length() > 0) {
         bgColor = hexToRgb565(config->christmasTreeBgColor.c_str());
-    } else if (!_showFireplace && !_showTree && config && config->adventWreathBgColor.length() > 0) {
+    } else if (!_showFireplace && !_showTree && !_showSeasonalAnimation && config && config->adventWreathBgColor.length() > 0) {
         bgColor = hexToRgb565(config->adventWreathBgColor.c_str());
     }
     
     _currentCanvas->fillScreen(bgColor);
     u8g2.begin(*_currentCanvas);
     
-    // Draw holiday animations first (if in holiday season)
-    if (inHolidaySeason) {
+    // Show EITHER holiday animations OR seasonal animations, NEVER both
+    if (_showSeasonalAnimation) {
+        // Show seasonal animation ONLY (not mixed with holiday animations)
+        drawSeasonalAnimations();
+    } else {
+        // Show holiday animations (Adventskranz, Weihnachtsbaum, or Kamin)
         if (_showFireplace) {
             drawFireplace();
         } else if (_showTree) {
@@ -734,11 +759,6 @@ void AnimationsModule::draw() {
                 drawNewYearCountdown();
             }
         }
-    }
-    
-    // Draw seasonal animations ADDITIONALLY (overlay) if enabled
-    if (showSeasonalAnimation) {
-        drawSeasonalAnimations();
     }
 }
 

@@ -117,6 +117,7 @@ private:
     int _shuffledLightX[30];
     bool _showTree = false;
     bool _showFireplace = false;
+    bool _showSeasonalAnimation = false;  // Flag for showing seasonal animation instead of holiday
     int _displayCounter = 0;
     
     // Snowflake animation
