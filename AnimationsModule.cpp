@@ -2762,13 +2762,14 @@ void AnimationsModule::drawSummerAnimation() {
             
             // Simple bird shape (V-shape)
             int wingPos = (_birds[i].wingPhase < 4) ? 1 : 2;
-        
-        if (_birds[i].facingRight) {
-            _currentCanvas->drawLine(bx, by, bx - 2, by - wingPos, birdColor);
-            _currentCanvas->drawLine(bx, by, bx - 2, by + wingPos, birdColor);
-        } else {
-            _currentCanvas->drawLine(bx, by, bx + 2, by - wingPos, birdColor);
-            _currentCanvas->drawLine(bx, by, bx + 2, by + wingPos, birdColor);
+            
+            if (_birds[i].facingRight) {
+                _currentCanvas->drawLine(bx, by, bx - 2, by - wingPos, birdColor);
+                _currentCanvas->drawLine(bx, by, bx - 2, by + wingPos, birdColor);
+            } else {
+                _currentCanvas->drawLine(bx, by, bx + 2, by - wingPos, birdColor);
+                _currentCanvas->drawLine(bx, by, bx + 2, by + wingPos, birdColor);
+            }
         }
     }
 }
