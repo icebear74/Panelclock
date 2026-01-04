@@ -482,126 +482,104 @@ void AnimationsModule::periodicTick() {
     
     bool inHolidaySeason = isHolidaySeason();
     
-    // Seasonal animations show either when not in holiday season, OR when in holiday season but enabled for winter
-    bool showSeasonalAnimation = hasSeasonalAnimations;
-    if (inHolidaySeason && !hasHolidayAnimations) {
-        // Only seasonal animations active during holiday season
-        showSeasonalAnimation = true;
-    }
-    // (else showSeasonalAnimation is already set correctly from hasSeasonalAnimations)
-    
-    // If nothing to show, release if active
-    if (!inHolidaySeason && !showSeasonalAnimation) {
-        if (_isAdventViewActive) {
-            releasePriorityEx(_currentAdventUID);
-            _isAdventViewActive = false;
-            _requestPending = false;
-            Log.println("[AnimationsModule] Keine Animations-Saison mehr");
-        }
-        return;
-    }
-    
     // Wenn ein Request noch aussteht (noch nicht aktiviert), nichts tun
     if (_requestPending) {
         return;
     }
     
     // Use appropriate interval for seasonal vs holiday animations
-    unsigned long repeatInterval = !inHolidaySeason && showSeasonalAnimation ? 
-        (config->seasonalAnimationsRepeatMin * 60UL * 1000UL) : _repeatIntervalMs;
-    unsigned long displayDuration = !inHolidaySeason && showSeasonalAnimation ?
-        (config->seasonalAnimationsDisplaySec * 1000UL) : _displayDurationMs;
+    unsigned long repeatInterval = _repeatIntervalMs;  // Standard interval for all animations
+    unsigned long displayDuration = _displayDurationMs;
     
     unsigned long minInterval = (_lastAdventDisplayTime == 0) ? 0 : repeatInterval;
     
     if (!_isAdventViewActive && (now - _lastAdventDisplayTime > minInterval)) {
-        // Determine what to show - holiday animations or seasonal animations
-        bool wreathActive = false;
-        bool treeActive = false;
-        bool fireplaceActive = false;
+        // Berechne welche Animationen grundsätzlich aktiv sind
+        bool wreathActive = config->adventWreathEnabled && isAdventSeason();
+        bool treeActive = config->christmasTreeEnabled && isChristmasSeason();
         
-        if (inHolidaySeason) {
-            // Entscheide WAS angezeigt wird BEVOR der Request gemacht wird
-            shuffleCandleOrder();
-            
-            ChristmasDisplayMode mode = getCurrentDisplayMode();
-            
-            // Berechne aktive Animationen (mit Nachtmodus-Prüfung für Kamin)
-            wreathActive = config->adventWreathEnabled && isAdventSeason();
-            treeActive = config->christmasTreeEnabled && isChristmasSeason();
-            fireplaceActive = config->fireplaceEnabled && isFireplaceSeason();
-            
-            // Prüfe Nachtmodus für Kamin
-            if (fireplaceActive && config->fireplaceNightModeOnly && !TimeUtilities::isNightTime()) {
-                fireplaceActive = false;
-            }
-            
-            // Seasonal animation als zusätzliche Option im Wechsel (wenn aktiviert und erlaubt)
-            bool seasonalActive = showSeasonalAnimation;
-            if (seasonalActive) {
-                // Check if winter seasonal should be hidden during holidays
-                TimeUtilities::Season currentSeason = config->seasonalAnimationsTestMode ? 
-                    (TimeUtilities::Season)_testModeSeasonIndex : TimeUtilities::getCurrentSeason();
-                
-                if (currentSeason == TimeUtilities::Season::WINTER && !config->seasonalWinterWithHolidays) {
-                    seasonalActive = false;
-                }
-            }
-            
-            // Setze Anzeige-Flags basierend auf Modus
-            _showTree = false;
-            _showFireplace = false;
-            _showSeasonalAnimation = false;
-            
-            if (mode == ChristmasDisplayMode::Alternate) {
-                // Rotiere durch alle aktiven Modi (inkl. Seasonal wenn aktiviert)
-                int activeCount = (wreathActive ? 1 : 0) + (treeActive ? 1 : 0) + 
-                                (fireplaceActive ? 1 : 0) + (seasonalActive ? 1 : 0);
-                
-                if (activeCount > 0) {
-                    int modeIndex = _displayCounter % activeCount;
-                    
-                    int current = 0;
-                    if (wreathActive) {
-                        if (current == modeIndex) { /* Kranz - default, beide flags bleiben false */ }
-                        current++;
-                    }
-                    if (treeActive && current <= modeIndex) {
-                        if (current == modeIndex) { _showTree = true; }
-                        current++;
-                    }
-                    if (fireplaceActive && current <= modeIndex) {
-                        if (current == modeIndex) { _showFireplace = true; _showTree = false; }
-                        current++;
-                    }
-                    if (seasonalActive && current <= modeIndex) {
-                        if (current == modeIndex) { 
-                            _showSeasonalAnimation = true; 
-                            _showTree = false; 
-                            _showFireplace = false; 
-                        }
-                    }
-                }
-            } else if (mode == ChristmasDisplayMode::Tree) {
-                _showTree = treeActive;
-            } else if (mode == ChristmasDisplayMode::Fireplace) {
-                _showFireplace = fireplaceActive;
-            } else if (mode == ChristmasDisplayMode::Wreath) {
-                // Kranz-Modus: alle Flags bleiben false (Kranz ist der Default)
-            }
-        } else {
-            // Not in holiday season - seasonal animation only
-            _showTree = false;
-            _showFireplace = false;
-            _showSeasonalAnimation = showSeasonalAnimation;
+        // Kamin ist IMMER eine separate Animation (nicht nur in Holiday-Season)
+        bool fireplaceActive = config->fireplaceEnabled && isFireplaceSeason();
+        
+        // Prüfe Nachtmodus für Kamin
+        if (fireplaceActive && config->fireplaceNightModeOnly && !TimeUtilities::isNightTime()) {
+            fireplaceActive = false;
         }
         
-        // Prüfe ob überhaupt etwas anzuzeigen ist (Holiday-Animationen ODER Seasonal-Animationen)
-        bool hasAnythingToShow = wreathActive || treeActive || fireplaceActive || showSeasonalAnimation;
+        // Seasonal animation ist IMMER aktiv wenn enabled (unabhängig von Holiday-Season)
+        bool seasonalActive = hasSeasonalAnimations;
+        if (seasonalActive && inHolidaySeason) {
+            // Im Winter: Check ob Winter-Seasonal bei Advent/Weihnachten erlaubt ist
+            TimeUtilities::Season currentSeason = config->seasonalAnimationsTestMode ? 
+                (TimeUtilities::Season)_testModeSeasonIndex : TimeUtilities::getCurrentSeason();
+            
+            if (currentSeason == TimeUtilities::Season::WINTER && !config->seasonalWinterWithHolidays) {
+                seasonalActive = false;
+            }
+        }
+        
+        // Prüfe ob überhaupt etwas anzuzeigen ist
+        bool hasAnythingToShow = wreathActive || treeActive || fireplaceActive || seasonalActive;
         
         if (!hasAnythingToShow) {
             Log.println("[AnimationsModule] Nichts anzuzeigen - kein Request");
             return;
+        }
+        
+        // Entscheide WAS angezeigt wird
+        shuffleCandleOrder();
+        ChristmasDisplayMode mode = getCurrentDisplayMode();
+        
+        // Setze Anzeige-Flags
+        _showTree = false;
+        _showFireplace = false;
+        _showSeasonalAnimation = false;
+        
+        if (mode == ChristmasDisplayMode::Alternate) {
+            // Rotiere durch ALLE aktiven Animationen
+            // Im Winter z.B.: Adventskranz > Weihnachtsbaum > Winteranimation > Kamin
+            // Im Frühling z.B.: Frühlingsanimation > Kamin (wenn Kamin abends aktiv)
+            int activeCount = (wreathActive ? 1 : 0) + (treeActive ? 1 : 0) + 
+                            (fireplaceActive ? 1 : 0) + (seasonalActive ? 1 : 0);
+            
+            if (activeCount > 0) {
+                int modeIndex = _displayCounter % activeCount;
+                
+                int current = 0;
+                if (wreathActive) {
+                    if (current == modeIndex) { /* Kranz - default */ }
+                    current++;
+                }
+                if (treeActive && current <= modeIndex) {
+                    if (current == modeIndex) { _showTree = true; }
+                    current++;
+                }
+                if (seasonalActive && current <= modeIndex) {
+                    if (current == modeIndex) { 
+                        _showSeasonalAnimation = true; 
+                        _showTree = false; 
+                    }
+                    current++;
+                }
+                if (fireplaceActive && current <= modeIndex) {
+                    if (current == modeIndex) { 
+                        _showFireplace = true; 
+                        _showTree = false; 
+                        _showSeasonalAnimation = false;
+                    }
+                }
+            }
+        } else if (mode == ChristmasDisplayMode::Tree) {
+            _showTree = treeActive;
+        } else if (mode == ChristmasDisplayMode::Fireplace) {
+            _showFireplace = fireplaceActive;
+        } else if (mode == ChristmasDisplayMode::Wreath) {
+            // Kranz-Modus: alle Flags bleiben false (Kranz ist der Default)
+        }
+        
+        // Passe Display-Duration an wenn Seasonal Animation angezeigt wird
+        if (_showSeasonalAnimation && config) {
+            displayDuration = config->seasonalAnimationsDisplaySec * 1000UL;
         }
         
         // Feste UID für diese Anzeige-Session (nicht vom Advent-Woche abhängig)
