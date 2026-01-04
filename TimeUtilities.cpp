@@ -32,16 +32,41 @@ namespace TimeUtilities {
         struct tm tm_now;
         localtime_r(&currentTime, &tm_now);
         int month = tm_now.tm_mon + 1; // 1-12
+        int day = tm_now.tm_mday;      // 1-31
         
-        // Meteorologische Jahreszeiten (basierend auf Monaten)
-        if (month >= 3 && month <= 5) {
-            return Season::SPRING;  // März, April, Mai
-        } else if (month >= 6 && month <= 8) {
-            return Season::SUMMER;  // Juni, Juli, August
-        } else if (month >= 9 && month <= 11) {
-            return Season::AUTUMN;  // September, Oktober, November
-        } else {
-            return Season::WINTER;  // Dezember, Januar, Februar
+        // Astronomische Jahreszeiten (basierend auf Sonnenwenden und Tagundnachtgleichen)
+        // Diese Daten variieren leicht von Jahr zu Jahr, aber wir verwenden Durchschnittswerte
+        
+        // Frühling: ~20. März bis ~20. Juni
+        if (month == 3 && day >= 20) {
+            return Season::SPRING;
+        } else if (month == 4 || month == 5) {
+            return Season::SPRING;
+        } else if (month == 6 && day <= 20) {
+            return Season::SPRING;
+        }
+        
+        // Sommer: ~21. Juni bis ~22. September
+        else if (month == 6 && day >= 21) {
+            return Season::SUMMER;
+        } else if (month == 7 || month == 8) {
+            return Season::SUMMER;
+        } else if (month == 9 && day <= 22) {
+            return Season::SUMMER;
+        }
+        
+        // Herbst: ~23. September bis ~20. Dezember
+        else if (month == 9 && day >= 23) {
+            return Season::AUTUMN;
+        } else if (month == 10 || month == 11) {
+            return Season::AUTUMN;
+        } else if (month == 12 && day <= 20) {
+            return Season::AUTUMN;
+        }
+        
+        // Winter: ~21. Dezember bis ~19. März
+        else {
+            return Season::WINTER;
         }
     }
     

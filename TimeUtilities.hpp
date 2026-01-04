@@ -16,10 +16,10 @@ namespace TimeUtilities {
     
     // Jahreszeit-Erkennung
     enum class Season {
-        SPRING,  // Frühling (März, April, Mai)
-        SUMMER,  // Sommer (Juni, Juli, August)
-        AUTUMN,  // Herbst (September, Oktober, November)
-        WINTER   // Winter (Dezember, Januar, Februar)
+        SPRING,  // Frühling (~20. März bis ~20. Juni)
+        SUMMER,  // Sommer (~21. Juni bis ~22. September)
+        AUTUMN,  // Herbst (~23. September bis ~20. Dezember)
+        WINTER   // Winter (~21. Dezember bis ~19. März)
     };
     
     /**
@@ -30,7 +30,8 @@ namespace TimeUtilities {
     bool isNightTime(time_t currentTime = 0);
     
     /**
-     * @brief Gibt die aktuelle Jahreszeit zurück basierend auf dem Monat
+     * @brief Gibt die aktuelle Jahreszeit zurück basierend auf astronomischen Jahreszeiten
+     *        (Sonnenwenden und Tagundnachtgleichen)
      * @param currentTime Aktuelle Zeit (UTC), default: jetzt
      * @return Jahreszeit (SPRING, SUMMER, AUTUMN, WINTER)
      */
