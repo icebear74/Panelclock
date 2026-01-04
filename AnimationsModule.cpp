@@ -2597,6 +2597,13 @@ void AnimationsModule::drawSeasonalAnimations() {
         if (now - _lastTestModeSwitch > 15000) {  // Switch every 15 seconds
             _testModeSeasonIndex = (_testModeSeasonIndex + 1) % 4;
             _lastTestModeSwitch = now;
+            
+            // Reset initialization flags so the new season gets initialized
+            _flowersInitialized = false;
+            _butterfliesInitialized = false;
+            _birdsInitialized = false;
+            _leavesInitialized = false;
+            _snowflakesInitialized = false;
         }
         currentSeason = (TimeUtilities::Season)_testModeSeasonIndex;
     } else {
