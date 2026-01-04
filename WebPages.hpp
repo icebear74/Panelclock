@@ -325,6 +325,7 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
         <button type="button" class="subtablinks" onclick="openSubTab(event, 'SubAdventskranz')" id="defaultAnimOpen">Adventskranz</button>
         <button type="button" class="subtablinks" onclick="openSubTab(event, 'SubWeihnachtsbaum')">Weihnachtsbaum</button>
         <button type="button" class="subtablinks" onclick="openSubTab(event, 'SubKamin')">Kamin</button>
+        <button type="button" class="subtablinks" onclick="openSubTab(event, 'SubJahreszeiten')">Jahreszeiten</button>
         <button type="button" class="subtablinks" onclick="openSubTab(event, 'SubAllgemein')">Allgemein</button>
     </div>
     
@@ -410,6 +411,47 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
             <label for="fireplaceBgColor">Hintergrundfarbe Kamin</label><input type="color" id="fireplaceBgColor" name="fireplaceBgColor" value="{fireplaceBgColor}">
             
             <p style="color:#bbb; margin-top:10px;">Der Kamin zeigt ein gem&uuml;tliches Feuer mit Str&uuml;mpfen und Dekoration (Kerzen mit animierter Flamme, Bücher, Vasen, Teekanne, Bilderrahmen). Im Nachtmodus erscheint er nur nach Sonnenuntergang (basierend auf Wetterdaten).</p>
+        </div>
+    </div>
+    
+    <!-- Jahreszeiten Sub-Tab -->
+    <div id="SubJahreszeiten" class="subtabcontent">
+        <div class="group">
+            <h3>Jahreszeiten-Animationen</h3>
+            <p style="color:#bbb;">Zeigt passende Animationen für jede Jahreszeit (Frühling, Sommer, Herbst, Winter). Die Jahreszeit wird astronomisch berechnet basierend auf Sonnenwenden und Tagundnachtgleichen.</p>
+            
+            <input type="checkbox" id="seasonalAnimationsEnabled" name="seasonalAnimationsEnabled" {seasonalAnimationsEnabled_checked}><label for="seasonalAnimationsEnabled" style="display:inline;">Jahreszeiten-Animationen aktivieren</label><br>
+            
+            <label for="seasonalAnimationsDisplaySec">Anzeigedauer (Sekunden)</label><input type="number" id="seasonalAnimationsDisplaySec" name="seasonalAnimationsDisplaySec" value="{seasonalAnimationsDisplaySec}" min="5" max="120">
+            
+            <label for="seasonalAnimationsRepeatMin">Wiederholungsintervall (Minuten)</label><input type="number" id="seasonalAnimationsRepeatMin" name="seasonalAnimationsRepeatMin" value="{seasonalAnimationsRepeatMin}" min="1" max="1440">
+            
+            <input type="checkbox" id="seasonalWinterWithHolidays" name="seasonalWinterWithHolidays" {seasonalWinterWithHolidays_checked}><label for="seasonalWinterWithHolidays" style="display:inline;">Winteranimation auch bei Adventskranz/Weihnachtsbaum zeigen</label><br>
+            
+            <input type="checkbox" id="seasonalAnimationsTestMode" name="seasonalAnimationsTestMode" {seasonalAnimationsTestMode_checked}><label for="seasonalAnimationsTestMode" style="display:inline;"><strong>Test-Modus:</strong> Alle Jahreszeiten rotierend anzeigen (zum Testen)</label><br>
+            
+            <hr>
+            <h4>Frühling (März-Juni)</h4>
+            <p style="color:#888; font-size:12px;">Blumen mit schwankenden Stielen und fliegende Schmetterlinge in bunten Farben.</p>
+            <label for="seasonalSpringFlowerCount">Anzahl Blumen (1-20)</label><input type="number" id="seasonalSpringFlowerCount" name="seasonalSpringFlowerCount" value="{seasonalSpringFlowerCount}" min="1" max="20">
+            <label for="seasonalSpringButterflyCount">Anzahl Schmetterlinge (1-8)</label><input type="number" id="seasonalSpringButterflyCount" name="seasonalSpringButterflyCount" value="{seasonalSpringButterflyCount}" min="1" max="8">
+            
+            <hr>
+            <h4>Sommer (Juni-September)</h4>
+            <p style="color:#888; font-size:12px;">Tags: Sonne mit animierten Strahlen und fliegende Vögel. Nachts: Mond, Sterne und langsame Vögel.</p>
+            <label for="seasonalSummerBirdCount">Anzahl Vögel (1-6)</label><input type="number" id="seasonalSummerBirdCount" name="seasonalSummerBirdCount" value="{seasonalSummerBirdCount}" min="1" max="6">
+            
+            <hr>
+            <h4>Herbst (September-Dezember)</h4>
+            <p style="color:#888; font-size:12px;">Fallende Blätter in Herbstfarben (braun, orange, rot, gelb) mit Wind-Drift und Rotation.</p>
+            <label for="seasonalAutumnLeafCount">Anzahl Blätter (5-30)</label><input type="number" id="seasonalAutumnLeafCount" name="seasonalAutumnLeafCount" value="{seasonalAutumnLeafCount}" min="5" max="30">
+            
+            <hr>
+            <h4>Winter (Dezember-März)</h4>
+            <p style="color:#888; font-size:12px;">Schneeflocken, Schneemann, verschneite Bäume und Schnee am Boden. Nachts mit Sternen.</p>
+            <label for="seasonalWinterSnowflakeCount">Anzahl Schneeflocken (5-40)</label><input type="number" id="seasonalWinterSnowflakeCount" name="seasonalWinterSnowflakeCount" value="{seasonalWinterSnowflakeCount}" min="5" max="40">
+            <input type="checkbox" id="seasonalWinterShowSnowman" name="seasonalWinterShowSnowman" {seasonalWinterShowSnowman_checked}><label for="seasonalWinterShowSnowman" style="display:inline;">Schneemann anzeigen</label><br>
+            <label for="seasonalWinterTreeCount">Anzahl verschneite Bäume (0-3)</label><input type="number" id="seasonalWinterTreeCount" name="seasonalWinterTreeCount" value="{seasonalWinterTreeCount}" min="0" max="3">
         </div>
     </div>
     

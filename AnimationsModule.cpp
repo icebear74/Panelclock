@@ -50,9 +50,38 @@ uint32_t AnimationsModule::simpleRandom(uint32_t seed) {
 AnimationsModule::AnimationsModule(U8G2_FOR_ADAFRUIT_GFX& u8g2, GFXcanvas16& canvas, 
                                        GeneralTimeConverter& timeConverter, DeviceConfig* config)
     : u8g2(u8g2), canvas(canvas), timeConverter(timeConverter), config(config) {
+    // Allokiere Arrays in PSRAM
+    _snowflakes = (Snowflake*)ps_malloc(sizeof(Snowflake) * MAX_SNOWFLAKES);
+    _flowers = (Flower*)ps_malloc(sizeof(Flower) * MAX_FLOWERS);
+    _butterflies = (Butterfly*)ps_malloc(sizeof(Butterfly) * MAX_BUTTERFLIES);
+    _leaves = (Leaf*)ps_malloc(sizeof(Leaf) * MAX_LEAVES);
+    _birds = (Bird*)ps_malloc(sizeof(Bird) * MAX_BIRDS);
+    
+    // Log allocation status
+    if (!_snowflakes || !_flowers || !_butterflies || !_leaves || !_birds) {
+        Log.println("[AnimationsModule] WARNUNG: PSRAM-Allokation fehlgeschlagen!");
+        if (!_snowflakes) Log.println("  - _snowflakes Allokation fehlgeschlagen");
+        if (!_flowers) Log.println("  - _flowers Allokation fehlgeschlagen");
+        if (!_butterflies) Log.println("  - _butterflies Allokation fehlgeschlagen");
+        if (!_leaves) Log.println("  - _leaves Allokation fehlgeschlagen");
+        if (!_birds) Log.println("  - _birds Allokation fehlgeschlagen");
+    }
+    
+    // Initialisiere mit 0
+    if (_snowflakes) memset(_snowflakes, 0, sizeof(Snowflake) * MAX_SNOWFLAKES);
+    if (_flowers) memset(_flowers, 0, sizeof(Flower) * MAX_FLOWERS);
+    if (_butterflies) memset(_butterflies, 0, sizeof(Butterfly) * MAX_BUTTERFLIES);
+    if (_leaves) memset(_leaves, 0, sizeof(Leaf) * MAX_LEAVES);
+    if (_birds) memset(_birds, 0, sizeof(Bird) * MAX_BIRDS);
 }
 
 AnimationsModule::~AnimationsModule() {
+    // Gebe PSRAM-Speicher frei
+    if (_snowflakes) { free(_snowflakes); _snowflakes = nullptr; }
+    if (_flowers) { free(_flowers); _flowers = nullptr; }
+    if (_butterflies) { free(_butterflies); _butterflies = nullptr; }
+    if (_leaves) { free(_leaves); _leaves = nullptr; }
+    if (_birds) { free(_birds); _birds = nullptr; }
 }
 
 void AnimationsModule::begin() {
@@ -321,12 +350,19 @@ bool AnimationsModule::isHolidaySeason() {
 
 bool AnimationsModule::isFireplaceSeason() {
     // Prüfe nur ob das Kamin-Feature aktiviert ist
-    // Die Nachtmodus-Prüfung erfolgt später bei der Anzeige-Entscheidung
     if (!config || !config->fireplaceEnabled) return false;
     
-    // Kamin ist immer "in Season" wenn aktiviert
-    // (unabhängig von der Tageszeit)
-    return true;
+    // Kamin ist nur im Winter "in Season" (Dezember, Januar, Februar)
+    time_t now_utc;
+    time(&now_utc);
+    time_t local_now = timeConverter.toLocal(now_utc);
+    
+    struct tm tm_now;
+    localtime_r(&local_now, &tm_now);
+    int month = tm_now.tm_mon + 1; // 1-12
+    
+    // Kamin nur in Wintermonaten aktiv
+    return (month == 12 || month == 1 || month == 2);
 }
 
 ChristmasDisplayMode AnimationsModule::getCurrentDisplayMode() {
@@ -435,18 +471,25 @@ time_t AnimationsModule::calculateFourthAdvent(int year) {
 void AnimationsModule::periodicTick() {
     if (!config) return;
     
-    if (!config->adventWreathEnabled && !config->christmasTreeEnabled) return;
+    bool hasHolidayAnimations = config->adventWreathEnabled || config->christmasTreeEnabled || config->fireplaceEnabled;
+    bool hasSeasonalAnimations = config->seasonalAnimationsEnabled;
+    
+    if (!hasHolidayAnimations && !hasSeasonalAnimations) return;
     
     unsigned long now = millis();
     if (now - _lastPeriodicCheck < 1000) return;
     _lastPeriodicCheck = now;
     
-    if (!isHolidaySeason()) {
+    bool inHolidaySeason = isHolidaySeason();
+    bool showSeasonalAnimation = hasSeasonalAnimations && !inHolidaySeason;
+    
+    // If not in holiday season and no seasonal animations, release if active
+    if (!inHolidaySeason && !showSeasonalAnimation) {
         if (_isAdventViewActive) {
             releasePriorityEx(_currentAdventUID);
             _isAdventViewActive = false;
             _requestPending = false;
-            Log.println("[AnimationsModule] Keine Weihnachtszeit mehr");
+            Log.println("[AnimationsModule] Keine Animations-Saison mehr");
         }
         return;
     }
@@ -456,74 +499,88 @@ void AnimationsModule::periodicTick() {
         return;
     }
     
-    unsigned long minInterval = (_lastAdventDisplayTime == 0) ? 0 : _repeatIntervalMs;
+    // Use appropriate interval for seasonal vs holiday animations
+    unsigned long repeatInterval = showSeasonalAnimation ? 
+        (config->seasonalAnimationsRepeatMin * 60UL * 1000UL) : _repeatIntervalMs;
+    unsigned long displayDuration = showSeasonalAnimation ?
+        (config->seasonalAnimationsDisplaySec * 1000UL) : _displayDurationMs;
+    
+    unsigned long minInterval = (_lastAdventDisplayTime == 0) ? 0 : repeatInterval;
     
     if (!_isAdventViewActive && (now - _lastAdventDisplayTime > minInterval)) {
-        // Entscheide WAS angezeigt wird BEVOR der Request gemacht wird
-        shuffleCandleOrder();
-        
-        ChristmasDisplayMode mode = getCurrentDisplayMode();
-        
-        // Berechne aktive Animationen (mit Nachtmodus-Prüfung für Kamin)
-        bool wreathActive = config->adventWreathEnabled && isAdventSeason();
-        bool treeActive = config->christmasTreeEnabled && isChristmasSeason();
-        bool fireplaceActive = config->fireplaceEnabled && isFireplaceSeason();
-        
-        // Prüfe Nachtmodus für Kamin
-        if (fireplaceActive && config->fireplaceNightModeOnly && !TimeUtilities::isNightTime()) {
-            fireplaceActive = false;
-        }
-        
-        // Prüfe ob überhaupt etwas anzuzeigen ist
-        if (!wreathActive && !treeActive && !fireplaceActive) {
-            Log.println("[AnimationsModule] Nichts anzuzeigen - kein Request");
-            return;
-        }
-        
-        // Setze Anzeige-Flags basierend auf Modus
-        _showTree = false;
-        _showFireplace = false;
-        
-        if (mode == ChristmasDisplayMode::Alternate) {
-            // Rotiere durch alle aktiven Modi
-            int activeCount = (wreathActive ? 1 : 0) + (treeActive ? 1 : 0) + (fireplaceActive ? 1 : 0);
+        // For holiday season, determine which animation to show
+        if (inHolidaySeason) {
+            // Entscheide WAS angezeigt wird BEVOR der Request gemacht wird
+            shuffleCandleOrder();
             
-            if (activeCount > 0) {
-                int modeIndex = _displayCounter % activeCount;
-                
-                int current = 0;
-                if (wreathActive) {
-                    if (current == modeIndex) { /* Kranz */ }
-                    current++;
-                }
-                if (treeActive && current <= modeIndex) {
-                    if (current == modeIndex) { _showTree = true; }
-                    current++;
-                }
-                if (fireplaceActive && current <= modeIndex) {
-                    if (current == modeIndex) { _showFireplace = true; _showTree = false; }
-                }
+            ChristmasDisplayMode mode = getCurrentDisplayMode();
+            
+            // Berechne aktive Animationen (mit Nachtmodus-Prüfung für Kamin)
+            bool wreathActive = config->adventWreathEnabled && isAdventSeason();
+            bool treeActive = config->christmasTreeEnabled && isChristmasSeason();
+            bool fireplaceActive = config->fireplaceEnabled && isFireplaceSeason();
+            
+            // Prüfe Nachtmodus für Kamin
+            if (fireplaceActive && config->fireplaceNightModeOnly && !TimeUtilities::isNightTime()) {
+                fireplaceActive = false;
             }
-        } else if (mode == ChristmasDisplayMode::Tree) {
-            _showTree = treeActive;
-        } else if (mode == ChristmasDisplayMode::Fireplace) {
-            _showFireplace = fireplaceActive;
-        } else if (mode == ChristmasDisplayMode::Wreath) {
-            // Kranz-Modus: beide Flags bleiben false (Kranz ist der Default)
+            
+            // Prüfe ob überhaupt etwas anzuzeigen ist
+            if (!wreathActive && !treeActive && !fireplaceActive) {
+                Log.println("[AnimationsModule] Nichts anzuzeigen - kein Request");
+                return;
+            }
+            
+            // Setze Anzeige-Flags basierend auf Modus
+            _showTree = false;
+            _showFireplace = false;
+            
+            if (mode == ChristmasDisplayMode::Alternate) {
+                // Rotiere durch alle aktiven Modi
+                int activeCount = (wreathActive ? 1 : 0) + (treeActive ? 1 : 0) + (fireplaceActive ? 1 : 0);
+                
+                if (activeCount > 0) {
+                    int modeIndex = _displayCounter % activeCount;
+                    
+                    int current = 0;
+                    if (wreathActive) {
+                        if (current == modeIndex) { /* Kranz */ }
+                        current++;
+                    }
+                    if (treeActive && current <= modeIndex) {
+                        if (current == modeIndex) { _showTree = true; }
+                        current++;
+                    }
+                    if (fireplaceActive && current <= modeIndex) {
+                        if (current == modeIndex) { _showFireplace = true; _showTree = false; }
+                    }
+                }
+            } else if (mode == ChristmasDisplayMode::Tree) {
+                _showTree = treeActive;
+            } else if (mode == ChristmasDisplayMode::Fireplace) {
+                _showFireplace = fireplaceActive;
+            } else if (mode == ChristmasDisplayMode::Wreath) {
+                // Kranz-Modus: beide Flags bleiben false (Kranz ist der Default)
+            }
+        } else {
+            // Seasonal animation - flags stay false, we'll draw seasonal animations instead
+            _showTree = false;
+            _showFireplace = false;
         }
         
         // Feste UID für diese Anzeige-Session (nicht vom Advent-Woche abhängig)
         // Verwende eine einfache UID basierend auf dem Display-Counter
         _currentAdventUID = ADVENT_WREATH_UID_BASE + (_displayCounter % 100);
         
-        unsigned long safeDuration = _displayDurationMs + 5000UL;
+        unsigned long safeDuration = displayDuration + 5000UL;
         Priority prio = config->adventWreathInterrupt ? Priority::Low : Priority::PlayNext;
         
         _requestPending = true;  // Markiere Request als ausstehend
         bool success = requestPriorityEx(prio, _currentAdventUID, safeDuration);
         
         if (success) {
-            const char* modeName = _showFireplace ? "Kamin" : (_showTree ? "Weihnachtsbaum" : "Adventskranz");
+            const char* modeName = showSeasonalAnimation ? TimeUtilities::getSeasonName(TimeUtilities::getCurrentSeason()) :
+                                   (_showFireplace ? "Kamin" : (_showTree ? "Weihnachtsbaum" : "Adventskranz"));
             Log.printf("[AnimationsModule] %s %s angefordert (UID=%lu, Counter=%d)\n", 
                        modeName,
                        config->adventWreathInterrupt ? "Interrupt" : "PlayNext",
@@ -534,7 +591,7 @@ void AnimationsModule::periodicTick() {
             _requestPending = false;  // Request fehlgeschlagen, zurücksetzen
         }
     }
-    else if (_isAdventViewActive && (now - _adventViewStartTime > _displayDurationMs)) {
+    else if (_isAdventViewActive && (now - _adventViewStartTime > displayDuration)) {
         releasePriorityEx(_currentAdventUID);
         _isAdventViewActive = false;
         _requestPending = false;
@@ -578,6 +635,13 @@ void AnimationsModule::tick() {
         needsUpdate = true;
     }
     
+    // Seasonal animation phase (for general seasonal animation counter)
+    if (now - _lastSeasonAnimUpdate > 50) {
+        _lastSeasonAnimUpdate = now;
+        _seasonAnimationPhase = (_seasonAnimationPhase + 1) % 360;
+        needsUpdate = true;
+    }
+    
     if (needsUpdate && _updateCallback) {
         _updateCallback();
     }
@@ -595,6 +659,10 @@ void AnimationsModule::draw() {
     // Wähle den richtigen Canvas basierend auf Fullscreen-Modus
     _currentCanvas = wantsFullscreen() ? _fullscreenCanvas : &canvas;
     
+    // Check if we should show seasonal animation instead of holiday animations
+    bool inHolidaySeason = isHolidaySeason();
+    bool showSeasonalAnimation = config && config->seasonalAnimationsEnabled && !inHolidaySeason;
+    
     // Hintergrundfarbe basierend auf Modus
     uint16_t bgColor = 0;
     if (_showFireplace && config && config->fireplaceBgColor.length() > 0) {
@@ -608,7 +676,10 @@ void AnimationsModule::draw() {
     _currentCanvas->fillScreen(bgColor);
     u8g2.begin(*_currentCanvas);
     
-    if (_showFireplace) {
+    if (showSeasonalAnimation) {
+        // Draw seasonal animations based on current season
+        drawSeasonalAnimations();
+    } else if (_showFireplace) {
         drawFireplace();
     } else if (_showTree) {
         // Mische Kugeln und Lichter nur EINMAL bei neuer Anzeige, nicht bei jedem Tick
@@ -974,6 +1045,14 @@ void AnimationsModule::drawOrnament(int x, int y, int radius, uint16_t color) {
 }
 
 void AnimationsModule::drawSnowflakes() {
+    if (!_snowflakes) {
+        if (!_snowflakesInitialized) {
+            Log.println("[AnimationsModule] Kann Schneeflocken nicht initialisieren - PSRAM-Allokation fehlgeschlagen");
+            _snowflakesInitialized = true; // Prevent repeated logging
+        }
+        return;
+    }
+    
     int canvasW = _currentCanvas->width();
     int canvasH = _currentCanvas->height();
     
@@ -1531,17 +1610,26 @@ void AnimationsModule::drawBerries() {
 }
 
 unsigned long AnimationsModule::getDisplayDuration() {
+    // Return appropriate duration based on whether we're in holiday season or showing seasonal animations
+    if (config && config->seasonalAnimationsEnabled && !isHolidaySeason()) {
+        return config->seasonalAnimationsDisplaySec * 1000UL;
+    }
     return _displayDurationMs;
 }
 
 bool AnimationsModule::isEnabled() {
     if (!config) return false;
     
-    if (!config->adventWreathEnabled && !config->christmasTreeEnabled && !config->fireplaceEnabled) {
+    // Check if any animation is enabled
+    bool hasHolidayAnimations = config->adventWreathEnabled || config->christmasTreeEnabled || config->fireplaceEnabled;
+    bool hasSeasonalAnimations = config->seasonalAnimationsEnabled;
+    
+    if (!hasHolidayAnimations && !hasSeasonalAnimations) {
         return false;
     }
     
-    return isHolidaySeason();
+    // Enable if in holiday season OR if seasonal animations are enabled
+    return isHolidaySeason() || hasSeasonalAnimations;
 }
 
 void AnimationsModule::resetPaging() {
@@ -1557,13 +1645,26 @@ void AnimationsModule::onActivate() {
     _flamePhase = 0;
     _treeLightPhase = 0;
     _fireplaceFlamePhase = 0;
-    const char* modeName = _showFireplace ? "Kamin" : (_showTree ? "Weihnachtsbaum" : "Adventskranz");
-    Log.printf("[AnimationsModule] Aktiviert: %s (UID=%lu)\n", modeName, _currentAdventUID);
+    
+    bool inHolidaySeason = isHolidaySeason();
+    if (!inHolidaySeason && config && config->seasonalAnimationsEnabled) {
+        const char* seasonName = TimeUtilities::getSeasonName(TimeUtilities::getCurrentSeason());
+        Log.printf("[AnimationsModule] Aktiviert: %s Animation (UID=%lu)\n", seasonName, _currentAdventUID);
+    } else {
+        const char* modeName = _showFireplace ? "Kamin" : (_showTree ? "Weihnachtsbaum" : "Adventskranz");
+        Log.printf("[AnimationsModule] Aktiviert: %s (UID=%lu)\n", modeName, _currentAdventUID);
+    }
 }
 
 void AnimationsModule::timeIsUp() {
-    const char* modeName = _showFireplace ? "Kamin" : (_showTree ? "Weihnachtsbaum" : "Adventskranz");
-    Log.printf("[AnimationsModule] Zeit abgelaufen für %s (UID=%lu)\n", modeName, _currentAdventUID);
+    bool inHolidaySeason = isHolidaySeason();
+    if (!inHolidaySeason && config && config->seasonalAnimationsEnabled) {
+        const char* seasonName = TimeUtilities::getSeasonName(TimeUtilities::getCurrentSeason());
+        Log.printf("[AnimationsModule] Zeit abgelaufen für %s Animation (UID=%lu)\n", seasonName, _currentAdventUID);
+    } else {
+        const char* modeName = _showFireplace ? "Kamin" : (_showTree ? "Weihnachtsbaum" : "Adventskranz");
+        Log.printf("[AnimationsModule] Zeit abgelaufen für %s (UID=%lu)\n", modeName, _currentAdventUID);
+    }
     _isAdventViewActive = false;
     _requestPending = false;
     _lastAdventDisplayTime = millis();
@@ -2456,3 +2557,541 @@ void AnimationsModule::drawWoodStorage(int x, int y, int width, int height, floa
     }
 }
 */
+
+// ============== SEASON ANIMATIONS ==============
+
+void AnimationsModule::drawSeasonalAnimations() {
+    TimeUtilities::Season currentSeason = TimeUtilities::getCurrentSeason();
+    
+    switch (currentSeason) {
+        case TimeUtilities::Season::SPRING:
+            drawSpringAnimation();
+            break;
+        case TimeUtilities::Season::SUMMER:
+            drawSummerAnimation();
+            break;
+        case TimeUtilities::Season::AUTUMN:
+            drawAutumnAnimation();
+            break;
+        case TimeUtilities::Season::WINTER:
+            drawWinterAnimation();
+            break;
+    }
+}
+
+void AnimationsModule::initSpringAnimation() {
+    if (!_flowers || !_butterflies) {
+        Log.println("[AnimationsModule] Kann Frühlingsanimation nicht initialisieren - PSRAM-Allokation fehlgeschlagen");
+        return;
+    }
+    
+    int canvasW = _currentCanvas->width();
+    int canvasH = _currentCanvas->height();
+    
+    // Initialize flowers at the bottom
+    for (int i = 0; i < MAX_FLOWERS; i++) {
+        _flowers[i].x = (float)(rand() % canvasW);
+        _flowers[i].y = (float)(canvasH - 5 - (rand() % 10));
+        _flowers[i].size = 2 + (rand() % 2);
+        _flowers[i].swayPhase = (float)(rand() % 360);
+        
+        // Various flower colors (pink, yellow, red, white, purple)
+        uint16_t flowerColors[] = {
+            rgb565(255, 105, 180), // Pink
+            rgb565(255, 255, 100), // Yellow
+            rgb565(255, 50, 50),   // Red
+            rgb565(255, 255, 255), // White
+            rgb565(200, 100, 255)  // Purple
+        };
+        _flowers[i].color = flowerColors[rand() % 5];
+    }
+    
+    // Initialize butterflies
+    for (int i = 0; i < MAX_BUTTERFLIES; i++) {
+        _butterflies[i].x = (float)(rand() % canvasW);
+        _butterflies[i].y = (float)(10 + rand() % (canvasH - 20));
+        _butterflies[i].vx = 0.3f + (float)(rand() % 10) / 20.0f;
+        _butterflies[i].vy = ((rand() % 3) - 1) * 0.2f;
+        _butterflies[i].wingPhase = rand() % 10;
+        
+        // Butterfly colors
+        uint16_t butterflyColors[] = {
+            rgb565(255, 200, 0),   // Yellow
+            rgb565(255, 100, 150), // Pink
+            rgb565(100, 150, 255), // Blue
+        };
+        _butterflies[i].color = butterflyColors[rand() % 3];
+    }
+    
+    _flowersInitialized = true;
+    _butterfliesInitialized = true;
+}
+
+void AnimationsModule::drawSpringAnimation() {
+    if (!_flowers || !_butterflies) return;
+    
+    int canvasW = _currentCanvas->width();
+    int canvasH = _currentCanvas->height();
+    
+    // Initialize on first call
+    if (!_flowersInitialized || !_butterfliesInitialized) {
+        initSpringAnimation();
+        _lastButterflyUpdate = millis();
+    }
+    
+    // Draw flowers (static, slightly swaying)
+    for (int i = 0; i < MAX_FLOWERS; i++) {
+        int fx = (int)(_flowers[i].x + sin(_flowers[i].swayPhase + _seasonAnimationPhase * 0.1f) * 2);
+        int fy = (int)_flowers[i].y;
+        
+        // Stem
+        uint16_t stemColor = rgb565(50, 150, 50);
+        _currentCanvas->drawLine(fx, fy, fx, fy - 4 - _flowers[i].size, stemColor);
+        
+        // Flower petals (simple circle)
+        _currentCanvas->fillCircle(fx, fy - 4 - _flowers[i].size, _flowers[i].size, _flowers[i].color);
+        
+        // Center
+        uint16_t centerColor = rgb565(255, 200, 50);
+        if (_flowers[i].size > 1) {
+            _currentCanvas->drawPixel(fx, fy - 4 - _flowers[i].size, centerColor);
+        }
+    }
+    
+    // Update and draw butterflies
+    unsigned long now = millis();
+    if (now - _lastButterflyUpdate > 100) {
+        for (int i = 0; i < MAX_BUTTERFLIES; i++) {
+            _butterflies[i].x += _butterflies[i].vx;
+            _butterflies[i].y += _butterflies[i].vy;
+            _butterflies[i].wingPhase = (_butterflies[i].wingPhase + 1) % 10;
+            
+            // Gentle up/down motion
+            if (rand() % 10 < 3) {
+                _butterflies[i].vy = ((rand() % 3) - 1) * 0.3f;
+            }
+            
+            // Wrap around screen
+            if (_butterflies[i].x > canvasW) {
+                _butterflies[i].x = -5;
+                _butterflies[i].y = (float)(10 + rand() % (canvasH - 20));
+            }
+            if (_butterflies[i].y < 5) _butterflies[i].y = 5;
+            if (_butterflies[i].y > canvasH - 10) _butterflies[i].y = canvasH - 10;
+        }
+        _lastButterflyUpdate = now;
+    }
+    
+    // Draw butterflies
+    for (int i = 0; i < MAX_BUTTERFLIES; i++) {
+        int bx = (int)_butterflies[i].x;
+        int by = (int)_butterflies[i].y;
+        
+        // Wing animation (flapping)
+        int wingSpread = (_butterflies[i].wingPhase < 5) ? 2 : 1;
+        
+        // Body
+        _currentCanvas->drawPixel(bx, by, rgb565(50, 50, 50));
+        
+        // Wings
+        _currentCanvas->drawPixel(bx - wingSpread, by, _butterflies[i].color);
+        _currentCanvas->drawPixel(bx + wingSpread, by, _butterflies[i].color);
+        if (wingSpread == 2) {
+            _currentCanvas->drawPixel(bx - 1, by - 1, _butterflies[i].color);
+            _currentCanvas->drawPixel(bx + 1, by - 1, _butterflies[i].color);
+        }
+    }
+}
+
+void AnimationsModule::initSummerAnimation() {
+    if (!_birds) {
+        Log.println("[AnimationsModule] Kann Sommeranimation nicht initialisieren - PSRAM-Allokation fehlgeschlagen");
+        return;
+    }
+    
+    int canvasW = _currentCanvas->width();
+    int canvasH = _currentCanvas->height();
+    
+    // Initialize birds
+    for (int i = 0; i < MAX_BIRDS; i++) {
+        _birds[i].x = (float)(rand() % canvasW);
+        _birds[i].y = (float)(5 + rand() % (canvasH / 3));
+        _birds[i].vx = 0.5f + (float)(rand() % 10) / 10.0f;
+        _birds[i].wingPhase = rand() % 8;
+        _birds[i].facingRight = (rand() % 2) == 0;
+    }
+    
+    _birdsInitialized = true;
+}
+
+void AnimationsModule::drawSummerAnimation() {
+    if (!_birds) return;
+    
+    int canvasW = _currentCanvas->width();
+    int canvasH = _currentCanvas->height();
+    
+    // Initialize on first call
+    if (!_birdsInitialized) {
+        initSummerAnimation();
+        _lastBirdUpdate = millis();
+    }
+    
+    // Check if it's night time for day/night variations
+    bool isNight = TimeUtilities::isNightTime();
+    
+    if (isNight) {
+        // Draw moon and stars at night
+        int moonX = canvasW - 12;
+        int moonY = 8;
+        uint16_t moonColor = rgb565(220, 220, 255);
+        uint16_t moonGlow = rgb565(180, 180, 220);
+        
+        _currentCanvas->fillCircle(moonX, moonY, 4, moonColor);
+        _currentCanvas->fillCircle(moonX - 1, moonY - 1, 4, 0); // Crescent effect
+        
+        // Draw some stars
+        for (int i = 0; i < 10; i++) {
+            uint32_t seed = simpleRandom(i * 97 + 42);
+            int sx = (seed % (canvasW - 10)) + 5;
+            int sy = (seed / 13) % (canvasH / 2);
+            uint16_t starColor = rgb565(255, 255, 255);
+            
+            // Twinkling effect
+            if ((seed + _seasonAnimationPhase) % 30 < 20) {
+                _currentCanvas->drawPixel(sx, sy, starColor);
+                // Add cross pattern for brighter stars
+                if (i % 3 == 0) {
+                    if (sx > 0) _currentCanvas->drawPixel(sx - 1, sy, starColor);
+                    if (sx < canvasW - 1) _currentCanvas->drawPixel(sx + 1, sy, starColor);
+                }
+            }
+        }
+    } else {
+        // Draw sun during day
+        int sunX = canvasW - 12;
+        int sunY = 8;
+        uint16_t sunColor = rgb565(255, 255, 0);
+        uint16_t sunGlow = rgb565(255, 200, 100);
+        
+        _currentCanvas->fillCircle(sunX, sunY, 4, sunColor);
+        // Sun rays
+        for (int angle = 0; angle < 360; angle += 45) {
+            float rad = angle * 3.14159f / 180.0f;
+            int rayLen = 6 + (_seasonAnimationPhase % 2);
+            int rx = sunX + (int)(cos(rad) * rayLen);
+            int ry = sunY + (int)(sin(rad) * rayLen);
+            _currentCanvas->drawLine(sunX, sunY, rx, ry, sunGlow);
+        }
+    }
+    
+    // Update and draw birds (less active at night)
+    unsigned long now = millis();
+    if (now - _lastBirdUpdate > 120) {
+        for (int i = 0; i < MAX_BIRDS; i++) {
+            // Birds slower at night
+            float speed = isNight ? _birds[i].vx * 0.5f : _birds[i].vx;
+            
+            if (_birds[i].facingRight) {
+                _birds[i].x += speed;
+            } else {
+                _birds[i].x -= speed;
+            }
+            _birds[i].wingPhase = (_birds[i].wingPhase + 1) % 8;
+            
+            // Wrap around
+            if (_birds[i].x > canvasW + 5) {
+                _birds[i].x = -5;
+                _birds[i].y = (float)(5 + rand() % (canvasH / 3));
+            }
+            if (_birds[i].x < -5) {
+                _birds[i].x = canvasW + 5;
+                _birds[i].y = (float)(5 + rand() % (canvasH / 3));
+            }
+        }
+        _lastBirdUpdate = now;
+    }
+    
+    // Draw birds (only during day, or fewer at night)
+    if (!isNight || rand() % 10 < 3) {
+        uint16_t birdColor = isNight ? rgb565(70, 70, 70) : rgb565(100, 100, 100);
+        for (int i = 0; i < MAX_BIRDS; i++) {
+            int bx = (int)_birds[i].x;
+            int by = (int)_birds[i].y;
+            
+            // Simple bird shape (V-shape)
+            int wingPos = (_birds[i].wingPhase < 4) ? 1 : 2;
+            
+            if (_birds[i].facingRight) {
+                _currentCanvas->drawLine(bx, by, bx - 2, by - wingPos, birdColor);
+                _currentCanvas->drawLine(bx, by, bx - 2, by + wingPos, birdColor);
+            } else {
+                _currentCanvas->drawLine(bx, by, bx + 2, by - wingPos, birdColor);
+                _currentCanvas->drawLine(bx, by, bx + 2, by + wingPos, birdColor);
+            }
+        }
+    }
+}
+
+void AnimationsModule::initAutumnAnimation() {
+    if (!_leaves) {
+        Log.println("[AnimationsModule] Kann Herbstanimation nicht initialisieren - PSRAM-Allokation fehlgeschlagen");
+        return;
+    }
+    
+    int canvasW = _currentCanvas->width();
+    int canvasH = _currentCanvas->height();
+    
+    // Initialize falling leaves
+    for (int i = 0; i < MAX_LEAVES; i++) {
+        _leaves[i].x = (float)(rand() % canvasW);
+        _leaves[i].y = (float)(rand() % canvasH);
+        _leaves[i].vx = ((rand() % 3) - 1) * 0.2f;
+        _leaves[i].vy = 0.3f + (float)(rand() % 10) / 20.0f;
+        _leaves[i].rotation = (float)(rand() % 360);
+        _leaves[i].size = 2 + (rand() % 2);
+        
+        // Autumn leaf colors (brown, orange, red, yellow)
+        uint16_t leafColors[] = {
+            rgb565(139, 69, 19),   // Brown
+            rgb565(255, 140, 0),   // Orange
+            rgb565(200, 50, 50),   // Red
+            rgb565(255, 215, 0),   // Yellow
+            rgb565(178, 34, 34)    // Dark red
+        };
+        _leaves[i].color = leafColors[rand() % 5];
+    }
+    
+    _leavesInitialized = true;
+}
+
+void AnimationsModule::drawAutumnAnimation() {
+    if (!_leaves) return;
+    
+    int canvasW = _currentCanvas->width();
+    int canvasH = _currentCanvas->height();
+    
+    // Initialize on first call
+    if (!_leavesInitialized) {
+        initAutumnAnimation();
+        _lastLeafUpdate = millis();
+    }
+    
+    // Update leaves
+    unsigned long now = millis();
+    if (now - _lastLeafUpdate > 60) {
+        for (int i = 0; i < MAX_LEAVES; i++) {
+            _leaves[i].x += _leaves[i].vx;
+            _leaves[i].y += _leaves[i].vy;
+            _leaves[i].rotation += 5.0f;
+            
+            // Gentle sideways drift
+            if (rand() % 10 < 2) {
+                _leaves[i].vx = ((rand() % 3) - 1) * 0.3f;
+            }
+            
+            // Reset at bottom
+            if (_leaves[i].y > canvasH) {
+                _leaves[i].y = -5;
+                _leaves[i].x = (float)(rand() % canvasW);
+                _leaves[i].vx = ((rand() % 3) - 1) * 0.2f;
+                _leaves[i].vy = 0.3f + (float)(rand() % 10) / 20.0f;
+            }
+            
+            // Wrap horizontally
+            if (_leaves[i].x < -5) _leaves[i].x = canvasW + 5;
+            if (_leaves[i].x > canvasW + 5) _leaves[i].x = -5;
+        }
+        _lastLeafUpdate = now;
+    }
+    
+    // Draw leaves
+    for (int i = 0; i < MAX_LEAVES; i++) {
+        int lx = (int)_leaves[i].x;
+        int ly = (int)_leaves[i].y;
+        
+        // Simple leaf shape (oval-ish with stem)
+        if (_leaves[i].size == 2) {
+            _currentCanvas->fillCircle(lx, ly, 2, _leaves[i].color);
+            _currentCanvas->drawPixel(lx, ly + 1, rgb565(100, 69, 19)); // Stem
+        } else {
+            _currentCanvas->fillCircle(lx, ly, 1, _leaves[i].color);
+        }
+    }
+}
+
+void AnimationsModule::initWinterAnimation() {
+    // Snowflakes will be initialized by drawSnowflakes() on first call
+    // This method is kept for potential future winter-specific initialization
+}
+
+void AnimationsModule::drawWinterAnimation() {
+    int canvasW = _currentCanvas->width();
+    int canvasH = _currentCanvas->height();
+    
+    // Constants for winter scene
+    const int SNOW_HEIGHT = 8;
+    const int SNOWMAN_TREE_MIN_DISTANCE = 15;
+    const int NUM_TREES = 3;
+    
+    // Draw snowy ground at bottom (accumulated snow)
+    uint16_t snowColor = rgb565(255, 255, 255);
+    uint16_t snowShadow = rgb565(200, 220, 240);
+    
+    // Snow layer with some variation
+    for (int x = 0; x < canvasW; x++) {
+        uint32_t seed = simpleRandom(x * 17 + 123);
+        int yVariation = (seed % 3) - 1;
+        int snowTop = canvasH - SNOW_HEIGHT + yVariation;
+        
+        for (int y = snowTop; y < canvasH; y++) {
+            // Slight color variation for depth
+            if (y > snowTop + 2) {
+                _currentCanvas->drawPixel(x, y, snowShadow);
+            } else {
+                _currentCanvas->drawPixel(x, y, snowColor);
+            }
+        }
+    }
+    
+    // Draw snowy trees (2-3 simple evergreen trees)
+    drawSnowyTrees();
+    
+    // Draw snowman
+    int snowmanX = canvasW / 2;
+    int snowmanY = canvasH - SNOW_HEIGHT - 2;
+    drawSnowman(snowmanX, snowmanY, 1.0f);
+    
+    // Draw falling snowflakes
+    drawSnowflakes();
+    
+    // Optional: Draw stars if night time
+    if (TimeUtilities::isNightTime()) {
+        // Add some stars for night sky
+        for (int i = 0; i < 8; i++) {
+            uint32_t seed = simpleRandom(i * 113 + 456);
+            int sx = (seed % (canvasW - 10)) + 5;
+            int sy = (seed / 17) % (canvasH / 3);
+            
+            // Twinkling effect
+            if ((seed + _seasonAnimationPhase) % 40 < 25) {
+                _currentCanvas->drawPixel(sx, sy, snowColor);
+            }
+        }
+    }
+}
+
+void AnimationsModule::drawSnowman(int x, int y, float scale) {
+    uint16_t snowWhite = rgb565(255, 255, 255);
+    uint16_t snowShadow = rgb565(220, 230, 240);
+    uint16_t orange = rgb565(255, 140, 0);
+    uint16_t black = rgb565(0, 0, 0);
+    uint16_t brown = rgb565(139, 69, 19);
+    
+    int baseRadius = (int)(5 * scale);
+    int middleRadius = (int)(4 * scale);
+    int headRadius = (int)(3 * scale);
+    
+    // Bottom ball
+    int bottomY = y;
+    _currentCanvas->fillCircle(x, bottomY, baseRadius, snowWhite);
+    _currentCanvas->drawCircle(x, bottomY, baseRadius, snowShadow);
+    
+    // Middle ball
+    int middleY = bottomY - baseRadius - middleRadius + 2;
+    _currentCanvas->fillCircle(x, middleY, middleRadius, snowWhite);
+    _currentCanvas->drawCircle(x, middleY, middleRadius, snowShadow);
+    
+    // Head
+    int headY = middleY - middleRadius - headRadius + 2;
+    _currentCanvas->fillCircle(x, headY, headRadius, snowWhite);
+    _currentCanvas->drawCircle(x, headY, headRadius, snowShadow);
+    
+    // Eyes (coal)
+    _currentCanvas->drawPixel(x - 1, headY - 1, black);
+    _currentCanvas->drawPixel(x + 1, headY - 1, black);
+    
+    // Carrot nose
+    _currentCanvas->drawPixel(x, headY, orange);
+    _currentCanvas->drawPixel(x + 1, headY, orange);
+    
+    // Smile (coal)
+    _currentCanvas->drawPixel(x - 1, headY + 2, black);
+    _currentCanvas->drawPixel(x, headY + 2, black);
+    _currentCanvas->drawPixel(x + 1, headY + 2, black);
+    
+    // Buttons (coal)
+    _currentCanvas->drawPixel(x, middleY - 1, black);
+    _currentCanvas->drawPixel(x, middleY + 1, black);
+    
+    // Stick arms
+    if (scale >= 1.0f) {
+        // Left arm
+        _currentCanvas->drawLine(x - middleRadius, middleY, x - middleRadius - 3, middleY - 2, brown);
+        _currentCanvas->drawLine(x - middleRadius - 3, middleY - 2, x - middleRadius - 4, middleY - 3, brown);
+        
+        // Right arm
+        _currentCanvas->drawLine(x + middleRadius, middleY, x + middleRadius + 3, middleY - 2, brown);
+        _currentCanvas->drawLine(x + middleRadius + 3, middleY - 2, x + middleRadius + 4, middleY - 1, brown);
+    }
+}
+
+void AnimationsModule::drawSnowyTrees() {
+    int canvasW = _currentCanvas->width();
+    int canvasH = _currentCanvas->height();
+    
+    uint16_t treeGreen = rgb565(0, 100, 0);
+    uint16_t treeDarkGreen = rgb565(0, 70, 0);
+    uint16_t snowWhite = rgb565(255, 255, 255);
+    uint16_t trunkBrown = rgb565(101, 67, 33);
+    
+    const int SNOW_HEIGHT = 8;
+    const int SNOWMAN_TREE_MIN_DISTANCE = 15;
+    const int NUM_TREES = 3;
+    int groundY = canvasH - SNOW_HEIGHT;
+    
+    // Tree positions and sizes
+    const int treePosX[NUM_TREES] = {canvasW / 4, canvasW * 3 / 4, canvasW / 8};
+    const int treeSizes[NUM_TREES] = {10, 12, 8};
+    
+    for (int t = 0; t < NUM_TREES; t++) {
+        int treeX = treePosX[t];
+        int treeHeight = treeSizes[t];
+        int treeY = groundY;
+        
+        // Skip if snowman would overlap
+        if (abs(treeX - canvasW / 2) < SNOWMAN_TREE_MIN_DISTANCE) continue;
+        
+        // Trunk
+        int trunkWidth = 2;
+        int trunkHeight = 4;
+        _currentCanvas->fillRect(treeX - trunkWidth/2, treeY - trunkHeight, trunkWidth, trunkHeight, trunkBrown);
+        
+        // Triangular tree shape (3 layers)
+        int layerHeight = treeHeight / 3;
+        
+        for (int layer = 0; layer < 3; layer++) {
+            int layerY = treeY - trunkHeight - (layer + 1) * layerHeight;
+            int layerWidth = (8 - layer * 2);
+            
+            // Draw tree layer as triangle
+            for (int dy = 0; dy < layerHeight; dy++) {
+                int width = layerWidth - (dy * layerWidth / layerHeight);
+                for (int dx = -width; dx <= width; dx++) {
+                    uint16_t color = (dx == -width || dx == width) ? treeDarkGreen : treeGreen;
+                    _currentCanvas->drawPixel(treeX + dx, layerY + dy, color);
+                }
+            }
+            
+            // Snow on top of each layer
+            int snowWidth = layerWidth + 1;
+            for (int dx = -snowWidth; dx <= snowWidth; dx++) {
+                _currentCanvas->drawPixel(treeX + dx, layerY, snowWhite);
+            }
+        }
+        
+        // Snow on very top
+        _currentCanvas->drawPixel(treeX, treeY - trunkHeight - treeHeight, snowWhite);
+        _currentCanvas->drawPixel(treeX - 1, treeY - trunkHeight - treeHeight + 1, snowWhite);
+        _currentCanvas->drawPixel(treeX + 1, treeY - trunkHeight - treeHeight + 1, snowWhite);
+    }
+}
