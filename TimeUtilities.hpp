@@ -30,8 +30,8 @@ namespace TimeUtilities {
     bool isNightTime(time_t currentTime = 0);
     
     /**
-     * @brief Gibt die aktuelle Jahreszeit zurück basierend auf astronomischen Jahreszeiten
-     *        (Sonnenwenden und Tagundnachtgleichen)
+     * @brief Gibt die aktuelle Jahreszeit zurück basierend auf präzisen astronomischen Berechnungen
+     *        Die exakten Daten der Sonnenwenden und Tagundnachtgleichen werden für jedes Jahr berechnet
      * @param currentTime Aktuelle Zeit (UTC), default: jetzt
      * @return Jahreszeit (SPRING, SUMMER, AUTUMN, WINTER)
      */

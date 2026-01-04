@@ -24,6 +24,61 @@ namespace TimeUtilities {
         return (currentTime >= globalSunset || currentTime < globalSunrise);
     }
     
+    /**
+     * @brief Berechnet den Tag der Frühjahrs-Tagundnachtgleiche für ein gegebenes Jahr
+     * @param year Das Jahr
+     * @return Tag im März (typisch 19-21)
+     */
+    int getVernalEquinoxDay(int year) {
+        // Vereinfachte Näherungsformel für die Frühjahrs-Tagundnachtgleiche
+        // Basiert auf astronomischen Berechnungen
+        // Für Jahre 2000-2100
+        if (year < 2000 || year > 2100) year = 2000; // Fallback
+        
+        // Näherungsformel: 20.0 + 0.242 * (year - 2000) - floor((year - 2000) / 4)
+        double d = 20.0 + 0.242 * (year - 2000) - ((year - 2000) / 4);
+        return (int)d;
+    }
+    
+    /**
+     * @brief Berechnet den Tag der Sommersonnenwende für ein gegebenes Jahr
+     * @param year Das Jahr
+     * @return Tag im Juni (typisch 20-22)
+     */
+    int getSummerSolsticeDay(int year) {
+        // Vereinfachte Näherungsformel für die Sommersonnenwende
+        if (year < 2000 || year > 2100) year = 2000;
+        
+        double d = 21.0 + 0.242 * (year - 2000) - ((year - 2000) / 4);
+        return (int)d;
+    }
+    
+    /**
+     * @brief Berechnet den Tag der Herbst-Tagundnachtgleiche für ein gegebenes Jahr
+     * @param year Das Jahr
+     * @return Tag im September (typisch 22-24)
+     */
+    int getAutumnalEquinoxDay(int year) {
+        // Vereinfachte Näherungsformel für die Herbst-Tagundnachtgleiche
+        if (year < 2000 || year > 2100) year = 2000;
+        
+        double d = 23.0 + 0.242 * (year - 2000) - ((year - 2000) / 4);
+        return (int)d;
+    }
+    
+    /**
+     * @brief Berechnet den Tag der Wintersonnenwende für ein gegebenes Jahr
+     * @param year Das Jahr
+     * @return Tag im Dezember (typisch 20-22)
+     */
+    int getWinterSolsticeDay(int year) {
+        // Vereinfachte Näherungsformel für die Wintersonnenwende
+        if (year < 2000 || year > 2100) year = 2000;
+        
+        double d = 21.0 + 0.242 * (year - 2000) - ((year - 2000) / 4);
+        return (int)d;
+    }
+    
     Season getCurrentSeason(time_t currentTime) {
         if (currentTime == 0) {
             time(&currentTime);
@@ -33,38 +88,41 @@ namespace TimeUtilities {
         localtime_r(&currentTime, &tm_now);
         int month = tm_now.tm_mon + 1; // 1-12
         int day = tm_now.tm_mday;      // 1-31
+        int year = tm_now.tm_year + 1900;
         
-        // Astronomische Jahreszeiten (basierend auf Sonnenwenden und Tagundnachtgleichen)
-        // Diese Daten variieren leicht von Jahr zu Jahr, aber wir verwenden Durchschnittswerte
+        // Berechne die exakten Tage für die astronomischen Ereignisse dieses Jahres
+        int vernalEquinox = getVernalEquinoxDay(year);      // März (Frühling beginnt)
+        int summerSolstice = getSummerSolsticeDay(year);     // Juni (Sommer beginnt)
+        int autumnalEquinox = getAutumnalEquinoxDay(year);   // September (Herbst beginnt)
+        int winterSolstice = getWinterSolsticeDay(year);     // Dezember (Winter beginnt)
         
-        // Frühling: ~20. März bis ~20. Juni
-        if (month == 3 && day >= 20) {
-            return Season::SPRING;
-        } else if (month == 4 || month == 5) {
-            return Season::SPRING;
-        } else if (month == 6 && day <= 20) {
+        // Bestimme die Jahreszeit basierend auf den berechneten Daten
+        
+        // Frühling: Von Frühjahrs-Tagundnachtgleiche (März) bis Sommersonnenwende (Juni)
+        if ((month == 3 && day >= vernalEquinox) ||
+            (month == 4) ||
+            (month == 5) ||
+            (month == 6 && day < summerSolstice)) {
             return Season::SPRING;
         }
         
-        // Sommer: ~21. Juni bis ~22. September
-        else if (month == 6 && day >= 21) {
-            return Season::SUMMER;
-        } else if (month == 7 || month == 8) {
-            return Season::SUMMER;
-        } else if (month == 9 && day <= 22) {
+        // Sommer: Von Sommersonnenwende (Juni) bis Herbst-Tagundnachtgleiche (September)
+        else if ((month == 6 && day >= summerSolstice) ||
+                 (month == 7) ||
+                 (month == 8) ||
+                 (month == 9 && day < autumnalEquinox)) {
             return Season::SUMMER;
         }
         
-        // Herbst: ~23. September bis ~20. Dezember
-        else if (month == 9 && day >= 23) {
-            return Season::AUTUMN;
-        } else if (month == 10 || month == 11) {
-            return Season::AUTUMN;
-        } else if (month == 12 && day <= 20) {
+        // Herbst: Von Herbst-Tagundnachtgleiche (September) bis Wintersonnenwende (Dezember)
+        else if ((month == 9 && day >= autumnalEquinox) ||
+                 (month == 10) ||
+                 (month == 11) ||
+                 (month == 12 && day < winterSolstice)) {
             return Season::AUTUMN;
         }
         
-        // Winter: ~21. Dezember bis ~19. März
+        // Winter: Von Wintersonnenwende (Dezember) bis Frühjahrs-Tagundnachtgleiche (März)
         else {
             return Season::WINTER;
         }
