@@ -125,7 +125,7 @@ private:
         float speed;
         int size;
     };
-    static const int MAX_SNOWFLAKES = 20;
+    static const int MAX_SNOWFLAKES = 40;  // Maximum, actual count from config
     Snowflake* _snowflakes = nullptr;
     bool _snowflakesInitialized = false;
     unsigned long _lastSnowflakeUpdate = 0;
@@ -137,7 +137,7 @@ private:
         int size;
         float swayPhase;
     };
-    static const int MAX_FLOWERS = 12;
+    static const int MAX_FLOWERS = 20;  // Maximum, actual count from config
     Flower* _flowers = nullptr;
     bool _flowersInitialized = false;
     
@@ -147,7 +147,7 @@ private:
         uint16_t color;
         int wingPhase;
     };
-    static const int MAX_BUTTERFLIES = 3;
+    static const int MAX_BUTTERFLIES = 8;  // Maximum, actual count from config
     Butterfly* _butterflies = nullptr;
     bool _butterfliesInitialized = false;
     unsigned long _lastButterflyUpdate = 0;
@@ -159,7 +159,7 @@ private:
         uint16_t color;
         int size;
     };
-    static const int MAX_LEAVES = 15;
+    static const int MAX_LEAVES = 30;  // Maximum, actual count from config
     Leaf* _leaves = nullptr;
     bool _leavesInitialized = false;
     unsigned long _lastLeafUpdate = 0;
@@ -170,13 +170,15 @@ private:
         int wingPhase;
         bool facingRight;
     };
-    static const int MAX_BIRDS = 2;
+    static const int MAX_BIRDS = 6;  // Maximum, actual count from config
     Bird* _birds = nullptr;
     bool _birdsInitialized = false;
     unsigned long _lastBirdUpdate = 0;
     
     int _seasonAnimationPhase = 0;
     unsigned long _lastSeasonAnimUpdate = 0;
+    int _testModeSeasonIndex = 0;  // For cycling through seasons in test mode
+    unsigned long _lastTestModeSwitch = 0;  // Time of last season switch in test mode
     
     // Zufällige Kerzenreihenfolge für jeden Durchgang
     int _candleOrder[4] = {0, 1, 2, 3};
