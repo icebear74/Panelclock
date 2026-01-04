@@ -2687,22 +2687,49 @@ void AnimationsModule::drawSpringAnimation() {
         _lastButterflyUpdate = millis();
     }
     
-    // Draw flowers (static, slightly swaying)
+    // Draw grass meadow at bottom (varied greens for natural look)
+    int meadowHeight = canvasH / 3;
+    for (int x = 0; x < canvasW; x++) {
+        for (int y = canvasH - meadowHeight; y < canvasH; y++) {
+            // Varied green shades based on position
+            uint32_t seed = simpleRandom(x * 17 + y * 23);
+            int greenVariation = (seed % 80) - 40;
+            int baseGreen = 120 + greenVariation;
+            int darkGreen = 60 + greenVariation / 2;
+            
+            // Create grass texture with different heights
+            if ((seed + y) % 4 == 0) {
+                _currentCanvas->drawPixel(x, y, rgb565(30 + darkGreen/3, baseGreen, 30 + darkGreen/3));
+            } else {
+                _currentCanvas->drawPixel(x, y, rgb565(50 + darkGreen/2, baseGreen + 20, 40 + darkGreen/2));
+            }
+        }
+        
+        // Draw individual grass blades with sway
+        if (x % 3 == 0) {
+            int grassTop = canvasH - meadowHeight - 2 - (simpleRandom(x * 7) % 3);
+            int sway = (int)(sin(_seasonAnimationPhase * 0.05f + x * 0.3f) * 1.5f);
+            uint16_t grassColor = rgb565(60 + (simpleRandom(x*11) % 40), 140 + (simpleRandom(x*13) % 40), 60);
+            _currentCanvas->drawLine(x, canvasH - meadowHeight, x + sway, grassTop, grassColor);
+        }
+    }
+    
+    // Draw flowers densely across the meadow
     for (int i = 0; i < flowerCount && i < MAX_FLOWERS; i++) {
         int fx = (int)(_flowers[i].x + sin(_flowers[i].swayPhase + _seasonAnimationPhase * 0.1f) * 2);
         int fy = (int)_flowers[i].y;
         
         // Stem
-        uint16_t stemColor = rgb565(50, 150, 50);
-        _currentCanvas->drawLine(fx, fy, fx, fy - 4 - _flowers[i].size, stemColor);
+        uint16_t stemColor = rgb565(40, 120, 40);
+        _currentCanvas->drawLine(fx, fy, fx, fy - 5 - _flowers[i].size, stemColor);
         
-        // Flower petals (simple circle)
-        _currentCanvas->fillCircle(fx, fy - 4 - _flowers[i].size, _flowers[i].size, _flowers[i].color);
+        // Flower petals (varied sizes for depth)
+        _currentCanvas->fillCircle(fx, fy - 5 - _flowers[i].size, _flowers[i].size, _flowers[i].color);
         
         // Center
         uint16_t centerColor = rgb565(255, 200, 50);
         if (_flowers[i].size > 1) {
-            _currentCanvas->drawPixel(fx, fy - 4 - _flowers[i].size, centerColor);
+            _currentCanvas->fillCircle(fx, fy - 5 - _flowers[i].size, 1, centerColor);
         }
     }
     
@@ -2790,20 +2817,58 @@ void AnimationsModule::drawSummerAnimation() {
     // Check if it's night time for day/night variations
     bool isNight = TimeUtilities::isNightTime();
     
+    // Draw palm trees on left and right
+    uint16_t trunkColor = rgb565(139, 69, 19); // Brown
+    uint16_t palmColor = rgb565(34, 139, 34); // Forest green
+    
+    // Left palm tree
+    int leftX = 5;
+    int palmHeight = canvasH - 8;
+    // Trunk with texture
+    for (int y = palmHeight; y < canvasH; y++) {
+        int width = 3 + (simpleRandom(y * 3) % 2);
+        _currentCanvas->drawLine(leftX - width/2, y, leftX + width/2, y, trunkColor);
+    }
+    // Palm fronds
+    for (int angle = 0; angle < 360; angle += 45) {
+        float rad = angle * 3.14159f / 180.0f;
+        int frondLen = 6 + (simpleRandom(angle) % 2);
+        int sway = (int)(sin(_seasonAnimationPhase * 0.05f) * 1.5f);
+        int fx = leftX + (int)(cos(rad) * frondLen) + sway;
+        int fy = palmHeight + (int)(sin(rad) * frondLen);
+        _currentCanvas->drawLine(leftX, palmHeight, fx, fy, palmColor);
+    }
+    
+    // Right palm tree
+    int rightX = canvasW - 6;
+    // Trunk
+    for (int y = palmHeight; y < canvasH; y++) {
+        int width = 3 + (simpleRandom(y * 5) % 2);
+        _currentCanvas->drawLine(rightX - width/2, y, rightX + width/2, y, trunkColor);
+    }
+    // Palm fronds
+    for (int angle = 0; angle < 360; angle += 45) {
+        float rad = angle * 3.14159f / 180.0f;
+        int frondLen = 6 + (simpleRandom(angle + 100) % 2);
+        int sway = (int)(sin(_seasonAnimationPhase * 0.05f + 1.5f) * 1.5f);
+        int fx = rightX + (int)(cos(rad) * frondLen) + sway;
+        int fy = palmHeight + (int)(sin(rad) * frondLen);
+        _currentCanvas->drawLine(rightX, palmHeight, fx, fy, palmColor);
+    }
+    
     if (isNight) {
         // Draw moon and stars at night
-        int moonX = canvasW - 12;
+        int moonX = canvasW / 2;
         int moonY = 8;
         uint16_t moonColor = rgb565(220, 220, 255);
-        uint16_t moonGlow = rgb565(180, 180, 220);
         
         _currentCanvas->fillCircle(moonX, moonY, 4, moonColor);
         _currentCanvas->fillCircle(moonX - 1, moonY - 1, 4, 0); // Crescent effect
         
         // Draw some stars
-        for (int i = 0; i < 10; i++) {
+        for (int i = 0; i < 15; i++) {
             uint32_t seed = simpleRandom(i * 97 + 42);
-            int sx = (seed % (canvasW - 10)) + 5;
+            int sx = (seed % (canvasW - 20)) + 10;
             int sy = (seed / 13) % (canvasH / 2);
             uint16_t starColor = rgb565(255, 255, 255);
             
@@ -2819,7 +2884,7 @@ void AnimationsModule::drawSummerAnimation() {
         }
     } else {
         // Draw sun during day
-        int sunX = canvasW - 12;
+        int sunX = canvasW / 2;
         int sunY = 8;
         uint16_t sunColor = rgb565(255, 255, 0);
         uint16_t sunGlow = rgb565(255, 200, 100);
@@ -2932,7 +2997,68 @@ void AnimationsModule::drawAutumnAnimation() {
         _lastLeafUpdate = millis();
     }
     
-    // Update leaves
+    // Draw autumn trees with brown foliage
+    uint16_t trunkColor = rgb565(101, 67, 33); // Brown trunk
+    uint16_t foliageColors[] = {
+        rgb565(139, 69, 19),   // Brown
+        rgb565(255, 140, 0),   // Orange
+        rgb565(200, 50, 50),   // Red
+        rgb565(178, 34, 34)    // Dark red
+    };
+    
+    // Left tree
+    int leftTreeX = canvasW / 4;
+    int treeBase = canvasH - 2;
+    int treeTop = canvasH / 2;
+    // Trunk
+    _currentCanvas->drawLine(leftTreeX, treeBase, leftTreeX, treeTop, trunkColor);
+    _currentCanvas->drawLine(leftTreeX - 1, treeBase, leftTreeX - 1, treeTop + 2, trunkColor);
+    _currentCanvas->drawLine(leftTreeX + 1, treeBase, leftTreeX + 1, treeTop + 2, trunkColor);
+    // Foliage (autumn colored)
+    for (int y = treeTop - 8; y < treeTop + 3; y++) {
+        for (int x = leftTreeX - 6; x <= leftTreeX + 6; x++) {
+            int dx = x - leftTreeX;
+            int dy = y - (treeTop - 3);
+            // Rounded canopy shape
+            if (dx*dx + dy*dy < 40) {
+                uint32_t seed = simpleRandom(x * 17 + y * 23);
+                if (seed % 3 != 0) { // Sparse for autumn look
+                    _currentCanvas->drawPixel(x, y, foliageColors[seed % 4]);
+                }
+            }
+        }
+    }
+    
+    // Right tree
+    int rightTreeX = 3 * canvasW / 4;
+    // Trunk
+    _currentCanvas->drawLine(rightTreeX, treeBase, rightTreeX, treeTop, trunkColor);
+    _currentCanvas->drawLine(rightTreeX - 1, treeBase, rightTreeX - 1, treeTop + 2, trunkColor);
+    _currentCanvas->drawLine(rightTreeX + 1, treeBase, rightTreeX + 1, treeTop + 2, trunkColor);
+    // Foliage
+    for (int y = treeTop - 8; y < treeTop + 3; y++) {
+        for (int x = rightTreeX - 6; x <= rightTreeX + 6; x++) {
+            int dx = x - rightTreeX;
+            int dy = y - (treeTop - 3);
+            if (dx*dx + dy*dy < 40) {
+                uint32_t seed = simpleRandom(x * 19 + y * 29);
+                if (seed % 3 != 0) {
+                    _currentCanvas->drawPixel(x, y, foliageColors[seed % 4]);
+                }
+            }
+        }
+    }
+    
+    // Draw some leaves on the ground
+    for (int x = 0; x < canvasW; x += 3) {
+        uint32_t seed = simpleRandom(x * 7 + 100);
+        if (seed % 5 < 2) {
+            int groundY = canvasH - 1 - (seed % 3);
+            _currentCanvas->drawPixel(x, groundY, foliageColors[seed % 4]);
+        }
+    }
+    
+    // Update falling leaves
     unsigned long now = millis();
     int leafCount = config ? config->seasonalAutumnLeafCount : 15;
     
@@ -2942,7 +3068,7 @@ void AnimationsModule::drawAutumnAnimation() {
             _leaves[i].y += _leaves[i].vy;
             _leaves[i].rotation += 5.0f;
             
-            // Gentle sideways drift
+            // Gentle sideways drift (wind effect)
             if (rand() % 10 < 2) {
                 _leaves[i].vx = ((rand() % 3) - 1) * 0.3f;
             }
@@ -2962,12 +3088,12 @@ void AnimationsModule::drawAutumnAnimation() {
         _lastLeafUpdate = now;
     }
     
-    // Draw leaves
+    // Draw falling leaves
     for (int i = 0; i < leafCount && i < MAX_LEAVES; i++) {
         int lx = (int)_leaves[i].x;
         int ly = (int)_leaves[i].y;
         
-        // Simple leaf shape (oval-ish with stem)
+        // Simple leaf shape
         if (_leaves[i].size == 2) {
             _currentCanvas->fillCircle(lx, ly, 2, _leaves[i].color);
             _currentCanvas->drawPixel(lx, ly + 1, rgb565(100, 69, 19)); // Stem
