@@ -57,6 +57,16 @@ AnimationsModule::AnimationsModule(U8G2_FOR_ADAFRUIT_GFX& u8g2, GFXcanvas16& can
     _leaves = (Leaf*)ps_malloc(sizeof(Leaf) * MAX_LEAVES);
     _birds = (Bird*)ps_malloc(sizeof(Bird) * MAX_BIRDS);
     
+    // Log allocation status
+    if (!_snowflakes || !_flowers || !_butterflies || !_leaves || !_birds) {
+        Log.println("[AnimationsModule] WARNUNG: PSRAM-Allokation fehlgeschlagen!");
+        if (!_snowflakes) Log.println("  - _snowflakes Allokation fehlgeschlagen");
+        if (!_flowers) Log.println("  - _flowers Allokation fehlgeschlagen");
+        if (!_butterflies) Log.println("  - _butterflies Allokation fehlgeschlagen");
+        if (!_leaves) Log.println("  - _leaves Allokation fehlgeschlagen");
+        if (!_birds) Log.println("  - _birds Allokation fehlgeschlagen");
+    }
+    
     // Initialisiere mit 0
     if (_snowflakes) memset(_snowflakes, 0, sizeof(Snowflake) * MAX_SNOWFLAKES);
     if (_flowers) memset(_flowers, 0, sizeof(Flower) * MAX_FLOWERS);
@@ -1028,7 +1038,13 @@ void AnimationsModule::drawOrnament(int x, int y, int radius, uint16_t color) {
 }
 
 void AnimationsModule::drawSnowflakes() {
-    if (!_snowflakes) return;
+    if (!_snowflakes) {
+        if (!_snowflakesInitialized) {
+            Log.println("[AnimationsModule] Kann Schneeflocken nicht initialisieren - PSRAM-Allokation fehlgeschlagen");
+            _snowflakesInitialized = true; // Prevent repeated logging
+        }
+        return;
+    }
     
     int canvasW = _currentCanvas->width();
     int canvasH = _currentCanvas->height();
@@ -2557,7 +2573,10 @@ void AnimationsModule::drawSeasonalAnimations() {
 }
 
 void AnimationsModule::initSpringAnimation() {
-    if (!_flowers || !_butterflies) return;
+    if (!_flowers || !_butterflies) {
+        Log.println("[AnimationsModule] Kann Frühlingsanimation nicht initialisieren - PSRAM-Allokation fehlgeschlagen");
+        return;
+    }
     
     int canvasW = _currentCanvas->width();
     int canvasH = _currentCanvas->height();
@@ -2678,7 +2697,10 @@ void AnimationsModule::drawSpringAnimation() {
 }
 
 void AnimationsModule::initSummerAnimation() {
-    if (!_birds) return;
+    if (!_birds) {
+        Log.println("[AnimationsModule] Kann Sommeranimation nicht initialisieren - PSRAM-Allokation fehlgeschlagen");
+        return;
+    }
     
     int canvasW = _currentCanvas->width();
     int canvasH = _currentCanvas->height();
@@ -2804,7 +2826,10 @@ void AnimationsModule::drawSummerAnimation() {
 }
 
 void AnimationsModule::initAutumnAnimation() {
-    if (!_leaves) return;
+    if (!_leaves) {
+        Log.println("[AnimationsModule] Kann Herbstanimation nicht initialisieren - PSRAM-Allokation fehlgeschlagen");
+        return;
+    }
     
     int canvasW = _currentCanvas->width();
     int canvasH = _currentCanvas->height();
