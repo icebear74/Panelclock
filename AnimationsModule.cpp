@@ -481,9 +481,18 @@ void AnimationsModule::periodicTick() {
     _lastPeriodicCheck = now;
     
     bool inHolidaySeason = isHolidaySeason();
-    bool showSeasonalAnimation = hasSeasonalAnimations && !inHolidaySeason;
     
-    // If not in holiday season and no seasonal animations, release if active
+    // Seasonal animations show either when not in holiday season, OR when in holiday season but enabled for winter
+    bool showSeasonalAnimation = hasSeasonalAnimations;
+    if (inHolidaySeason && !hasHolidayAnimations) {
+        // Only seasonal animations active during holiday season
+        showSeasonalAnimation = true;
+    } else if (!inHolidaySeason) {
+        // Not in holiday season, show if enabled
+        showSeasonalAnimation = hasSeasonalAnimations;
+    }
+    
+    // If nothing to show, release if active
     if (!inHolidaySeason && !showSeasonalAnimation) {
         if (_isAdventViewActive) {
             releasePriorityEx(_currentAdventUID);
@@ -500,9 +509,9 @@ void AnimationsModule::periodicTick() {
     }
     
     // Use appropriate interval for seasonal vs holiday animations
-    unsigned long repeatInterval = showSeasonalAnimation ? 
+    unsigned long repeatInterval = !inHolidaySeason && showSeasonalAnimation ? 
         (config->seasonalAnimationsRepeatMin * 60UL * 1000UL) : _repeatIntervalMs;
-    unsigned long displayDuration = showSeasonalAnimation ?
+    unsigned long displayDuration = !inHolidaySeason && showSeasonalAnimation ?
         (config->seasonalAnimationsDisplaySec * 1000UL) : _displayDurationMs;
     
     unsigned long minInterval = (_lastAdventDisplayTime == 0) ? 0 : repeatInterval;
@@ -659,9 +668,20 @@ void AnimationsModule::draw() {
     // Wähle den richtigen Canvas basierend auf Fullscreen-Modus
     _currentCanvas = wantsFullscreen() ? _fullscreenCanvas : &canvas;
     
-    // Check if we should show seasonal animation instead of holiday animations
+    // Check if we should show seasonal animation
     bool inHolidaySeason = isHolidaySeason();
-    bool showSeasonalAnimation = config && config->seasonalAnimationsEnabled && !inHolidaySeason;
+    bool showSeasonalAnimation = config && config->seasonalAnimationsEnabled;
+    
+    // Check if winter seasonal should be hidden during holidays
+    if (showSeasonalAnimation && inHolidaySeason) {
+        TimeUtilities::Season currentSeason = config->seasonalAnimationsTestMode ? 
+            (TimeUtilities::Season)_testModeSeasonIndex : TimeUtilities::getCurrentSeason();
+        
+        if (currentSeason == TimeUtilities::Season::WINTER && 
+            config && !config->seasonalWinterWithHolidays) {
+            showSeasonalAnimation = false;
+        }
+    }
     
     // Hintergrundfarbe basierend auf Modus
     uint16_t bgColor = 0;
@@ -676,40 +696,45 @@ void AnimationsModule::draw() {
     _currentCanvas->fillScreen(bgColor);
     u8g2.begin(*_currentCanvas);
     
+    // Draw holiday animations first (if in holiday season)
+    if (inHolidaySeason) {
+        if (_showFireplace) {
+            drawFireplace();
+        } else if (_showTree) {
+            // Mische Kugeln und Lichter nur EINMAL bei neuer Anzeige, nicht bei jedem Tick
+            unsigned long now = millis();
+            if (_lastTreeDisplay == 0 || (now - _lastTreeDisplay) > 60000) {  // Neue Anzeige oder >60s her
+                shuffleTreeElements();
+                _lastTreeDisplay = now;
+            }
+            
+            drawChristmasTree();
+            drawSnowflakes();
+            
+            // LED-Lauflicht-Rahmen
+            drawLedBorder();
+            
+            if (config && config->showNewYearCountdown) {
+                drawNewYearCountdown();
+            }
+        } else {
+            // Adventskranz ohne Beschriftung - mehr Platz für die Grafik
+            drawGreenery();
+            drawWreath();
+            drawBerries();
+            
+            // LED-Lauflicht-Rahmen
+            drawLedBorder();
+            
+            if (config && config->showNewYearCountdown) {
+                drawNewYearCountdown();
+            }
+        }
+    }
+    
+    // Draw seasonal animations ADDITIONALLY (overlay) if enabled
     if (showSeasonalAnimation) {
-        // Draw seasonal animations based on current season
         drawSeasonalAnimations();
-    } else if (_showFireplace) {
-        drawFireplace();
-    } else if (_showTree) {
-        // Mische Kugeln und Lichter nur EINMAL bei neuer Anzeige, nicht bei jedem Tick
-        unsigned long now = millis();
-        if (_lastTreeDisplay == 0 || (now - _lastTreeDisplay) > 60000) {  // Neue Anzeige oder >60s her
-            shuffleTreeElements();
-            _lastTreeDisplay = now;
-        }
-        
-        drawChristmasTree();
-        drawSnowflakes();
-        
-        // LED-Lauflicht-Rahmen
-        drawLedBorder();
-        
-        if (config && config->showNewYearCountdown) {
-            drawNewYearCountdown();
-        }
-    } else {
-        // Adventskranz ohne Beschriftung - mehr Platz für die Grafik
-        drawGreenery();
-        drawWreath();
-        drawBerries();
-        
-        // LED-Lauflicht-Rahmen
-        drawLedBorder();
-        
-        if (config && config->showNewYearCountdown) {
-            drawNewYearCountdown();
-        }
     }
 }
 
@@ -1056,9 +1081,12 @@ void AnimationsModule::drawSnowflakes() {
     int canvasW = _currentCanvas->width();
     int canvasH = _currentCanvas->height();
     
+    // Get count from config
+    int snowflakeCount = config ? config->seasonalWinterSnowflakeCount : 20;
+    
     // Initialize snowflakes on first call
     if (!_snowflakesInitialized) {
-        for (int i = 0; i < MAX_SNOWFLAKES; i++) {
+        for (int i = 0; i < snowflakeCount && i < MAX_SNOWFLAKES; i++) {
             _snowflakes[i].x = (float)(rand() % canvasW);
             _snowflakes[i].y = (float)(rand() % canvasH);
             _snowflakes[i].speed = 0.5f + (float)(rand() % 15) / 10.0f;
@@ -1071,7 +1099,7 @@ void AnimationsModule::drawSnowflakes() {
     // Update positions
     unsigned long now = millis();
     if (now - _lastSnowflakeUpdate > 50) {  // Update every 50ms
-        for (int i = 0; i < MAX_SNOWFLAKES; i++) {
+        for (int i = 0; i < snowflakeCount && i < MAX_SNOWFLAKES; i++) {
             _snowflakes[i].y += _snowflakes[i].speed;
             
             // Slight horizontal drift
@@ -1095,7 +1123,7 @@ void AnimationsModule::drawSnowflakes() {
     
     // Draw snowflakes
     uint16_t snowColor = rgb565(255, 255, 255);
-    for (int i = 0; i < MAX_SNOWFLAKES; i++) {
+    for (int i = 0; i < snowflakeCount && i < MAX_SNOWFLAKES; i++) {
         int x = (int)_snowflakes[i].x;
         int y = (int)_snowflakes[i].y;
         
@@ -2561,7 +2589,19 @@ void AnimationsModule::drawWoodStorage(int x, int y, int width, int height, floa
 // ============== SEASON ANIMATIONS ==============
 
 void AnimationsModule::drawSeasonalAnimations() {
-    TimeUtilities::Season currentSeason = TimeUtilities::getCurrentSeason();
+    TimeUtilities::Season currentSeason;
+    
+    // Test mode: rotate through all seasons
+    if (config && config->seasonalAnimationsTestMode) {
+        unsigned long now = millis();
+        if (now - _lastTestModeSwitch > 15000) {  // Switch every 15 seconds
+            _testModeSeasonIndex = (_testModeSeasonIndex + 1) % 4;
+            _lastTestModeSwitch = now;
+        }
+        currentSeason = (TimeUtilities::Season)_testModeSeasonIndex;
+    } else {
+        currentSeason = TimeUtilities::getCurrentSeason();
+    }
     
     switch (currentSeason) {
         case TimeUtilities::Season::SPRING:
@@ -2588,8 +2628,12 @@ void AnimationsModule::initSpringAnimation() {
     int canvasW = _currentCanvas->width();
     int canvasH = _currentCanvas->height();
     
+    // Get counts from config
+    int flowerCount = config ? config->seasonalSpringFlowerCount : 12;
+    int butterflyCount = config ? config->seasonalSpringButterflyCount : 3;
+    
     // Initialize flowers at the bottom
-    for (int i = 0; i < MAX_FLOWERS; i++) {
+    for (int i = 0; i < flowerCount && i < MAX_FLOWERS; i++) {
         _flowers[i].x = (float)(rand() % canvasW);
         _flowers[i].y = (float)(canvasH - 5 - (rand() % 10));
         _flowers[i].size = 2 + (rand() % 2);
@@ -2607,7 +2651,7 @@ void AnimationsModule::initSpringAnimation() {
     }
     
     // Initialize butterflies
-    for (int i = 0; i < MAX_BUTTERFLIES; i++) {
+    for (int i = 0; i < butterflyCount && i < MAX_BUTTERFLIES; i++) {
         _butterflies[i].x = (float)(rand() % canvasW);
         _butterflies[i].y = (float)(10 + rand() % (canvasH - 20));
         _butterflies[i].vx = 0.3f + (float)(rand() % 10) / 20.0f;
@@ -2639,8 +2683,12 @@ void AnimationsModule::drawSpringAnimation() {
         _lastButterflyUpdate = millis();
     }
     
+    // Get counts from config
+    int flowerCount = config ? config->seasonalSpringFlowerCount : 12;
+    int butterflyCount = config ? config->seasonalSpringButterflyCount : 3;
+    
     // Draw flowers (static, slightly swaying)
-    for (int i = 0; i < MAX_FLOWERS; i++) {
+    for (int i = 0; i < flowerCount && i < MAX_FLOWERS; i++) {
         int fx = (int)(_flowers[i].x + sin(_flowers[i].swayPhase + _seasonAnimationPhase * 0.1f) * 2);
         int fy = (int)_flowers[i].y;
         
@@ -2661,7 +2709,7 @@ void AnimationsModule::drawSpringAnimation() {
     // Update and draw butterflies
     unsigned long now = millis();
     if (now - _lastButterflyUpdate > 100) {
-        for (int i = 0; i < MAX_BUTTERFLIES; i++) {
+        for (int i = 0; i < butterflyCount && i < MAX_BUTTERFLIES; i++) {
             _butterflies[i].x += _butterflies[i].vx;
             _butterflies[i].y += _butterflies[i].vy;
             _butterflies[i].wingPhase = (_butterflies[i].wingPhase + 1) % 10;
@@ -2683,7 +2731,7 @@ void AnimationsModule::drawSpringAnimation() {
     }
     
     // Draw butterflies
-    for (int i = 0; i < MAX_BUTTERFLIES; i++) {
+    for (int i = 0; i < butterflyCount && i < MAX_BUTTERFLIES; i++) {
         int bx = (int)_butterflies[i].x;
         int by = (int)_butterflies[i].y;
         
@@ -2712,8 +2760,11 @@ void AnimationsModule::initSummerAnimation() {
     int canvasW = _currentCanvas->width();
     int canvasH = _currentCanvas->height();
     
+    // Get count from config
+    int birdCount = config ? config->seasonalSummerBirdCount : 2;
+    
     // Initialize birds
-    for (int i = 0; i < MAX_BIRDS; i++) {
+    for (int i = 0; i < birdCount && i < MAX_BIRDS; i++) {
         _birds[i].x = (float)(rand() % canvasW);
         _birds[i].y = (float)(5 + rand() % (canvasH / 3));
         _birds[i].vx = 0.5f + (float)(rand() % 10) / 10.0f;
@@ -2786,8 +2837,10 @@ void AnimationsModule::drawSummerAnimation() {
     
     // Update and draw birds (less active at night)
     unsigned long now = millis();
+    int birdCount = config ? config->seasonalSummerBirdCount : 2;
+    
     if (now - _lastBirdUpdate > 120) {
-        for (int i = 0; i < MAX_BIRDS; i++) {
+        for (int i = 0; i < birdCount && i < MAX_BIRDS; i++) {
             // Birds slower at night
             float speed = isNight ? _birds[i].vx * 0.5f : _birds[i].vx;
             
@@ -2814,7 +2867,7 @@ void AnimationsModule::drawSummerAnimation() {
     // Draw birds (only during day, or fewer at night)
     if (!isNight || rand() % 10 < 3) {
         uint16_t birdColor = isNight ? rgb565(70, 70, 70) : rgb565(100, 100, 100);
-        for (int i = 0; i < MAX_BIRDS; i++) {
+        for (int i = 0; i < birdCount && i < MAX_BIRDS; i++) {
             int bx = (int)_birds[i].x;
             int by = (int)_birds[i].y;
             
@@ -2841,8 +2894,11 @@ void AnimationsModule::initAutumnAnimation() {
     int canvasW = _currentCanvas->width();
     int canvasH = _currentCanvas->height();
     
+    // Get count from config
+    int leafCount = config ? config->seasonalAutumnLeafCount : 15;
+    
     // Initialize falling leaves
-    for (int i = 0; i < MAX_LEAVES; i++) {
+    for (int i = 0; i < leafCount && i < MAX_LEAVES; i++) {
         _leaves[i].x = (float)(rand() % canvasW);
         _leaves[i].y = (float)(rand() % canvasH);
         _leaves[i].vx = ((rand() % 3) - 1) * 0.2f;
@@ -2878,8 +2934,10 @@ void AnimationsModule::drawAutumnAnimation() {
     
     // Update leaves
     unsigned long now = millis();
+    int leafCount = config ? config->seasonalAutumnLeafCount : 15;
+    
     if (now - _lastLeafUpdate > 60) {
-        for (int i = 0; i < MAX_LEAVES; i++) {
+        for (int i = 0; i < leafCount && i < MAX_LEAVES; i++) {
             _leaves[i].x += _leaves[i].vx;
             _leaves[i].y += _leaves[i].vy;
             _leaves[i].rotation += 5.0f;
@@ -2905,7 +2963,7 @@ void AnimationsModule::drawAutumnAnimation() {
     }
     
     // Draw leaves
-    for (int i = 0; i < MAX_LEAVES; i++) {
+    for (int i = 0; i < leafCount && i < MAX_LEAVES; i++) {
         int lx = (int)_leaves[i].x;
         int ly = (int)_leaves[i].y;
         
@@ -2931,7 +2989,10 @@ void AnimationsModule::drawWinterAnimation() {
     // Constants for winter scene
     const int SNOW_HEIGHT = 8;
     const int SNOWMAN_TREE_MIN_DISTANCE = 15;
-    const int NUM_TREES = 3;
+    
+    // Get config values
+    int treeCount = config ? config->seasonalWinterTreeCount : 2;
+    bool showSnowman = config ? config->seasonalWinterShowSnowman : true;
     
     // Draw snowy ground at bottom (accumulated snow)
     uint16_t snowColor = rgb565(255, 255, 255);
@@ -2953,13 +3014,17 @@ void AnimationsModule::drawWinterAnimation() {
         }
     }
     
-    // Draw snowy trees (2-3 simple evergreen trees)
-    drawSnowyTrees();
+    // Draw snowy trees if configured
+    if (treeCount > 0) {
+        drawSnowyTrees();
+    }
     
-    // Draw snowman
-    int snowmanX = canvasW / 2;
-    int snowmanY = canvasH - SNOW_HEIGHT - 2;
-    drawSnowman(snowmanX, snowmanY, 1.0f);
+    // Draw snowman if configured
+    if (showSnowman) {
+        int snowmanX = canvasW / 2;
+        int snowmanY = canvasH - SNOW_HEIGHT - 2;
+        drawSnowman(snowmanX, snowmanY, 1.0f);
+    }
     
     // Draw falling snowflakes
     drawSnowflakes();
@@ -3046,20 +3111,23 @@ void AnimationsModule::drawSnowyTrees() {
     
     const int SNOW_HEIGHT = 8;
     const int SNOWMAN_TREE_MIN_DISTANCE = 15;
-    const int NUM_TREES = 3;
     int groundY = canvasH - SNOW_HEIGHT;
     
-    // Tree positions and sizes
-    const int treePosX[NUM_TREES] = {canvasW / 4, canvasW * 3 / 4, canvasW / 8};
-    const int treeSizes[NUM_TREES] = {10, 12, 8};
+    // Get tree count from config
+    int numTrees = config ? config->seasonalWinterTreeCount : 2;
+    if (numTrees > 3) numTrees = 3;
     
-    for (int t = 0; t < NUM_TREES; t++) {
+    // Tree positions and sizes
+    const int treePosX[3] = {canvasW / 4, canvasW * 3 / 4, canvasW / 8};
+    const int treeSizes[3] = {10, 12, 8};
+    
+    for (int t = 0; t < numTrees; t++) {
         int treeX = treePosX[t];
         int treeHeight = treeSizes[t];
         int treeY = groundY;
         
         // Skip if snowman would overlap
-        if (abs(treeX - canvasW / 2) < SNOWMAN_TREE_MIN_DISTANCE) continue;
+        if (config && config->seasonalWinterShowSnowman && abs(treeX - canvasW / 2) < SNOWMAN_TREE_MIN_DISTANCE) continue;
         
         // Trunk
         int trunkWidth = 2;
