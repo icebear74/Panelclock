@@ -350,12 +350,19 @@ bool AnimationsModule::isHolidaySeason() {
 
 bool AnimationsModule::isFireplaceSeason() {
     // Prüfe nur ob das Kamin-Feature aktiviert ist
-    // Die Nachtmodus-Prüfung erfolgt später bei der Anzeige-Entscheidung
     if (!config || !config->fireplaceEnabled) return false;
     
-    // Kamin ist immer "in Season" wenn aktiviert
-    // (unabhängig von der Tageszeit)
-    return true;
+    // Kamin ist nur im Winter "in Season" (Dezember, Januar, Februar)
+    time_t now_utc;
+    time(&now_utc);
+    time_t local_now = timeConverter.toLocal(now_utc);
+    
+    struct tm tm_now;
+    localtime_r(&local_now, &tm_now);
+    int month = tm_now.tm_mon + 1; // 1-12
+    
+    // Kamin nur in Wintermonaten aktiv
+    return (month == 12 || month == 1 || month == 2);
 }
 
 ChristmasDisplayMode AnimationsModule::getCurrentDisplayMode() {
