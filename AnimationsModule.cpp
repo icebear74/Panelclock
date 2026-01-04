@@ -515,7 +515,11 @@ void AnimationsModule::periodicTick() {
     unsigned long minInterval = (_lastAdventDisplayTime == 0) ? 0 : repeatInterval;
     
     if (!_isAdventViewActive && (now - _lastAdventDisplayTime > minInterval)) {
-        // For holiday season, determine which animation to show
+        // Determine what to show - holiday animations or seasonal animations
+        bool wreathActive = false;
+        bool treeActive = false;
+        bool fireplaceActive = false;
+        
         if (inHolidaySeason) {
             // Entscheide WAS angezeigt wird BEVOR der Request gemacht wird
             shuffleCandleOrder();
@@ -523,19 +527,13 @@ void AnimationsModule::periodicTick() {
             ChristmasDisplayMode mode = getCurrentDisplayMode();
             
             // Berechne aktive Animationen (mit Nachtmodus-Prüfung für Kamin)
-            bool wreathActive = config->adventWreathEnabled && isAdventSeason();
-            bool treeActive = config->christmasTreeEnabled && isChristmasSeason();
-            bool fireplaceActive = config->fireplaceEnabled && isFireplaceSeason();
+            wreathActive = config->adventWreathEnabled && isAdventSeason();
+            treeActive = config->christmasTreeEnabled && isChristmasSeason();
+            fireplaceActive = config->fireplaceEnabled && isFireplaceSeason();
             
             // Prüfe Nachtmodus für Kamin
             if (fireplaceActive && config->fireplaceNightModeOnly && !TimeUtilities::isNightTime()) {
                 fireplaceActive = false;
-            }
-            
-            // Prüfe ob überhaupt etwas anzuzeigen ist
-            if (!wreathActive && !treeActive && !fireplaceActive) {
-                Log.println("[AnimationsModule] Nichts anzuzeigen - kein Request");
-                return;
             }
             
             // Setze Anzeige-Flags basierend auf Modus
@@ -570,9 +568,17 @@ void AnimationsModule::periodicTick() {
                 // Kranz-Modus: beide Flags bleiben false (Kranz ist der Default)
             }
         } else {
-            // Seasonal animation - flags stay false, we'll draw seasonal animations instead
+            // Not in holiday season - seasonal animation only
             _showTree = false;
             _showFireplace = false;
+        }
+        
+        // Prüfe ob überhaupt etwas anzuzeigen ist (Holiday-Animationen ODER Seasonal-Animationen)
+        bool hasAnythingToShow = wreathActive || treeActive || fireplaceActive || showSeasonalAnimation;
+        
+        if (!hasAnythingToShow) {
+            Log.println("[AnimationsModule] Nichts anzuzeigen - kein Request");
+            return;
         }
         
         // Feste UID für diese Anzeige-Session (nicht vom Advent-Woche abhängig)
