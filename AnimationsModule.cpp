@@ -2687,8 +2687,8 @@ void AnimationsModule::drawSpringAnimation() {
         _lastButterflyUpdate = millis();
     }
     
-    // Draw grass meadow at bottom (varied greens for natural look)
-    int meadowHeight = canvasH / 3;
+    // Draw grass meadow covering FULL lower half (much more prominent)
+    int meadowHeight = canvasH / 2;  // Increased from 1/3 to 1/2
     for (int x = 0; x < canvasW; x++) {
         for (int y = canvasH - meadowHeight; y < canvasH; y++) {
             // Varied green shades based on position
@@ -2705,32 +2705,33 @@ void AnimationsModule::drawSpringAnimation() {
             }
         }
         
-        // Draw individual grass blades with sway
-        if (x % 3 == 0) {
-            int grassTop = canvasH - meadowHeight - 2 - (simpleRandom(x * 7) % 3);
-            int sway = (int)(sin(_seasonAnimationPhase * 0.05f + x * 0.3f) * 1.5f);
+        // Draw TALLER individual grass blades with sway
+        if (x % 2 == 0) {  // More grass blades (every 2 pixels instead of 3)
+            int grassTop = canvasH - meadowHeight - 5 - (simpleRandom(x * 7) % 8);  // Taller grass
+            int sway = (int)(sin(_seasonAnimationPhase * 0.05f + x * 0.3f) * 2.0f);
             uint16_t grassColor = rgb565(60 + (simpleRandom(x*11) % 40), 140 + (simpleRandom(x*13) % 40), 60);
             _currentCanvas->drawLine(x, canvasH - meadowHeight, x + sway, grassTop, grassColor);
         }
     }
     
-    // Draw flowers densely across the meadow
+    // Draw LARGER flowers densely across the meadow
     for (int i = 0; i < flowerCount && i < MAX_FLOWERS; i++) {
         int fx = (int)(_flowers[i].x + sin(_flowers[i].swayPhase + _seasonAnimationPhase * 0.1f) * 2);
         int fy = (int)_flowers[i].y;
         
-        // Stem
+        // THICKER Stem
         uint16_t stemColor = rgb565(40, 120, 40);
-        _currentCanvas->drawLine(fx, fy, fx, fy - 5 - _flowers[i].size, stemColor);
+        int stemHeight = 8 + _flowers[i].size * 2;  // Taller stems
+        _currentCanvas->drawLine(fx, fy, fx, fy - stemHeight, stemColor);
+        _currentCanvas->drawLine(fx - 1, fy, fx - 1, fy - stemHeight + 1, stemColor);  // Thicker
         
-        // Flower petals (varied sizes for depth)
-        _currentCanvas->fillCircle(fx, fy - 5 - _flowers[i].size, _flowers[i].size, _flowers[i].color);
+        // MUCH LARGER flower petals (3-5 pixel radius instead of 2-3)
+        int flowerRadius = _flowers[i].size + 2;  // Increased size
+        _currentCanvas->fillCircle(fx, fy - stemHeight, flowerRadius, _flowers[i].color);
         
         // Center
         uint16_t centerColor = rgb565(255, 200, 50);
-        if (_flowers[i].size > 1) {
-            _currentCanvas->fillCircle(fx, fy - 5 - _flowers[i].size, 1, centerColor);
-        }
+        _currentCanvas->fillCircle(fx, fy - stemHeight, max(1, flowerRadius - 2), centerColor);
     }
     
     // Update and draw butterflies
@@ -2752,28 +2753,29 @@ void AnimationsModule::drawSpringAnimation() {
                 _butterflies[i].y = (float)(10 + rand() % (canvasH - 20));
             }
             if (_butterflies[i].y < 5) _butterflies[i].y = 5;
-            if (_butterflies[i].y > canvasH - 10) _butterflies[i].y = canvasH - 10;
+            if (_butterflies[i].y > canvasH / 2) _butterflies[i].y = canvasH / 2;  // Keep above meadow
         }
         _lastButterflyUpdate = now;
     }
     
-    // Draw butterflies
+    // Draw LARGER butterflies
     for (int i = 0; i < butterflyCount && i < MAX_BUTTERFLIES; i++) {
         int bx = (int)_butterflies[i].x;
         int by = (int)_butterflies[i].y;
         
-        // Wing animation (flapping)
-        int wingSpread = (_butterflies[i].wingPhase < 5) ? 2 : 1;
+        // Wing animation (flapping) - LARGER wings
+        int wingSpread = (_butterflies[i].wingPhase < 5) ? 3 : 2;  // Increased from 2:1
         
-        // Body
+        // Body (larger)
         _currentCanvas->drawPixel(bx, by, rgb565(50, 50, 50));
+        _currentCanvas->drawPixel(bx, by + 1, rgb565(50, 50, 50));
         
-        // Wings
-        _currentCanvas->drawPixel(bx - wingSpread, by, _butterflies[i].color);
-        _currentCanvas->drawPixel(bx + wingSpread, by, _butterflies[i].color);
-        if (wingSpread == 2) {
-            _currentCanvas->drawPixel(bx - 1, by - 1, _butterflies[i].color);
-            _currentCanvas->drawPixel(bx + 1, by - 1, _butterflies[i].color);
+        // LARGER Wings
+        _currentCanvas->fillCircle(bx - wingSpread, by, 2, _butterflies[i].color);
+        _currentCanvas->fillCircle(bx + wingSpread, by, 2, _butterflies[i].color);
+        if (wingSpread == 3) {
+            _currentCanvas->drawPixel(bx - 2, by - 1, _butterflies[i].color);
+            _currentCanvas->drawPixel(bx + 2, by - 1, _butterflies[i].color);
         }
     }
 }
@@ -2817,53 +2819,117 @@ void AnimationsModule::drawSummerAnimation() {
     // Check if it's night time for day/night variations
     bool isNight = TimeUtilities::isNightTime();
     
-    // Draw palm trees on left and right
+    // BEACH SCENE: Draw water at bottom 30%
+    int waterHeight = canvasH * 3 / 10;
+    int beachHeight = canvasH / 10;
+    int waterTop = canvasH - waterHeight;
+    int beachTop = waterTop - beachHeight;
+    
+    // Draw ocean water with wave effect
+    for (int x = 0; x < canvasW; x++) {
+        for (int y = waterTop; y < canvasH; y++) {
+            uint32_t seed = simpleRandom(x * 13 + y * 7 + _seasonAnimationPhase);
+            int blueBase = 100 + (seed % 80);
+            int greenShade = 140 + (seed % 60);
+            
+            // Wave highlights
+            if ((y - waterTop + (int)(sin(x * 0.3f + _seasonAnimationPhase * 0.1f) * 2)) % 5 == 0) {
+                _currentCanvas->drawPixel(x, y, rgb565(150, 200, 255));  // Light blue highlights
+            } else {
+                _currentCanvas->drawPixel(x, y, rgb565(30, blueBase, greenShade));
+            }
+        }
+    }
+    
+    // Draw sandy beach strip
+    for (int x = 0; x < canvasW; x++) {
+        for (int y = beachTop; y < waterTop; y++) {
+            uint32_t seed = simpleRandom(x * 11 + y * 17);
+            int sandVariation = (seed % 40) - 20;
+            _currentCanvas->drawPixel(x, y, rgb565(220 + sandVariation, 200 + sandVariation, 140 + sandVariation/2));
+        }
+    }
+    
+    // Draw MUCH LARGER palm trees on left and right
     uint16_t trunkColor = rgb565(139, 69, 19); // Brown
     uint16_t palmColor = rgb565(34, 139, 34); // Forest green
     
-    // Left palm tree
-    int leftX = 5;
-    int palmHeight = canvasH - 8;
-    // Trunk with texture
-    for (int y = palmHeight; y < canvasH; y++) {
-        int width = 3 + (simpleRandom(y * 3) % 2);
-        _currentCanvas->drawLine(leftX - width/2, y, leftX + width/2, y, trunkColor);
-    }
-    // Palm fronds
-    for (int angle = 0; angle < 360; angle += 45) {
-        float rad = angle * 3.14159f / 180.0f;
-        int frondLen = 6 + (simpleRandom(angle) % 2);
-        int sway = (int)(sin(_seasonAnimationPhase * 0.05f) * 1.5f);
-        int fx = leftX + (int)(cos(rad) * frondLen) + sway;
-        int fy = palmHeight + (int)(sin(rad) * frondLen);
-        _currentCanvas->drawLine(leftX, palmHeight, fx, fy, palmColor);
+    // Left palm tree - MUCH TALLER and WIDER
+    int leftX = 8;
+    int palmBase = canvasH - waterHeight - beachHeight / 2;
+    int palmTop = 5;  // Reaches near top of screen
+    
+    // THICKER Trunk with texture
+    for (int y = palmTop; y < palmBase; y++) {
+        int width = 4 + (simpleRandom(y * 3) % 3);  // 4-6 pixels wide
+        for (int dx = -width/2; dx <= width/2; dx++) {
+            uint16_t tColor = (dx == 0 || abs(dx) == width/2) ? rgb565(101, 51, 10) : trunkColor;
+            if (leftX + dx >= 0 && leftX + dx < canvasW) {
+                _currentCanvas->drawPixel(leftX + dx, y, tColor);
+            }
+        }
     }
     
-    // Right palm tree
-    int rightX = canvasW - 6;
-    // Trunk
-    for (int y = palmHeight; y < canvasH; y++) {
-        int width = 3 + (simpleRandom(y * 5) % 2);
-        _currentCanvas->drawLine(rightX - width/2, y, rightX + width/2, y, trunkColor);
-    }
-    // Palm fronds
-    for (int angle = 0; angle < 360; angle += 45) {
+    // LARGER Palm fronds (more visible)
+    for (int angle = -60; angle <= 240; angle += 30) {  // More fronds, better spread
         float rad = angle * 3.14159f / 180.0f;
-        int frondLen = 6 + (simpleRandom(angle + 100) % 2);
-        int sway = (int)(sin(_seasonAnimationPhase * 0.05f + 1.5f) * 1.5f);
-        int fx = rightX + (int)(cos(rad) * frondLen) + sway;
-        int fy = palmHeight + (int)(sin(rad) * frondLen);
-        _currentCanvas->drawLine(rightX, palmHeight, fx, fy, palmColor);
+        int frondLen = 12 + (simpleRandom(angle) % 4);  // 12-15 pixels long
+        int sway = (int)(sin(_seasonAnimationPhase * 0.05f) * 2.0f);
+        
+        // Draw thick frond
+        for (int len = 0; len < frondLen; len++) {
+            int fx = leftX + (int)(cos(rad) * len) + sway;
+            int fy = palmTop + (int)(sin(rad) * len);
+            if (fx >= 0 && fx < canvasW && fy >= 0 && fy < canvasH) {
+                _currentCanvas->drawPixel(fx, fy, palmColor);
+                // Make fronds thicker
+                if (len % 2 == 0 && fx + 1 < canvasW) {
+                    _currentCanvas->drawPixel(fx + 1, fy, rgb565(20, 100, 20));
+                }
+            }
+        }
+    }
+    
+    // Right palm tree - MUCH TALLER and WIDER
+    int rightX = canvasW - 9;
+    
+    // THICKER Trunk
+    for (int y = palmTop; y < palmBase; y++) {
+        int width = 4 + (simpleRandom(y * 5) % 3);
+        for (int dx = -width/2; dx <= width/2; dx++) {
+            uint16_t tColor = (dx == 0 || abs(dx) == width/2) ? rgb565(101, 51, 10) : trunkColor;
+            if (rightX + dx >= 0 && rightX + dx < canvasW) {
+                _currentCanvas->drawPixel(rightX + dx, y, tColor);
+            }
+        }
+    }
+    
+    // LARGER Palm fronds
+    for (int angle = -60; angle <= 240; angle += 30) {
+        float rad = angle * 3.14159f / 180.0f;
+        int frondLen = 12 + (simpleRandom(angle + 100) % 4);
+        int sway = (int)(sin(_seasonAnimationPhase * 0.05f + 1.5f) * 2.0f);
+        
+        for (int len = 0; len < frondLen; len++) {
+            int fx = rightX + (int)(cos(rad) * len) + sway;
+            int fy = palmTop + (int)(sin(rad) * len);
+            if (fx >= 0 && fx < canvasW && fy >= 0 && fy < canvasH) {
+                _currentCanvas->drawPixel(fx, fy, palmColor);
+                if (len % 2 == 0 && fx > 0) {
+                    _currentCanvas->drawPixel(fx - 1, fy, rgb565(20, 100, 20));
+                }
+            }
+        }
     }
     
     if (isNight) {
-        // Draw moon and stars at night
+        // Draw LARGER moon and stars at night
         int moonX = canvasW / 2;
-        int moonY = 8;
+        int moonY = 12;  // Moved down slightly to be more visible
         uint16_t moonColor = rgb565(220, 220, 255);
         
-        _currentCanvas->fillCircle(moonX, moonY, 4, moonColor);
-        _currentCanvas->fillCircle(moonX - 1, moonY - 1, 4, 0); // Crescent effect
+        _currentCanvas->fillCircle(moonX, moonY, 6, moonColor);  // Increased from 4 to 6
+        _currentCanvas->fillCircle(moonX - 2, moonY - 2, 6, 0); // Crescent effect
         
         // Draw some stars
         for (int i = 0; i < 15; i++) {
@@ -2883,17 +2949,17 @@ void AnimationsModule::drawSummerAnimation() {
             }
         }
     } else {
-        // Draw sun during day
+        // Draw LARGER sun during day
         int sunX = canvasW / 2;
-        int sunY = 8;
+        int sunY = 12;  // Moved down slightly
         uint16_t sunColor = rgb565(255, 255, 0);
         uint16_t sunGlow = rgb565(255, 200, 100);
         
-        _currentCanvas->fillCircle(sunX, sunY, 4, sunColor);
-        // Sun rays
+        _currentCanvas->fillCircle(sunX, sunY, 6, sunColor);  // Increased from 4 to 6
+        // LONGER Sun rays
         for (int angle = 0; angle < 360; angle += 45) {
             float rad = angle * 3.14159f / 180.0f;
-            int rayLen = 6 + (_seasonAnimationPhase % 2);
+            int rayLen = 9 + (_seasonAnimationPhase % 3);  // Increased from 6 to 9
             int rx = sunX + (int)(cos(rad) * rayLen);
             int ry = sunY + (int)(sin(rad) * rayLen);
             _currentCanvas->drawLine(sunX, sunY, rx, ry, sunGlow);
@@ -2962,10 +3028,19 @@ void AnimationsModule::initAutumnAnimation() {
     // Get count from config
     int leafCount = config ? config->seasonalAutumnLeafCount : 15;
     
-    // Initialize falling leaves
+    // Tree positions for leaves to fall from
+    int leftTreeX = canvasW / 4;
+    int rightTreeX = 3 * canvasW / 4;
+    int treeTop = canvasH / 3;  // Trees are in upper portion
+    
+    // Initialize falling leaves FROM TREE POSITIONS
     for (int i = 0; i < leafCount && i < MAX_LEAVES; i++) {
-        _leaves[i].x = (float)(rand() % canvasW);
-        _leaves[i].y = (float)(rand() % canvasH);
+        // Alternate between left and right tree
+        int treeX = (i % 2 == 0) ? leftTreeX : rightTreeX;
+        
+        // Start leaves near tree canopy position
+        _leaves[i].x = (float)(treeX + (rand() % 20) - 10);  // Within tree canopy width
+        _leaves[i].y = (float)(treeTop + (rand() % 15));  // Starting from tree height
         _leaves[i].vx = ((rand() % 3) - 1) * 0.2f;
         _leaves[i].vy = 0.3f + (float)(rand() % 10) / 20.0f;
         _leaves[i].rotation = (float)(rand() % 360);
@@ -2997,7 +3072,7 @@ void AnimationsModule::drawAutumnAnimation() {
         _lastLeafUpdate = millis();
     }
     
-    // Draw autumn trees with brown foliage
+    // Draw MUCH LARGER autumn trees with brown foliage
     uint16_t trunkColor = rgb565(101, 67, 33); // Brown trunk
     uint16_t foliageColors[] = {
         rgb565(139, 69, 19),   // Brown
@@ -3006,54 +3081,68 @@ void AnimationsModule::drawAutumnAnimation() {
         rgb565(178, 34, 34)    // Dark red
     };
     
-    // Left tree
+    // Left tree - MUCH LARGER
     int leftTreeX = canvasW / 4;
     int treeBase = canvasH - 2;
-    int treeTop = canvasH / 2;
-    // Trunk
-    _currentCanvas->drawLine(leftTreeX, treeBase, leftTreeX, treeTop, trunkColor);
-    _currentCanvas->drawLine(leftTreeX - 1, treeBase, leftTreeX - 1, treeTop + 2, trunkColor);
-    _currentCanvas->drawLine(leftTreeX + 1, treeBase, leftTreeX + 1, treeTop + 2, trunkColor);
-    // Foliage (autumn colored)
-    for (int y = treeTop - 8; y < treeTop + 3; y++) {
-        for (int x = leftTreeX - 6; x <= leftTreeX + 6; x++) {
+    int treeTop = canvasH / 3;  // Taller tree (reaches 1/3 up screen)
+    
+    // THICKER Trunk (3-4 pixels wide)
+    for (int y = treeBase; y > treeTop; y--) {
+        _currentCanvas->drawPixel(leftTreeX - 2, y, trunkColor);
+        _currentCanvas->drawPixel(leftTreeX - 1, y, rgb565(80, 53, 26));
+        _currentCanvas->drawPixel(leftTreeX, y, trunkColor);
+        _currentCanvas->drawPixel(leftTreeX + 1, y, rgb565(80, 53, 26));
+        _currentCanvas->drawPixel(leftTreeX + 2, y, trunkColor);
+    }
+    
+    // MUCH LARGER Foliage (autumn colored) - 20 pixels wide
+    for (int y = treeTop - 12; y < treeTop + 5; y++) {
+        for (int x = leftTreeX - 10; x <= leftTreeX + 10; x++) {
             int dx = x - leftTreeX;
-            int dy = y - (treeTop - 3);
+            int dy = y - (treeTop - 4);
             // Rounded canopy shape
-            if (dx*dx + dy*dy < 40) {
+            if (dx*dx + dy*dy < 100) {  // Increased radius
                 uint32_t seed = simpleRandom(x * 17 + y * 23);
                 if (seed % 3 != 0) { // Sparse for autumn look
-                    _currentCanvas->drawPixel(x, y, foliageColors[seed % 4]);
+                    uint16_t color = foliageColors[seed % 4];
+                    _currentCanvas->drawPixel(x, y, color);
                 }
             }
         }
     }
     
-    // Right tree
+    // Right tree - MUCH LARGER
     int rightTreeX = 3 * canvasW / 4;
-    // Trunk
-    _currentCanvas->drawLine(rightTreeX, treeBase, rightTreeX, treeTop, trunkColor);
-    _currentCanvas->drawLine(rightTreeX - 1, treeBase, rightTreeX - 1, treeTop + 2, trunkColor);
-    _currentCanvas->drawLine(rightTreeX + 1, treeBase, rightTreeX + 1, treeTop + 2, trunkColor);
-    // Foliage
-    for (int y = treeTop - 8; y < treeTop + 3; y++) {
-        for (int x = rightTreeX - 6; x <= rightTreeX + 6; x++) {
+    
+    // THICKER Trunk
+    for (int y = treeBase; y > treeTop; y--) {
+        _currentCanvas->drawPixel(rightTreeX - 2, y, trunkColor);
+        _currentCanvas->drawPixel(rightTreeX - 1, y, rgb565(80, 53, 26));
+        _currentCanvas->drawPixel(rightTreeX, y, trunkColor);
+        _currentCanvas->drawPixel(rightTreeX + 1, y, rgb565(80, 53, 26));
+        _currentCanvas->drawPixel(rightTreeX + 2, y, trunkColor);
+    }
+    
+    // MUCH LARGER Foliage
+    for (int y = treeTop - 12; y < treeTop + 5; y++) {
+        for (int x = rightTreeX - 10; x <= rightTreeX + 10; x++) {
             int dx = x - rightTreeX;
-            int dy = y - (treeTop - 3);
-            if (dx*dx + dy*dy < 40) {
+            int dy = y - (treeTop - 4);
+            if (dx*dx + dy*dy < 100) {
                 uint32_t seed = simpleRandom(x * 19 + y * 29);
                 if (seed % 3 != 0) {
-                    _currentCanvas->drawPixel(x, y, foliageColors[seed % 4]);
+                    uint16_t color = foliageColors[seed % 4];
+                    _currentCanvas->drawPixel(x, y, color);
                 }
             }
         }
     }
     
-    // Draw some leaves on the ground
-    for (int x = 0; x < canvasW; x += 3) {
+    // Draw leaves on the ground (accumulated)
+    for (int x = 0; x < canvasW; x += 2) {
         uint32_t seed = simpleRandom(x * 7 + 100);
-        if (seed % 5 < 2) {
-            int groundY = canvasH - 1 - (seed % 3);
+        if (seed % 4 < 2) {
+            int groundY = canvasH - 1 - (seed % 2);
             _currentCanvas->drawPixel(x, groundY, foliageColors[seed % 4]);
         }
     }
@@ -3073,10 +3162,12 @@ void AnimationsModule::drawAutumnAnimation() {
                 _leaves[i].vx = ((rand() % 3) - 1) * 0.3f;
             }
             
-            // Reset at bottom
+            // Reset at bottom - RESPAWN FROM TREE POSITION
             if (_leaves[i].y > canvasH) {
-                _leaves[i].y = -5;
-                _leaves[i].x = (float)(rand() % canvasW);
+                // Choose tree to fall from
+                int treeX = (i % 2 == 0) ? leftTreeX : rightTreeX;
+                _leaves[i].y = (float)(treeTop + (rand() % 15));  // From tree height
+                _leaves[i].x = (float)(treeX + (rand() % 20) - 10);  // Within canopy
                 _leaves[i].vx = ((rand() % 3) - 1) * 0.2f;
                 _leaves[i].vy = 0.3f + (float)(rand() % 10) / 20.0f;
             }
@@ -3088,15 +3179,16 @@ void AnimationsModule::drawAutumnAnimation() {
         _lastLeafUpdate = now;
     }
     
-    // Draw falling leaves
+    // Draw falling leaves (LARGER)
     for (int i = 0; i < leafCount && i < MAX_LEAVES; i++) {
         int lx = (int)_leaves[i].x;
         int ly = (int)_leaves[i].y;
         
-        // Simple leaf shape
-        if (_leaves[i].size == 2) {
+        // Larger leaf shape
+        if (_leaves[i].size >= 2) {
             _currentCanvas->fillCircle(lx, ly, 2, _leaves[i].color);
             _currentCanvas->drawPixel(lx, ly + 1, rgb565(100, 69, 19)); // Stem
+            _currentCanvas->drawPixel(lx + 1, ly, _leaves[i].color);  // Make wider
         } else {
             _currentCanvas->fillCircle(lx, ly, 1, _leaves[i].color);
         }
@@ -3178,51 +3270,68 @@ void AnimationsModule::drawSnowman(int x, int y, float scale) {
     uint16_t black = rgb565(0, 0, 0);
     uint16_t brown = rgb565(139, 69, 19);
     
-    int baseRadius = (int)(5 * scale);
-    int middleRadius = (int)(4 * scale);
-    int headRadius = (int)(3 * scale);
+    // MUCH LARGER snowman (2-3x original size)
+    int baseRadius = (int)(8 * scale);      // Increased from 5 to 8
+    int middleRadius = (int)(6 * scale);    // Increased from 4 to 6
+    int headRadius = (int)(5 * scale);      // Increased from 3 to 5
     
     // Bottom ball
     int bottomY = y;
     _currentCanvas->fillCircle(x, bottomY, baseRadius, snowWhite);
     _currentCanvas->drawCircle(x, bottomY, baseRadius, snowShadow);
+    if (baseRadius > 3) {
+        _currentCanvas->drawCircle(x, bottomY, baseRadius - 1, snowShadow);
+    }
     
     // Middle ball
-    int middleY = bottomY - baseRadius - middleRadius + 2;
+    int middleY = bottomY - baseRadius - middleRadius + 3;
     _currentCanvas->fillCircle(x, middleY, middleRadius, snowWhite);
     _currentCanvas->drawCircle(x, middleY, middleRadius, snowShadow);
+    if (middleRadius > 2) {
+        _currentCanvas->drawCircle(x, middleY, middleRadius - 1, snowShadow);
+    }
     
     // Head
-    int headY = middleY - middleRadius - headRadius + 2;
+    int headY = middleY - middleRadius - headRadius + 3;
     _currentCanvas->fillCircle(x, headY, headRadius, snowWhite);
     _currentCanvas->drawCircle(x, headY, headRadius, snowShadow);
+    if (headRadius > 2) {
+        _currentCanvas->drawCircle(x, headY, headRadius - 1, snowShadow);
+    }
     
-    // Eyes (coal)
-    _currentCanvas->drawPixel(x - 1, headY - 1, black);
-    _currentCanvas->drawPixel(x + 1, headY - 1, black);
+    // LARGER Eyes (coal) - 2 pixels each
+    _currentCanvas->fillCircle(x - 2, headY - 2, 1, black);
+    _currentCanvas->fillCircle(x + 2, headY - 2, 1, black);
     
-    // Carrot nose
+    // LARGER Carrot nose
     _currentCanvas->drawPixel(x, headY, orange);
     _currentCanvas->drawPixel(x + 1, headY, orange);
+    _currentCanvas->drawPixel(x + 2, headY, orange);
+    _currentCanvas->drawPixel(x + 1, headY + 1, orange);
     
-    // Smile (coal)
-    _currentCanvas->drawPixel(x - 1, headY + 2, black);
-    _currentCanvas->drawPixel(x, headY + 2, black);
-    _currentCanvas->drawPixel(x + 1, headY + 2, black);
+    // Larger Smile (coal)
+    _currentCanvas->drawPixel(x - 2, headY + 3, black);
+    _currentCanvas->drawPixel(x - 1, headY + 4, black);
+    _currentCanvas->drawPixel(x, headY + 4, black);
+    _currentCanvas->drawPixel(x + 1, headY + 4, black);
+    _currentCanvas->drawPixel(x + 2, headY + 3, black);
     
-    // Buttons (coal)
-    _currentCanvas->drawPixel(x, middleY - 1, black);
-    _currentCanvas->drawPixel(x, middleY + 1, black);
+    // LARGER Buttons (coal)
+    _currentCanvas->fillCircle(x, middleY - 2, 1, black);
+    _currentCanvas->fillCircle(x, middleY, 1, black);
+    _currentCanvas->fillCircle(x, middleY + 2, 1, black);
     
-    // Stick arms
+    // LONGER Stick arms
     if (scale >= 1.0f) {
-        // Left arm
-        _currentCanvas->drawLine(x - middleRadius, middleY, x - middleRadius - 3, middleY - 2, brown);
-        _currentCanvas->drawLine(x - middleRadius - 3, middleY - 2, x - middleRadius - 4, middleY - 3, brown);
+        // Left arm (longer)
+        _currentCanvas->drawLine(x - middleRadius, middleY, x - middleRadius - 5, middleY - 3, brown);
+        _currentCanvas->drawLine(x - middleRadius - 5, middleY - 3, x - middleRadius - 7, middleY - 4, brown);
+        _currentCanvas->drawPixel(x - middleRadius - 6, middleY - 2, brown);  // Twig
         
-        // Right arm
-        _currentCanvas->drawLine(x + middleRadius, middleY, x + middleRadius + 3, middleY - 2, brown);
-        _currentCanvas->drawLine(x + middleRadius + 3, middleY - 2, x + middleRadius + 4, middleY - 1, brown);
+        // Right arm (longer)
+        _currentCanvas->drawLine(x + middleRadius, middleY, x + middleRadius + 5, middleY - 3, brown);
+        _currentCanvas->drawLine(x + middleRadius + 5, middleY - 3, x + middleRadius + 7, middleY - 2, brown);
+        _currentCanvas->drawPixel(x + middleRadius + 6, middleY - 4, brown);  // Twig
     }
 }
 
@@ -3236,17 +3345,17 @@ void AnimationsModule::drawSnowyTrees() {
     uint16_t trunkBrown = rgb565(101, 67, 33);
     
     const int SNOW_HEIGHT = 8;
-    const int SNOWMAN_TREE_MIN_DISTANCE = 15;
-    const int MAX_TREE_POSITIONS = 3;  // Maximum number of tree positions available
+    const int SNOWMAN_TREE_MIN_DISTANCE = 20;  // Increased for larger snowman
+    const int MAX_TREE_POSITIONS = 3;
     int groundY = canvasH - SNOW_HEIGHT;
     
     // Get tree count from config (limited by available positions)
     int numTrees = config ? config->seasonalWinterTreeCount : 2;
     if (numTrees > MAX_TREE_POSITIONS) numTrees = MAX_TREE_POSITIONS;
     
-    // Tree positions and sizes
+    // Tree positions and MUCH LARGER sizes
     const int treePosX[MAX_TREE_POSITIONS] = {canvasW / 4, canvasW * 3 / 4, canvasW / 8};
-    const int treeSizes[MAX_TREE_POSITIONS] = {10, 12, 8};
+    const int treeSizes[MAX_TREE_POSITIONS] = {18, 20, 16};  // Increased from 10,12,8 to 18,20,16
     
     for (int t = 0; t < numTrees; t++) {
         int treeX = treePosX[t];
@@ -3256,37 +3365,45 @@ void AnimationsModule::drawSnowyTrees() {
         // Skip if snowman would overlap
         if (config && config->seasonalWinterShowSnowman && abs(treeX - canvasW / 2) < SNOWMAN_TREE_MIN_DISTANCE) continue;
         
-        // Trunk
-        int trunkWidth = 2;
-        int trunkHeight = 4;
+        // THICKER Trunk
+        int trunkWidth = 4;  // Increased from 2 to 4
+        int trunkHeight = 6; // Increased from 4 to 6
         _currentCanvas->fillRect(treeX - trunkWidth/2, treeY - trunkHeight, trunkWidth, trunkHeight, trunkBrown);
         
-        // Triangular tree shape (3 layers)
+        // Triangular tree shape (3 layers) - MUCH LARGER
         int layerHeight = treeHeight / 3;
         
         for (int layer = 0; layer < 3; layer++) {
             int layerY = treeY - trunkHeight - (layer + 1) * layerHeight;
-            int layerWidth = (8 - layer * 2);
+            int layerWidth = (12 - layer * 3);  // Increased from (8-layer*2) to (12-layer*3)
             
             // Draw tree layer as triangle
             for (int dy = 0; dy < layerHeight; dy++) {
                 int width = layerWidth - (dy * layerWidth / layerHeight);
                 for (int dx = -width; dx <= width; dx++) {
                     uint16_t color = (dx == -width || dx == width) ? treeDarkGreen : treeGreen;
-                    _currentCanvas->drawPixel(treeX + dx, layerY + dy, color);
+                    if (treeX + dx >= 0 && treeX + dx < canvasW) {
+                        _currentCanvas->drawPixel(treeX + dx, layerY + dy, color);
+                    }
                 }
             }
             
-            // Snow on top of each layer
-            int snowWidth = layerWidth + 1;
+            // THICKER Snow on top of each layer
+            int snowWidth = layerWidth + 2;  // Increased snow coverage
             for (int dx = -snowWidth; dx <= snowWidth; dx++) {
-                _currentCanvas->drawPixel(treeX + dx, layerY, snowWhite);
+                if (treeX + dx >= 0 && treeX + dx < canvasW) {
+                    _currentCanvas->drawPixel(treeX + dx, layerY, snowWhite);
+                    if (layerY + 1 < canvasH) {
+                        _currentCanvas->drawPixel(treeX + dx, layerY + 1, snowWhite);  // Double thickness
+                    }
+                }
             }
         }
         
-        // Snow on very top
-        _currentCanvas->drawPixel(treeX, treeY - trunkHeight - treeHeight, snowWhite);
-        _currentCanvas->drawPixel(treeX - 1, treeY - trunkHeight - treeHeight + 1, snowWhite);
-        _currentCanvas->drawPixel(treeX + 1, treeY - trunkHeight - treeHeight + 1, snowWhite);
+        // LARGER Snow on very top
+        int topY = treeY - trunkHeight - treeHeight;
+        if (topY >= 0) {
+            _currentCanvas->fillCircle(treeX, topY, 2, snowWhite);  // Larger top snow cap
+        }
     }
 }
