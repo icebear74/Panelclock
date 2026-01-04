@@ -357,6 +357,20 @@ void handleConfigModules() {
     replaceAll(content, "{ledColor3}", ledColors[2].c_str());
     replaceAll(content, "{ledColor4}", ledColors[3].c_str());
     
+    // Seasonal Animations configuration
+    replaceAll(content, "{seasonalAnimationsEnabled_checked}", deviceConfig->seasonalAnimationsEnabled ? "checked" : "");
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->seasonalAnimationsDisplaySec); replaceAll(content, "{seasonalAnimationsDisplaySec}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->seasonalAnimationsRepeatMin); replaceAll(content, "{seasonalAnimationsRepeatMin}", num_buf);
+    replaceAll(content, "{seasonalWinterWithHolidays_checked}", deviceConfig->seasonalWinterWithHolidays ? "checked" : "");
+    replaceAll(content, "{seasonalAnimationsTestMode_checked}", deviceConfig->seasonalAnimationsTestMode ? "checked" : "");
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->seasonalSpringFlowerCount); replaceAll(content, "{seasonalSpringFlowerCount}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->seasonalSpringButterflyCount); replaceAll(content, "{seasonalSpringButterflyCount}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->seasonalSummerBirdCount); replaceAll(content, "{seasonalSummerBirdCount}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->seasonalAutumnLeafCount); replaceAll(content, "{seasonalAutumnLeafCount}", num_buf);
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->seasonalWinterSnowflakeCount); replaceAll(content, "{seasonalWinterSnowflakeCount}", num_buf);
+    replaceAll(content, "{seasonalWinterShowSnowman_checked}", deviceConfig->seasonalWinterShowSnowman ? "checked" : "");
+    snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->seasonalWinterTreeCount); replaceAll(content, "{seasonalWinterTreeCount}", num_buf);
+    
     // Global scrolling configuration
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->globalScrollSpeedMs); replaceAll(content, "{globalScrollSpeedMs}", num_buf);
     replaceAll(content, "{scrollMode0_selected}", deviceConfig->scrollMode == 0 ? "selected" : "");
@@ -518,6 +532,20 @@ void handleSaveModules() {
     if (server->hasArg("fireplaceStockingCount")) deviceConfig->fireplaceStockingCount = server->arg("fireplaceStockingCount").toInt();
     if (server->hasArg("fireplaceCandleCount")) deviceConfig->fireplaceCandleCount = server->arg("fireplaceCandleCount").toInt();
     deviceConfig->fireplaceClockEnabled = server->hasArg("fireplaceClockEnabled");
+    
+    // Seasonal Animations configuration
+    deviceConfig->seasonalAnimationsEnabled = server->hasArg("seasonalAnimationsEnabled");
+    if (server->hasArg("seasonalAnimationsDisplaySec")) deviceConfig->seasonalAnimationsDisplaySec = server->arg("seasonalAnimationsDisplaySec").toInt();
+    if (server->hasArg("seasonalAnimationsRepeatMin")) deviceConfig->seasonalAnimationsRepeatMin = server->arg("seasonalAnimationsRepeatMin").toInt();
+    deviceConfig->seasonalWinterWithHolidays = server->hasArg("seasonalWinterWithHolidays");
+    deviceConfig->seasonalAnimationsTestMode = server->hasArg("seasonalAnimationsTestMode");
+    if (server->hasArg("seasonalSpringFlowerCount")) deviceConfig->seasonalSpringFlowerCount = server->arg("seasonalSpringFlowerCount").toInt();
+    if (server->hasArg("seasonalSpringButterflyCount")) deviceConfig->seasonalSpringButterflyCount = server->arg("seasonalSpringButterflyCount").toInt();
+    if (server->hasArg("seasonalSummerBirdCount")) deviceConfig->seasonalSummerBirdCount = server->arg("seasonalSummerBirdCount").toInt();
+    if (server->hasArg("seasonalAutumnLeafCount")) deviceConfig->seasonalAutumnLeafCount = server->arg("seasonalAutumnLeafCount").toInt();
+    if (server->hasArg("seasonalWinterSnowflakeCount")) deviceConfig->seasonalWinterSnowflakeCount = server->arg("seasonalWinterSnowflakeCount").toInt();
+    deviceConfig->seasonalWinterShowSnowman = server->hasArg("seasonalWinterShowSnowman");
+    if (server->hasArg("seasonalWinterTreeCount")) deviceConfig->seasonalWinterTreeCount = server->arg("seasonalWinterTreeCount").toInt();
     
     // Global scrolling configuration
     if (server->hasArg("globalScrollSpeedMs")) deviceConfig->globalScrollSpeedMs = server->arg("globalScrollSpeedMs").toInt();
