@@ -25,6 +25,35 @@ namespace TimeUtilities {
     }
     
     /**
+     * @brief Prüft ob ein Jahr ein Schaltjahr ist (mit 100- und 400-Jahres-Regel)
+     * @param year Das Jahr
+     * @return true wenn Schaltjahr, false sonst
+     */
+    bool isLeapYear(int year) {
+        // Ein Jahr ist ein Schaltjahr wenn:
+        // - teilbar durch 4 UND
+        // - NICHT teilbar durch 100 ODER teilbar durch 400
+        if (year % 400 == 0) return true;      // Teilbar durch 400 → Schaltjahr (z.B. 2000)
+        if (year % 100 == 0) return false;     // Teilbar durch 100 → kein Schaltjahr (z.B. 1900)
+        if (year % 4 == 0) return true;        // Teilbar durch 4 → Schaltjahr (z.B. 2024)
+        return false;                          // Sonst kein Schaltjahr
+    }
+    
+    /**
+     * @brief Zählt die Schaltjahre zwischen zwei Jahren (mit 100- und 400-Jahres-Regel)
+     * @param year1 Startjahr
+     * @param year2 Endjahr
+     * @return Anzahl der Schaltjahre im Intervall
+     */
+    int countLeapYears(int year1, int year2) {
+        int count = 0;
+        for (int y = year1; y <= year2; y++) {
+            if (isLeapYear(y)) count++;
+        }
+        return count;
+    }
+    
+    /**
      * @brief Berechnet den Tag der Frühjahrs-Tagundnachtgleiche für ein gegebenes Jahr
      * @param year Das Jahr
      * @return Tag im März (typisch 19-21)
@@ -35,8 +64,11 @@ namespace TimeUtilities {
         // Für Jahre 2000-2100
         if (year < 2000 || year > 2100) year = 2000; // Fallback
         
-        // Näherungsformel: 20.0 + 0.242 * (year - 2000) - floor((year - 2000) / 4)
-        double d = 20.0 + 0.242 * (year - 2000) - ((year - 2000) / 4);
+        // Berechne Schaltjahre zwischen 2000 und dem aktuellen Jahr (exklusive)
+        int leapYears = countLeapYears(2001, year - 1);
+        
+        // Näherungsformel mit korrekter Schaltjahreskorrektur
+        double d = 20.0 + 0.242189 * (year - 2000) - leapYears;
         return (int)d;
     }
     
@@ -49,7 +81,8 @@ namespace TimeUtilities {
         // Vereinfachte Näherungsformel für die Sommersonnenwende
         if (year < 2000 || year > 2100) year = 2000;
         
-        double d = 21.0 + 0.242 * (year - 2000) - ((year - 2000) / 4);
+        int leapYears = countLeapYears(2001, year - 1);
+        double d = 21.0 + 0.242189 * (year - 2000) - leapYears;
         return (int)d;
     }
     
@@ -62,7 +95,8 @@ namespace TimeUtilities {
         // Vereinfachte Näherungsformel für die Herbst-Tagundnachtgleiche
         if (year < 2000 || year > 2100) year = 2000;
         
-        double d = 23.0 + 0.242 * (year - 2000) - ((year - 2000) / 4);
+        int leapYears = countLeapYears(2001, year - 1);
+        double d = 23.0 + 0.242189 * (year - 2000) - leapYears;
         return (int)d;
     }
     
@@ -75,7 +109,8 @@ namespace TimeUtilities {
         // Vereinfachte Näherungsformel für die Wintersonnenwende
         if (year < 2000 || year > 2100) year = 2000;
         
-        double d = 21.0 + 0.242 * (year - 2000) - ((year - 2000) / 4);
+        int leapYears = countLeapYears(2001, year - 1);
+        double d = 21.0 + 0.242189 * (year - 2000) - leapYears;
         return (int)d;
     }
     
