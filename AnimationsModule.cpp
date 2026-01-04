@@ -487,10 +487,8 @@ void AnimationsModule::periodicTick() {
     if (inHolidaySeason && !hasHolidayAnimations) {
         // Only seasonal animations active during holiday season
         showSeasonalAnimation = true;
-    } else if (!inHolidaySeason) {
-        // Not in holiday season, show if enabled
-        showSeasonalAnimation = hasSeasonalAnimations;
     }
+    // (else showSeasonalAnimation is already set correctly from hasSeasonalAnimations)
     
     // If nothing to show, release if active
     if (!inHolidaySeason && !showSeasonalAnimation) {
@@ -2677,15 +2675,15 @@ void AnimationsModule::drawSpringAnimation() {
     int canvasW = _currentCanvas->width();
     int canvasH = _currentCanvas->height();
     
+    // Get counts from config once
+    int flowerCount = config ? config->seasonalSpringFlowerCount : 12;
+    int butterflyCount = config ? config->seasonalSpringButterflyCount : 3;
+    
     // Initialize on first call
     if (!_flowersInitialized || !_butterfliesInitialized) {
         initSpringAnimation();
         _lastButterflyUpdate = millis();
     }
-    
-    // Get counts from config
-    int flowerCount = config ? config->seasonalSpringFlowerCount : 12;
-    int butterflyCount = config ? config->seasonalSpringButterflyCount : 3;
     
     // Draw flowers (static, slightly swaying)
     for (int i = 0; i < flowerCount && i < MAX_FLOWERS; i++) {
@@ -3111,15 +3109,16 @@ void AnimationsModule::drawSnowyTrees() {
     
     const int SNOW_HEIGHT = 8;
     const int SNOWMAN_TREE_MIN_DISTANCE = 15;
+    const int MAX_TREE_POSITIONS = 3;  // Maximum number of tree positions available
     int groundY = canvasH - SNOW_HEIGHT;
     
-    // Get tree count from config
+    // Get tree count from config (limited by available positions)
     int numTrees = config ? config->seasonalWinterTreeCount : 2;
-    if (numTrees > 3) numTrees = 3;
+    if (numTrees > MAX_TREE_POSITIONS) numTrees = MAX_TREE_POSITIONS;
     
     // Tree positions and sizes
-    const int treePosX[3] = {canvasW / 4, canvasW * 3 / 4, canvasW / 8};
-    const int treeSizes[3] = {10, 12, 8};
+    const int treePosX[MAX_TREE_POSITIONS] = {canvasW / 4, canvasW * 3 / 4, canvasW / 8};
+    const int treeSizes[MAX_TREE_POSITIONS] = {10, 12, 8};
     
     for (int t = 0; t < numTrees; t++) {
         int treeX = treePosX[t];
