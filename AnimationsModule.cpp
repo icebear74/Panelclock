@@ -577,10 +577,8 @@ void AnimationsModule::periodicTick() {
             // Kranz-Modus: alle Flags bleiben false (Kranz ist der Default)
         }
         
-        // Passe Display-Duration an wenn Seasonal Animation angezeigt wird
-        if (_showSeasonalAnimation && config) {
-            displayDuration = config->seasonalAnimationsDisplaySec * 1000UL;
-        }
+        // Alle Animationen verwenden die gleiche Display-Duration aus den globalen Einstellungen
+        // (seasonalAnimationsDisplaySec wird nicht mehr verwendet)
         
         // Feste UID für diese Anzeige-Session (nicht vom Advent-Woche abhängig)
         // Verwende eine einfache UID basierend auf dem Display-Counter
