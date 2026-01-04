@@ -126,7 +126,7 @@ private:
         int size;
     };
     static const int MAX_SNOWFLAKES = 20;
-    Snowflake _snowflakes[MAX_SNOWFLAKES];
+    Snowflake* _snowflakes = nullptr;
     bool _snowflakesInitialized = false;
     unsigned long _lastSnowflakeUpdate = 0;
     
@@ -138,7 +138,7 @@ private:
         float swayPhase;
     };
     static const int MAX_FLOWERS = 12;
-    Flower _flowers[MAX_FLOWERS];
+    Flower* _flowers = nullptr;
     bool _flowersInitialized = false;
     
     struct Butterfly {
@@ -148,7 +148,7 @@ private:
         int wingPhase;
     };
     static const int MAX_BUTTERFLIES = 3;
-    Butterfly _butterflies[MAX_BUTTERFLIES];
+    Butterfly* _butterflies = nullptr;
     bool _butterfliesInitialized = false;
     unsigned long _lastButterflyUpdate = 0;
     
@@ -160,7 +160,7 @@ private:
         int size;
     };
     static const int MAX_LEAVES = 15;
-    Leaf _leaves[MAX_LEAVES];
+    Leaf* _leaves = nullptr;
     bool _leavesInitialized = false;
     unsigned long _lastLeafUpdate = 0;
     
@@ -171,7 +171,7 @@ private:
         bool facingRight;
     };
     static const int MAX_BIRDS = 2;
-    Bird _birds[MAX_BIRDS];
+    Bird* _birds = nullptr;
     bool _birdsInitialized = false;
     unsigned long _lastBirdUpdate = 0;
     

@@ -50,9 +50,28 @@ uint32_t AnimationsModule::simpleRandom(uint32_t seed) {
 AnimationsModule::AnimationsModule(U8G2_FOR_ADAFRUIT_GFX& u8g2, GFXcanvas16& canvas, 
                                        GeneralTimeConverter& timeConverter, DeviceConfig* config)
     : u8g2(u8g2), canvas(canvas), timeConverter(timeConverter), config(config) {
+    // Allokiere Arrays in PSRAM
+    _snowflakes = (Snowflake*)ps_malloc(sizeof(Snowflake) * MAX_SNOWFLAKES);
+    _flowers = (Flower*)ps_malloc(sizeof(Flower) * MAX_FLOWERS);
+    _butterflies = (Butterfly*)ps_malloc(sizeof(Butterfly) * MAX_BUTTERFLIES);
+    _leaves = (Leaf*)ps_malloc(sizeof(Leaf) * MAX_LEAVES);
+    _birds = (Bird*)ps_malloc(sizeof(Bird) * MAX_BIRDS);
+    
+    // Initialisiere mit 0
+    if (_snowflakes) memset(_snowflakes, 0, sizeof(Snowflake) * MAX_SNOWFLAKES);
+    if (_flowers) memset(_flowers, 0, sizeof(Flower) * MAX_FLOWERS);
+    if (_butterflies) memset(_butterflies, 0, sizeof(Butterfly) * MAX_BUTTERFLIES);
+    if (_leaves) memset(_leaves, 0, sizeof(Leaf) * MAX_LEAVES);
+    if (_birds) memset(_birds, 0, sizeof(Bird) * MAX_BIRDS);
 }
 
 AnimationsModule::~AnimationsModule() {
+    // Gebe PSRAM-Speicher frei
+    if (_snowflakes) { free(_snowflakes); _snowflakes = nullptr; }
+    if (_flowers) { free(_flowers); _flowers = nullptr; }
+    if (_butterflies) { free(_butterflies); _butterflies = nullptr; }
+    if (_leaves) { free(_leaves); _leaves = nullptr; }
+    if (_birds) { free(_birds); _birds = nullptr; }
 }
 
 void AnimationsModule::begin() {
@@ -1009,6 +1028,8 @@ void AnimationsModule::drawOrnament(int x, int y, int radius, uint16_t color) {
 }
 
 void AnimationsModule::drawSnowflakes() {
+    if (!_snowflakes) return;
+    
     int canvasW = _currentCanvas->width();
     int canvasH = _currentCanvas->height();
     
@@ -2536,6 +2557,8 @@ void AnimationsModule::drawSeasonalAnimations() {
 }
 
 void AnimationsModule::initSpringAnimation() {
+    if (!_flowers || !_butterflies) return;
+    
     int canvasW = _currentCanvas->width();
     int canvasH = _currentCanvas->height();
     
@@ -2579,6 +2602,8 @@ void AnimationsModule::initSpringAnimation() {
 }
 
 void AnimationsModule::drawSpringAnimation() {
+    if (!_flowers || !_butterflies) return;
+    
     int canvasW = _currentCanvas->width();
     int canvasH = _currentCanvas->height();
     
@@ -2653,6 +2678,8 @@ void AnimationsModule::drawSpringAnimation() {
 }
 
 void AnimationsModule::initSummerAnimation() {
+    if (!_birds) return;
+    
     int canvasW = _currentCanvas->width();
     int canvasH = _currentCanvas->height();
     
@@ -2669,6 +2696,8 @@ void AnimationsModule::initSummerAnimation() {
 }
 
 void AnimationsModule::drawSummerAnimation() {
+    if (!_birds) return;
+    
     int canvasW = _currentCanvas->width();
     int canvasH = _currentCanvas->height();
     
@@ -2775,6 +2804,8 @@ void AnimationsModule::drawSummerAnimation() {
 }
 
 void AnimationsModule::initAutumnAnimation() {
+    if (!_leaves) return;
+    
     int canvasW = _currentCanvas->width();
     int canvasH = _currentCanvas->height();
     
@@ -2802,6 +2833,8 @@ void AnimationsModule::initAutumnAnimation() {
 }
 
 void AnimationsModule::drawAutumnAnimation() {
+    if (!_leaves) return;
+    
     int canvasW = _currentCanvas->width();
     int canvasH = _currentCanvas->height();
     
