@@ -271,6 +271,14 @@ struct DeviceConfig {
     int scrollPauseSec = 0;
     /// @brief Scroll-Richtung: 0 = Normal (nach links), 1 = Rückwärts (nach rechts)
     int scrollReverse = 0;
+    
+    // --- Countdown Modul ---
+    /// @brief Aktiviert das Countdown-Modul.
+    bool countdownEnabled = false;
+    /// @brief Standard-Dauer des Countdowns in Minuten (Default: 15).
+    int countdownDurationMinutes = 15;
+    /// @brief Die Anzeigedauer des Countdowns in Sekunden (wird ignoriert wenn Countdown läuft).
+    int countdownDisplaySec = 20;
 };
 
 // Deklarationen für globale Variablen und Funktionen

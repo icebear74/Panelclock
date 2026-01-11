@@ -4,6 +4,7 @@
 #include "BackupManager.hpp"
 #include "ThemeParkModule.hpp"
 #include "SofaScoreLiveModule.hpp"
+#include "CountdownModule.hpp"
 #include "PanelManager.hpp"
 #include "Application.hpp"
 #include <LittleFS.h>
@@ -33,6 +34,7 @@ extern TankerkoenigModule* tankerkoenigModule;
 extern BackupManager* backupManager;
 extern ThemeParkModule* themeParkModule;
 extern FritzboxModule* fritzboxModule;
+extern CountdownModule* countdownModule;
 extern bool portalRunning;
 
 // Forward declarations of global functions (declared in WebServerManager.hpp)
@@ -571,6 +573,11 @@ void handleSaveModules() {
         }
         else { deviceConfig->fritzboxIp = ""; }
     }
+    
+    // Countdown configuration
+    deviceConfig->countdownEnabled = server->hasArg("countdownEnabled");
+    deviceConfig->countdownDurationMinutes = server->arg("countdownDurationMinutes").toInt();
+    deviceConfig->countdownDisplaySec = server->arg("countdownDisplaySec").toInt();
 
     saveDeviceConfig();
     applyLiveConfig();
@@ -1478,3 +1485,79 @@ void handleSofascoreDebugSnapshot() {
     server->send(501, "application/json", "{\"ok\":false, \"message\":\"Debug feature not compiled (SOFASCORE_DEBUG_JSON=0)\"}");
 #endif
 }
+
+// ========================================
+// Countdown Handlers
+// ========================================
+
+void handleCountdownPage() {
+    if (!server) return;
+    
+    PsramString page = (const char*)FPSTR(HTML_PAGE_HEADER);
+    PsramString content = (const char*)FPSTR(HTML_COUNTDOWN_PAGE);
+    
+    // Replace placeholders with current config
+    if (deviceConfig) {
+        replaceAll(content, "{countdownEnabled}", deviceConfig->countdownEnabled ? "checked" : "");
+        
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%d", deviceConfig->countdownDurationMinutes);
+        replaceAll(content, "{countdownDurationMinutes}", buf);
+        
+        snprintf(buf, sizeof(buf), "%d", deviceConfig->countdownDisplaySec);
+        replaceAll(content, "{countdownDisplaySec}", buf);
+    }
+    
+    page += content;
+    page += (const char*)FPSTR(HTML_PAGE_FOOTER);
+    server->send(200, "text/html", page.c_str());
+}
+
+void handleCountdownStart() {
+    if (!server) {
+        return;
+    }
+    
+    if (!countdownModule) {
+        server->send(500, "application/json", "{\"ok\":false, \"message\":\"Countdown module not initialized\"}");
+        return;
+    }
+    
+    if (countdownModule->startCountdown()) {
+        server->send(200, "application/json", "{\"ok\":true, \"message\":\"Countdown started\"}");
+    } else {
+        server->send(400, "application/json", "{\"ok\":false, \"message\":\"Countdown already running\"}");
+    }
+}
+
+void handleCountdownStop() {
+    if (!server) {
+        return;
+    }
+    
+    if (!countdownModule) {
+        server->send(500, "application/json", "{\"ok\":false, \"message\":\"Countdown module not initialized\"}");
+        return;
+    }
+    
+    countdownModule->stopCountdown();
+    server->send(200, "application/json", "{\"ok\":true, \"message\":\"Countdown stopped\"}");
+}
+
+void handleCountdownStatus() {
+    if (!server) {
+        return;
+    }
+    
+    if (!countdownModule) {
+        server->send(500, "application/json", "{\"ok\":false, \"message\":\"Countdown module not initialized\"}");
+        return;
+    }
+    
+    PsramString json = "{\"ok\":true, \"running\":";
+    json += countdownModule->isRunning() ? "true" : "false";
+    json += "}";
+    
+    server->send(200, "application/json", json.c_str());
+}
+
