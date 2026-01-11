@@ -602,10 +602,7 @@ void handleSaveModules() {
         else { deviceConfig->fritzboxIp = ""; }
     }
     
-    // Countdown configuration
-    deviceConfig->countdownEnabled = server->hasArg("countdownEnabled");
-    deviceConfig->countdownDurationMinutes = server->arg("countdownDurationMinutes").toInt();
-    deviceConfig->countdownDisplaySec = server->arg("countdownDisplaySec").toInt();
+    // Countdown module - no persistent config needed, always available
 
     saveDeviceConfig();
     applyLiveConfig();
@@ -1524,17 +1521,7 @@ void handleCountdownPage() {
     PsramString page = (const char*)FPSTR(HTML_PAGE_HEADER);
     PsramString content = (const char*)FPSTR(HTML_COUNTDOWN_PAGE);
     
-    // Replace placeholders with current config
-    if (deviceConfig) {
-        replaceAll(content, "{countdownEnabled}", deviceConfig->countdownEnabled ? "checked" : "");
-        
-        char buf[16];
-        snprintf(buf, sizeof(buf), "%d", deviceConfig->countdownDurationMinutes);
-        replaceAll(content, "{countdownDurationMinutes}", buf);
-        
-        snprintf(buf, sizeof(buf), "%d", deviceConfig->countdownDisplaySec);
-        replaceAll(content, "{countdownDisplaySec}", buf);
-    }
+    // No placeholders to replace - countdown is always available
     
     page += content;
     page += (const char*)FPSTR(HTML_PAGE_FOOTER);
@@ -1551,7 +1538,13 @@ void handleCountdownStart() {
         return;
     }
     
-    if (countdownModule->startCountdown()) {
+    // Get optional duration parameter from request
+    uint32_t duration = 0;
+    if (server->hasArg("duration")) {
+        duration = server->arg("duration").toInt();
+    }
+    
+    if (countdownModule->startCountdown(duration)) {
         server->send(200, "application/json", "{\"ok\":true, \"message\":\"Countdown started\"}");
     } else {
         server->send(400, "application/json", "{\"ok\":false, \"message\":\"Countdown already running\"}");

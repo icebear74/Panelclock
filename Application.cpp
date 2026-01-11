@@ -370,7 +370,7 @@ void Application::executeApplyLiveConfig() {
     _weatherMod->setConfig(deviceConfig);
     _themeParkMod->setConfig(deviceConfig);
     _animationsMod->setConfig();
-    _countdownMod->setConfig(deviceConfig->countdownEnabled, deviceConfig->countdownDurationMinutes, deviceConfig->countdownDisplaySec);
+    // Countdown module - always available, no config needed
 
     Log.println("[Config] Live-Konfiguration angewendet.");
     LOG_MEMORY_DETAILED("Nach executeApplyLiveConfig");

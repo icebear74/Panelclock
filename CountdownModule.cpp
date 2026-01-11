@@ -17,17 +17,14 @@ void CountdownModule::onUpdate(std::function<void()> callback) {
     updateCallback = callback;
 }
 
-void CountdownModule::setConfig(bool enabled, uint32_t durationMinutes, unsigned long displaySec) {
-    this->_enabled = enabled;
+void CountdownModule::setDuration(uint32_t durationMinutes) {
     this->_durationMinutes = durationMinutes > 0 ? durationMinutes : 15;  // Default to 15 minutes
-    this->_displayDuration = displaySec > 0 ? displaySec * 1000UL : 20000;
-    
-    Log.printf("[Countdown] Config updated: enabled=%d, duration=%d min, display=%d sec\n",
-               enabled, _durationMinutes, displaySec);
+    Log.printf("[Countdown] Duration set to %d minutes (non-persistent)\n", _durationMinutes);
 }
 
 bool CountdownModule::isEnabled() {
-    return _enabled;
+    // Countdown is always available as a utility function
+    return true;
 }
 
 unsigned long CountdownModule::getDisplayDuration() {
@@ -35,7 +32,8 @@ unsigned long CountdownModule::getDisplayDuration() {
     if (_isRunning) {
         return 0;  // Continuous display - module controls its own lifetime
     }
-    return _displayDuration;
+    // When not running, don't show in rotation
+    return 0;
 }
 
 void CountdownModule::resetPaging() {
@@ -50,10 +48,15 @@ void CountdownModule::resetPaging() {
     }
 }
 
-bool CountdownModule::startCountdown() {
+bool CountdownModule::startCountdown(uint32_t durationMinutes) {
     if (_isRunning) {
         Log.println("[Countdown] Already running, ignoring start request");
         return false;
+    }
+    
+    // Override duration if specified
+    if (durationMinutes > 0) {
+        _durationMinutes = durationMinutes;
     }
     
     _isRunning = true;

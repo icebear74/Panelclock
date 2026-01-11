@@ -183,10 +183,7 @@ void loadDeviceConfig() {
                 deviceConfig->scrollPauseSec = doc["scrollPauseSec"] | 0;
                 deviceConfig->scrollReverse = doc["scrollReverse"] | 0;
                 
-                // Countdown Modul
-                deviceConfig->countdownEnabled = doc["countdownEnabled"] | false;
-                deviceConfig->countdownDurationMinutes = doc["countdownDurationMinutes"] | 15;
-                deviceConfig->countdownDisplaySec = doc["countdownDisplaySec"] | 20;
+                // Countdown module - no persistent config needed, always available
 
                 Serial.println("Geräte-Konfiguration geladen.");
             } else {
@@ -357,10 +354,7 @@ void saveDeviceConfig() {
     doc["scrollPauseSec"] = deviceConfig->scrollPauseSec;
     doc["scrollReverse"] = deviceConfig->scrollReverse;
     
-    // Countdown Modul
-    doc["countdownEnabled"] = deviceConfig->countdownEnabled;
-    doc["countdownDurationMinutes"] = deviceConfig->countdownDurationMinutes;
-    doc["countdownDisplaySec"] = deviceConfig->countdownDisplaySec;
+    // Countdown module - no persistent config needed, always available
 
     File configFile = LittleFS.open("/config.json", "w");
     if (configFile) {

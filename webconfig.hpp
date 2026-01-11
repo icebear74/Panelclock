@@ -307,12 +307,8 @@ struct DeviceConfig {
     int scrollReverse = 0;
     
     // --- Countdown Modul ---
-    /// @brief Aktiviert das Countdown-Modul.
-    bool countdownEnabled = false;
-    /// @brief Standard-Dauer des Countdowns in Minuten (Default: 15).
-    int countdownDurationMinutes = 15;
-    /// @brief Die Anzeigedauer des Countdowns in Sekunden (wird ignoriert wenn Countdown läuft).
-    int countdownDisplaySec = 20;
+    // Note: Countdown is always available as utility function, no enable/disable needed
+    // Duration is non-persistent and only used for the current session
 };
 
 // Deklarationen für globale Variablen und Funktionen

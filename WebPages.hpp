@@ -1399,24 +1399,29 @@ document.getElementById('uploadForm').addEventListener('submit', function(e) {
 )rawliteral";
 
 const char HTML_COUNTDOWN_PAGE[] PROGMEM = R"rawliteral(
-<h1>Countdown</h1>
-<div class="group">
-    <h3>Countdown Einstellungen</h3>
-    <form action="/save_modules" method="POST">
-        <label><input type="checkbox" name="countdownEnabled" {countdownEnabled}> Countdown aktivieren</label>
-        <label for="countdownDurationMinutes">Dauer (Minuten)</label>
-        <input type="number" id="countdownDurationMinutes" name="countdownDurationMinutes" value="{countdownDurationMinutes}" min="1" max="1440">
-        <label for="countdownDisplaySec">Anzeigedauer wenn gestoppt (Sekunden)</label>
-        <input type="number" id="countdownDisplaySec" name="countdownDisplaySec" value="{countdownDisplaySec}" min="5" max="300">
-        <input type="submit" value="Speichern">
-    </form>
-</div>
+<h1>Countdown Timer</h1>
+<p style="color:#bbb;margin-bottom:20px;">Einfacher Countdown-Timer für Sport, Kochen oder andere Zeiterfassung. Keine Einstellungen werden gespeichert.</p>
 
 <div class="group">
     <h3>Countdown Steuerung</h3>
     <p id="status" style="color:#4CAF50;font-weight:bold;">Status wird geladen...</p>
-    <button id="startBtn" onclick="startCountdown()" class="button">Start</button>
+    
+    <label for="durationInput">Dauer (Minuten)</label>
+    <input type="number" id="durationInput" value="15" min="1" max="1440" style="width:100%;margin-bottom:15px;">
+    
+    <button id="startBtn" onclick="startCountdown()" class="button">Start Countdown</button>
     <button id="stopBtn" onclick="stopCountdown()" class="button button-danger">Stop</button>
+</div>
+
+<div class="group">
+    <h3>Info</h3>
+    <p style="color:#bbb;">Der Countdown zeigt auf dem Display:</p>
+    <ul style="color:#bbb;">
+        <li>Zeit in MM:SS.mmm (Millisekunden-Genauigkeit)</li>
+        <li>Fortschritt in Prozent mit Balken</li>
+        <li>Verbrannte Kalorien (6 kcal/min)</li>
+    </ul>
+    <p style="color:#bbb;">Der Countdown wird automatisch auf dem Display angezeigt, sobald er gestartet wird.</p>
 </div>
 
 <div class="footer-link"><a href="/">&laquo; Zur&uuml;ck zum Hauptmen&uuml;</a></div>
@@ -1427,7 +1432,7 @@ function updateStatus() {
         .then(response => response.json())
         .then(data => {
             if (data.ok) {
-                document.getElementById('status').textContent = data.running ? 'Countdown läuft' : 'Countdown gestoppt';
+                document.getElementById('status').textContent = data.running ? 'Countdown läuft' : 'Countdown bereit';
                 document.getElementById('status').style.color = data.running ? '#4CAF50' : '#f44336';
                 document.getElementById('startBtn').disabled = data.running;
                 document.getElementById('stopBtn').disabled = !data.running;
@@ -1440,11 +1445,17 @@ function updateStatus() {
 }
 
 function startCountdown() {
-    fetch('/api/countdown/start', { method: 'POST' })
+    const duration = parseInt(document.getElementById('durationInput').value);
+    if (!duration || duration < 1 || duration > 1440) {
+        alert('Bitte geben Sie eine gültige Dauer (1-1440 Minuten) ein.');
+        return;
+    }
+    
+    fetch('/api/countdown/start?duration=' + duration, { method: 'POST' })
         .then(response => response.json())
         .then(data => {
             if (data.ok) {
-                alert('Countdown gestartet!');
+                alert('Countdown für ' + duration + ' Minute(n) gestartet!');
                 updateStatus();
             } else {
                 alert('Fehler: ' + (data.message || 'Unbekannter Fehler'));

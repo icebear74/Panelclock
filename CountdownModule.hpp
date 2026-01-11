@@ -43,13 +43,19 @@ public:
     ~CountdownModule();
 
     void onUpdate(std::function<void()> callback);
-    void setConfig(bool enabled, uint32_t durationMinutes, unsigned long displaySec);
     
     /**
-     * @brief Start the countdown timer
+     * @brief Set countdown duration (non-persistent, for current session only)
+     * @param durationMinutes Duration in minutes
+     */
+    void setDuration(uint32_t durationMinutes);
+    
+    /**
+     * @brief Start the countdown timer with current or specified duration
+     * @param durationMinutes Optional duration override (0 = use current setting)
      * @return true if countdown was started successfully
      */
-    bool startCountdown();
+    bool startCountdown(uint32_t durationMinutes = 0);
     
     /**
      * @brief Stop the countdown timer
@@ -75,6 +81,9 @@ public:
     int getCurrentPage() const override { return 0; }
     int getTotalPages() const override { return 1; }
     
+    // Countdown is utility-only, not in normal playlist
+    bool canBeInPlaylist() const override { return false; }
+    
     // Fullscreen support
     bool supportsFullscreen() const override { return true; }
     bool wantsFullscreen() const override { return _wantsFullscreen && _fullscreenCanvas != nullptr; }
@@ -88,10 +97,8 @@ private:
     std::function<void()> updateCallback;
 
     // Configuration
-    bool _enabled = false;
     bool _wantsFullscreen = true;  // Default to fullscreen for better visibility
-    uint32_t _durationMinutes = 15;  // Default: 15 minutes
-    unsigned long _displayDuration = 20000;  // 20 seconds per page
+    uint32_t _durationMinutes = 15;  // Default: 15 minutes (non-persistent, session only)
     
     // Countdown state
     bool _isRunning = false;
