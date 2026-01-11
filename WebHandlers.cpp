@@ -4,6 +4,7 @@
 #include "BackupManager.hpp"
 #include "ThemeParkModule.hpp"
 #include "SofaScoreLiveModule.hpp"
+#include "CountdownModule.hpp"
 #include "PanelManager.hpp"
 #include "Application.hpp"
 #include <LittleFS.h>

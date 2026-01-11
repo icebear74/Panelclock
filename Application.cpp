@@ -14,6 +14,7 @@
 #include "MultiLogger.hpp"
 #include "PanelStreamer.hpp"
 #include "AnimationsModule.hpp"
+#include "CountdownModule.hpp"
 #include "Version.hpp"
 
 // --- Konstanten ---
