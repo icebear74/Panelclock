@@ -4,6 +4,7 @@
 #include "DrawableModule.hpp"
 #include "GeneralTimeConverter.hpp"
 #include "PsramUtils.hpp"
+#include "TimeUtilities.hpp"
 #include <U8g2_for_Adafruit_GFX.h>
 #include <Adafruit_GFX.h>
 #include <functional>
@@ -23,17 +24,23 @@ enum class ChristmasDisplayMode {
 };
 
 /**
- * @brief Modul zur Anzeige verschiedener Weihnachtsanimationen.
+ * @brief Modul zur Anzeige verschiedener Weihnachts- und Jahreszeiten-Animationen.
  * 
- * Zeigt einen Adventskranz mit 4 Kerzen in verschiedenen Farben.
- * Je nach aktuellem Advent (1-4) brennen die entsprechenden Kerzen
- * mit animierten Flammen. Der Kranz ist mit Tannengrün dekoriert.
+ * Weihnachts-Animationen:
+ * - Adventskranz mit 4 Kerzen in verschiedenen Farben.
+ *   Je nach aktuellem Advent (1-4) brennen die entsprechenden Kerzen
+ *   mit animierten Flammen. Der Kranz ist mit Tannengrün dekoriert.
+ * - Weihnachtsbaum mit Lichtern, Kugeln und Geschenken.
+ * - Kamin mit animiertem Feuer und dekorativen Elementen.
  * 
- * Zusätzlich wird ein Weihnachtsbaum mit Lichtern und Kugeln gezeigt.
+ * Jahreszeiten-Animationen (ganzjährig):
+ * - Frühling: Blumen und Schmetterlinge
+ * - Sommer: Sonne/Mond mit Vögeln und Sternen (Tag/Nacht-Wechsel)
+ * - Herbst: Fallende Blätter
+ * - Winter: Schneeflocken, Schneemann, verschneite Bäume, Schnee am Boden
  * 
  * Das Modul verwendet Priority::PlayNext (OneShot),
- * um während der Adventszeit regelmäßig als nächstes nach dem
- * aktuellen Modul angezeigt zu werden.
+ * um regelmäßig als nächstes nach dem aktuellen Modul angezeigt zu werden.
  */
 class AnimationsModule : public DrawableModule {
 public:
@@ -110,6 +117,7 @@ private:
     int _shuffledLightX[30];
     bool _showTree = false;
     bool _showFireplace = false;
+    bool _showSeasonalAnimation = false;  // Flag for showing seasonal animation instead of holiday
     int _displayCounter = 0;
     
     // Snowflake animation
@@ -118,10 +126,60 @@ private:
         float speed;
         int size;
     };
-    static const int MAX_SNOWFLAKES = 20;
-    Snowflake _snowflakes[MAX_SNOWFLAKES];
+    static const int MAX_SNOWFLAKES = 40;  // Maximum, actual count from config
+    Snowflake* _snowflakes = nullptr;
     bool _snowflakesInitialized = false;
     unsigned long _lastSnowflakeUpdate = 0;
+    
+    // Season animations
+    struct Flower {
+        float x, y;
+        uint16_t color;
+        int size;
+        float swayPhase;
+    };
+    static const int MAX_FLOWERS = 20;  // Maximum, actual count from config
+    Flower* _flowers = nullptr;
+    bool _flowersInitialized = false;
+    
+    struct Butterfly {
+        float x, y;
+        float vx, vy;
+        uint16_t color;
+        int wingPhase;
+    };
+    static const int MAX_BUTTERFLIES = 8;  // Maximum, actual count from config
+    Butterfly* _butterflies = nullptr;
+    bool _butterfliesInitialized = false;
+    unsigned long _lastButterflyUpdate = 0;
+    
+    struct Leaf {
+        float x, y;
+        float vx, vy;
+        float rotation;
+        uint16_t color;
+        int size;
+    };
+    static const int MAX_LEAVES = 30;  // Maximum, actual count from config
+    Leaf* _leaves = nullptr;
+    bool _leavesInitialized = false;
+    unsigned long _lastLeafUpdate = 0;
+    
+    struct Bird {
+        float x, y;
+        float vx;
+        int wingPhase;
+        bool facingRight;
+    };
+    static const int MAX_BIRDS = 6;  // Maximum, actual count from config
+    Bird* _birds = nullptr;
+    bool _birdsInitialized = false;
+    unsigned long _lastBirdUpdate = 0;
+    
+    int _seasonAnimationPhase = 0;
+    unsigned long _lastSeasonAnimUpdate = 0;
+    int _testModeSeasonIndex = 0;  // For cycling through seasons in test mode
+    unsigned long _lastTestModeSwitch = 0;  // Time of last season switch in test mode
     
     // Zufällige Kerzenreihenfolge für jeden Durchgang
     int _candleOrder[4] = {0, 1, 2, 3};
@@ -278,6 +336,61 @@ private:
      * @brief Zeichnet fallende Schneeflocken
      */
     void drawSnowflakes();
+    
+    /**
+     * @brief Zeichnet jahreszeiten-spezifische Animationen
+     */
+    void drawSeasonalAnimations();
+    
+    /**
+     * @brief Zeichnet Frühlingsanimation (Blumen, Schmetterlinge)
+     */
+    void drawSpringAnimation();
+    
+    /**
+     * @brief Zeichnet Sommeranimation (Sonne, Vögel)
+     */
+    void drawSummerAnimation();
+    
+    /**
+     * @brief Zeichnet Herbstanimation (fallende Blätter)
+     */
+    void drawAutumnAnimation();
+    
+    /**
+     * @brief Zeichnet Winteranimation (Schneeflocken, Schneemann, verschneite Landschaft)
+     */
+    void drawWinterAnimation();
+    
+    /**
+     * @brief Initialisiert Frühlingsanimation
+     */
+    void initSpringAnimation();
+    
+    /**
+     * @brief Initialisiert Sommeranimation
+     */
+    void initSummerAnimation();
+    
+    /**
+     * @brief Initialisiert Herbstanimation
+     */
+    void initAutumnAnimation();
+    
+    /**
+     * @brief Initialisiert Winteranimation
+     */
+    void initWinterAnimation();
+    
+    /**
+     * @brief Zeichnet einen Schneemann
+     */
+    void drawSnowman(int x, int y, float scale);
+    
+    /**
+     * @brief Zeichnet verschneite Bäume
+     */
+    void drawSnowyTrees();
     
     /**
      * @brief Zeichnet Countdown bis Silvester

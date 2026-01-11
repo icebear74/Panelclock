@@ -163,6 +163,21 @@ void loadDeviceConfig() {
                 deviceConfig->fireplaceCandleCount = doc["fireplaceCandleCount"] | 2;
                 deviceConfig->fireplaceClockEnabled = doc["fireplaceClockEnabled"] | false;
                 
+                // Jahreszeiten-Animationen
+                deviceConfig->seasonalAnimationsEnabled = doc["seasonalAnimationsEnabled"] | true;
+                deviceConfig->seasonalAnimationsDisplaySec = doc["seasonalAnimationsDisplaySec"] | 15;
+                deviceConfig->seasonalAnimationsRepeatMin = doc["seasonalAnimationsRepeatMin"] | 60;
+                deviceConfig->seasonalWinterWithHolidays = doc["seasonalWinterWithHolidays"] | false;
+                deviceConfig->seasonalAnimationsTestMode = doc["seasonalAnimationsTestMode"] | false;
+                
+                deviceConfig->seasonalSpringFlowerCount = doc["seasonalSpringFlowerCount"] | 12;
+                deviceConfig->seasonalSpringButterflyCount = doc["seasonalSpringButterflyCount"] | 3;
+                deviceConfig->seasonalSummerBirdCount = doc["seasonalSummerBirdCount"] | 2;
+                deviceConfig->seasonalAutumnLeafCount = doc["seasonalAutumnLeafCount"] | 15;
+                deviceConfig->seasonalWinterSnowflakeCount = doc["seasonalWinterSnowflakeCount"] | 20;
+                deviceConfig->seasonalWinterShowSnowman = doc["seasonalWinterShowSnowman"] | true;
+                deviceConfig->seasonalWinterTreeCount = doc["seasonalWinterTreeCount"] | 2;
+                
                 deviceConfig->globalScrollSpeedMs = doc["globalScrollSpeedMs"] | 50;
                 deviceConfig->scrollMode = doc["scrollMode"] | 0;
                 deviceConfig->scrollPauseSec = doc["scrollPauseSec"] | 0;
@@ -321,6 +336,21 @@ void saveDeviceConfig() {
     doc["fireplaceStockingCount"] = deviceConfig->fireplaceStockingCount;
     doc["fireplaceCandleCount"] = deviceConfig->fireplaceCandleCount;
     doc["fireplaceClockEnabled"] = deviceConfig->fireplaceClockEnabled;
+    
+    // Jahreszeiten-Animationen
+    doc["seasonalAnimationsEnabled"] = deviceConfig->seasonalAnimationsEnabled;
+    doc["seasonalAnimationsDisplaySec"] = deviceConfig->seasonalAnimationsDisplaySec;
+    doc["seasonalAnimationsRepeatMin"] = deviceConfig->seasonalAnimationsRepeatMin;
+    doc["seasonalWinterWithHolidays"] = deviceConfig->seasonalWinterWithHolidays;
+    doc["seasonalAnimationsTestMode"] = deviceConfig->seasonalAnimationsTestMode;
+    
+    doc["seasonalSpringFlowerCount"] = deviceConfig->seasonalSpringFlowerCount;
+    doc["seasonalSpringButterflyCount"] = deviceConfig->seasonalSpringButterflyCount;
+    doc["seasonalSummerBirdCount"] = deviceConfig->seasonalSummerBirdCount;
+    doc["seasonalAutumnLeafCount"] = deviceConfig->seasonalAutumnLeafCount;
+    doc["seasonalWinterSnowflakeCount"] = deviceConfig->seasonalWinterSnowflakeCount;
+    doc["seasonalWinterShowSnowman"] = deviceConfig->seasonalWinterShowSnowman;
+    doc["seasonalWinterTreeCount"] = deviceConfig->seasonalWinterTreeCount;
     
     doc["globalScrollSpeedMs"] = deviceConfig->globalScrollSpeedMs;
     doc["scrollMode"] = deviceConfig->scrollMode;
