@@ -26,6 +26,12 @@ void handleSofascoreTournamentsList();
 void handleSofascoreDebugSnapshot();
 void handleStreamPage();
 
+// Countdown handlers
+void handleCountdownPage();
+void handleCountdownStart();
+void handleCountdownStop();
+void handleCountdownStatus();
+
 // Backup handlers
 void handleBackupPage();
 void handleBackupCreate();

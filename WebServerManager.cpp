@@ -44,6 +44,12 @@ void setupWebServer(bool portalMode) {
     server->on("/config_hardware", HTTP_GET, handleConfigHardware);
     server->on("/save_hardware", HTTP_POST, handleSaveHardware);
     
+    // Countdown routes
+    server->on("/countdown", HTTP_GET, handleCountdownPage);
+    server->on("/api/countdown/start", HTTP_POST, handleCountdownStart);
+    server->on("/api/countdown/stop", HTTP_POST, handleCountdownStop);
+    server->on("/api/countdown/status", HTTP_GET, handleCountdownStatus);
+    
     // Backup routes
     server->on("/backup", HTTP_GET, handleBackupPage);
     server->on("/api/backup/create", HTTP_POST, handleBackupCreate);

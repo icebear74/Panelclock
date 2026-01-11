@@ -37,6 +37,7 @@ TankerkoenigModule* tankerkoenigModule = nullptr;
 ThemeParkModule* themeParkModule = nullptr;
 SofaScoreLiveModule* sofascoreMod = nullptr;
 FritzboxModule* fritzboxModule = nullptr;  // Exposed for cleanup before restart
+CountdownModule* countdownModule = nullptr;  // Exposed for web control
 
 // Forward-Deklaration, da in WebServerManager.cpp definiert
 void setupWebServer(bool portalMode);
@@ -89,6 +90,7 @@ Application::~Application() {
     delete _themeParkMod;
     delete _panelStreamer;
     delete _animationsMod;
+    delete _countdownMod;
 }
 
 void Application::begin() {
@@ -145,6 +147,8 @@ void Application::begin() {
     _themeParkMod = new ThemeParkModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), webClient);
     themeParkModule = _themeParkMod;
     _animationsMod = new AnimationsModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, deviceConfig);
+    _countdownMod = new CountdownModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, deviceConfig);
+    countdownModule = _countdownMod;  // Expose globally for web control
     
     _panelManager->registerClockModule(_clockMod);
     _panelManager->registerSensorModule(mwaveSensorModule);
@@ -157,6 +161,7 @@ void Application::begin() {
     _panelManager->registerModule(_weatherMod);
     _panelManager->registerModule(_themeParkMod);
     _panelManager->registerModule(_animationsMod);
+    _panelManager->registerModule(_countdownMod);
 
     _panelManager->displayStatus("Verbinde zu\nWLAN...");
     if (connectionManager->begin()) {
@@ -174,6 +179,9 @@ void Application::begin() {
         _weatherMod->begin();
         _themeParkMod->begin();
         _animationsMod->begin();
+        _countdownMod->onUpdate([this]() {
+            _redrawRequest = true;
+        });
 
         // Determine effective hostname (with fallback if empty)
         bool hostnameEmpty = deviceConfig->hostname.empty();
@@ -341,7 +349,7 @@ void Application::update() {
 
 void Application::executeApplyLiveConfig() {
     LOG_MEMORY_DETAILED("Vor executeApplyLiveConfig");
-    if (!_tankerkoenigMod || !_calendarMod || !_dartsMod || !_fritzMod || !_curiousMod || !_weatherMod || !_themeParkMod || !_animationsMod || !timeConverter || !deviceConfig) return;
+    if (!_tankerkoenigMod || !_calendarMod || !_dartsMod || !_fritzMod || !_curiousMod || !_weatherMod || !_themeParkMod || !_animationsMod || !_countdownMod || !timeConverter || !deviceConfig) return;
     Log.println("[Config] Wende Live-Konfiguration an...");
     
     // Apply debug file logging setting (immediately active)
@@ -361,6 +369,7 @@ void Application::executeApplyLiveConfig() {
     _weatherMod->setConfig(deviceConfig);
     _themeParkMod->setConfig(deviceConfig);
     _animationsMod->setConfig();
+    _countdownMod->setConfig(deviceConfig->countdownEnabled, deviceConfig->countdownDurationMinutes, deviceConfig->countdownDisplaySec);
 
     Log.println("[Config] Live-Konfiguration angewendet.");
     LOG_MEMORY_DETAILED("Nach executeApplyLiveConfig");

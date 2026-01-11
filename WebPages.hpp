@@ -37,6 +37,7 @@ const char HTML_INDEX[] PROGMEM = R"rawliteral(
 <a href="/config_base" class="button button-danger">Grundkonfiguration (mit Neustart)</a>
 <a href="/config_location" class="button">Mein Standort</a>
 <a href="/config_modules" class="button">Anzeige-Module (Live-Update)</a>
+<a href="/countdown" class="button" style="background-color:#2196F3;">Countdown</a>
 <a href="/config_hardware" class="button">Optionale Hardware</a>
 <!-- File manager button added to main menu -->
 <a href="/fs" class="button">Dateimanager</a>
@@ -1352,6 +1353,81 @@ document.getElementById('uploadForm').addEventListener('submit', function(e) {
     xhr.open('POST', '/update', true);
     xhr.send(formData);
 });
+</script>
+)rawliteral";
+
+const char HTML_COUNTDOWN_PAGE[] PROGMEM = R"rawliteral(
+<h1>Countdown</h1>
+<div class="group">
+    <h3>Countdown Einstellungen</h3>
+    <form action="/save_modules" method="POST">
+        <label><input type="checkbox" name="countdownEnabled" {countdownEnabled}> Countdown aktivieren</label>
+        <label for="countdownDurationMinutes">Dauer (Minuten)</label>
+        <input type="number" id="countdownDurationMinutes" name="countdownDurationMinutes" value="{countdownDurationMinutes}" min="1" max="1440">
+        <label for="countdownDisplaySec">Anzeigedauer wenn gestoppt (Sekunden)</label>
+        <input type="number" id="countdownDisplaySec" name="countdownDisplaySec" value="{countdownDisplaySec}" min="5" max="300">
+        <input type="submit" value="Speichern">
+    </form>
+</div>
+
+<div class="group">
+    <h3>Countdown Steuerung</h3>
+    <p id="status" style="color:#4CAF50;font-weight:bold;">Status wird geladen...</p>
+    <button id="startBtn" onclick="startCountdown()" class="button">Start</button>
+    <button id="stopBtn" onclick="stopCountdown()" class="button button-danger">Stop</button>
+</div>
+
+<div class="footer-link"><a href="/">&laquo; Zur&uuml;ck zum Hauptmen&uuml;</a></div>
+
+<script>
+function updateStatus() {
+    fetch('/api/countdown/status')
+        .then(response => response.json())
+        .then(data => {
+            if (data.ok) {
+                document.getElementById('status').textContent = data.running ? 'Countdown läuft' : 'Countdown gestoppt';
+                document.getElementById('status').style.color = data.running ? '#4CAF50' : '#f44336';
+                document.getElementById('startBtn').disabled = data.running;
+                document.getElementById('stopBtn').disabled = !data.running;
+            }
+        })
+        .catch(err => {
+            document.getElementById('status').textContent = 'Fehler beim Laden des Status';
+            document.getElementById('status').style.color = '#f44336';
+        });
+}
+
+function startCountdown() {
+    fetch('/api/countdown/start', { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+            if (data.ok) {
+                alert('Countdown gestartet!');
+                updateStatus();
+            } else {
+                alert('Fehler: ' + (data.message || 'Unbekannter Fehler'));
+            }
+        })
+        .catch(err => alert('Fehler beim Starten: ' + err));
+}
+
+function stopCountdown() {
+    fetch('/api/countdown/stop', { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+            if (data.ok) {
+                alert('Countdown gestoppt!');
+                updateStatus();
+            } else {
+                alert('Fehler: ' + (data.message || 'Unbekannter Fehler'));
+            }
+        })
+        .catch(err => alert('Fehler beim Stoppen: ' + err));
+}
+
+// Update status every 2 seconds
+updateStatus();
+setInterval(updateStatus, 2000);
 </script>
 )rawliteral";
 
