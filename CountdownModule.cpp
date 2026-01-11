@@ -49,7 +49,7 @@ void CountdownModule::resetPaging() {
 }
 
 bool CountdownModule::startCountdown(uint32_t durationMinutes) {
-    if (_isRunning) {
+    if (_isRunning && !_isPaused) {
         Log.println("[Countdown] Already running, ignoring start request");
         return false;
     }
@@ -60,7 +60,10 @@ bool CountdownModule::startCountdown(uint32_t durationMinutes) {
     }
     
     _isRunning = true;
+    _isPaused = false;
     _startTimeMillis = millis();
+    _totalPausedMs = 0;
+    _pausedTimeMillis = 0;
     _targetDurationMs = (unsigned long)_durationMinutes * 60000UL;
     _isFinished = false;
     _blinkPhase = 0;
@@ -93,6 +96,7 @@ void CountdownModule::stopCountdown() {
     }
     
     _isRunning = false;
+    _isPaused = false;
     _isFinished = true;
     
     Log.println("[Countdown] Stopped");
@@ -109,19 +113,78 @@ void CountdownModule::stopCountdown() {
     }
 }
 
+bool CountdownModule::pauseCountdown() {
+    if (!_isRunning || _isPaused) {
+        Log.println("[Countdown] Cannot pause - not running or already paused");
+        return false;
+    }
+    
+    _isPaused = true;
+    _pausedTimeMillis = millis();
+    
+    Log.println("[Countdown] Paused");
+    
+    if (updateCallback) {
+        updateCallback();
+    }
+    
+    return true;
+}
+
+bool CountdownModule::resumeCountdown() {
+    if (!_isRunning || !_isPaused) {
+        Log.println("[Countdown] Cannot resume - not running or not paused");
+        return false;
+    }
+    
+    // Add the paused duration to total paused time
+    _totalPausedMs += (millis() - _pausedTimeMillis);
+    _isPaused = false;
+    _pausedTimeMillis = 0;
+    
+    Log.printf("[Countdown] Resumed (total paused: %lu ms)\n", _totalPausedMs);
+    
+    if (updateCallback) {
+        updateCallback();
+    }
+    
+    return true;
+}
+
+void CountdownModule::resetCountdown() {
+    if (!_isRunning) {
+        Log.println("[Countdown] Cannot reset - not running");
+        return;
+    }
+    
+    // Reset to start with same duration
+    _startTimeMillis = millis();
+    _totalPausedMs = 0;
+    _pausedTimeMillis = 0;
+    _isPaused = false;
+    _isFinished = false;
+    _blinkPhase = 0;
+    
+    Log.println("[Countdown] Reset to start");
+    
+    if (updateCallback) {
+        updateCallback();
+    }
+}
+
 void CountdownModule::tick() {
     // Animation tick for blinking effects
     _blinkPhase = (_blinkPhase + 1) % 20;  // Blink cycle every 20 ticks
     
-    if (_isRunning && updateCallback) {
+    if (_isRunning && !_isPaused && updateCallback) {
         updateCallback();  // Update display for millisecond precision
     }
 }
 
 void CountdownModule::logicTick() {
-    // Check if countdown has finished
-    if (_isRunning) {
-        unsigned long elapsed = millis() - _startTimeMillis;
+    // Check if countdown has finished (only if not paused)
+    if (_isRunning && !_isPaused) {
+        unsigned long elapsed = millis() - _startTimeMillis - _totalPausedMs;
         if (elapsed >= _targetDurationMs) {
             Log.println("[Countdown] Finished!");
             stopCountdown();
@@ -141,7 +204,14 @@ void CountdownModule::calculateRemainingTime(unsigned long& minutes, unsigned lo
         return;
     }
     
-    unsigned long elapsed = ::millis() - _startTimeMillis;
+    // Calculate elapsed time, accounting for paused time
+    unsigned long elapsed;
+    if (_isPaused) {
+        // When paused, use the time at pause point
+        elapsed = _pausedTimeMillis - _startTimeMillis - _totalPausedMs;
+    } else {
+        elapsed = ::millis() - _startTimeMillis - _totalPausedMs;
+    }
     
     if (elapsed >= _targetDurationMs) {
         minutes = 0;
@@ -162,7 +232,13 @@ float CountdownModule::calculatePercentComplete() const {
         return 0.0f;
     }
     
-    unsigned long elapsed = millis() - _startTimeMillis;
+    // Calculate elapsed time, accounting for paused time
+    unsigned long elapsed;
+    if (_isPaused) {
+        elapsed = _pausedTimeMillis - _startTimeMillis - _totalPausedMs;
+    } else {
+        elapsed = ::millis() - _startTimeMillis - _totalPausedMs;
+    }
     
     if (elapsed >= _targetDurationMs) {
         return 100.0f;
@@ -176,7 +252,13 @@ float CountdownModule::calculateCaloriesBurned() const {
         return 0.0f;
     }
     
-    unsigned long elapsed = millis() - _startTimeMillis;
+    // Calculate elapsed time, accounting for paused time
+    unsigned long elapsed;
+    if (_isPaused) {
+        elapsed = _pausedTimeMillis - _startTimeMillis - _totalPausedMs;
+    } else {
+        elapsed = ::millis() - _startTimeMillis - _totalPausedMs;
+    }
     
     if (elapsed >= _targetDurationMs) {
         elapsed = _targetDurationMs;
@@ -221,22 +303,27 @@ void CountdownModule::drawCountdown() {
     
     int y = 20;  // Starting Y position
     
-    // Line 1: Title "COUNTDOWN"
+    // Line 1: Title "COUNTDOWN" or "PAUSED"
     u8g2.setFont(u8g2_font_profont12_tf);
     
-    // Blink red when less than 10 seconds remaining
-    if (mins == 0 && secs < 10) {
-        // Blink red/white
+    const char* title;
+    if (_isPaused) {
+        // Show PAUSED in yellow
+        u8g2.setForegroundColor(0xFFE0);  // Yellow
+        title = "PAUSED";
+    } else if (mins == 0 && secs < 10) {
+        // Blink red/white when less than 10 seconds
         if (_blinkPhase < 10) {
             u8g2.setForegroundColor(0xF800);  // Red
         } else {
             u8g2.setForegroundColor(0xFFFF);  // White
         }
+        title = "COUNTDOWN";
     } else {
         u8g2.setForegroundColor(0x07FF);  // Cyan
+        title = "COUNTDOWN";
     }
     
-    const char* title = "COUNTDOWN";
     int titleWidth = u8g2.getUTF8Width(title);
     u8g2.setCursor((_currentCanvas->width() - titleWidth) / 2, y);
     u8g2.print(title);

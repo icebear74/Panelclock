@@ -48,6 +48,8 @@ void setupWebServer(bool portalMode) {
     server->on("/countdown", HTTP_GET, handleCountdownPage);
     server->on("/api/countdown/start", HTTP_POST, handleCountdownStart);
     server->on("/api/countdown/stop", HTTP_POST, handleCountdownStop);
+    server->on("/api/countdown/pause", HTTP_POST, handleCountdownPause);
+    server->on("/api/countdown/reset", HTTP_POST, handleCountdownReset);
     server->on("/api/countdown/status", HTTP_GET, handleCountdownStatus);
     
     // Backup routes

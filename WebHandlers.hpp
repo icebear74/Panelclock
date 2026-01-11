@@ -30,6 +30,8 @@ void handleStreamPage();
 void handleCountdownPage();
 void handleCountdownStart();
 void handleCountdownStop();
+void handleCountdownPause();
+void handleCountdownReset();
 void handleCountdownStatus();
 
 // Backup handlers

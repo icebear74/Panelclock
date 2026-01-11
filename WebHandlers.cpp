@@ -1565,6 +1565,47 @@ void handleCountdownStop() {
     server->send(200, "application/json", "{\"ok\":true, \"message\":\"Countdown stopped\"}");
 }
 
+void handleCountdownPause() {
+    if (!server) {
+        return;
+    }
+    
+    if (!countdownModule) {
+        server->send(500, "application/json", "{\"ok\":false, \"message\":\"Countdown module not initialized\"}");
+        return;
+    }
+    
+    if (countdownModule->isPaused()) {
+        // Resume if already paused
+        if (countdownModule->resumeCountdown()) {
+            server->send(200, "application/json", "{\"ok\":true, \"message\":\"Countdown resumed\", \"paused\":false}");
+        } else {
+            server->send(400, "application/json", "{\"ok\":false, \"message\":\"Cannot resume countdown\"}");
+        }
+    } else {
+        // Pause if running
+        if (countdownModule->pauseCountdown()) {
+            server->send(200, "application/json", "{\"ok\":true, \"message\":\"Countdown paused\", \"paused\":true}");
+        } else {
+            server->send(400, "application/json", "{\"ok\":false, \"message\":\"Cannot pause countdown\"}");
+        }
+    }
+}
+
+void handleCountdownReset() {
+    if (!server) {
+        return;
+    }
+    
+    if (!countdownModule) {
+        server->send(500, "application/json", "{\"ok\":false, \"message\":\"Countdown module not initialized\"}");
+        return;
+    }
+    
+    countdownModule->resetCountdown();
+    server->send(200, "application/json", "{\"ok\":true, \"message\":\"Countdown reset\"}");
+}
+
 void handleCountdownStatus() {
     if (!server) {
         return;
@@ -1577,6 +1618,8 @@ void handleCountdownStatus() {
     
     PsramString json = "{\"ok\":true, \"running\":";
     json += countdownModule->isRunning() ? "true" : "false";
+    json += ", \"paused\":";
+    json += countdownModule->isPaused() ? "true" : "false";
     json += "}";
     
     server->send(200, "application/json", json.c_str());

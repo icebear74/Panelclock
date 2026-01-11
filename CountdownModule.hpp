@@ -63,10 +63,33 @@ public:
     void stopCountdown();
     
     /**
+     * @brief Pause the countdown timer
+     * @return true if paused successfully
+     */
+    bool pauseCountdown();
+    
+    /**
+     * @brief Resume the countdown timer from pause
+     * @return true if resumed successfully
+     */
+    bool resumeCountdown();
+    
+    /**
+     * @brief Reset the countdown timer to original duration
+     */
+    void resetCountdown();
+    
+    /**
      * @brief Check if countdown is currently running
      * @return true if countdown is active
      */
     bool isRunning() const { return _isRunning; }
+    
+    /**
+     * @brief Check if countdown is currently paused
+     * @return true if countdown is paused
+     */
+    bool isPaused() const { return _isPaused; }
 
     // DrawableModule Interface
     const char* getModuleName() const override { return "CountdownModule"; }
@@ -97,12 +120,15 @@ private:
     std::function<void()> updateCallback;
 
     // Configuration
-    bool _wantsFullscreen = true;  // Default to fullscreen for better visibility
+    bool _wantsFullscreen = false;  // Normal size display (not fullscreen)
     uint32_t _durationMinutes = 15;  // Default: 15 minutes (non-persistent, session only)
     
     // Countdown state
     bool _isRunning = false;
+    bool _isPaused = false;
     unsigned long _startTimeMillis = 0;  // millis() when countdown started
+    unsigned long _pausedTimeMillis = 0;  // millis() when paused
+    unsigned long _totalPausedMs = 0;  // Total time spent paused
     unsigned long _targetDurationMs = 0;  // Total duration in milliseconds
     
     // Interrupt management
