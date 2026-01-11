@@ -573,6 +573,11 @@ void handleSaveModules() {
         }
         else { deviceConfig->fritzboxIp = ""; }
     }
+    
+    // Countdown configuration
+    deviceConfig->countdownEnabled = server->hasArg("countdownEnabled");
+    deviceConfig->countdownDurationMinutes = server->arg("countdownDurationMinutes").toInt();
+    deviceConfig->countdownDisplaySec = server->arg("countdownDisplaySec").toInt();
 
     saveDeviceConfig();
     applyLiveConfig();
