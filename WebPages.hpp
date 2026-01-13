@@ -37,6 +37,7 @@ const char HTML_INDEX[] PROGMEM = R"rawliteral(
 <a href="/config_base" class="button button-danger">Grundkonfiguration (mit Neustart)</a>
 <a href="/config_location" class="button">Mein Standort</a>
 <a href="/config_modules" class="button">Anzeige-Module (Live-Update)</a>
+<a href="/countdown" class="button" style="background-color:#2196F3;">Countdown</a>
 <a href="/config_hardware" class="button">Optionale Hardware</a>
 <!-- File manager button added to main menu -->
 <a href="/fs" class="button">Dateimanager</a>
@@ -1394,6 +1395,136 @@ document.getElementById('uploadForm').addEventListener('submit', function(e) {
     xhr.open('POST', '/update', true);
     xhr.send(formData);
 });
+</script>
+)rawliteral";
+
+const char HTML_COUNTDOWN_PAGE[] PROGMEM = R"rawliteral(
+<h1>Countdown Timer</h1>
+<p style="color:#bbb;margin-bottom:20px;">Einfacher Countdown-Timer für Sport, Kochen oder andere Zeiterfassung.</p>
+
+<div class="group">
+    <h3>Countdown Steuerung</h3>
+    <p id="status" style="color:#4CAF50;font-weight:bold;margin-bottom:15px;">Status wird geladen...</p>
+    
+    <label for="durationInput">Dauer (Minuten)</label>
+    <input type="number" id="durationInput" value="15" min="1" max="1440" style="width:100%;margin-bottom:15px;">
+    
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <button id="startBtn" onclick="startCountdown()" class="button" style="background-color:#4CAF50;margin:0;">Start</button>
+        <button id="stopBtn" onclick="stopCountdown()" class="button button-danger" style="margin:0;">Stop</button>
+        <button id="pauseBtn" onclick="pauseCountdown()" class="button" style="background-color:#FF9800;margin:0;">Pause</button>
+        <button id="resetBtn" onclick="resetCountdown()" class="button" style="background-color:#2196F3;margin:0;">Reset</button>
+    </div>
+</div>
+
+<div class="group">
+    <h3>Info</h3>
+    <p style="color:#bbb;">Der Countdown zeigt auf dem Display:</p>
+    <ul style="color:#bbb;">
+        <li>Zeit in MM:SS.mmm (Millisekunden-Genauigkeit)</li>
+        <li>Fortschritt in Prozent mit Balken</li>
+        <li>Verbrannte Kalorien (6 kcal/min)</li>
+    </ul>
+    <p style="color:#bbb;">Der Countdown erscheint automatisch auf dem Display (normale Größe, hohe Priorität).</p>
+</div>
+
+<div class="footer-link"><a href="/">&laquo; Zur&uuml;ck zum Hauptmen&uuml;</a></div>
+
+<script>
+function updateStatus() {
+    fetch('/api/countdown/status')
+        .then(response => response.json())
+        .then(data => {
+            if (data.ok) {
+                let statusText = 'Countdown bereit';
+                let statusColor = '#888';
+                
+                if (data.running && data.paused) {
+                    statusText = 'Countdown pausiert';
+                    statusColor = '#FF9800';
+                } else if (data.running) {
+                    statusText = 'Countdown läuft';
+                    statusColor = '#4CAF50';
+                }
+                
+                document.getElementById('status').textContent = statusText;
+                document.getElementById('status').style.color = statusColor;
+                document.getElementById('startBtn').disabled = data.running;
+                document.getElementById('stopBtn').disabled = !data.running;
+                document.getElementById('pauseBtn').disabled = !data.running;
+                document.getElementById('pauseBtn').textContent = data.paused ? 'Resume' : 'Pause';
+                document.getElementById('resetBtn').disabled = !data.running;
+            }
+        })
+        .catch(err => {
+            document.getElementById('status').textContent = 'Fehler beim Laden des Status';
+            document.getElementById('status').style.color = '#f44336';
+        });
+}
+
+function startCountdown() {
+    const duration = parseInt(document.getElementById('durationInput').value);
+    if (!duration || duration < 1 || duration > 1440) {
+        alert('Bitte geben Sie eine gültige Dauer (1-1440 Minuten) ein.');
+        return;
+    }
+    
+    fetch('/api/countdown/start?duration=' + duration, { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+            if (data.ok) {
+                updateStatus();
+            } else {
+                alert('Fehler: ' + (data.message || 'Unbekannter Fehler'));
+            }
+        })
+        .catch(err => alert('Fehler beim Starten: ' + err));
+}
+
+function stopCountdown() {
+    fetch('/api/countdown/stop', { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+            if (data.ok) {
+                updateStatus();
+            } else {
+                alert('Fehler: ' + (data.message || 'Unbekannter Fehler'));
+            }
+        })
+        .catch(err => alert('Fehler beim Stoppen: ' + err));
+}
+
+function pauseCountdown() {
+    fetch('/api/countdown/pause', { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+            if (data.ok) {
+                updateStatus();
+            } else {
+                alert('Fehler: ' + (data.message || 'Unbekannter Fehler'));
+            }
+        })
+        .catch(err => alert('Fehler beim Pausieren: ' + err));
+}
+
+function resetCountdown() {
+    if (confirm('Countdown wirklich zurücksetzen?')) {
+        fetch('/api/countdown/reset', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.ok) {
+                    updateStatus();
+                } else {
+                    alert('Fehler: ' + (data.message || 'Unbekannter Fehler'));
+                }
+            })
+            .catch(err => alert('Fehler beim Zurücksetzen: ' + err));
+    }
+}
+
+// Update status every 2 seconds
+updateStatus();
+setInterval(updateStatus, 2000);
 </script>
 )rawliteral";
 

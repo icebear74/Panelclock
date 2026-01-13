@@ -4,6 +4,7 @@
 #include "BackupManager.hpp"
 #include "ThemeParkModule.hpp"
 #include "SofaScoreLiveModule.hpp"
+#include "CountdownModule.hpp"
 #include "PanelManager.hpp"
 #include "Application.hpp"
 #include <LittleFS.h>
@@ -33,6 +34,7 @@ extern TankerkoenigModule* tankerkoenigModule;
 extern BackupManager* backupManager;
 extern ThemeParkModule* themeParkModule;
 extern FritzboxModule* fritzboxModule;
+extern CountdownModule* countdownModule;
 extern bool portalRunning;
 
 // Forward declarations of global functions (declared in WebServerManager.hpp)
@@ -599,6 +601,8 @@ void handleSaveModules() {
         }
         else { deviceConfig->fritzboxIp = ""; }
     }
+    
+    // Countdown module - no persistent config needed, always available
 
     saveDeviceConfig();
     applyLiveConfig();
@@ -1506,3 +1510,118 @@ void handleSofascoreDebugSnapshot() {
     server->send(501, "application/json", "{\"ok\":false, \"message\":\"Debug feature not compiled (SOFASCORE_DEBUG_JSON=0)\"}");
 #endif
 }
+
+// ========================================
+// Countdown Handlers
+// ========================================
+
+void handleCountdownPage() {
+    if (!server) return;
+    
+    PsramString page = (const char*)FPSTR(HTML_PAGE_HEADER);
+    PsramString content = (const char*)FPSTR(HTML_COUNTDOWN_PAGE);
+    
+    // No placeholders to replace - countdown is always available
+    
+    page += content;
+    page += (const char*)FPSTR(HTML_PAGE_FOOTER);
+    server->send(200, "text/html", page.c_str());
+}
+
+void handleCountdownStart() {
+    if (!server) {
+        return;
+    }
+    
+    if (!countdownModule) {
+        server->send(500, "application/json", "{\"ok\":false, \"message\":\"Countdown module not initialized\"}");
+        return;
+    }
+    
+    // Get optional duration parameter from request
+    uint32_t duration = 0;
+    if (server->hasArg("duration")) {
+        duration = server->arg("duration").toInt();
+    }
+    
+    if (countdownModule->startCountdown(duration)) {
+        server->send(200, "application/json", "{\"ok\":true, \"message\":\"Countdown started\"}");
+    } else {
+        server->send(400, "application/json", "{\"ok\":false, \"message\":\"Countdown already running\"}");
+    }
+}
+
+void handleCountdownStop() {
+    if (!server) {
+        return;
+    }
+    
+    if (!countdownModule) {
+        server->send(500, "application/json", "{\"ok\":false, \"message\":\"Countdown module not initialized\"}");
+        return;
+    }
+    
+    countdownModule->stopCountdown();
+    server->send(200, "application/json", "{\"ok\":true, \"message\":\"Countdown stopped\"}");
+}
+
+void handleCountdownPause() {
+    if (!server) {
+        return;
+    }
+    
+    if (!countdownModule) {
+        server->send(500, "application/json", "{\"ok\":false, \"message\":\"Countdown module not initialized\"}");
+        return;
+    }
+    
+    if (countdownModule->isPaused()) {
+        // Resume if already paused
+        if (countdownModule->resumeCountdown()) {
+            server->send(200, "application/json", "{\"ok\":true, \"message\":\"Countdown resumed\", \"paused\":false}");
+        } else {
+            server->send(400, "application/json", "{\"ok\":false, \"message\":\"Cannot resume countdown\"}");
+        }
+    } else {
+        // Pause if running
+        if (countdownModule->pauseCountdown()) {
+            server->send(200, "application/json", "{\"ok\":true, \"message\":\"Countdown paused\", \"paused\":true}");
+        } else {
+            server->send(400, "application/json", "{\"ok\":false, \"message\":\"Cannot pause countdown\"}");
+        }
+    }
+}
+
+void handleCountdownReset() {
+    if (!server) {
+        return;
+    }
+    
+    if (!countdownModule) {
+        server->send(500, "application/json", "{\"ok\":false, \"message\":\"Countdown module not initialized\"}");
+        return;
+    }
+    
+    countdownModule->resetCountdown();
+    server->send(200, "application/json", "{\"ok\":true, \"message\":\"Countdown reset\"}");
+}
+
+void handleCountdownStatus() {
+    if (!server) {
+        return;
+    }
+    
+    if (!countdownModule) {
+        server->send(500, "application/json", "{\"ok\":false, \"message\":\"Countdown module not initialized\"}");
+        return;
+    }
+    
+    PsramString json = "{\"ok\":true, \"running\":";
+    json += countdownModule->isRunning() ? "true" : "false";
+    json += ", \"paused\":";
+    json += countdownModule->isPaused() ? "true" : "false";
+    json += "}";
+    
+    server->send(200, "application/json", json.c_str());
+}
+

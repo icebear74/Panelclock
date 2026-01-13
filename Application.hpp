@@ -15,6 +15,7 @@
 #include "PanelStreamer.hpp" // HINZUGEFÜGT
 #include "BackupManager.hpp" // HINZUGEFÜGT
 #include "AnimationsModule.hpp" // HINZUGEFÜGT
+#include "CountdownModule.hpp" // HINZUGEFÜGT
 
 // Forward-Deklarationen, um zirkuläre Abhängigkeiten in Headern zu vermeiden
 class PanelManager;
@@ -30,6 +31,7 @@ class ThemeParkModule; // HINZUGEFÜGT
 class PanelStreamer; // HINZUGEFÜGT
 class BackupManager; // HINZUGEFÜGT
 class AnimationsModule; // HINZUGEFÜGT
+class CountdownModule; // HINZUGEFÜGT
 
 /**
  * @brief Hauptanwendungsklasse, die den gesamten Lebenszyklus der Panelclock steuert.
@@ -136,6 +138,8 @@ private:
     BackupManager* _backupManager = nullptr; // HINZUGEFÜGT
     /// @brief Zeiger auf das Animations-Modul (Adventskranz, Weihnachtsbaum, Kamin).
     AnimationsModule* _animationsMod = nullptr;
+    /// @brief Zeiger auf das Countdown-Modul.
+    CountdownModule* _countdownMod = nullptr;
     
     /// @brief Flag, das eine sofortige Neuzeichnung des Displays anfordert.
     bool _redrawRequest = false;

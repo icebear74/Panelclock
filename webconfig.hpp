@@ -305,6 +305,10 @@ struct DeviceConfig {
     int scrollPauseSec = 0;
     /// @brief Scroll-Richtung: 0 = Normal (nach links), 1 = Rückwärts (nach rechts)
     int scrollReverse = 0;
+    
+    // --- Countdown Modul ---
+    // Note: Countdown is always available as utility function, no enable/disable needed
+    // Duration is non-persistent and only used for the current session
 };
 
 // Deklarationen für globale Variablen und Funktionen
