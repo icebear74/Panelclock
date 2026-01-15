@@ -107,8 +107,10 @@ void DartsRankingModule::setConfig(bool oomEnabled, bool proTourEnabled, uint32_
     _currentTicksPerPage = _pageDisplayDuration / 100;
     if (_currentTicksPerPage == 0) _currentTicksPerPage = 1;
 
-    if (oomEnabled) webClient->registerResource("https://www.dartsrankings.com/", fetchIntervalMinutes, nullptr);
-    if (proTourEnabled) webClient->registerResource("https://www.dartsrankings.com/protour", fetchIntervalMinutes, nullptr);
+    // Use registerResourceSeconds with force_new=true to allow both URLs to be registered
+    // Without force_new, the host-based matching in registerResource overwrites the first URL
+    if (oomEnabled) webClient->registerResourceSeconds("https://www.dartsrankings.com/", fetchIntervalMinutes * 60, false, true, nullptr);
+    if (proTourEnabled) webClient->registerResourceSeconds("https://www.dartsrankings.com/protour", fetchIntervalMinutes * 60, false, true, nullptr);
     
     setTrackedPlayers(trackedPlayers);
     

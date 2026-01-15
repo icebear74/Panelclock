@@ -76,6 +76,8 @@ struct DeviceConfig {
     int dartsSofascoreDisplaySec = 20;
     /// @brief Kommaseparierte Liste der aktivierten Turnier-IDs (leer = alle Turniere).
     PsramString dartsSofascoreTournamentIds;
+    /// @brief Turnier-Auswahl invertieren (true = ausgewählte Turniere AUSschließen statt einschließen).
+    bool dartsSofascoreTournamentExcludeMode = false;
     /// @brief Vollbild-Modus für SofaScore Live-Spiele aktivieren.
     bool dartsSofascoreFullscreen = false;
     /// @brief Live-Spiele unterbrechend anzeigen (Priority::LowPriorityInterrupt).
