@@ -254,6 +254,7 @@ void handleConfigModules() {
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->dartsSofascoreFetchIntervalMin); replaceAll(content, "{dartsSofascoreFetchIntervalMin}", num_buf);
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->dartsSofascoreDisplaySec); replaceAll(content, "{dartsSofascoreDisplaySec}", num_buf);
     replaceAll(content, "{dartsSofascoreTournamentIds}", deviceConfig->dartsSofascoreTournamentIds.c_str());
+    replaceAll(content, "{dartsSofascoreTournamentExcludeMode_checked}", deviceConfig->dartsSofascoreTournamentExcludeMode ? "checked" : "");
     replaceAll(content, "{dartsSofascoreFullscreen_checked}", deviceConfig->dartsSofascoreFullscreen ? "checked" : "");
     replaceAll(content, "{dartsSofascoreInterruptOnLive_checked}", deviceConfig->dartsSofascoreInterruptOnLive ? "checked" : "");
     snprintf(num_buf, sizeof(num_buf), "%d", deviceConfig->dartsSofascorePlayNextMinutes); replaceAll(content, "{dartsSofascorePlayNextMinutes}", num_buf);
@@ -565,6 +566,7 @@ void handleSaveModules() {
     deviceConfig->dartsSofascoreFetchIntervalMin = server->arg("dartsSofascoreFetchIntervalMin").toInt();
     deviceConfig->dartsSofascoreDisplaySec = server->arg("dartsSofascoreDisplaySec").toInt();
     deviceConfig->dartsSofascoreTournamentIds = server->arg("dartsSofascoreTournamentIds").c_str();
+    deviceConfig->dartsSofascoreTournamentExcludeMode = server->hasArg("dartsSofascoreTournamentExcludeMode");
     deviceConfig->dartsSofascoreFullscreen = server->hasArg("dartsSofascoreFullscreen");
     deviceConfig->dartsSofascoreInterruptOnLive = server->hasArg("dartsSofascoreInterruptOnLive");
     deviceConfig->dartsSofascorePlayNextMinutes = server->arg("dartsSofascorePlayNextMinutes").toInt();
@@ -583,7 +585,8 @@ void handleSaveModules() {
             deviceConfig->dartsSofascorePlayNextMinutes,
             deviceConfig->dartsSofascoreContinuousLive,
             deviceConfig->dartsSofascoreLiveCheckIntervalSec,
-            deviceConfig->dartsSofascoreLiveDataFetchIntervalSec
+            deviceConfig->dartsSofascoreLiveDataFetchIntervalSec,
+            deviceConfig->dartsSofascoreTournamentExcludeMode
         );
     }
     
