@@ -16,6 +16,7 @@
 #include "AnimationsModule.hpp"
 #include "CountdownModule.hpp"
 #include "Version.hpp"
+#include "FragmentationMonitor.hpp"
 
 // --- Konstanten ---
 constexpr uint16_t OTA_PORT = 3232; // Standard ArduinoOTA port
