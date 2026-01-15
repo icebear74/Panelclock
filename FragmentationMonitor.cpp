@@ -9,11 +9,16 @@ int FragmentationMonitor::bufferIndex = 0;
 int FragmentationMonitor::operationCount = 0;
 SemaphoreHandle_t FragmentationMonitor::bufferMutex = nullptr;
 
+// Baseline tracking for detecting NEW fragmentation
+uint32_t FragmentationMonitor::baselineLargestBlock = 0;
+uint32_t FragmentationMonitor::baselineFreeBytes = 0;
+unsigned long FragmentationMonitor::baselineUpdateTime = 0;
+
 // Global instance
 FragmentationMonitor* g_FragMonitor = nullptr;
 
 FragmentationMonitor::FragmentationMonitor() 
-    : fragmentedSince(0), lastFragmentedState(false) {
+    : fragmentedSince(0), lastFragmentedState(false), lastBaselineUpdate(0) {
 }
 
 FragmentationMonitor::~FragmentationMonitor() {
@@ -66,6 +71,15 @@ void FragmentationMonitor::begin() {
     Log.printf("[FragMon] Startup heap: free=%u, largestBlock=%u, blocks=%u\n", 
                free, largestBlock, freeBlocks);
     
+    // Initialize baseline with current values
+    baselineLargestBlock = largestBlock;
+    baselineFreeBytes = free;
+    baselineUpdateTime = millis();
+    lastBaselineUpdate = millis();
+    
+    Log.printf("[FragMon] Baseline set: largestBlock=%u, freeBytes=%u\n",
+               baselineLargestBlock, baselineFreeBytes);
+    
     Log.println("[FragMon] Initialization complete");
 }
 
@@ -73,22 +87,40 @@ void FragmentationMonitor::periodicTick() {
     // Check current fragmentation state
     bool currentlyFragmented = isFragmented();
     
+    // Update baseline periodically when not fragmented
+    if (!currentlyFragmented && (millis() - lastBaselineUpdate) >= FRAG_BASELINE_UPDATE_INTERVAL_MS) {
+        updateBaseline();
+        lastBaselineUpdate = millis();
+    }
+    
     // State change detection
     if (currentlyFragmented && !lastFragmentedState) {
         // Just became fragmented
         fragmentedSince = millis();
-        Log.println("[FragMon] WARNING: Heap fragmentation detected!");
         
         uint32_t free, largestBlock, freeBlocks;
         getHeapStats(free, largestBlock, freeBlocks);
-        Log.printf("[FragMon] Heap: free=%u, largestBlock=%u (%.1f%%), blocks=%u\n",
+        
+        // Calculate degradation from baseline
+        int32_t degradation = baselineLargestBlock - largestBlock;
+        float degradationPercent = (baselineLargestBlock > 0) ? 
+                                   (degradation * 100.0f / baselineLargestBlock) : 0.0f;
+        
+        Log.println("[FragMon] WARNING: Heap fragmentation detected!");
+        Log.printf("[FragMon] Current: free=%u, largestBlock=%u (%.1f%%), blocks=%u\n",
                    free, largestBlock, (largestBlock * 100.0f / free), freeBlocks);
+        Log.printf("[FragMon] Baseline: largestBlock=%u (degraded by %d bytes, %.1f%%)\n",
+                   baselineLargestBlock, degradation, degradationPercent);
         
     } else if (!currentlyFragmented && lastFragmentedState) {
         // Fragmentation resolved
         unsigned long duration = millis() - fragmentedSince;
         Log.printf("[FragMon] Fragmentation resolved after %lu ms\n", duration);
         fragmentedSince = 0;
+        
+        // Update baseline immediately after recovery
+        updateBaseline();
+        lastBaselineUpdate = millis();
         
     } else if (currentlyFragmented && fragmentedSince > 0) {
         // Check if fragmentation persists
@@ -99,8 +131,8 @@ void FragmentationMonitor::periodicTick() {
             Log.printf("[FragMon] ALERT: Fragmentation persisted for %lu ms - dumping log!\n", duration);
             dumpToFile();
             
-            // Reset timer to avoid repeated dumps
-            fragmentedSince = millis();
+            // Reset timer to avoid repeated dumps (only dump once per 5 minutes)
+            fragmentedSince = millis() - (FRAG_PERSIST_TIME_MS - 300000);
         }
     }
     
@@ -143,13 +175,24 @@ bool FragmentationMonitor::isFragmented() {
     multi_heap_info_t info;
     heap_caps_get_info(&info, MALLOC_CAP_INTERNAL);
     
-    // Fragmented if largest block < FRAG_THRESHOLD_PERCENT% of total free
-    // AND we have enough free memory to care about fragmentation
+    // Not enough free memory to care about fragmentation
     if (info.total_free_bytes < FRAG_MIN_FREE_BYTES) {
-        return false;  // Too little memory to worry about fragmentation
+        return false;
     }
     
-    return (info.largest_free_block < (info.total_free_bytes * FRAG_THRESHOLD_PERCENT / 100));
+    // If we don't have a baseline yet, we're not fragmented
+    if (baselineLargestBlock == 0) {
+        return false;
+    }
+    
+    // NEW FRAGMENTATION DETECTION: Check if largest_free_block has degraded significantly
+    // from baseline (indicates NEW fragmentation occurring over time)
+    int32_t degradation = baselineLargestBlock - info.largest_free_block;
+    float degradationPercent = (baselineLargestBlock > 0) ? 
+                               (degradation * 100.0f / baselineLargestBlock) : 0.0f;
+    
+    // Alert if largest block has degraded by FRAG_DEGRADATION_THRESHOLD_PERCENT or more
+    return (degradationPercent >= FRAG_DEGRADATION_THRESHOLD_PERCENT);
 }
 
 void FragmentationMonitor::getHeapStats(uint32_t& free, uint32_t& largestBlock, uint32_t& freeBlocks) {
@@ -159,6 +202,21 @@ void FragmentationMonitor::getHeapStats(uint32_t& free, uint32_t& largestBlock, 
     free = info.total_free_bytes;
     largestBlock = info.largest_free_block;
     freeBlocks = info.free_blocks;
+}
+
+void FragmentationMonitor::updateBaseline() {
+    uint32_t free, largestBlock, freeBlocks;
+    getHeapStats(free, largestBlock, freeBlocks);
+    
+    // Only update baseline if current state is better than baseline
+    // This prevents baseline from degrading over time
+    if (largestBlock > baselineLargestBlock) {
+        Log.printf("[FragMon] Updating baseline: %u -> %u bytes (improvement: %d)\n",
+                   baselineLargestBlock, largestBlock, (int32_t)(largestBlock - baselineLargestBlock));
+        baselineLargestBlock = largestBlock;
+        baselineFreeBytes = free;
+        baselineUpdateTime = millis();
+    }
 }
 
 void FragmentationMonitor::dumpToFile() {
@@ -192,6 +250,19 @@ void FragmentationMonitor::dumpToFile() {
     
     snprintf(lineBuf, sizeof(lineBuf), "Current Heap: free=%u, largestBlock=%u (%.1f%%), freeBlocks=%u\n",
              free, largestBlock, (largestBlock * 100.0f / free), freeBlocks);
+    logFile.write((const uint8_t*)lineBuf, strlen(lineBuf));
+    
+    // Add baseline information
+    int32_t degradation = baselineLargestBlock - largestBlock;
+    float degradationPercent = (baselineLargestBlock > 0) ? 
+                               (degradation * 100.0f / baselineLargestBlock) : 0.0f;
+    
+    snprintf(lineBuf, sizeof(lineBuf), "Baseline: largestBlock=%u (set %lu ms ago)\n",
+             baselineLargestBlock, millis() - baselineUpdateTime);
+    logFile.write((const uint8_t*)lineBuf, strlen(lineBuf));
+    
+    snprintf(lineBuf, sizeof(lineBuf), "Degradation: %d bytes (%.1f%% loss from baseline)\n",
+             degradation, degradationPercent);
     logFile.write((const uint8_t*)lineBuf, strlen(lineBuf));
     
     snprintf(lineBuf, sizeof(lineBuf), "\n=== Recent Operations (last %d) ===\n", 
