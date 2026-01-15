@@ -1574,7 +1574,7 @@ void SofaScoreLiveModule::drawDailyResults() {
     // Adjust line height and starting position based on screen size
     // Y-coordinates are BOTTOM-aligned for u8g2
     // Each match takes 2 lines now: player names (line 1) + countries (line 2)
-    // Normal (64px): header ~18px, need to fit 3 matches of 15px each (8px + 7px) = 45px, total 63px
+    // Normal (64px): header ~18px, need to fit 3 matches of 15px each (8px + 7px) = 45px, total 63px (1px buffer)
     // Fullscreen (96px): header ~24px, need to fit 4 matches of 17px each (9px + 8px)
     int y = wantsFullscreen() ? 33 : 28;  // Start below tournament name (bottom-aligned) - reduced from 30 to 28 for non-fullscreen
     const int LINE1_HEIGHT = wantsFullscreen() ? 9 : 8;  // Player names line
@@ -1690,9 +1690,12 @@ void SofaScoreLiveModule::drawDailyResults() {
         u8g2.setFont(u8g2_font_4x6_tf);  // Smaller font for countries
         u8g2.setForegroundColor(0xAAAA);  // Gray color
         
-        // In non-fullscreen mode, move country text slightly higher to ensure it fits
-        // In fullscreen mode, keep 1px offset for spacing
-        int countryY = wantsFullscreen() ? (y - 1) : (y - 2);
+        // Adjust vertical offset based on display mode to prevent text cutoff
+        // Fullscreen has more vertical space, so 1px offset is sufficient
+        // Non-fullscreen needs 2px offset to fit within 64px height
+        const int FULLSCREEN_COUNTRY_OFFSET = 1;
+        const int NORMAL_COUNTRY_OFFSET = 2;
+        int countryY = wantsFullscreen() ? (y - FULLSCREEN_COUNTRY_OFFSET) : (y - NORMAL_COUNTRY_OFFSET);
         
         // Home country (left)
         if (match.homeCountry) {
