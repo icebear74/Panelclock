@@ -2,6 +2,7 @@
 #include "WebClientModule.hpp"
 #include "webconfig.hpp"
 #include "MultiLogger.hpp"
+#include "FragmentationMonitor.hpp"
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <LittleFS.h>
@@ -642,6 +643,7 @@ void SofaScoreLiveModule::switchToNextMode() {
 }
 
 void SofaScoreLiveModule::queueData() {
+    LOG_MEM_OP("SofaScore::queueData");
     if (!webClient) return;
     
     // Don't make web requests if module is disabled
@@ -757,6 +759,7 @@ void SofaScoreLiveModule::fetchLiveData() {
 }
 
 void SofaScoreLiveModule::updateLiveMatchStats() {
+    LOG_MEM_OP("SofaScore::updateStats");
     // Collect live event IDs while holding mutex, then fetch stats without holding mutex
     std::vector<int, PsramAllocator<int>> liveEventIds;
     std::vector<int, PsramAllocator<int>> eventIdsToRegister;
@@ -815,6 +818,7 @@ void SofaScoreLiveModule::updateLiveMatchStats() {
 }
 
 void SofaScoreLiveModule::processData() {
+    LOG_MEM_OP("SofaScore::processData");
     // Process pending live events data FIRST (higher priority)
     if (live_data_pending) {
         if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(500)) == pdTRUE) {

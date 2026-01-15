@@ -98,21 +98,37 @@ Application::~Application() {
 void Application::begin() {
     LOG_MEMORY_STRATEGIC("Application: Start");
 
+#if ENABLE_FRAG_MONITOR
+    // Initialize FragmentationMonitor VERY EARLY to track startup phase
+    g_FragMonitor = new (ps_malloc(sizeof(FragmentationMonitor))) FragmentationMonitor();
+    if (g_FragMonitor) {
+        g_FragMonitor->begin();
+        LOG_MEM_OP("App::begin START");
+    }
+#endif
+
     if (!LittleFS.begin(true)) {
         Log.println("FATAL: LittleFS konnte nicht initialisiert werden!");
         while(true) delay(1000);
     }
+    LOG_MEM_OP("LittleFS initialized");
 
     hardwareConfig = new HardwareConfig();
     loadHardwareConfig();
+    LOG_MEM_OP("HardwareConfig loaded");
+    
     deviceConfig = new DeviceConfig();
     loadDeviceConfig();
+    LOG_MEM_OP("DeviceConfig loaded");
 
     timeConverter = new GeneralTimeConverter();
+    LOG_MEM_OP("TimeConverter created");
+    
     _panelManager = new PanelManager(*hardwareConfig, *timeConverter);
     if (!_panelManager->begin()) {
         while(true) { delay(1000); }
     }
+    LOG_MEM_OP("PanelManager initialized");
     
     // Show version on startup
     char versionMsg[64];
@@ -125,32 +141,60 @@ void Application::begin() {
     _panelManager->displayStatus("Systemstart...");
 
     connectionManager = new ConnectionManager(*deviceConfig);
+    LOG_MEM_OP("ConnectionManager created");
+    
     webClient = new WebClientModule();
+    LOG_MEM_OP("WebClientModule created");
+    
     HardwareSerial& sensorSerial = Serial1;
     mwaveSensorModule = new MwaveSensorModule(*deviceConfig, *hardwareConfig, sensorSerial);
+    LOG_MEM_OP("MwaveSensorModule created");
+    
     otaManager = new OtaManager(_panelManager->getFullCanvas(), _panelManager->getDisplay(), _panelManager->getVirtualDisplay(), _panelManager->getU8g2());
+    LOG_MEM_OP("OtaManager created");
+    
     dnsServer = new DNSServer();
     server = new WebServer(80);
+    LOG_MEM_OP("Network servers created");
 
     _panelManager->displayStatus("Module werden\nerstellt...");
     _clockMod = new ClockModule(*_panelManager->getU8g2(), *_panelManager->getCanvasTime(), *timeConverter);
+    LOG_MEM_OP("ClockModule created");
     
     _tankerkoenigMod = new TankerkoenigModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, TIME_AREA_H, webClient, deviceConfig);
     tankerkoenigModule = _tankerkoenigMod; 
+    LOG_MEM_OP("TankerkoenigModule created");
     
     _calendarMod = new CalendarModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, webClient, deviceConfig);
+    LOG_MEM_OP("CalendarModule created");
+    
     _dartsMod = new DartsRankingModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), webClient, deviceConfig);
+    LOG_MEM_OP("DartsRankingModule created");
+    
     _sofascoreMod = new SofaScoreLiveModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, webClient, deviceConfig);
     sofascoreMod = _sofascoreMod;  // Expose globally for web configuration
+    LOG_MEM_OP("SofaScoreModule created");
+    
     _fritzMod = new FritzboxModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), webClient);
     fritzboxModule = _fritzMod;  // Expose globally for cleanup before restart
+    LOG_MEM_OP("FritzboxModule created");
+    
     _curiousMod = new CuriousHolidaysModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, webClient, deviceConfig);
+    LOG_MEM_OP("CuriousHolidaysModule created");
+    
     _weatherMod = new WeatherModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, webClient);
+    LOG_MEM_OP("WeatherModule created");
+    
     _themeParkMod = new ThemeParkModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), webClient);
     themeParkModule = _themeParkMod;
+    LOG_MEM_OP("ThemeParkModule created");
+    
     _animationsMod = new AnimationsModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, deviceConfig);
+    LOG_MEM_OP("AnimationsModule created");
+    
     _countdownMod = new CountdownModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, deviceConfig);
     countdownModule = _countdownMod;  // Expose globally for web control
+    LOG_MEM_OP("CountdownModule created");
     
     _panelManager->registerClockModule(_clockMod);
     _panelManager->registerSensorModule(mwaveSensorModule);
@@ -164,11 +208,13 @@ void Application::begin() {
     _panelManager->registerModule(_themeParkMod);
     _panelManager->registerModule(_animationsMod);
     _panelManager->registerModule(_countdownMod);
+    LOG_MEM_OP("All modules registered");
 
     _panelManager->displayStatus("Verbinde zu\nWLAN...");
     if (connectionManager->begin()) {
         portalRunning = false;
         LOG_MEMORY_DETAILED("Nach WiFi & NTP");
+        LOG_MEM_OP("WiFi connected");
         BaseType_t app_core = xPortGetCoreID();
         BaseType_t network_core = (app_core == 0) ? 1 : 0;
         
@@ -176,11 +222,14 @@ void Application::begin() {
         mwaveSensorModule->begin();
         _tankerkoenigMod->begin();
         webClient->begin();
+        LOG_MEM_OP("Core modules started");
+        
         _fritzMod->begin(network_core);
         _curiousMod->begin();
         _weatherMod->begin();
         _themeParkMod->begin();
         _animationsMod->begin();
+        LOG_MEM_OP("All network modules started");
         _countdownMod->onUpdate([this]() {
             _redrawRequest = true;
         });
@@ -333,6 +382,17 @@ void Application::update() {
     if(_themeParkMod) _themeParkMod->processData(); // HINZUGEFÜGT
 
     if (_panelManager) _panelManager->tick();
+
+#if ENABLE_FRAG_MONITOR
+    // Call FragmentationMonitor periodicTick every ~100ms
+    if (g_FragMonitor) {
+        static unsigned long lastFragMonTick = 0;
+        if (millis() - lastFragMonTick >= 100) {
+            g_FragMonitor->periodicTick();
+            lastFragMonTick = millis();
+        }
+    }
+#endif
 
     bool needsRedraw = _redrawRequest;
     _redrawRequest = false;
