@@ -1697,17 +1697,35 @@ void SofaScoreLiveModule::drawDailyResults() {
         const int NORMAL_COUNTRY_OFFSET = 2;
         int countryY = wantsFullscreen() ? (y - FULLSCREEN_COUNTRY_OFFSET) : (y - NORMAL_COUNTRY_OFFSET);
         
-        // Home country (left)
-        if (match.homeCountry) {
+        // For live/finished matches in non-fullscreen mode, show stats (Avg + CO%) instead of countries
+        if (!wantsFullscreen() && (match.status == MatchStatus::LIVE || match.status == MatchStatus::FINISHED) && 
+            (match.homeAverage > 0.1f || match.awayAverage > 0.1f)) {
+            // Show compact stats: "Avg 95.2/94.1 CO% 42/38"
+            char statsStr[50];
+            if (match.homeCheckoutPercent > 0.1f || match.awayCheckoutPercent > 0.1f) {
+                snprintf(statsStr, sizeof(statsStr), "Avg %.1f/%.1f CO%% %.0f/%.0f", 
+                         match.homeAverage, match.awayAverage,
+                         match.homeCheckoutPercent, match.awayCheckoutPercent);
+            } else {
+                snprintf(statsStr, sizeof(statsStr), "Avg %.1f/%.1f", 
+                         match.homeAverage, match.awayAverage);
+            }
             u8g2.setCursor(MIDDLE_START, countryY);
-            u8g2.print(match.homeCountry);
-        }
-        
-        // Away country (right)
-        if (match.awayCountry) {
-            int countryWidth = u8g2.getUTF8Width(match.awayCountry);
-            u8g2.setCursor(awayStart, countryY);
-            u8g2.print(match.awayCountry);
+            u8g2.print(statsStr);
+        } else {
+            // Show countries (normal behavior for scheduled matches or fullscreen mode)
+            // Home country (left)
+            if (match.homeCountry) {
+                u8g2.setCursor(MIDDLE_START, countryY);
+                u8g2.print(match.homeCountry);
+            }
+            
+            // Away country (right)
+            if (match.awayCountry) {
+                int countryWidth = u8g2.getUTF8Width(match.awayCountry);
+                u8g2.setCursor(awayStart, countryY);
+                u8g2.print(match.awayCountry);
+            }
         }
         
         // Reset color for next match
