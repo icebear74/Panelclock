@@ -1697,35 +1697,17 @@ void SofaScoreLiveModule::drawDailyResults() {
         const int NORMAL_COUNTRY_OFFSET = 2;
         int countryY = wantsFullscreen() ? (y - FULLSCREEN_COUNTRY_OFFSET) : (y - NORMAL_COUNTRY_OFFSET);
         
-        // For live/finished matches in non-fullscreen mode, show stats (Avg + CO%) instead of countries
-        if (!wantsFullscreen() && (match.status == MatchStatus::LIVE || match.status == MatchStatus::FINISHED) && 
-            (match.homeAverage > 0.1f || match.awayAverage > 0.1f)) {
-            // Show compact stats: "Avg 95.2/94.1 CO% 42/38"
-            char statsStr[50];
-            if (match.homeCheckoutPercent > 0.1f || match.awayCheckoutPercent > 0.1f) {
-                snprintf(statsStr, sizeof(statsStr), "Avg %.1f/%.1f CO%% %.0f/%.0f", 
-                         match.homeAverage, match.awayAverage,
-                         match.homeCheckoutPercent, match.awayCheckoutPercent);
-            } else {
-                snprintf(statsStr, sizeof(statsStr), "Avg %.1f/%.1f", 
-                         match.homeAverage, match.awayAverage);
-            }
+        // Home country (left)
+        if (match.homeCountry) {
             u8g2.setCursor(MIDDLE_START, countryY);
-            u8g2.print(statsStr);
-        } else {
-            // Show countries (normal behavior for scheduled matches or fullscreen mode)
-            // Home country (left)
-            if (match.homeCountry) {
-                u8g2.setCursor(MIDDLE_START, countryY);
-                u8g2.print(match.homeCountry);
-            }
-            
-            // Away country (right)
-            if (match.awayCountry) {
-                int countryWidth = u8g2.getUTF8Width(match.awayCountry);
-                u8g2.setCursor(awayStart, countryY);
-                u8g2.print(match.awayCountry);
-            }
+            u8g2.print(match.homeCountry);
+        }
+        
+        // Away country (right)
+        if (match.awayCountry) {
+            int countryWidth = u8g2.getUTF8Width(match.awayCountry);
+            u8g2.setCursor(awayStart, countryY);
+            u8g2.print(match.awayCountry);
         }
         
         // Reset color for next match
@@ -1951,6 +1933,32 @@ void SofaScoreLiveModule::drawLiveMatch() {
             awayWidth = u8g2.getUTF8Width(awayVal);
             u8g2.setCursor(_currentCanvas->width() - awayWidth - 2, y);
             u8g2.print(awayVal);
+        } else {
+            // Non-fullscreen mode - show Checkout percentage below Average
+            u8g2.setFont(u8g2_font_6x10_tf);
+            
+            // Show CO% if available
+            if (match.homeCheckoutPercent > 0.1f || match.awayCheckoutPercent > 0.1f) {
+                char homeVal[12], awayVal[12];
+                snprintf(homeVal, sizeof(homeVal), "%.0f%%", match.homeCheckoutPercent);
+                snprintf(awayVal, sizeof(awayVal), "%.0f%%", match.awayCheckoutPercent);
+                
+                // Home CO% (left)
+                u8g2.setForegroundColor(0xFFFF);
+                u8g2.setCursor(2, y);
+                u8g2.print(homeVal);
+                
+                // Label (center)
+                u8g2.setForegroundColor(0x07FF);  // Cyan for CO%
+                u8g2.setCursor(_currentCanvas->width() / 2 - 11, y);
+                u8g2.print("CO%");
+                
+                // Away CO% (right)
+                u8g2.setForegroundColor(0xFFFF);
+                int awayWidth = u8g2.getUTF8Width(awayVal);
+                u8g2.setCursor(_currentCanvas->width() - awayWidth - 2, y);
+                u8g2.print(awayVal);
+            }
         }
     }
 }
