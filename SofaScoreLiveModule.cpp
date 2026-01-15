@@ -269,7 +269,8 @@ SofaScoreLiveModule::SofaScoreLiveModule(U8G2_FOR_ADAFRUIT_GFX& u8g2_ref, GFXcan
             File file = dir.openNextFile();
             int deletedCount = 0;
             while (file) {
-                String filename = String("/json_debug/") + file.name();
+                char filename[128];
+                snprintf(filename, sizeof(filename), "/json_debug/%s", file.name());
                 file.close();
                 if (LittleFS.remove(filename)) {
                     deletedCount++;
