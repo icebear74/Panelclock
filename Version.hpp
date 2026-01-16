@@ -2,7 +2,7 @@
 #define VERSION_HPP
 
 // Panelclock Firmware Version
-#define PANELCLOCK_VERSION "1.0.0-ecc6041"
+#define PANELCLOCK_VERSION "1.1.0-cdee327"
 #define PANELCLOCK_BUILD_DATE __DATE__
 #define PANELCLOCK_BUILD_TIME __TIME__
 
