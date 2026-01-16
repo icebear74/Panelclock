@@ -103,39 +103,45 @@ void Application::begin() {
     g_FragMonitor = new (ps_malloc(sizeof(FragmentationMonitor))) FragmentationMonitor();
     if (g_FragMonitor) {
         g_FragMonitor->begin();
-        LOG_MEM_OP("App::begin START");
+        LOG_MEM_OP_FORCE("App::begin START");
     }
 #endif
 
+    LOG_MEM_OP_FORCE("Before LittleFS init");
     if (!LittleFS.begin(true)) {
         Log.println("FATAL: LittleFS konnte nicht initialisiert werden!");
         while(true) delay(1000);
     }
-    LOG_MEM_OP("LittleFS initialized");
+    LOG_MEM_OP_FORCE("LittleFS initialized");
 
 #if ENABLE_FRAG_MONITOR
     // Clean up old log directory AFTER LittleFS is ready
     if (g_FragMonitor) {
         g_FragMonitor->cleanupDirectoryOnStartup();
+        LOG_MEM_OP_FORCE("mem_debug cleanup done");
     }
 #endif
 
+    LOG_MEM_OP_FORCE("Creating HardwareConfig");
     hardwareConfig = new HardwareConfig();
     loadHardwareConfig();
-    LOG_MEM_OP("HardwareConfig loaded");
+    LOG_MEM_OP_FORCE("HardwareConfig loaded");
     
+    LOG_MEM_OP_FORCE("Creating DeviceConfig");
     deviceConfig = new DeviceConfig();
     loadDeviceConfig();
-    LOG_MEM_OP("DeviceConfig loaded");
+    LOG_MEM_OP_FORCE("DeviceConfig loaded");
 
+    LOG_MEM_OP_FORCE("Creating TimeConverter");
     timeConverter = new GeneralTimeConverter();
-    LOG_MEM_OP("TimeConverter created");
+    LOG_MEM_OP_FORCE("TimeConverter created");
     
+    LOG_MEM_OP_FORCE("Creating PanelManager");
     _panelManager = new PanelManager(*hardwareConfig, *timeConverter);
     if (!_panelManager->begin()) {
         while(true) { delay(1000); }
     }
-    LOG_MEM_OP("PanelManager initialized");
+    LOG_MEM_OP_FORCE("PanelManager initialized");
     
     // Show version on startup
     char versionMsg[64];
@@ -147,62 +153,80 @@ void Application::begin() {
     
     _panelManager->displayStatus("Systemstart...");
 
+    LOG_MEM_OP_FORCE("Creating ConnectionManager");
     connectionManager = new ConnectionManager(*deviceConfig);
-    LOG_MEM_OP("ConnectionManager created");
+    LOG_MEM_OP_FORCE("ConnectionManager created");
     
+    LOG_MEM_OP_FORCE("Creating WebClientModule");
     webClient = new WebClientModule();
-    LOG_MEM_OP("WebClientModule created");
+    LOG_MEM_OP_FORCE("WebClientModule created");
     
+    LOG_MEM_OP_FORCE("Creating MwaveSensorModule");
     HardwareSerial& sensorSerial = Serial1;
     mwaveSensorModule = new MwaveSensorModule(*deviceConfig, *hardwareConfig, sensorSerial);
-    LOG_MEM_OP("MwaveSensorModule created");
+    LOG_MEM_OP_FORCE("MwaveSensorModule created");
     
+    LOG_MEM_OP_FORCE("Creating OtaManager");
     otaManager = new OtaManager(_panelManager->getFullCanvas(), _panelManager->getDisplay(), _panelManager->getVirtualDisplay(), _panelManager->getU8g2());
-    LOG_MEM_OP("OtaManager created");
+    LOG_MEM_OP_FORCE("OtaManager created");
     
+    LOG_MEM_OP_FORCE("Creating network servers");
     dnsServer = new DNSServer();
     server = new WebServer(80);
-    LOG_MEM_OP("Network servers created");
+    LOG_MEM_OP_FORCE("Network servers created");
 
     _panelManager->displayStatus("Module werden\nerstellt...");
-    _clockMod = new ClockModule(*_panelManager->getU8g2(), *_panelManager->getCanvasTime(), *timeConverter);
-    LOG_MEM_OP("ClockModule created");
     
+    LOG_MEM_OP_FORCE("Creating ClockModule");
+    _clockMod = new ClockModule(*_panelManager->getU8g2(), *_panelManager->getCanvasTime(), *timeConverter);
+    LOG_MEM_OP_FORCE("ClockModule created");
+    
+    LOG_MEM_OP_FORCE("Creating TankerkoenigModule");
     _tankerkoenigMod = new TankerkoenigModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, TIME_AREA_H, webClient, deviceConfig);
     tankerkoenigModule = _tankerkoenigMod; 
-    LOG_MEM_OP("TankerkoenigModule created");
+    LOG_MEM_OP_FORCE("TankerkoenigModule created");
     
+    LOG_MEM_OP_FORCE("Creating CalendarModule");
     _calendarMod = new CalendarModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, webClient, deviceConfig);
-    LOG_MEM_OP("CalendarModule created");
+    LOG_MEM_OP_FORCE("CalendarModule created");
     
+    LOG_MEM_OP_FORCE("Creating DartsRankingModule");
     _dartsMod = new DartsRankingModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), webClient, deviceConfig);
-    LOG_MEM_OP("DartsRankingModule created");
+    LOG_MEM_OP_FORCE("DartsRankingModule created");
     
+    LOG_MEM_OP_FORCE("Creating SofaScoreModule");
     _sofascoreMod = new SofaScoreLiveModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, webClient, deviceConfig);
     sofascoreMod = _sofascoreMod;  // Expose globally for web configuration
-    LOG_MEM_OP("SofaScoreModule created");
+    LOG_MEM_OP_FORCE("SofaScoreModule created");
     
+    LOG_MEM_OP_FORCE("Creating FritzboxModule");
     _fritzMod = new FritzboxModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), webClient);
     fritzboxModule = _fritzMod;  // Expose globally for cleanup before restart
-    LOG_MEM_OP("FritzboxModule created");
+    LOG_MEM_OP_FORCE("FritzboxModule created");
     
+    LOG_MEM_OP_FORCE("Creating CuriousHolidaysModule");
     _curiousMod = new CuriousHolidaysModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, webClient, deviceConfig);
-    LOG_MEM_OP("CuriousHolidaysModule created");
+    LOG_MEM_OP_FORCE("CuriousHolidaysModule created");
     
+    LOG_MEM_OP_FORCE("Creating WeatherModule");
     _weatherMod = new WeatherModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, webClient);
-    LOG_MEM_OP("WeatherModule created");
+    LOG_MEM_OP_FORCE("WeatherModule created");
     
+    LOG_MEM_OP_FORCE("Creating ThemeParkModule");
     _themeParkMod = new ThemeParkModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), webClient);
     themeParkModule = _themeParkMod;
-    LOG_MEM_OP("ThemeParkModule created");
+    LOG_MEM_OP_FORCE("ThemeParkModule created");
     
+    LOG_MEM_OP_FORCE("Creating AnimationsModule");
     _animationsMod = new AnimationsModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, deviceConfig);
-    LOG_MEM_OP("AnimationsModule created");
+    LOG_MEM_OP_FORCE("AnimationsModule created");
     
+    LOG_MEM_OP_FORCE("Creating CountdownModule");
     _countdownMod = new CountdownModule(*_panelManager->getU8g2(), *_panelManager->getCanvasData(), *timeConverter, deviceConfig);
     countdownModule = _countdownMod;  // Expose globally for web control
-    LOG_MEM_OP("CountdownModule created");
+    LOG_MEM_OP_FORCE("CountdownModule created");
     
+    LOG_MEM_OP_FORCE("Registering all modules");
     _panelManager->registerClockModule(_clockMod);
     _panelManager->registerSensorModule(mwaveSensorModule);
     _panelManager->registerModule(_fritzMod);
@@ -215,13 +239,14 @@ void Application::begin() {
     _panelManager->registerModule(_themeParkMod);
     _panelManager->registerModule(_animationsMod);
     _panelManager->registerModule(_countdownMod);
-    LOG_MEM_OP("All modules registered");
+    LOG_MEM_OP_FORCE("All modules registered");
 
     _panelManager->displayStatus("Verbinde zu\nWLAN...");
+    LOG_MEM_OP_FORCE("Starting WiFi connection");
     if (connectionManager->begin()) {
         portalRunning = false;
         LOG_MEMORY_DETAILED("Nach WiFi & NTP");
-        LOG_MEM_OP("WiFi connected");
+        LOG_MEM_OP_FORCE("WiFi connected");
         BaseType_t app_core = xPortGetCoreID();
         BaseType_t network_core = (app_core == 0) ? 1 : 0;
         

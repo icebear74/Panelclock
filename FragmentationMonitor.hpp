@@ -76,8 +76,9 @@ public:
      * @param file Source file (use __FILE__)
      * @param line Line number (use __LINE__)
      * @param operation Operation description
+     * @param forceLog Force logging even if not fragmented (for startup logging)
      */
-    static void logOperation(const char* file, int line, const char* operation);
+    static void logOperation(const char* file, int line, const char* operation, bool forceLog = false);
     
     /**
      * @brief Check if heap is currently fragmented (NEW fragmentation detected)
@@ -137,13 +138,17 @@ private:
 // Global instance (defined in .cpp)
 extern FragmentationMonitor* g_FragMonitor;
 
-// Convenience macro for logging operations
+// Convenience macros for logging operations
 #define LOG_MEM_OP(operation) \
     do { if (g_FragMonitor) FragmentationMonitor::logOperation(__FILE__, __LINE__, operation); } while(0)
 
+#define LOG_MEM_OP_FORCE(operation) \
+    do { if (g_FragMonitor) FragmentationMonitor::logOperation(__FILE__, __LINE__, operation, true); } while(0)
+
 #else
-// If monitoring disabled, macro does nothing
+// If monitoring disabled, macros do nothing
 #define LOG_MEM_OP(operation) do { } while(0)
+#define LOG_MEM_OP_FORCE(operation) do { } while(0)
 #endif // ENABLE_FRAG_MONITOR
 
 #endif // FRAGMENTATIONMONITOR_HPP

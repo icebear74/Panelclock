@@ -1,6 +1,10 @@
 #include "FragmentationMonitor.hpp"
 #include "MultiLogger.hpp"
+#include "GeneralTimeConverter.hpp"
 #include <time.h>
+
+// External time converter from Application
+extern GeneralTimeConverter* timeConverter;
 
 #if ENABLE_FRAG_MONITOR
 
@@ -69,20 +73,30 @@ void FragmentationMonitor::cleanupDirectoryOnStartup() {
     // This is called AFTER LittleFS is initialized but BEFORE any modules run
     Log.println("[FragMon] Cleaning up /mem_debug directory...");
     
-    // Create mem_debug directory - first remove old directory and all its contents
+    // Remove all files in /mem_debug directory if it exists
     if (LittleFS.exists("/mem_debug")) {
-        Log.println("[FragMon] Removing old /mem_debug directory...");
+        Log.println("[FragMon] Removing old files from /mem_debug...");
         
-        // Delete all files in the directory first
+        // First, list all files using PSRAM allocation
+        const int MAX_FILES = 50;
+        char** fileList = (char**)ps_malloc(MAX_FILES * sizeof(char*));
+        if (!fileList) {
+            Log.println("[FragMon] ERROR: Failed to allocate PSRAM for file list");
+            return;
+        }
+        
+        int fileCount = 0;
         File dir = LittleFS.open("/mem_debug");
         if (dir && dir.isDirectory()) {
             File file = dir.openNextFile();
-            while (file) {
+            while (file && fileCount < MAX_FILES) {
                 if (!file.isDirectory()) {
-                    char fullPath[80];
-                    snprintf(fullPath, sizeof(fullPath), "/mem_debug/%s", file.name());
-                    LittleFS.remove(fullPath);
-                    Log.printf("[FragMon] Deleted old log: %s\n", file.name());
+                    // Allocate space for filename in PSRAM
+                    fileList[fileCount] = (char*)ps_malloc(64);
+                    if (fileList[fileCount]) {
+                        snprintf(fileList[fileCount], 64, "%s", file.name());
+                        fileCount++;
+                    }
                 }
                 file.close();
                 file = dir.openNextFile();
@@ -90,9 +104,22 @@ void FragmentationMonitor::cleanupDirectoryOnStartup() {
             dir.close();
         }
         
+        // Now delete all files
+        for (int i = 0; i < fileCount; i++) {
+            char fullPath[80];
+            snprintf(fullPath, sizeof(fullPath), "/mem_debug/%s", fileList[i]);
+            if (LittleFS.remove(fullPath)) {
+                Log.printf("[FragMon] Deleted: %s\n", fileList[i]);
+            }
+            free(fileList[i]);  // Free PSRAM for filename
+        }
+        free(fileList);  // Free PSRAM for file list
+        
         // Remove the directory itself
-        if (!LittleFS.rmdir("/mem_debug")) {
-            Log.println("[FragMon] WARNING: Failed to remove /mem_debug directory");
+        if (LittleFS.rmdir("/mem_debug")) {
+            Log.println("[FragMon] Removed /mem_debug directory");
+        } else {
+            Log.println("[FragMon] WARNING: Failed to remove /mem_debug directory (may still have files)");
         }
     }
     
@@ -168,7 +195,7 @@ void FragmentationMonitor::periodicTick() {
     lastFragmentedState = currentlyFragmented;
 }
 
-void FragmentationMonitor::logOperation(const char* file, int line, const char* operation) {
+void FragmentationMonitor::logOperation(const char* file, int line, const char* operation, bool forceLog) {
     if (!operationBuffer || !bufferMutex) return;
     
     if (xSemaphoreTake(bufferMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
@@ -176,7 +203,7 @@ void FragmentationMonitor::logOperation(const char* file, int line, const char* 
         uint32_t free, largestBlock, freeBlocks;
         getHeapStats(free, largestBlock, freeBlocks);
         
-        // Write to circular buffer
+        // Write to circular buffer (always log to buffer for history)
         MemoryOperation& op = operationBuffer[bufferIndex];
         op.timestamp = millis();
         
@@ -264,11 +291,18 @@ void FragmentationMonitor::dumpToFile() {
         }
     }
     
-    // Get current time structure
-    struct tm timeinfo;
+    // Get current time in local timezone using GeneralTimeConverter
     time_t now;
     time(&now);
-    localtime_r(&now, &timeinfo);
+    
+    // Convert to local time if timeConverter is available
+    time_t localTime = now;
+    if (timeConverter && timeConverter->isSuccessfullyParsed()) {
+        localTime = timeConverter->toLocal(now);
+    }
+    
+    struct tm timeinfo;
+    localtime_r(&localTime, &timeinfo);
     
     // Create filename with date/time in format: frag_yymmddhhmm.log (use stack allocation!)
     char filename[64];
@@ -298,7 +332,7 @@ void FragmentationMonitor::dumpToFile() {
     snprintf(lineBuf, sizeof(lineBuf), "=== Heap Fragmentation Log ===\n");
     logFile.write((const uint8_t*)lineBuf, strlen(lineBuf));
     
-    // Add date/time to header
+    // Add date/time to header (already in local time)
     snprintf(lineBuf, sizeof(lineBuf), "Date/Time: %04d-%02d-%02d %02d:%02d:%02d\n",
              timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
              timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
