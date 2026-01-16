@@ -113,6 +113,13 @@ void Application::begin() {
     }
     LOG_MEM_OP("LittleFS initialized");
 
+#if ENABLE_FRAG_MONITOR
+    // Clean up old log directory AFTER LittleFS is ready
+    if (g_FragMonitor) {
+        g_FragMonitor->cleanupDirectoryOnStartup();
+    }
+#endif
+
     hardwareConfig = new HardwareConfig();
     loadHardwareConfig();
     LOG_MEM_OP("HardwareConfig loaded");

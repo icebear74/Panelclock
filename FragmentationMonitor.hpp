@@ -57,9 +57,14 @@ public:
     ~FragmentationMonitor();
     
     /**
-     * @brief Initialize the monitor (create directory, reset state)
+     * @brief Initialize the monitor (create buffer, set baseline)
      */
     void begin();
+    
+    /**
+     * @brief Clean up mem_debug directory (called AFTER LittleFS init)
+     */
+    void cleanupDirectoryOnStartup();
     
     /**
      * @brief Periodic check for fragmentation (called every 100ms from Application)

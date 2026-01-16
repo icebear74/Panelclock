@@ -1,5 +1,6 @@
 #include "FragmentationMonitor.hpp"
 #include "MultiLogger.hpp"
+#include <time.h>
 
 #if ENABLE_FRAG_MONITOR
 
@@ -33,28 +34,40 @@ FragmentationMonitor::~FragmentationMonitor() {
 }
 
 void FragmentationMonitor::begin() {
-    Log.println("[FragMon] Initializing FragmentationMonitor...");
+    // NOTE: Logging not yet available during early init!
+    // Just allocate buffer and create mutex - directory cleanup comes later
     
     // Allocate operation buffer in PSRAM (NOT heap!)
     if (!operationBuffer) {
         operationBuffer = (MemoryOperation*)ps_malloc(sizeof(MemoryOperation) * FRAG_MONITOR_BUFFER_SIZE);
         if (!operationBuffer) {
-            Log.println("[FragMon] ERROR: Failed to allocate PSRAM buffer!");
-            return;
+            return;  // Silent fail - logging not ready yet
         }
         memset(operationBuffer, 0, sizeof(MemoryOperation) * FRAG_MONITOR_BUFFER_SIZE);
-        Log.printf("[FragMon] Allocated %d bytes in PSRAM for operation buffer\n", 
-                   sizeof(MemoryOperation) * FRAG_MONITOR_BUFFER_SIZE);
     }
     
     // Create mutex for buffer protection
     if (!bufferMutex) {
         bufferMutex = xSemaphoreCreateMutex();
         if (!bufferMutex) {
-            Log.println("[FragMon] ERROR: Failed to create mutex!");
-            return;
+            return;  // Silent fail - logging not ready yet
         }
     }
+    
+    // Log startup heap immediately (before any allocations!)
+    uint32_t free, largestBlock, freeBlocks;
+    getHeapStats(free, largestBlock, freeBlocks);
+    
+    // Initialize baseline with current values
+    baselineLargestBlock = largestBlock;
+    baselineFreeBytes = free;
+    baselineUpdateTime = millis();
+    lastBaselineUpdate = millis();
+}
+
+void FragmentationMonitor::cleanupDirectoryOnStartup() {
+    // This is called AFTER LittleFS is initialized but BEFORE any modules run
+    Log.println("[FragMon] Cleaning up /mem_debug directory...");
     
     // Create mem_debug directory - first remove old directory and all its contents
     if (LittleFS.exists("/mem_debug")) {
@@ -78,7 +91,9 @@ void FragmentationMonitor::begin() {
         }
         
         // Remove the directory itself
-        LittleFS.rmdir("/mem_debug");
+        if (!LittleFS.rmdir("/mem_debug")) {
+            Log.println("[FragMon] WARNING: Failed to remove /mem_debug directory");
+        }
     }
     
     // Create fresh directory
@@ -88,22 +103,9 @@ void FragmentationMonitor::begin() {
         Log.println("[FragMon] ERROR: Failed to create /mem_debug directory");
     }
     
-    // Log startup
-    uint32_t free, largestBlock, freeBlocks;
-    getHeapStats(free, largestBlock, freeBlocks);
-    Log.printf("[FragMon] Startup heap: free=%u, largestBlock=%u, blocks=%u\n", 
-               free, largestBlock, freeBlocks);
-    
-    // Initialize baseline with current values
-    baselineLargestBlock = largestBlock;
-    baselineFreeBytes = free;
-    baselineUpdateTime = millis();
-    lastBaselineUpdate = millis();
-    
-    Log.printf("[FragMon] Baseline set: largestBlock=%u, freeBytes=%u\n",
+    // Log initialization complete
+    Log.printf("[FragMon] Initialized - Baseline: largestBlock=%u, freeBytes=%u\n",
                baselineLargestBlock, baselineFreeBytes);
-    
-    Log.println("[FragMon] Initialization complete");
 }
 
 void FragmentationMonitor::periodicTick() {
@@ -262,9 +264,20 @@ void FragmentationMonitor::dumpToFile() {
         }
     }
     
-    // Create filename with timestamp (use stack allocation!)
+    // Get current time structure
+    struct tm timeinfo;
+    time_t now;
+    time(&now);
+    localtime_r(&now, &timeinfo);
+    
+    // Create filename with date/time in format: frag_yymmddhhmm.log (use stack allocation!)
     char filename[64];
-    snprintf(filename, sizeof(filename), "/mem_debug/frag_%lu.log", millis() / 1000);
+    snprintf(filename, sizeof(filename), "/mem_debug/frag_%02d%02d%02d%02d%02d.log",
+             (timeinfo.tm_year + 1900) % 100,  // yy
+             timeinfo.tm_mon + 1,              // mm
+             timeinfo.tm_mday,                 // dd
+             timeinfo.tm_hour,                 // hh
+             timeinfo.tm_min);                 // mm
     
     Log.printf("[FragMon] Dumping fragmentation log to %s\n", filename);
     
@@ -283,6 +296,12 @@ void FragmentationMonitor::dumpToFile() {
     char lineBuf[256];
     
     snprintf(lineBuf, sizeof(lineBuf), "=== Heap Fragmentation Log ===\n");
+    logFile.write((const uint8_t*)lineBuf, strlen(lineBuf));
+    
+    // Add date/time to header
+    snprintf(lineBuf, sizeof(lineBuf), "Date/Time: %04d-%02d-%02d %02d:%02d:%02d\n",
+             timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+             timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
     logFile.write((const uint8_t*)lineBuf, strlen(lineBuf));
     
     snprintf(lineBuf, sizeof(lineBuf), "Timestamp: %lu ms\n", millis());
