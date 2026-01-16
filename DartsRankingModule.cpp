@@ -1,6 +1,7 @@
 #include "DartsRankingModule.hpp"
 #include "WebClientModule.hpp"
 #include "webconfig.hpp"
+#include "FragmentationMonitor.hpp"
 #include <Arduino.h>
 #include <algorithm>
 #include <esp_heap_caps.h>
@@ -407,6 +408,7 @@ uint32_t DartsRankingModule::getInternalTickDuration(DartsRankingType type) {
 }
 
 void DartsRankingModule::queueData() {
+    LOG_MEM_OP("DartsRankingModule::queueData");
     if (!webClient) return;
     
     if (_oomEnabled) {
@@ -443,6 +445,7 @@ void DartsRankingModule::queueData() {
 }
 
 void DartsRankingModule::processData() {
+    LOG_MEM_OP("DartsRankingModule::processData");
     if (oom_data_pending) {
         if (xSemaphoreTake(dataMutex, portMAX_DELAY) == pdTRUE) {
             parseHtml(oom_pending_buffer, oom_buffer_size, DartsRankingType::ORDER_OF_MERIT);

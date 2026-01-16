@@ -3,6 +3,7 @@
 #include "webconfig.hpp" 
 #include "WebClientModule.hpp"
 #include "TimeUtilities.hpp"
+#include "FragmentationMonitor.hpp"
 #include <ArduinoJson.h>
 #include <time.h>
 
@@ -134,6 +135,7 @@ bool WeatherModule::isEnabled() {
 }
 
 void WeatherModule::queueData() {
+    LOG_MEM_OP("WeatherModule::queueData");
     // Continue fetching weather data even if display is disabled
     // This ensures sunrise/sunset times stay current for other modules (e.g., AnimationsModule night mode)
     if (!_webClient) return;
@@ -199,6 +201,7 @@ void WeatherModule::queueData() {
 }
 
 void WeatherModule::processData() {
+    LOG_MEM_OP("WeatherModule::processData");
     bool something_processed = false;
     if (_forecastDataPending) {
         if (xSemaphoreTake(_dataMutex, portMAX_DELAY) == pdTRUE) {

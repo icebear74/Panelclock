@@ -1,6 +1,7 @@
 #include "CalendarModule.hpp"
 #include "MultiLogger.hpp"
 #include "webconfig.hpp"
+#include "FragmentationMonitor.hpp"
 
 uint16_t hexColorTo565(const PsramString& hex) {
   if (hex.length() != 7 || hex[0] != '#') return 0xFFFF;
@@ -90,6 +91,7 @@ void CalendarModule::setUrgentParams(int fastBlinkHours, int urgentThresholdHour
 }
 
 void CalendarModule::queueData() {
+    LOG_MEM_OP("CalendarModule::queueData");
     if (icsUrl.empty() || !webClient) return;
     webClient->accessResource(String(icsUrl.c_str()), [this](const char* buffer, size_t size, time_t last_update, bool is_stale){
         if (buffer && size > 0 && last_update > this->last_processed_update) {
@@ -107,6 +109,7 @@ void CalendarModule::queueData() {
 }
 
 void CalendarModule::processData() {
+    LOG_MEM_OP("CalendarModule::processData");
     if (data_pending) {
         if (xSemaphoreTake(dataMutex, portMAX_DELAY) == pdTRUE) {
             this->parseICS(pending_buffer, buffer_size);
