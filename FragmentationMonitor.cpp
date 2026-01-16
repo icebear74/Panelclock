@@ -222,6 +222,18 @@ void FragmentationMonitor::updateBaseline() {
 void FragmentationMonitor::dumpToFile() {
     if (!operationBuffer || !bufferMutex) return;
     
+    // Check filesystem space before writing
+    if (!hasEnoughFsSpace()) {
+        Log.println("[FragMon] WARNING: Insufficient filesystem space - attempting cleanup");
+        cleanupOldLogs(FRAG_MIN_FS_FREE_BYTES + 20480); // Try to free up to 70KB
+        
+        // Check again after cleanup
+        if (!hasEnoughFsSpace()) {
+            Log.println("[FragMon] ERROR: Still insufficient space after cleanup - skipping log dump");
+            return;
+        }
+    }
+    
     // Create filename with timestamp (use stack allocation!)
     char filename[64];
     snprintf(filename, sizeof(filename), "/mem_debug/frag_%lu.log", millis() / 1000);
@@ -292,6 +304,117 @@ void FragmentationMonitor::dumpToFile() {
     logFile.close();
     Log.printf("[FragMon] Log written successfully (%d operations)\n", 
                min(operationCount, FRAG_MONITOR_BUFFER_SIZE));
+}
+
+bool FragmentationMonitor::hasEnoughFsSpace() {
+    // Get filesystem info
+    size_t totalBytes = LittleFS.totalBytes();
+    size_t usedBytes = LittleFS.usedBytes();
+    size_t freeBytes = totalBytes - usedBytes;
+    
+    Log.printf("[FragMon] FS Space: total=%u, used=%u, free=%u\n", 
+               totalBytes, usedBytes, freeBytes);
+    
+    return (freeBytes >= FRAG_MIN_FS_FREE_BYTES);
+}
+
+void FragmentationMonitor::cleanupOldLogs(size_t targetFreeSpace) {
+    Log.println("[FragMon] Starting cleanup of old log files...");
+    
+    // Open mem_debug directory
+    File dir = LittleFS.open("/mem_debug");
+    if (!dir || !dir.isDirectory()) {
+        Log.println("[FragMon] Cannot open /mem_debug directory");
+        return;
+    }
+    
+    // Collect all log files with their timestamps
+    struct LogFileInfo {
+        char name[64];
+        time_t timestamp;
+        size_t size;
+    };
+    
+    // Use PSRAM for the array to avoid heap fragmentation
+    LogFileInfo* logFiles = (LogFileInfo*)ps_malloc(sizeof(LogFileInfo) * 50);
+    if (!logFiles) {
+        Log.println("[FragMon] ERROR: Failed to allocate PSRAM for log file list");
+        dir.close();
+        return;
+    }
+    
+    int fileCount = 0;
+    File file = dir.openNextFile();
+    while (file && fileCount < 50) {
+        if (!file.isDirectory()) {
+            const char* fname = file.name();
+            // Check if it's a fragmentation log file (starts with "frag_")
+            if (strncmp(fname, "frag_", 5) == 0) {
+                strncpy(logFiles[fileCount].name, fname, sizeof(logFiles[fileCount].name) - 1);
+                logFiles[fileCount].name[sizeof(logFiles[fileCount].name) - 1] = '\0';
+                
+                // Extract timestamp from filename (frag_TIMESTAMP.log)
+                logFiles[fileCount].timestamp = atol(fname + 5);
+                logFiles[fileCount].size = file.size();
+                fileCount++;
+            }
+        }
+        file.close();
+        file = dir.openNextFile();
+    }
+    dir.close();
+    
+    Log.printf("[FragMon] Found %d log files\n", fileCount);
+    
+    if (fileCount == 0) {
+        free(logFiles);
+        return;
+    }
+    
+    // Sort files by timestamp (oldest first) - simple bubble sort
+    for (int i = 0; i < fileCount - 1; i++) {
+        for (int j = 0; j < fileCount - i - 1; j++) {
+            if (logFiles[j].timestamp > logFiles[j + 1].timestamp) {
+                LogFileInfo temp = logFiles[j];
+                logFiles[j] = logFiles[j + 1];
+                logFiles[j + 1] = temp;
+            }
+        }
+    }
+    
+    // Delete oldest files until we have enough space or reach max file limit
+    size_t currentFree = LittleFS.totalBytes() - LittleFS.usedBytes();
+    int filesDeleted = 0;
+    
+    for (int i = 0; i < fileCount; i++) {
+        // Keep at least the newest FRAG_MAX_LOG_FILES files
+        if ((fileCount - filesDeleted) <= FRAG_MAX_LOG_FILES && currentFree >= targetFreeSpace) {
+            break;
+        }
+        
+        char fullPath[80];
+        snprintf(fullPath, sizeof(fullPath), "/mem_debug/%s", logFiles[i].name);
+        
+        Log.printf("[FragMon] Deleting old log: %s (size: %u bytes)\n", 
+                   logFiles[i].name, logFiles[i].size);
+        
+        if (LittleFS.remove(fullPath)) {
+            currentFree += logFiles[i].size;
+            filesDeleted++;
+        } else {
+            Log.printf("[FragMon] WARNING: Failed to delete %s\n", fullPath);
+        }
+        
+        // Stop if we've freed enough space
+        if (currentFree >= targetFreeSpace) {
+            break;
+        }
+    }
+    
+    free(logFiles);
+    
+    Log.printf("[FragMon] Cleanup complete: deleted %d files, free space now: %u bytes\n", 
+               filesDeleted, currentFree);
 }
 
 const char* FragmentationMonitor::getShortFilename(const char* file) {

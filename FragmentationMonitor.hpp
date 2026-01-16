@@ -27,6 +27,10 @@
 #define FRAG_DEGRADATION_THRESHOLD_PERCENT 20  // Alert if largest_block degrades by 20%
 #define FRAG_BASELINE_UPDATE_INTERVAL_MS 60000  // Update baseline every 60s when stable
 
+// Filesystem protection
+#define FRAG_MIN_FS_FREE_BYTES 51200  // 50KB minimum free space (don't write if below this)
+#define FRAG_MAX_LOG_FILES 10          // Maximum number of log files to keep
+
 // Operation log entry - IMPORTANT: Stored in PSRAM to avoid heap fragmentation!
 struct MemoryOperation {
     uint32_t timestamp;      // millis() when operation occurred
@@ -102,6 +106,18 @@ private:
      * @brief Dump current buffer and heap state to filesystem
      */
     void dumpToFile();
+    
+    /**
+     * @brief Check if filesystem has enough free space for logging
+     * @return true if enough space available, false otherwise
+     */
+    bool hasEnoughFsSpace();
+    
+    /**
+     * @brief Delete oldest log files to free up space
+     * @param targetFreeSpace Target free space in bytes to achieve
+     */
+    void cleanupOldLogs(size_t targetFreeSpace);
     
     /**
      * @brief Extract short filename from full path
