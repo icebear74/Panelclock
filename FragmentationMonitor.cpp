@@ -18,7 +18,7 @@ unsigned long FragmentationMonitor::baselineUpdateTime = 0;
 FragmentationMonitor* g_FragMonitor = nullptr;
 
 FragmentationMonitor::FragmentationMonitor() 
-    : fragmentedSince(0), lastFragmentedState(false), lastBaselineUpdate(0) {
+    : fragmentedSince(0), lastFragmentedState(false), lastBaselineUpdate(0), lastDumpTime(0) {
 }
 
 FragmentationMonitor::~FragmentationMonitor() {
@@ -56,13 +56,36 @@ void FragmentationMonitor::begin() {
         }
     }
     
-    // Create mem_debug directory if it doesn't exist
-    if (!LittleFS.exists("/mem_debug")) {
-        if (LittleFS.mkdir("/mem_debug")) {
-            Log.println("[FragMon] Created /mem_debug directory");
-        } else {
-            Log.println("[FragMon] ERROR: Failed to create /mem_debug directory");
+    // Create mem_debug directory - first remove old directory and all its contents
+    if (LittleFS.exists("/mem_debug")) {
+        Log.println("[FragMon] Removing old /mem_debug directory...");
+        
+        // Delete all files in the directory first
+        File dir = LittleFS.open("/mem_debug");
+        if (dir && dir.isDirectory()) {
+            File file = dir.openNextFile();
+            while (file) {
+                if (!file.isDirectory()) {
+                    char fullPath[80];
+                    snprintf(fullPath, sizeof(fullPath), "/mem_debug/%s", file.name());
+                    LittleFS.remove(fullPath);
+                    Log.printf("[FragMon] Deleted old log: %s\n", file.name());
+                }
+                file.close();
+                file = dir.openNextFile();
+            }
+            dir.close();
         }
+        
+        // Remove the directory itself
+        LittleFS.rmdir("/mem_debug");
+    }
+    
+    // Create fresh directory
+    if (LittleFS.mkdir("/mem_debug")) {
+        Log.println("[FragMon] Created fresh /mem_debug directory");
+    } else {
+        Log.println("[FragMon] ERROR: Failed to create /mem_debug directory");
     }
     
     // Log startup
@@ -127,19 +150,23 @@ void FragmentationMonitor::periodicTick() {
         unsigned long duration = millis() - fragmentedSince;
         
         if (duration >= FRAG_PERSIST_TIME_MS) {
-            // Persistent fragmentation - dump to file
-            Log.printf("[FragMon] ALERT: Fragmentation persisted for %lu ms - dumping log!\n", duration);
-            dumpToFile();
+            // Check cooldown - only dump if enough time has passed since last dump
+            unsigned long timeSinceLastDump = millis() - lastDumpTime;
             
-            // Reset timer to avoid repeated dumps (only dump once per 5 minutes)
-            fragmentedSince = millis() - (FRAG_PERSIST_TIME_MS - 300000);
+            if (timeSinceLastDump >= FRAG_DUMP_COOLDOWN_MS || lastDumpTime == 0) {
+                // Persistent fragmentation - dump to file
+                Log.printf("[FragMon] ALERT: Fragmentation persisted for %lu ms - dumping log!\n", duration);
+                dumpToFile();
+                lastDumpTime = millis();  // Update last dump time
+            }
+            // If still in cooldown, just silently skip - don't reset fragmentedSince
         }
     }
     
     lastFragmentedState = currentlyFragmented;
 }
 
-void FragmentationMonitor::logOperation(const char* file, const char* operation) {
+void FragmentationMonitor::logOperation(const char* file, int line, const char* operation) {
     if (!operationBuffer || !bufferMutex) return;
     
     if (xSemaphoreTake(bufferMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
@@ -160,6 +187,7 @@ void FragmentationMonitor::logOperation(const char* file, const char* operation)
         strncpy(op.operation, operation, sizeof(op.operation) - 1);
         op.operation[sizeof(op.operation) - 1] = '\0';
         
+        op.line = line;  // Store line number
         op.heapFree = free;
         op.largestBlock = largestBlock;
         
@@ -291,8 +319,8 @@ void FragmentationMonitor::dumpToFile() {
             const MemoryOperation& op = operationBuffer[idx];
             
             snprintf(lineBuf, sizeof(lineBuf), 
-                     "[%8lu] %-15s | %-30s | heap=%6u, largest=%6u (%.1f%%)\n",
-                     op.timestamp, op.module, op.operation,
+                     "[%8lu] %-15s:%-4d | %-30s | heap=%6u, largest=%6u (%.1f%%)\n",
+                     op.timestamp, op.module, op.line, op.operation,
                      op.heapFree, op.largestBlock,
                      (op.heapFree > 0) ? (op.largestBlock * 100.0f / op.heapFree) : 0.0f);
             logFile.write((const uint8_t*)lineBuf, strlen(lineBuf));

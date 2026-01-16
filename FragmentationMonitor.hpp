@@ -30,12 +30,14 @@
 // Filesystem protection
 #define FRAG_MIN_FS_FREE_BYTES 51200  // 50KB minimum free space (don't write if below this)
 #define FRAG_MAX_LOG_FILES 10          // Maximum number of log files to keep
+#define FRAG_DUMP_COOLDOWN_MS 300000   // 5 minutes cooldown between dumps (to avoid log spam)
 
 // Operation log entry - IMPORTANT: Stored in PSRAM to avoid heap fragmentation!
 struct MemoryOperation {
     uint32_t timestamp;      // millis() when operation occurred
     char module[16];         // Module name (extracted from __FILE__)
     char operation[32];      // Operation description
+    int line;                // Line number in source file
     uint32_t heapFree;       // Free heap at time of operation
     uint32_t largestBlock;   // Largest free block at time of operation
 };
@@ -67,9 +69,10 @@ public:
     /**
      * @brief Log a memory operation to the FIFO buffer
      * @param file Source file (use __FILE__)
+     * @param line Line number (use __LINE__)
      * @param operation Operation description
      */
-    static void logOperation(const char* file, const char* operation);
+    static void logOperation(const char* file, int line, const char* operation);
     
     /**
      * @brief Check if heap is currently fragmented (NEW fragmentation detected)
@@ -101,6 +104,7 @@ private:
     unsigned long fragmentedSince;            // millis() when fragmentation started (0 if not fragmented)
     bool lastFragmentedState;                 // Previous fragmentation state
     unsigned long lastBaselineUpdate;         // Last baseline update time
+    unsigned long lastDumpTime;               // Last time we dumped a log file (for cooldown)
     
     /**
      * @brief Dump current buffer and heap state to filesystem
@@ -130,7 +134,7 @@ extern FragmentationMonitor* g_FragMonitor;
 
 // Convenience macro for logging operations
 #define LOG_MEM_OP(operation) \
-    do { if (g_FragMonitor) FragmentationMonitor::logOperation(__FILE__, operation); } while(0)
+    do { if (g_FragMonitor) FragmentationMonitor::logOperation(__FILE__, __LINE__, operation); } while(0)
 
 #else
 // If monitoring disabled, macro does nothing
