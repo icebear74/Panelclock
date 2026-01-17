@@ -111,6 +111,8 @@ private:
     bool lastFragmentedState;                 // Previous fragmentation state
     unsigned long lastBaselineUpdate;         // Last baseline update time
     unsigned long lastDumpTime;               // Last time we dumped a log file (for cooldown)
+    uint32_t fragmentedAtLargestBlock;        // largestBlock value when fragmentation was first detected
+    uint32_t lastDumpedLargestBlock;          // largestBlock value when we last dumped (to detect worsening)
     
     /**
      * @brief Dump current buffer and heap state to filesystem

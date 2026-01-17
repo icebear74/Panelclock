@@ -23,7 +23,8 @@ unsigned long FragmentationMonitor::baselineUpdateTime = 0;
 FragmentationMonitor* g_FragMonitor = nullptr;
 
 FragmentationMonitor::FragmentationMonitor() 
-    : fragmentedSince(0), lastFragmentedState(false), lastBaselineUpdate(0), lastDumpTime(0) {
+    : fragmentedSince(0), lastFragmentedState(false), lastBaselineUpdate(0), lastDumpTime(0),
+      fragmentedAtLargestBlock(0), lastDumpedLargestBlock(0) {
 }
 
 FragmentationMonitor::~FragmentationMonitor() {
@@ -74,60 +75,44 @@ void FragmentationMonitor::cleanupDirectoryOnStartup() {
     Log.println("[FragMon] Cleaning up /mem_debug directory...");
     
     // Remove all files in /mem_debug directory if it exists
+    // Use the same robust approach as SofaScoreLiveModule's json_debug cleanup
     if (LittleFS.exists("/mem_debug")) {
         Log.println("[FragMon] Removing old files from /mem_debug...");
-        
-        // First, list all files using PSRAM allocation
-        const int MAX_FILES = 50;
-        char** fileList = (char**)ps_malloc(MAX_FILES * sizeof(char*));
-        if (!fileList) {
-            Log.println("[FragMon] ERROR: Failed to allocate PSRAM for file list");
-            return;
-        }
-        
-        int fileCount = 0;
-        File dir = LittleFS.open("/mem_debug");
+        File dir = LittleFS.open("/mem_debug", "r");
         if (dir && dir.isDirectory()) {
             File file = dir.openNextFile();
-            while (file && fileCount < MAX_FILES) {
-                if (!file.isDirectory()) {
-                    // Allocate space for filename in PSRAM
-                    fileList[fileCount] = (char*)ps_malloc(64);
-                    if (fileList[fileCount]) {
-                        snprintf(fileList[fileCount], 64, "%s", file.name());
-                        fileCount++;
-                    }
+            int deletedCount = 0;
+            while (file) {
+                char filename[128];
+                snprintf(filename, sizeof(filename), "/mem_debug/%s", file.name());
+                file.close();  // IMPORTANT: Close file before deleting!
+                if (LittleFS.remove(filename)) {
+                    deletedCount++;
+                    Log.printf("[FragMon] Deleted: %s\n", filename);
+                } else {
+                    Log.printf("[FragMon] WARNING: Failed to delete %s\n", filename);
                 }
-                file.close();
                 file = dir.openNextFile();
             }
             dir.close();
-        }
-        
-        // Now delete all files
-        for (int i = 0; i < fileCount; i++) {
-            char fullPath[80];
-            snprintf(fullPath, sizeof(fullPath), "/mem_debug/%s", fileList[i]);
-            if (LittleFS.remove(fullPath)) {
-                Log.printf("[FragMon] Deleted: %s\n", fileList[i]);
+            Log.printf("[FragMon] Deleted %d debug files from /mem_debug\n", deletedCount);
+            
+            // Try to remove the directory itself (should be empty now)
+            if (LittleFS.rmdir("/mem_debug")) {
+                Log.println("[FragMon] Removed /mem_debug directory");
+            } else {
+                Log.println("[FragMon] INFO: /mem_debug directory still exists (will be reused)");
             }
-            free(fileList[i]);  // Free PSRAM for filename
-        }
-        free(fileList);  // Free PSRAM for file list
-        
-        // Remove the directory itself
-        if (LittleFS.rmdir("/mem_debug")) {
-            Log.println("[FragMon] Removed /mem_debug directory");
-        } else {
-            Log.println("[FragMon] WARNING: Failed to remove /mem_debug directory (may still have files)");
         }
     }
     
-    // Create fresh directory
-    if (LittleFS.mkdir("/mem_debug")) {
-        Log.println("[FragMon] Created fresh /mem_debug directory");
-    } else {
-        Log.println("[FragMon] ERROR: Failed to create /mem_debug directory");
+    // Create fresh directory (or ensure it exists)
+    if (!LittleFS.exists("/mem_debug")) {
+        if (LittleFS.mkdir("/mem_debug")) {
+            Log.println("[FragMon] Created fresh /mem_debug directory");
+        } else {
+            Log.println("[FragMon] ERROR: Failed to create /mem_debug directory");
+        }
     }
     
     // Log initialization complete
@@ -153,6 +138,9 @@ void FragmentationMonitor::periodicTick() {
         uint32_t free, largestBlock, freeBlocks;
         getHeapStats(free, largestBlock, freeBlocks);
         
+        // Store the largestBlock value when fragmentation was first detected
+        fragmentedAtLargestBlock = largestBlock;
+        
         // Calculate degradation from baseline
         int32_t degradation = baselineLargestBlock - largestBlock;
         float degradationPercent = (baselineLargestBlock > 0) ? 
@@ -169,26 +157,52 @@ void FragmentationMonitor::periodicTick() {
         unsigned long duration = millis() - fragmentedSince;
         Log.printf("[FragMon] Fragmentation resolved after %lu ms\n", duration);
         fragmentedSince = 0;
+        fragmentedAtLargestBlock = 0;  // Reset
         
         // Update baseline immediately after recovery
         updateBaseline();
         lastBaselineUpdate = millis();
         
     } else if (currentlyFragmented && fragmentedSince > 0) {
-        // Check if fragmentation persists
+        // Check if fragmentation persists AND is worsening
         unsigned long duration = millis() - fragmentedSince;
         
         if (duration >= FRAG_PERSIST_TIME_MS) {
+            uint32_t free, largestBlock, freeBlocks;
+            getHeapStats(free, largestBlock, freeBlocks);
+            
+            // Only dump if fragmentation has WORSENED since first detected
+            // (or since last dump if we've dumped before)
+            uint32_t compareBlock = (lastDumpedLargestBlock > 0) ? lastDumpedLargestBlock : fragmentedAtLargestBlock;
+            
+            // Check if fragmentation has worsened by at least 5%
+            bool hasWorsened = false;
+            if (compareBlock > 0 && largestBlock < compareBlock) {
+                int32_t furtherDegradation = compareBlock - largestBlock;
+                float worseningPercent = (furtherDegradation * 100.0f / compareBlock);
+                hasWorsened = (worseningPercent >= 5.0f);  // 5% threshold for worsening
+                
+                if (hasWorsened) {
+                    Log.printf("[FragMon] Fragmentation WORSENED: %u -> %u bytes (%.1f%% worse)\n",
+                               compareBlock, largestBlock, worseningPercent);
+                }
+            }
+            
             // Check cooldown - only dump if enough time has passed since last dump
             unsigned long timeSinceLastDump = millis() - lastDumpTime;
+            bool cooldownExpired = (timeSinceLastDump >= FRAG_DUMP_COOLDOWN_MS || lastDumpTime == 0);
             
-            if (timeSinceLastDump >= FRAG_DUMP_COOLDOWN_MS || lastDumpTime == 0) {
-                // Persistent fragmentation - dump to file
-                Log.printf("[FragMon] ALERT: Fragmentation persisted for %lu ms - dumping log!\n", duration);
+            // Dump only if fragmentation is worsening AND cooldown expired
+            if (hasWorsened && cooldownExpired) {
+                Log.printf("[FragMon] ALERT: Fragmentation worsened and persisted for %lu ms - dumping log!\n", duration);
                 dumpToFile();
                 lastDumpTime = millis();  // Update last dump time
+                lastDumpedLargestBlock = largestBlock;  // Remember this level
+            } else if (hasWorsened && !cooldownExpired) {
+                Log.printf("[FragMon] Fragmentation worsening but in cooldown period (%lu ms remaining)\n",
+                           FRAG_DUMP_COOLDOWN_MS - timeSinceLastDump);
             }
-            // If still in cooldown, just silently skip - don't reset fragmentedSince
+            // If not worsening, don't log anything (prevents spam when fragmentation is stable)
         }
     }
     
