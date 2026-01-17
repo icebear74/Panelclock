@@ -24,7 +24,7 @@ FragmentationMonitor* g_FragMonitor = nullptr;
 
 FragmentationMonitor::FragmentationMonitor() 
     : fragmentedSince(0), lastFragmentedState(false), lastBaselineUpdate(0), lastDumpTime(0),
-      fragmentedAtLargestBlock(0), lastDumpedLargestBlock(0), activeLoggingEndTime(0), activeLoggingMode(false) {
+      fragmentedAtLargestBlock(0), lastDumpedLargestBlock(0), activeLoggingEndTime(0), activeLoggingMode(false), lastActiveLogTime(0) {
 }
 
 FragmentationMonitor::~FragmentationMonitor() {
@@ -147,16 +147,26 @@ void FragmentationMonitor::periodicTick() {
         lastBaselineUpdate = millis();
     }
     
-    // Check if active logging period has ended
-    if (activeLoggingMode && millis() >= activeLoggingEndTime) {
-        Log.printf("[FragMon] Active logging period ended (30 seconds elapsed)\n");
-        activeLoggingMode = false;
-        activeLoggingEndTime = 0;
+    // Check if active logging period has ended (handle millis() overflow)
+    if (activeLoggingMode) {
+        unsigned long now = millis();
+        // Use unsigned arithmetic to handle millis() overflow correctly
+        if ((unsigned long)(now - (activeLoggingEndTime - FRAG_ACTIVE_LOGGING_DURATION_MS)) >= FRAG_ACTIVE_LOGGING_DURATION_MS) {
+            Log.printf("[FragMon] Active logging period ended (30 seconds elapsed)\n");
+            activeLoggingMode = false;
+            activeLoggingEndTime = 0;
+            lastActiveLogTime = 0;
+        }
     }
     
-    // Log operation automatically during active logging mode
+    // Log operation automatically during active logging mode (throttled to once per second)
     if (activeLoggingMode) {
-        logOperation("FragMon", 0, "PeriodicCheck", true);
+        unsigned long now = millis();
+        // Use unsigned arithmetic to handle millis() overflow
+        if ((unsigned long)(now - lastActiveLogTime) >= 1000 || lastActiveLogTime == 0) {
+            logOperation("FragMon", 0, "PeriodicCheck", true);
+            lastActiveLogTime = now;
+        }
     }
     
     // State change detection
@@ -191,6 +201,7 @@ void FragmentationMonitor::periodicTick() {
             Log.printf("[FragMon] Stopping active logging (fragmentation resolved)\n");
             activeLoggingMode = false;
             activeLoggingEndTime = 0;
+            lastActiveLogTime = 0;
         }
         
         fragmentedSince = 0;
@@ -419,7 +430,10 @@ void FragmentationMonitor::dumpToFile() {
     
     // Add active logging status
     if (activeLoggingMode) {
-        unsigned long remaining = (activeLoggingEndTime > millis()) ? (activeLoggingEndTime - millis()) : 0;
+        unsigned long now = millis();
+        unsigned long elapsed = (unsigned long)(now - (activeLoggingEndTime - FRAG_ACTIVE_LOGGING_DURATION_MS));
+        unsigned long remaining = (elapsed < FRAG_ACTIVE_LOGGING_DURATION_MS) ? 
+                                  (FRAG_ACTIVE_LOGGING_DURATION_MS - elapsed) : 0;
         snprintf(lineBuf, sizeof(lineBuf), "Active Logging: ENABLED (remaining: %lu ms)\n", remaining);
         logFile.write((const uint8_t*)lineBuf, strlen(lineBuf));
     } else {

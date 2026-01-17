@@ -123,6 +123,7 @@ private:
     uint32_t lastDumpedLargestBlock;          // largestBlock value when we last dumped (to detect worsening)
     unsigned long activeLoggingEndTime;       // millis() when active logging period ends (0 if not active)
     bool activeLoggingMode;                   // true if we're in the 30-second active logging period
+    unsigned long lastActiveLogTime;          // Last time we logged during active period (for throttling)
     
     /**
      * @brief Dump current buffer and heap state to filesystem
