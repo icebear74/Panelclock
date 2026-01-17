@@ -27,10 +27,17 @@
 #define FRAG_DEGRADATION_THRESHOLD_PERCENT 20  // Alert if largest_block degrades by 20%
 #define FRAG_BASELINE_UPDATE_INTERVAL_MS 60000  // Update baseline every 60s when stable
 
+// Severity thresholds for adaptive response
+#define FRAG_CRITICAL_THRESHOLD_BYTES 15360   // <15KB = critical (immediate dump)
+#define FRAG_SEVERE_THRESHOLD_BYTES 20480     // <20KB = severe (bypass cooldown)
+#define FRAG_WARNING_THRESHOLD_BYTES 25600    // <25KB = warning (increase frequency)
+#define FRAG_SEVERE_DEGRADATION_PERCENT 50    // >50% degradation = severe (bypass cooldown)
+
 // Filesystem protection
 #define FRAG_MIN_FS_FREE_BYTES 51200  // 50KB minimum free space (don't write if below this)
 #define FRAG_MAX_LOG_FILES 10          // Maximum number of log files to keep
-#define FRAG_DUMP_COOLDOWN_MS 300000   // 5 minutes cooldown between dumps (to avoid log spam)
+#define FRAG_DUMP_COOLDOWN_MS 300000   // 5 minutes cooldown between dumps (normal)
+#define FRAG_SEVERE_COOLDOWN_MS 30000  // 30 seconds cooldown for severe cases
 
 // Operation log entry - IMPORTANT: Stored in PSRAM to avoid heap fragmentation!
 struct MemoryOperation {

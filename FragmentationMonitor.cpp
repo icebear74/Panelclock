@@ -121,6 +121,23 @@ void FragmentationMonitor::cleanupDirectoryOnStartup() {
 }
 
 void FragmentationMonitor::periodicTick() {
+    // Get current heap stats
+    uint32_t free, largestBlock, freeBlocks;
+    getHeapStats(free, largestBlock, freeBlocks);
+    
+    // Check for CRITICAL thresholds - these bypass all cooldowns and dump immediately
+    if (largestBlock < FRAG_CRITICAL_THRESHOLD_BYTES) {
+        unsigned long timeSinceLastDump = millis() - lastDumpTime;
+        if (timeSinceLastDump >= FRAG_SEVERE_COOLDOWN_MS || lastDumpTime == 0) {
+            Log.printf("[FragMon] CRITICAL: largestBlock=%u < %u bytes - IMMEDIATE DUMP!\n",
+                       largestBlock, FRAG_CRITICAL_THRESHOLD_BYTES);
+            dumpToFile();
+            lastDumpTime = millis();
+            lastDumpedLargestBlock = largestBlock;
+            return;  // Skip normal processing
+        }
+    }
+    
     // Check current fragmentation state
     bool currentlyFragmented = isFragmented();
     
@@ -134,11 +151,6 @@ void FragmentationMonitor::periodicTick() {
     if (currentlyFragmented && !lastFragmentedState) {
         // Just became fragmented
         fragmentedSince = millis();
-        
-        uint32_t free, largestBlock, freeBlocks;
-        getHeapStats(free, largestBlock, freeBlocks);
-        
-        // Store the largestBlock value when fragmentation was first detected
         fragmentedAtLargestBlock = largestBlock;
         
         // Calculate degradation from baseline
@@ -157,7 +169,7 @@ void FragmentationMonitor::periodicTick() {
         unsigned long duration = millis() - fragmentedSince;
         Log.printf("[FragMon] Fragmentation resolved after %lu ms\n", duration);
         fragmentedSince = 0;
-        fragmentedAtLargestBlock = 0;  // Reset
+        fragmentedAtLargestBlock = 0;
         
         // Update baseline immediately after recovery
         updateBaseline();
@@ -168,19 +180,19 @@ void FragmentationMonitor::periodicTick() {
         unsigned long duration = millis() - fragmentedSince;
         
         if (duration >= FRAG_PERSIST_TIME_MS) {
-            uint32_t free, largestBlock, freeBlocks;
-            getHeapStats(free, largestBlock, freeBlocks);
-            
             // Only dump if fragmentation has WORSENED since first detected
-            // (or since last dump if we've dumped before)
             uint32_t compareBlock = (lastDumpedLargestBlock > 0) ? lastDumpedLargestBlock : fragmentedAtLargestBlock;
             
-            // Check if fragmentation has worsened by at least 5%
+            // Check severity of worsening
             bool hasWorsened = false;
+            bool isSevereWorsening = false;
+            float worseningPercent = 0.0f;
+            
             if (compareBlock > 0 && largestBlock < compareBlock) {
                 int32_t furtherDegradation = compareBlock - largestBlock;
-                float worseningPercent = (furtherDegradation * 100.0f / compareBlock);
+                worseningPercent = (furtherDegradation * 100.0f / compareBlock);
                 hasWorsened = (worseningPercent >= 5.0f);  // 5% threshold for worsening
+                isSevereWorsening = (worseningPercent >= FRAG_SEVERE_DEGRADATION_PERCENT);  // >50% = severe
                 
                 if (hasWorsened) {
                     Log.printf("[FragMon] Fragmentation WORSENED: %u -> %u bytes (%.1f%% worse)\n",
@@ -188,16 +200,24 @@ void FragmentationMonitor::periodicTick() {
                 }
             }
             
-            // Check cooldown - only dump if enough time has passed since last dump
-            unsigned long timeSinceLastDump = millis() - lastDumpTime;
-            bool cooldownExpired = (timeSinceLastDump >= FRAG_DUMP_COOLDOWN_MS || lastDumpTime == 0);
+            // Determine appropriate cooldown based on severity
+            unsigned long cooldownRequired = isSevereWorsening ? FRAG_SEVERE_COOLDOWN_MS : FRAG_DUMP_COOLDOWN_MS;
+            bool isSevereThreshold = (largestBlock < FRAG_SEVERE_THRESHOLD_BYTES);
+            if (isSevereThreshold) {
+                cooldownRequired = FRAG_SEVERE_COOLDOWN_MS;  // Use shorter cooldown for severe threshold
+            }
             
-            // Dump only if fragmentation is worsening AND cooldown expired
-            if (hasWorsened && cooldownExpired) {
-                Log.printf("[FragMon] ALERT: Fragmentation worsened and persisted for %lu ms - dumping log!\n", duration);
+            unsigned long timeSinceLastDump = millis() - lastDumpTime;
+            bool cooldownExpired = (timeSinceLastDump >= cooldownRequired || lastDumpTime == 0);
+            
+            // Dump if worsening AND (cooldown expired OR severe case bypassing cooldown)
+            if (hasWorsened && (cooldownExpired || (isSevereWorsening && timeSinceLastDump >= FRAG_SEVERE_COOLDOWN_MS))) {
+                const char* severity = isSevereWorsening ? "SEVERE" : (isSevereThreshold ? "SEVERE" : "NORMAL");
+                Log.printf("[FragMon] ALERT [%s]: Fragmentation worsened %.1f%% and persisted for %lu ms - dumping log!\n",
+                           severity, worseningPercent, duration);
                 dumpToFile();
-                lastDumpTime = millis();  // Update last dump time
-                lastDumpedLargestBlock = largestBlock;  // Remember this level
+                lastDumpTime = millis();
+                lastDumpedLargestBlock = largestBlock;
             } else if (hasWorsened && !cooldownExpired) {
                 Log.printf("[FragMon] Fragmentation worsening but in cooldown period (%lu ms remaining)\n",
                            FRAG_DUMP_COOLDOWN_MS - timeSinceLastDump);
