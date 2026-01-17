@@ -164,7 +164,7 @@ void FragmentationMonitor::periodicTick() {
     if (activeLoggingMode) {
         unsigned long now = millis();
         // Use unsigned arithmetic to handle millis() overflow
-        if ((unsigned long)(now - lastActiveLogTime) >= 1000 || lastActiveLogTime == 0) {
+        if (now - lastActiveLogTime >= 1000 || lastActiveLogTime == 0) {
             logOperation("FragMon", 0, "PeriodicCheck", true);
             lastActiveLogTime = now;
         }
