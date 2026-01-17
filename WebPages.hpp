@@ -198,6 +198,7 @@ const char HTML_CONFIG_MODULES[] PROGMEM = R"rawliteral(
         
         <label for="dartsSofascoreTournamentIds">Turnier-IDs (kommagetrennt, leer = alle)</label>
         <input type="text" id="dartsSofascoreTournamentIds" name="dartsSofascoreTournamentIds" value="{dartsSofascoreTournamentIds}" placeholder="z.B. 17,23,34">
+        <input type="checkbox" id="dartsSofascoreTournamentExcludeMode" name="dartsSofascoreTournamentExcludeMode" {dartsSofascoreTournamentExcludeMode_checked}><label for="dartsSofascoreTournamentExcludeMode" style="display:inline;">Ausschluss-Modus (gewählte Turniere AUSschließen)</label><br>
         
         <input type="checkbox" id="dartsSofascoreFullscreen" name="dartsSofascoreFullscreen" {dartsSofascoreFullscreen_checked}><label for="dartsSofascoreFullscreen" style="display:inline;">Vollbild-Modus für Live-Spiele</label><br>
         <input type="checkbox" id="dartsSofascoreInterruptOnLive" name="dartsSofascoreInterruptOnLive" {dartsSofascoreInterruptOnLive_checked}><label for="dartsSofascoreInterruptOnLive" style="display:inline;">Live-Spiele unterbrechend anzeigen</label><br>

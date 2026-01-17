@@ -1,5 +1,6 @@
 #include "CuriousHolidaysModule.hpp"
 #include "webconfig.hpp"
+#include "FragmentationMonitor.hpp"
 #include <algorithm>
 #include <cctype>
 
@@ -311,6 +312,7 @@ void CuriousHolidaysModule::setConfig() {
 }
 
 void CuriousHolidaysModule::queueData() {
+    LOG_MEM_OP("CuriousHolidaysModule::queueData");
     if (resourceUrl.empty() || !webClient) return;
 
     time_t now = time(nullptr);
@@ -363,6 +365,7 @@ void CuriousHolidaysModule::handleDayChange() {
 }
 
 void CuriousHolidaysModule::processData() {
+    LOG_MEM_OP("CuriousHolidaysModule::processData");
     if (dataPending) {
         parseAndProcessHtml(pendingBuffer, bufferSize);
         free(pendingBuffer);

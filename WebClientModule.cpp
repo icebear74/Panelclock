@@ -3,6 +3,7 @@
 // removed include of certs.hpp on purpose — cert files are discovered dynamically in /certs
 #include "MemoryLogger.hpp"
 #include "MultiLogger.hpp"
+#include "FragmentationMonitor.hpp"
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <WiFi.h>
@@ -218,6 +219,7 @@ void WebClientModule::registerResourceWithHeaders(const String& url, const Strin
 }
 
 void WebClientModule::registerResourceSeconds(const String& url, uint32_t update_interval_seconds, bool with_priority, bool force_new, const char* root_ca) {
+    LOG_MEM_OP("WebClient::registerResource");
     if (url.isEmpty() || update_interval_seconds == 0) return;
     
     uint32_t interval_ms = update_interval_seconds * 1000UL;
@@ -341,6 +343,7 @@ void WebClientModule::resumeResourceWithHeaders(const String& url, const String&
 }
 
 void WebClientModule::accessResource(const String& url, std::function<void(const char* data, size_t size, time_t last_update, bool is_stale)> callback) {
+    LOG_MEM_OP("WebClient::accessResource");
     for (auto& resource : resources) {
         if (resource.url.compare(url.c_str()) == 0 && resource.customHeaders.empty()) {
             if (xSemaphoreTake(resource.mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {

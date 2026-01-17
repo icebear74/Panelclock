@@ -68,6 +68,7 @@ void loadDeviceConfig() {
                 deviceConfig->dartsSofascoreFetchIntervalMin = doc["dartsSofascoreFetchIntervalMin"] | 2;
                 deviceConfig->dartsSofascoreDisplaySec = doc["dartsSofascoreDisplaySec"] | 20;
                 deviceConfig->dartsSofascoreTournamentIds = doc["dartsSofascoreTournamentIds"] | "";
+                deviceConfig->dartsSofascoreTournamentExcludeMode = doc["dartsSofascoreTournamentExcludeMode"] | false;
                 deviceConfig->dartsSofascoreFullscreen = doc["dartsSofascoreFullscreen"] | false;
                 deviceConfig->dartsSofascoreInterruptOnLive = doc["dartsSofascoreInterruptOnLive"] | true;
                 deviceConfig->dartsSofascorePlayNextMinutes = doc["dartsSofascorePlayNextMinutes"] | 0;
@@ -239,6 +240,7 @@ void saveDeviceConfig() {
     doc["dartsSofascoreFetchIntervalMin"] = deviceConfig->dartsSofascoreFetchIntervalMin;
     doc["dartsSofascoreDisplaySec"] = deviceConfig->dartsSofascoreDisplaySec;
     doc["dartsSofascoreTournamentIds"] = deviceConfig->dartsSofascoreTournamentIds.c_str();
+    doc["dartsSofascoreTournamentExcludeMode"] = deviceConfig->dartsSofascoreTournamentExcludeMode;
     doc["dartsSofascoreFullscreen"] = deviceConfig->dartsSofascoreFullscreen;
     doc["dartsSofascoreInterruptOnLive"] = deviceConfig->dartsSofascoreInterruptOnLive;
     doc["dartsSofascorePlayNextMinutes"] = deviceConfig->dartsSofascorePlayNextMinutes;

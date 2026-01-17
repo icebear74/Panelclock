@@ -105,7 +105,8 @@ public:
     void setConfig(bool enabled, uint32_t fetchIntervalMinutes, unsigned long displaySec,
                    const PsramString& enabledTournamentSlugs, bool fullscreen, bool interruptOnLive,
                    uint32_t playNextMinutes, bool continuousLive,
-                   uint32_t liveCheckIntervalSec = 120, uint32_t liveDataFetchIntervalSec = 60);
+                   uint32_t liveCheckIntervalSec = 120, uint32_t liveDataFetchIntervalSec = 60,
+                   bool excludeMode = false);
     void queueData();
     void processData();
 
@@ -149,6 +150,7 @@ private:
     uint32_t _playNextMinutes = 0;  // 0 = disabled
     unsigned long _displayDuration = 20000;  // 20 seconds per page
     uint32_t _currentTicksPerPage = 200;     // 200 * 100ms = 20 seconds
+    bool _tournamentExcludeMode = false;  // When true, selected tournaments are EXCLUDED instead of INCLUDED
     
     // Live event monitoring
     bool _hasLiveEvents = false;

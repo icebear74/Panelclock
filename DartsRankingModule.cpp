@@ -1,6 +1,7 @@
 #include "DartsRankingModule.hpp"
 #include "WebClientModule.hpp"
 #include "webconfig.hpp"
+#include "FragmentationMonitor.hpp"
 #include <Arduino.h>
 #include <algorithm>
 #include <esp_heap_caps.h>
@@ -107,8 +108,10 @@ void DartsRankingModule::setConfig(bool oomEnabled, bool proTourEnabled, uint32_
     _currentTicksPerPage = _pageDisplayDuration / 100;
     if (_currentTicksPerPage == 0) _currentTicksPerPage = 1;
 
-    if (oomEnabled) webClient->registerResource("https://www.dartsrankings.com/", fetchIntervalMinutes, nullptr);
-    if (proTourEnabled) webClient->registerResource("https://www.dartsrankings.com/protour", fetchIntervalMinutes, nullptr);
+    // Use registerResourceSeconds with force_new=true to allow both URLs to be registered
+    // Without force_new, the host-based matching in registerResource overwrites the first URL
+    if (oomEnabled) webClient->registerResourceSeconds("https://www.dartsrankings.com/", fetchIntervalMinutes * 60, false, true, nullptr);  // force_new=true to prevent URL overwriting
+    if (proTourEnabled) webClient->registerResourceSeconds("https://www.dartsrankings.com/protour", fetchIntervalMinutes * 60, false, true, nullptr);  // force_new=true to prevent URL overwriting
     
     setTrackedPlayers(trackedPlayers);
     
@@ -405,6 +408,7 @@ uint32_t DartsRankingModule::getInternalTickDuration(DartsRankingType type) {
 }
 
 void DartsRankingModule::queueData() {
+    LOG_MEM_OP("DartsRankingModule::queueData");
     if (!webClient) return;
     
     if (_oomEnabled) {
@@ -441,6 +445,7 @@ void DartsRankingModule::queueData() {
 }
 
 void DartsRankingModule::processData() {
+    LOG_MEM_OP("DartsRankingModule::processData");
     if (oom_data_pending) {
         if (xSemaphoreTake(dataMutex, portMAX_DELAY) == pdTRUE) {
             parseHtml(oom_pending_buffer, oom_buffer_size, DartsRankingType::ORDER_OF_MERIT);

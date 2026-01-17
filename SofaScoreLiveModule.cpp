@@ -2,6 +2,7 @@
 #include "WebClientModule.hpp"
 #include "webconfig.hpp"
 #include "MultiLogger.hpp"
+#include "FragmentationMonitor.hpp"
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <LittleFS.h>
@@ -269,7 +270,8 @@ SofaScoreLiveModule::SofaScoreLiveModule(U8G2_FOR_ADAFRUIT_GFX& u8g2_ref, GFXcan
             File file = dir.openNextFile();
             int deletedCount = 0;
             while (file) {
-                String filename = String("/json_debug/") + file.name();
+                char filename[128];
+                snprintf(filename, sizeof(filename), "/json_debug/%s", file.name());
                 file.close();
                 if (LittleFS.remove(filename)) {
                     deletedCount++;
@@ -310,7 +312,8 @@ void SofaScoreLiveModule::onUpdate(std::function<void()> callback) {
 void SofaScoreLiveModule::setConfig(bool enabled, uint32_t fetchIntervalMinutes, unsigned long displaySec,
                                     const PsramString& enabledTournamentSlugs, bool fullscreen, bool interruptOnLive,
                                     uint32_t playNextMinutes, bool continuousLive,
-                                    uint32_t liveCheckIntervalSec, uint32_t liveDataFetchIntervalSec) {
+                                    uint32_t liveCheckIntervalSec, uint32_t liveDataFetchIntervalSec,
+                                    bool excludeMode) {
     if (!webClient) return;
     
     this->_enabled = enabled;
@@ -318,6 +321,7 @@ void SofaScoreLiveModule::setConfig(bool enabled, uint32_t fetchIntervalMinutes,
     this->_interruptOnLive = interruptOnLive;
     this->_playNextMinutes = playNextMinutes;
     this->_continuousLiveDisplay = continuousLive;
+    this->_tournamentExcludeMode = excludeMode;
     this->_displayDuration = displaySec > 0 ? displaySec * 1000UL : 20000;
     _currentTicksPerPage = _displayDuration / 100;
     if (_currentTicksPerPage == 0) _currentTicksPerPage = 1;
@@ -326,8 +330,8 @@ void SofaScoreLiveModule::setConfig(bool enabled, uint32_t fetchIntervalMinutes,
     this->_liveCheckIntervalMs = liveCheckIntervalSec * 1000UL;
     this->_liveDataFetchIntervalMs = liveDataFetchIntervalSec * 1000UL;
     
-    Log.printf("[SofaScore] Config updated: enabled=%d, fetch=%d min, display=%d sec, fullscreen=%d, interrupt=%d, playNext=%d min, continuousLive=%d, liveCheck=%d sec, liveFetch=%d sec\n",
-               enabled, fetchIntervalMinutes, displaySec, fullscreen, interruptOnLive, playNextMinutes, continuousLive, liveCheckIntervalSec, liveDataFetchIntervalSec);
+    Log.printf("[SofaScore] Config updated: enabled=%d, fetch=%d min, display=%d sec, fullscreen=%d, interrupt=%d, playNext=%d min, continuousLive=%d, liveCheck=%d sec, liveFetch=%d sec, excludeMode=%d\n",
+               enabled, fetchIntervalMinutes, displaySec, fullscreen, interruptOnLive, playNextMinutes, continuousLive, liveCheckIntervalSec, liveDataFetchIntervalSec, excludeMode);
     
     // Parse enabled tournament slugs
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
@@ -639,6 +643,7 @@ void SofaScoreLiveModule::switchToNextMode() {
 }
 
 void SofaScoreLiveModule::queueData() {
+    LOG_MEM_OP("SofaScore::queueData");
     if (!webClient) return;
     
     // Don't make web requests if module is disabled
@@ -754,6 +759,7 @@ void SofaScoreLiveModule::fetchLiveData() {
 }
 
 void SofaScoreLiveModule::updateLiveMatchStats() {
+    LOG_MEM_OP("SofaScore::updateStats");
     // Collect live event IDs while holding mutex, then fetch stats without holding mutex
     std::vector<int, PsramAllocator<int>> liveEventIds;
     std::vector<int, PsramAllocator<int>> eventIdsToRegister;
@@ -812,6 +818,7 @@ void SofaScoreLiveModule::updateLiveMatchStats() {
 }
 
 void SofaScoreLiveModule::processData() {
+    LOG_MEM_OP("SofaScore::processData");
     // Process pending live events data FIRST (higher priority)
     if (live_data_pending) {
         if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(500)) == pdTRUE) {
@@ -927,20 +934,32 @@ void SofaScoreLiveModule::parseDailyEventsJson(const char* json, size_t len) {
         const char* uniqueTournamentSlug = event["tournament"]["uniqueTournament"]["slug"];
         
         // Check if this tournament is enabled (by slug)
-        bool isEnabled = enabledTournamentSlugs.empty();  // If no filter, show all
-        if (!isEnabled) {
-            for (const PsramString& enabledSlug : enabledTournamentSlugs) {
-                if ((tournamentSlug && enabledSlug == tournamentSlug) ||
-                    (uniqueTournamentSlug && enabledSlug == uniqueTournamentSlug)) {
-                    isEnabled = true;
-                    break;
-                }
+        // In normal mode: empty list = show all, list = show only these
+        // In exclude mode: empty list = show all, list = show all EXCEPT these
+        bool isInList = false;
+        for (const PsramString& enabledSlug : enabledTournamentSlugs) {
+            if ((tournamentSlug && enabledSlug == tournamentSlug) ||
+                (uniqueTournamentSlug && enabledSlug == uniqueTournamentSlug)) {
+                isInList = true;
+                break;
             }
+        }
+        
+        bool isEnabled;
+        if (enabledTournamentSlugs.empty()) {
+            // No filter configured - show all tournaments
+            isEnabled = true;
+        } else if (_tournamentExcludeMode) {
+            // Exclude mode: show if NOT in list
+            isEnabled = !isInList;
+        } else {
+            // Include mode: show if IN list
+            isEnabled = isInList;
         }
         
         if (!isEnabled) {
             skippedTournamentFilter++;
-            continue;  // Skip tournaments not in filter
+            continue;  // Skip tournaments filtered out
         }
         
         // Parse match data
@@ -1120,15 +1139,27 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
         const char* uniqueTournamentSlug = event["tournament"]["uniqueTournament"]["slug"];
         
         // Check if this tournament is enabled (by slug)
-        bool isEnabled = enabledTournamentSlugs.empty();
-        if (!isEnabled) {
-            for (const PsramString& enabledSlug : enabledTournamentSlugs) {
-                if ((tournamentSlug && enabledSlug == tournamentSlug) ||
-                    (uniqueTournamentSlug && enabledSlug == uniqueTournamentSlug)) {
-                    isEnabled = true;
-                    break;
-                }
+        // In normal mode: empty list = show all, list = show only these
+        // In exclude mode: empty list = show all, list = show all EXCEPT these
+        bool isInList = false;
+        for (const PsramString& enabledSlug : enabledTournamentSlugs) {
+            if ((tournamentSlug && enabledSlug == tournamentSlug) ||
+                (uniqueTournamentSlug && enabledSlug == uniqueTournamentSlug)) {
+                isInList = true;
+                break;
             }
+        }
+        
+        bool isEnabled;
+        if (enabledTournamentSlugs.empty()) {
+            // No filter configured - show all tournaments
+            isEnabled = true;
+        } else if (_tournamentExcludeMode) {
+            // Exclude mode: show if NOT in list
+            isEnabled = !isInList;
+        } else {
+            // Include mode: show if IN list
+            isEnabled = isInList;
         }
         
         if (!isEnabled) continue;
@@ -1519,13 +1550,13 @@ void SofaScoreLiveModule::drawDailyResults() {
     
     const auto& currentGroup = _tournamentGroups[_currentTournamentIndex];
     
-    // Tournament name as subtitle (scrolling)
-    u8g2.setFont(u8g2_font_profont10_tf);
+    // Tournament name as subtitle - use smaller font in non-fullscreen mode
+    u8g2.setFont(wantsFullscreen() ? u8g2_font_profont10_tf : u8g2_font_5x8_tf);
     u8g2.setForegroundColor(0xAAAA);
     if (!currentGroup.tournamentName.empty()) {
         int tournWidth = u8g2.getUTF8Width(currentGroup.tournamentName.c_str());
         int tournX = (_currentCanvas->width() - tournWidth) / 2;
-        u8g2.setCursor(tournX, 20);
+        u8g2.setCursor(tournX, wantsFullscreen() ? 20 : 18);
         u8g2.print(currentGroup.tournamentName.c_str());
     }
     
@@ -1547,12 +1578,12 @@ void SofaScoreLiveModule::drawDailyResults() {
     
     // Adjust line height and starting position based on screen size
     // Y-coordinates are BOTTOM-aligned for u8g2
-    // Each match takes 2 lines now: player names (line 1) + countries (line 2)
-    // Normal (64px): header ~20px, need to fit 3 matches of 16px each (8px + 8px)
-    // Fullscreen (96px): header ~24px, need to fit 4 matches of 17px each (9px + 8px)
-    int y = wantsFullscreen() ? 33 : 30;  // Start below tournament name (bottom-aligned)
+    // Each match takes 2 lines: player names (line 1) + countries (line 2)
+    // Normal (64px): header ~18px, 3 matches × 15px each (8px player + 7px country) = 45px, total 63px (1px buffer)
+    // Fullscreen (96px): header ~24px, 4 matches × 17px each (9px player + 8px country) = 68px, total 92px
+    int y = wantsFullscreen() ? 33 : 28;  // Start below tournament name (bottom-aligned) - reduced from 30 to 28 for non-fullscreen
     const int LINE1_HEIGHT = wantsFullscreen() ? 9 : 8;  // Player names line
-    const int LINE2_HEIGHT = 8;  // Countries line (increased spacing for better readability)
+    const int LINE2_HEIGHT = wantsFullscreen() ? 8 : 7;  // Countries line - reduced from 8 to 7 for non-fullscreen
     const int MATCH_HEIGHT = LINE1_HEIGHT + LINE2_HEIGHT;  // Total height per match
     u8g2.setFont(u8g2_font_5x8_tf);
     
@@ -1664,8 +1695,12 @@ void SofaScoreLiveModule::drawDailyResults() {
         u8g2.setFont(u8g2_font_4x6_tf);  // Smaller font for countries
         u8g2.setForegroundColor(0xAAAA);  // Gray color
         
-        // Move country text 1 pixel higher for better spacing
-        int countryY = y - 1;
+        // Adjust vertical offset based on display mode to prevent text cutoff
+        // Fullscreen has more vertical space, so 1px offset is sufficient
+        // Non-fullscreen needs 2px offset to fit within 64px height
+        const int FULLSCREEN_COUNTRY_OFFSET = 1;
+        const int NORMAL_COUNTRY_OFFSET = 2;
+        int countryY = wantsFullscreen() ? (y - FULLSCREEN_COUNTRY_OFFSET) : (y - NORMAL_COUNTRY_OFFSET);
         
         // Home country (left)
         if (match.homeCountry) {
@@ -1903,6 +1938,32 @@ void SofaScoreLiveModule::drawLiveMatch() {
             awayWidth = u8g2.getUTF8Width(awayVal);
             u8g2.setCursor(_currentCanvas->width() - awayWidth - 2, y);
             u8g2.print(awayVal);
+        } else {
+            // Non-fullscreen mode - show Checkout percentage below Average
+            u8g2.setFont(u8g2_font_6x10_tf);
+            
+            // Show CO% if available
+            if (match.homeCheckoutPercent > 0.1f || match.awayCheckoutPercent > 0.1f) {
+                char homeVal[12], awayVal[12];
+                snprintf(homeVal, sizeof(homeVal), "%.0f%%", match.homeCheckoutPercent);
+                snprintf(awayVal, sizeof(awayVal), "%.0f%%", match.awayCheckoutPercent);
+                
+                // Home CO% (left)
+                u8g2.setForegroundColor(0xFFFF);
+                u8g2.setCursor(2, y);
+                u8g2.print(homeVal);
+                
+                // Label (center)
+                u8g2.setForegroundColor(0x07FF);  // Cyan for CO%
+                u8g2.setCursor(_currentCanvas->width() / 2 - 11, y);
+                u8g2.print("CO%");
+                
+                // Away CO% (right)
+                u8g2.setForegroundColor(0xFFFF);
+                int awayWidth = u8g2.getUTF8Width(awayVal);
+                u8g2.setCursor(_currentCanvas->width() - awayWidth - 2, y);
+                u8g2.print(awayVal);
+            }
         }
     }
 }

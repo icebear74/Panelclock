@@ -2,6 +2,7 @@
 #include "MultiLogger.hpp"
 #include "WebClientModule.hpp"
 #include "GeneralTimeConverter.hpp"
+#include "FragmentationMonitor.hpp"
 #include <ArduinoJson.h>
 #include <LittleFS.h>
 #include <algorithm>
@@ -218,6 +219,7 @@ void TankerkoenigModule::onUpdate(std::function<void()> callback) {
 bool TankerkoenigModule::isEnabled() { return _isEnabled; }
 
 void TankerkoenigModule::queueData() {
+    LOG_MEM_OP("Tankerkoenig::queueData");
     if (resource_url.empty() || !webClient) return;
     webClient->accessResource(String(resource_url.c_str()), [this](const char* buffer, size_t size, time_t last_update, bool is_stale) {
         if (buffer && size > 0 && last_update > this->last_processed_update) {
@@ -235,6 +237,7 @@ void TankerkoenigModule::queueData() {
 }
 
 void TankerkoenigModule::processData() {
+    LOG_MEM_OP("Tankerkoenig::processData");
     if (data_pending) {
         if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(5000)) == pdTRUE) {
             parseAndProcessJson(pending_buffer, buffer_size);
@@ -671,6 +674,7 @@ bool TankerkoenigModule::getPriceFromCache(const PsramString& stationId, float& 
 }
 
 void TankerkoenigModule::cleanupOldPriceCacheEntries() {
+    LOG_MEM_OP("Tankerkoenig::cleanup");
     if (!_deviceConfig) return;
     
     time_t now_utc; 

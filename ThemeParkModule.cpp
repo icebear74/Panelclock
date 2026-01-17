@@ -2,6 +2,7 @@
 #include "MultiLogger.hpp"
 #include "WebClientModule.hpp"
 #include "webconfig.hpp"
+#include "FragmentationMonitor.hpp"
 #include <ArduinoJson.h>
 #include <algorithm>
 #include <LittleFS.h>
@@ -150,6 +151,7 @@ void ThemeParkModule::setConfig(const DeviceConfig* config) {
 }
 
 void ThemeParkModule::queueData() {
+    LOG_MEM_OP("ThemeParkModule::queueData");
     if (!_webClient || !_config) return;
     
     // Check if parks list needs daily update
@@ -299,6 +301,7 @@ void ThemeParkModule::queueData() {
 }
 
 void ThemeParkModule::processData() {
+    LOG_MEM_OP("ThemeParkModule::processData");
     // Data processing is now handled directly in queueData() callback
     // This keeps it simple like the Calendar module pattern
 }
