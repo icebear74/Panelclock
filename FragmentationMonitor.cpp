@@ -179,6 +179,7 @@ void FragmentationMonitor::periodicTick() {
         // Start active logging period for 30 seconds
         activeLoggingMode = true;
         activeLoggingStartTime = millis();
+        lastActiveLogTime = 0;  // Reset to ensure we log immediately on next tick
         
         // Calculate degradation from baseline
         int32_t degradation = baselineLargestBlock - largestBlock;
@@ -191,6 +192,9 @@ void FragmentationMonitor::periodicTick() {
         Log.printf("[FragMon] Baseline: largestBlock=%u (degraded by %d bytes, %.1f%%)\n",
                    baselineLargestBlock, degradation, degradationPercent);
         Log.printf("[FragMon] Starting active logging for next %d seconds\n", FRAG_ACTIVE_LOGGING_DURATION_MS / 1000);
+        
+        // Log initial fragmentation state immediately
+        logOperation("FragMon", 0, "FragDetected", true);
         
     } else if (!currentlyFragmented && lastFragmentedState) {
         // Fragmentation resolved

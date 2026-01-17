@@ -501,13 +501,25 @@ document.getElementById('refresh').onclick = ()=>list(window.currentFsPath);
 document.getElementById('downloadAll').onclick = function() {
   const currentPath = window.currentFsPath || '/';
   document.getElementById('msg').innerText = 'Download wird gestartet...';
-  // Use direct link navigation instead of blob buffering to avoid memory issues
-  // The server's Content-Disposition header will trigger the download
-  window.location.href = '/fs/downloadall?path=' + encodeURIComponent(currentPath);
+  // Create a hidden anchor element to trigger download without page navigation
+  // The server's Content-Disposition header will trigger the file download
+  const a = document.createElement('a');
+  a.style.display = 'none';
+  a.href = '/fs/downloadall?path=' + encodeURIComponent(currentPath);
+  // Extract directory name for filename (for display purposes)
+  let dirName = currentPath === '/' ? 'root' : currentPath.substring(currentPath.lastIndexOf('/') + 1);
+  if (!dirName) dirName = 'root';
+  a.download = dirName + '.tar';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
   // Clear message after a short delay
   setTimeout(() => {
+    document.getElementById('msg').innerText = 'Archiv wird heruntergeladen';
+  }, 500);
+  setTimeout(() => {
     document.getElementById('msg').innerText = '';
-  }, 2000);
+  }, 3000);
 };
 
 // ---------- Upload form: send dest/cwd/overwrite in URL query so server->arg() sees them reliably ----------
