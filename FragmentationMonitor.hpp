@@ -13,8 +13,6 @@
 #define ENABLE_FRAG_MONITOR 1
 #endif
 
-#if ENABLE_FRAG_MONITOR
-
 // Maximum number of operations to track in FIFO buffer (stored in PSRAM!)
 #define FRAG_MONITOR_BUFFER_SIZE 100
 
@@ -38,6 +36,8 @@
 #define FRAG_MAX_LOG_FILES 10          // Maximum number of log files to keep
 #define FRAG_DUMP_COOLDOWN_MS 300000   // 5 minutes cooldown between dumps (normal)
 #define FRAG_SEVERE_COOLDOWN_MS 30000  // 30 seconds cooldown for severe cases
+
+#if ENABLE_FRAG_MONITOR
 
 // Operation log entry - IMPORTANT: Stored in PSRAM to avoid heap fragmentation!
 struct MemoryOperation {
