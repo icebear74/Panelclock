@@ -359,6 +359,7 @@ h1{font-size:18px;margin-bottom:8px}
 <div class="controls">
 <a href="/" class="btn" style="background:#555">← Zurück zum Hauptmenü</a>
 <button id="refresh" class="btn">Refresh</button>
+<button id="downloadAll" class="btn" style="background:#2196F3">Download All (Current Dir)</button>
 <form id="uploadForm" style="display:inline-block;margin-left:8px">
 <input id="fileInput" class="input" type="file" name="file" />
 <input id="destInput" class="input" type="text" placeholder="/path/optional-name" style="width:260px;margin-left:6px"/>
@@ -495,6 +496,31 @@ async function list(path='/') {
   });
 }
 document.getElementById('refresh').onclick = ()=>list(window.currentFsPath);
+
+// Download All button: creates a tar archive of the current directory
+document.getElementById('downloadAll').onclick = async function() {
+  const currentPath = window.currentFsPath || '/';
+  document.getElementById('msg').innerText = 'Erstelle Archiv...';
+  const r = await fetch('/fs/downloadall?path=' + encodeURIComponent(currentPath));
+  if (r.ok) {
+    const blob = await r.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    // Extract directory name for filename
+    let dirName = currentPath === '/' ? 'root' : currentPath.substring(currentPath.lastIndexOf('/') + 1);
+    if (!dirName) dirName = 'root';
+    a.download = dirName + '.tar';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+    document.getElementById('msg').innerText = 'Archiv heruntergeladen';
+  } else {
+    const txt = await r.text();
+    document.getElementById('msg').innerText = 'Download-Fehler: ' + r.status + ' - ' + txt;
+  }
+};
 
 // ---------- Upload form: send dest/cwd/overwrite in URL query so server->arg() sees them reliably ----------
 document.getElementById('uploadForm').onsubmit = async function(ev){
@@ -1368,11 +1394,163 @@ static void handleFsRename() {
     server->send(200, "application/json", "{\"success\":true}");
 }
 
+// GET /fs/downloadall?path=... -> creates and streams a TAR archive of all files in the directory
+static void handleFsDownloadAll() {
+    String raw = server->hasArg("path") ? server->arg("path") : "/";
+    String path = sanitizePathParam(raw);
+    
+    Log.printf("[WebFS] downloadall: path='%s'\n", path.c_str());
+    
+    // Open directory
+    File dir = LittleFS.open(path);
+    if (!dir || !dir.isDirectory()) {
+        server->send(404, "text/plain", "Directory not found");
+        return;
+    }
+    
+    // Prepare TAR streaming
+    String filename = path;
+    if (filename.endsWith("/")) filename.remove(filename.length() - 1);
+    if (filename.length() == 0) filename = "root";
+    else {
+        int lastSlash = filename.lastIndexOf('/');
+        if (lastSlash >= 0) filename = filename.substring(lastSlash + 1);
+    }
+    if (filename.length() == 0) filename = "root";
+    filename += ".tar";
+    
+    server->setContentLength(CONTENT_LENGTH_UNKNOWN);
+    server->sendHeader("Content-Type", "application/x-tar");
+    server->sendHeader("Content-Disposition", "attachment; filename=\"" + filename + "\"");
+    server->send(200);
+    
+    // Helper to write TAR header (simplified USTAR format)
+    auto writeTarHeader = [](const String& name, size_t size) {
+        uint8_t header[512];
+        memset(header, 0, 512);
+        
+        // File name (max 100 bytes)
+        String cleanName = name;
+        if (cleanName.startsWith("/")) cleanName = cleanName.substring(1);
+        if (cleanName.length() > 99) cleanName = cleanName.substring(0, 99);
+        strncpy((char*)header, cleanName.c_str(), 100);
+        
+        // File mode (8 bytes octal)
+        snprintf((char*)header + 100, 8, "0000644");
+        
+        // UID/GID (8 bytes each, octal)
+        snprintf((char*)header + 108, 8, "0000000");
+        snprintf((char*)header + 116, 8, "0000000");
+        
+        // File size (12 bytes octal)
+        snprintf((char*)header + 124, 12, "%011lo", (unsigned long)size);
+        
+        // Modification time (12 bytes octal) - use current time
+        snprintf((char*)header + 136, 12, "%011lo", (unsigned long)millis() / 1000);
+        
+        // Checksum placeholder
+        memset(header + 148, ' ', 8);
+        
+        // Type flag: '0' = regular file
+        header[156] = '0';
+        
+        // USTAR magic
+        strncpy((char*)header + 257, "ustar", 5);
+        header[263] = '0';
+        header[264] = '0';
+        
+        // Calculate checksum
+        unsigned int checksum = 0;
+        for (int i = 0; i < 512; i++) {
+            checksum += header[i];
+        }
+        snprintf((char*)header + 148, 8, "%06o", checksum);
+        
+        server->client().write(header, 512);
+    };
+    
+    // Helper to write file content with padding
+    auto writeFileContent = [](File& f, size_t size) {
+        uint8_t buf[512];
+        size_t remaining = size;
+        
+        while (remaining > 0 && f.available()) {
+            size_t toRead = (remaining > 512) ? 512 : remaining;
+            size_t read = f.readBytes((char*)buf, toRead);
+            if (read == 0) break;
+            
+            server->client().write(buf, read);
+            remaining -= read;
+        }
+        
+        // Pad to 512-byte boundary
+        if (size % 512 != 0) {
+            size_t padding = 512 - (size % 512);
+            memset(buf, 0, padding);
+            server->client().write(buf, padding);
+        }
+    };
+    
+    // Recursively add all files to TAR
+    struct DirEntry { String path; };
+    PsramVector<DirEntry> stack;
+    stack.push_back({path});
+    
+    while (!stack.empty()) {
+        DirEntry current = stack.back();
+        stack.pop_back();
+        
+        File d = LittleFS.open(current.path);
+        if (!d || !d.isDirectory()) continue;
+        
+        File entry = d.openNextFile();
+        while (entry) {
+            String entryPath = entry.name();
+            bool isDir = entry.isDirectory();
+            size_t fileSize = entry.size();
+            
+            // Normalize to absolute path
+            if (!entryPath.startsWith("/")) {
+                if (current.path == "/") entryPath = "/" + entryPath;
+                else entryPath = current.path + "/" + entryPath;
+            }
+            
+            if (isDir) {
+                entry.close();
+                stack.push_back({entryPath});
+            } else {
+                entry.close();
+                
+                // Reopen file to read content
+                File f = LittleFS.open(entryPath, "r");
+                if (f) {
+                    writeTarHeader(entryPath, fileSize);
+                    writeFileContent(f, fileSize);
+                    f.close();
+                }
+            }
+            
+            entry = d.openNextFile();
+        }
+        d.close();
+    }
+    
+    // Write two empty 512-byte blocks to mark end of TAR
+    uint8_t endBlock[512];
+    memset(endBlock, 0, 512);
+    server->client().write(endBlock, 512);
+    server->client().write(endBlock, 512);
+    
+    server->client().stop();
+    Log.printf("[WebFS] downloadall: TAR archive sent for '%s'\n", path.c_str());
+}
+
 void setupFileManagerRoutes() {
     if (!server) return;
     server->on("/fs", HTTP_GET, handleFsUi);
     server->on("/fs/list", HTTP_GET, handleFsList);
     server->on("/fs/download", HTTP_GET, handleFsDownload);
+    server->on("/fs/downloadall", HTTP_GET, handleFsDownloadAll);
     server->on("/fs/delete", HTTP_DELETE, handleFsDelete);
     server->on("/fs/upload", HTTP_POST, handleFsUploadBegin, uploadHandlerFs);
     server->onFileUpload(uploadHandlerFs);
