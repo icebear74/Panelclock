@@ -121,7 +121,7 @@ private:
     unsigned long lastDumpTime;               // Last time we dumped a log file (for cooldown)
     uint32_t fragmentedAtLargestBlock;        // largestBlock value when fragmentation was first detected
     uint32_t lastDumpedLargestBlock;          // largestBlock value when we last dumped (to detect worsening)
-    unsigned long activeLoggingEndTime;       // millis() when active logging period ends (0 if not active)
+    unsigned long activeLoggingStartTime;     // millis() when active logging period started (0 if not active)
     bool activeLoggingMode;                   // true if we're in the 30-second active logging period
     unsigned long lastActiveLogTime;          // Last time we logged during active period (for throttling)
     
