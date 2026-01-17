@@ -14,6 +14,13 @@ int FragmentationMonitor::bufferIndex = 0;
 int FragmentationMonitor::operationCount = 0;
 SemaphoreHandle_t FragmentationMonitor::bufferMutex = nullptr;
 
+// Snapshot and active logging buffers
+MemoryOperation* FragmentationMonitor::snapshotBuffer = nullptr;
+int FragmentationMonitor::snapshotCount = 0;
+MemoryOperation* FragmentationMonitor::activeBuffer = nullptr;
+int FragmentationMonitor::activeBufferIndex = 0;
+int FragmentationMonitor::activeBufferCount = 0;
+
 // Baseline tracking for detecting NEW fragmentation
 uint32_t FragmentationMonitor::baselineLargestBlock = 0;
 uint32_t FragmentationMonitor::baselineFreeBytes = 0;
@@ -31,6 +38,14 @@ FragmentationMonitor::~FragmentationMonitor() {
     if (operationBuffer) {
         free(operationBuffer);  // Free PSRAM allocation
         operationBuffer = nullptr;
+    }
+    if (snapshotBuffer) {
+        free(snapshotBuffer);
+        snapshotBuffer = nullptr;
+    }
+    if (activeBuffer) {
+        free(activeBuffer);
+        activeBuffer = nullptr;
     }
     if (bufferMutex) {
         vSemaphoreDelete(bufferMutex);
@@ -154,6 +169,7 @@ void FragmentationMonitor::periodicTick() {
         // Unsigned arithmetic automatically handles millis() overflow correctly
         if (elapsed >= FRAG_ACTIVE_LOGGING_DURATION_MS) {
             Log.printf("[FragMon] Active logging period ended (30 seconds elapsed)\n");
+            Log.printf("[FragMon] Active buffer contains %d entries\n", activeBufferCount);
             activeLoggingMode = false;
             activeLoggingStartTime = 0;
             lastActiveLogTime = 0;
@@ -165,7 +181,8 @@ void FragmentationMonitor::periodicTick() {
         unsigned long now = millis();
         // Use unsigned arithmetic to handle millis() overflow
         if (now - lastActiveLogTime >= 1000 || lastActiveLogTime == 0) {
-            logOperation("FragMon", 0, "PeriodicCheck", true);
+            // Log to active buffer instead of main buffer during active logging
+            logToActiveBuffer("FragMon", 0, "PeriodicCheck");
             lastActiveLogTime = now;
         }
     }
@@ -175,6 +192,9 @@ void FragmentationMonitor::periodicTick() {
         // Just became fragmented
         fragmentedSince = millis();
         fragmentedAtLargestBlock = largestBlock;
+        
+        // Create snapshot of current buffer state (freeze the last 200 entries)
+        createSnapshot();
         
         // Start active logging period for 30 seconds
         activeLoggingMode = true;
@@ -191,10 +211,11 @@ void FragmentationMonitor::periodicTick() {
                    free, largestBlock, (largestBlock * 100.0f / free), freeBlocks);
         Log.printf("[FragMon] Baseline: largestBlock=%u (degraded by %d bytes, %.1f%%)\n",
                    baselineLargestBlock, degradation, degradationPercent);
+        Log.printf("[FragMon] Created snapshot with %d entries\n", snapshotCount);
         Log.printf("[FragMon] Starting active logging for next %d seconds\n", FRAG_ACTIVE_LOGGING_DURATION_MS / 1000);
         
-        // Log initial fragmentation state immediately
-        logOperation("FragMon", 0, "FragDetected", true);
+        // Log initial fragmentation state to active buffer
+        logToActiveBuffer("FragMon", 0, "FragDetected");
         
     } else if (!currentlyFragmented && lastFragmentedState) {
         // Fragmentation resolved
@@ -301,6 +322,77 @@ void FragmentationMonitor::logOperation(const char* file, int line, const char* 
         
         xSemaphoreGive(bufferMutex);
     }
+}
+
+void FragmentationMonitor::createSnapshot() {
+    if (!operationBuffer || !bufferMutex) return;
+    
+    // Allocate snapshot buffer if not already allocated
+    if (!snapshotBuffer) {
+        snapshotBuffer = (MemoryOperation*)ps_malloc(sizeof(MemoryOperation) * FRAG_MONITOR_BUFFER_SIZE);
+        if (!snapshotBuffer) {
+            Log.println("[FragMon] ERROR: Failed to allocate snapshot buffer");
+            return;
+        }
+    }
+    
+    if (xSemaphoreTake(bufferMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        // Copy current buffer state to snapshot
+        int opsToSnapshot = min(operationCount, FRAG_MONITOR_BUFFER_SIZE);
+        int startIdx = (bufferIndex - opsToSnapshot + FRAG_MONITOR_BUFFER_SIZE) % FRAG_MONITOR_BUFFER_SIZE;
+        
+        for (int i = 0; i < opsToSnapshot; i++) {
+            int idx = (startIdx + i) % FRAG_MONITOR_BUFFER_SIZE;
+            snapshotBuffer[i] = operationBuffer[idx];
+        }
+        
+        snapshotCount = opsToSnapshot;
+        xSemaphoreGive(bufferMutex);
+        
+        Log.printf("[FragMon] Snapshot created with %d entries\n", snapshotCount);
+    }
+}
+
+void FragmentationMonitor::logToActiveBuffer(const char* file, int line, const char* operation) {
+    // Allocate active buffer if not already allocated
+    if (!activeBuffer) {
+        activeBuffer = (MemoryOperation*)ps_malloc(sizeof(MemoryOperation) * FRAG_ACTIVE_BUFFER_SIZE);
+        if (!activeBuffer) {
+            Log.println("[FragMon] ERROR: Failed to allocate active buffer");
+            return;
+        }
+        activeBufferIndex = 0;
+        activeBufferCount = 0;
+    }
+    
+    // Don't overflow the active buffer
+    if (activeBufferCount >= FRAG_ACTIVE_BUFFER_SIZE) {
+        return;  // Buffer full, silently drop
+    }
+    
+    // Get current heap stats
+    uint32_t free, largestBlock, freeBlocks;
+    getHeapStats(free, largestBlock, freeBlocks);
+    
+    // Write to active buffer
+    MemoryOperation& op = activeBuffer[activeBufferIndex];
+    op.timestamp = millis();
+    
+    // Extract short filename (avoid heap allocation!)
+    const char* shortFile = getShortFilename(file);
+    strncpy(op.module, shortFile, sizeof(op.module) - 1);
+    op.module[sizeof(op.module) - 1] = '\0';
+    
+    // Copy operation name (avoid heap allocation!)
+    strncpy(op.operation, operation, sizeof(op.operation) - 1);
+    op.operation[sizeof(op.operation) - 1] = '\0';
+    
+    op.line = line;
+    op.heapFree = free;
+    op.largestBlock = largestBlock;
+    
+    activeBufferIndex++;
+    activeBufferCount++;
 }
 
 bool FragmentationMonitor::isFragmented() {
@@ -446,19 +538,16 @@ void FragmentationMonitor::dumpToFile() {
         logFile.write((const uint8_t*)lineBuf, strlen(lineBuf));
     }
     
-    snprintf(lineBuf, sizeof(lineBuf), "\n=== Recent Operations (last %d) ===\n", 
-             min(operationCount, FRAG_MONITOR_BUFFER_SIZE));
-    logFile.write((const uint8_t*)lineBuf, strlen(lineBuf));
-    
-    // Dump operations from buffer (acquire mutex)
-    if (xSemaphoreTake(bufferMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-        int opsToWrite = min(operationCount, FRAG_MONITOR_BUFFER_SIZE);
-        int startIdx = (bufferIndex - opsToWrite + FRAG_MONITOR_BUFFER_SIZE) % FRAG_MONITOR_BUFFER_SIZE;
+    // Determine which buffers to write based on whether we have a snapshot
+    if (snapshotBuffer && snapshotCount > 0) {
+        // We have a snapshot - write snapshot + active buffer
+        snprintf(lineBuf, sizeof(lineBuf), "\n=== Snapshot: Historical Operations (last %d before fragmentation) ===\n", 
+                 snapshotCount);
+        logFile.write((const uint8_t*)lineBuf, strlen(lineBuf));
         
-        for (int i = 0; i < opsToWrite; i++) {
-            int idx = (startIdx + i) % FRAG_MONITOR_BUFFER_SIZE;
-            const MemoryOperation& op = operationBuffer[idx];
-            
+        // Write snapshot buffer
+        for (int i = 0; i < snapshotCount; i++) {
+            const MemoryOperation& op = snapshotBuffer[i];
             snprintf(lineBuf, sizeof(lineBuf), 
                      "[%8lu] %-15s:%-4d | %-30s | heap=%6u, largest=%6u (%.1f%%)\n",
                      op.timestamp, op.module, op.line, op.operation,
@@ -467,12 +556,62 @@ void FragmentationMonitor::dumpToFile() {
             logFile.write((const uint8_t*)lineBuf, strlen(lineBuf));
         }
         
-        xSemaphoreGive(bufferMutex);
+        // Write active buffer if we have entries
+        if (activeBuffer && activeBufferCount > 0) {
+            snprintf(lineBuf, sizeof(lineBuf), "\n=== Active Logging: Operations during 30-second monitoring (%d entries) ===\n", 
+                     activeBufferCount);
+            logFile.write((const uint8_t*)lineBuf, strlen(lineBuf));
+            
+            for (int i = 0; i < activeBufferCount; i++) {
+                const MemoryOperation& op = activeBuffer[i];
+                snprintf(lineBuf, sizeof(lineBuf), 
+                         "[%8lu] %-15s:%-4d | %-30s | heap=%6u, largest=%6u (%.1f%%)\n",
+                         op.timestamp, op.module, op.line, op.operation,
+                         op.heapFree, op.largestBlock,
+                         (op.heapFree > 0) ? (op.largestBlock * 100.0f / op.heapFree) : 0.0f);
+                logFile.write((const uint8_t*)lineBuf, strlen(lineBuf));
+            }
+        }
+        
+        logFile.close();
+        Log.printf("[FragMon] Log written successfully (%d snapshot + %d active = %d total operations)\n", 
+                   snapshotCount, activeBufferCount, snapshotCount + activeBufferCount);
+        
+        // Clear buffers after writing
+        snapshotCount = 0;
+        activeBufferCount = 0;
+        activeBufferIndex = 0;
+        
+    } else {
+        // No snapshot - fallback to writing current circular buffer (shouldn't normally happen)
+        snprintf(lineBuf, sizeof(lineBuf), "\n=== Recent Operations (last %d) ===\n", 
+                 min(operationCount, FRAG_MONITOR_BUFFER_SIZE));
+        logFile.write((const uint8_t*)lineBuf, strlen(lineBuf));
+        
+        // Dump operations from buffer (acquire mutex)
+        if (xSemaphoreTake(bufferMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+            int opsToWrite = min(operationCount, FRAG_MONITOR_BUFFER_SIZE);
+            int startIdx = (bufferIndex - opsToWrite + FRAG_MONITOR_BUFFER_SIZE) % FRAG_MONITOR_BUFFER_SIZE;
+            
+            for (int i = 0; i < opsToWrite; i++) {
+                int idx = (startIdx + i) % FRAG_MONITOR_BUFFER_SIZE;
+                const MemoryOperation& op = operationBuffer[idx];
+                
+                snprintf(lineBuf, sizeof(lineBuf), 
+                         "[%8lu] %-15s:%-4d | %-30s | heap=%6u, largest=%6u (%.1f%%)\n",
+                         op.timestamp, op.module, op.line, op.operation,
+                         op.heapFree, op.largestBlock,
+                         (op.heapFree > 0) ? (op.largestBlock * 100.0f / op.heapFree) : 0.0f);
+                logFile.write((const uint8_t*)lineBuf, strlen(lineBuf));
+            }
+            
+            xSemaphoreGive(bufferMutex);
+        }
+        
+        logFile.close();
+        Log.printf("[FragMon] Log written successfully (%d operations)\n", 
+                   min(operationCount, FRAG_MONITOR_BUFFER_SIZE));
     }
-    
-    logFile.close();
-    Log.printf("[FragMon] Log written successfully (%d operations)\n", 
-               min(operationCount, FRAG_MONITOR_BUFFER_SIZE));
 }
 
 bool FragmentationMonitor::hasEnoughFsSpace() {
