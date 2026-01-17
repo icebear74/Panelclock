@@ -14,12 +14,13 @@
 #endif
 
 // Maximum number of operations to track in FIFO buffer (stored in PSRAM!)
-#define FRAG_MONITOR_BUFFER_SIZE 100
+#define FRAG_MONITOR_BUFFER_SIZE 200
 
 // Fragmentation detection thresholds
 #define FRAG_THRESHOLD_PERCENT 50
 #define FRAG_MIN_FREE_BYTES 10000
 #define FRAG_PERSIST_TIME_MS 5000
+#define FRAG_ACTIVE_LOGGING_DURATION_MS 30000  // Continue logging for 30 seconds after fragmentation detected
 
 // Degradation detection - detect NEW fragmentation over time
 #define FRAG_DEGRADATION_THRESHOLD_PERCENT 20  // Alert if largest_block degrades by 20%
@@ -120,6 +121,8 @@ private:
     unsigned long lastDumpTime;               // Last time we dumped a log file (for cooldown)
     uint32_t fragmentedAtLargestBlock;        // largestBlock value when fragmentation was first detected
     uint32_t lastDumpedLargestBlock;          // largestBlock value when we last dumped (to detect worsening)
+    unsigned long activeLoggingEndTime;       // millis() when active logging period ends (0 if not active)
+    bool activeLoggingMode;                   // true if we're in the 30-second active logging period
     
     /**
      * @brief Dump current buffer and heap state to filesystem

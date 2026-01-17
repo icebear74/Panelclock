@@ -24,7 +24,7 @@ FragmentationMonitor* g_FragMonitor = nullptr;
 
 FragmentationMonitor::FragmentationMonitor() 
     : fragmentedSince(0), lastFragmentedState(false), lastBaselineUpdate(0), lastDumpTime(0),
-      fragmentedAtLargestBlock(0), lastDumpedLargestBlock(0) {
+      fragmentedAtLargestBlock(0), lastDumpedLargestBlock(0), activeLoggingEndTime(0), activeLoggingMode(false) {
 }
 
 FragmentationMonitor::~FragmentationMonitor() {
@@ -147,11 +147,27 @@ void FragmentationMonitor::periodicTick() {
         lastBaselineUpdate = millis();
     }
     
+    // Check if active logging period has ended
+    if (activeLoggingMode && millis() >= activeLoggingEndTime) {
+        Log.printf("[FragMon] Active logging period ended (30 seconds elapsed)\n");
+        activeLoggingMode = false;
+        activeLoggingEndTime = 0;
+    }
+    
+    // Log operation automatically during active logging mode
+    if (activeLoggingMode) {
+        logOperation("FragMon", 0, "PeriodicCheck", true);
+    }
+    
     // State change detection
     if (currentlyFragmented && !lastFragmentedState) {
         // Just became fragmented
         fragmentedSince = millis();
         fragmentedAtLargestBlock = largestBlock;
+        
+        // Start active logging period for 30 seconds
+        activeLoggingMode = true;
+        activeLoggingEndTime = millis() + FRAG_ACTIVE_LOGGING_DURATION_MS;
         
         // Calculate degradation from baseline
         int32_t degradation = baselineLargestBlock - largestBlock;
@@ -163,11 +179,20 @@ void FragmentationMonitor::periodicTick() {
                    free, largestBlock, (largestBlock * 100.0f / free), freeBlocks);
         Log.printf("[FragMon] Baseline: largestBlock=%u (degraded by %d bytes, %.1f%%)\n",
                    baselineLargestBlock, degradation, degradationPercent);
+        Log.printf("[FragMon] Starting active logging for next %d seconds\n", FRAG_ACTIVE_LOGGING_DURATION_MS / 1000);
         
     } else if (!currentlyFragmented && lastFragmentedState) {
         // Fragmentation resolved
         unsigned long duration = millis() - fragmentedSince;
         Log.printf("[FragMon] Fragmentation resolved after %lu ms\n", duration);
+        
+        // Stop active logging if still running
+        if (activeLoggingMode) {
+            Log.printf("[FragMon] Stopping active logging (fragmentation resolved)\n");
+            activeLoggingMode = false;
+            activeLoggingEndTime = 0;
+        }
+        
         fragmentedSince = 0;
         fragmentedAtLargestBlock = 0;
         
@@ -391,6 +416,16 @@ void FragmentationMonitor::dumpToFile() {
     snprintf(lineBuf, sizeof(lineBuf), "Degradation: %d bytes (%.1f%% loss from baseline)\n",
              degradation, degradationPercent);
     logFile.write((const uint8_t*)lineBuf, strlen(lineBuf));
+    
+    // Add active logging status
+    if (activeLoggingMode) {
+        unsigned long remaining = (activeLoggingEndTime > millis()) ? (activeLoggingEndTime - millis()) : 0;
+        snprintf(lineBuf, sizeof(lineBuf), "Active Logging: ENABLED (remaining: %lu ms)\n", remaining);
+        logFile.write((const uint8_t*)lineBuf, strlen(lineBuf));
+    } else {
+        snprintf(lineBuf, sizeof(lineBuf), "Active Logging: DISABLED\n");
+        logFile.write((const uint8_t*)lineBuf, strlen(lineBuf));
+    }
     
     snprintf(lineBuf, sizeof(lineBuf), "\n=== Recent Operations (last %d) ===\n", 
              min(operationCount, FRAG_MONITOR_BUFFER_SIZE));

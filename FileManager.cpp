@@ -498,28 +498,16 @@ async function list(path='/') {
 document.getElementById('refresh').onclick = ()=>list(window.currentFsPath);
 
 // Download All button: creates a tar archive of the current directory
-document.getElementById('downloadAll').onclick = async function() {
+document.getElementById('downloadAll').onclick = function() {
   const currentPath = window.currentFsPath || '/';
-  document.getElementById('msg').innerText = 'Erstelle Archiv...';
-  const r = await fetch('/fs/downloadall?path=' + encodeURIComponent(currentPath));
-  if (r.ok) {
-    const blob = await r.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    // Extract directory name for filename
-    let dirName = currentPath === '/' ? 'root' : currentPath.substring(currentPath.lastIndexOf('/') + 1);
-    if (!dirName) dirName = 'root';
-    a.download = dirName + '.tar';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    window.URL.revokeObjectURL(url);
-    document.getElementById('msg').innerText = 'Archiv heruntergeladen';
-  } else {
-    const txt = await r.text();
-    document.getElementById('msg').innerText = 'Download-Fehler: ' + r.status + ' - ' + txt;
-  }
+  document.getElementById('msg').innerText = 'Download wird gestartet...';
+  // Use direct link navigation instead of blob buffering to avoid memory issues
+  // The server's Content-Disposition header will trigger the download
+  window.location.href = '/fs/downloadall?path=' + encodeURIComponent(currentPath);
+  // Clear message after a short delay
+  setTimeout(() => {
+    document.getElementById('msg').innerText = '';
+  }, 2000);
 };
 
 // ---------- Upload form: send dest/cwd/overwrite in URL query so server->arg() sees them reliably ----------
