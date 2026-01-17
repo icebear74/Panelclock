@@ -14,12 +14,14 @@
 #endif
 
 // Maximum number of operations to track in FIFO buffer (stored in PSRAM!)
-#define FRAG_MONITOR_BUFFER_SIZE 100
+#define FRAG_MONITOR_BUFFER_SIZE 200
+#define FRAG_ACTIVE_BUFFER_SIZE 50  // Buffer for active logging (30 seconds at 1 entry/second = ~30 entries)
 
 // Fragmentation detection thresholds
 #define FRAG_THRESHOLD_PERCENT 50
 #define FRAG_MIN_FREE_BYTES 10000
 #define FRAG_PERSIST_TIME_MS 5000
+#define FRAG_ACTIVE_LOGGING_DURATION_MS 30000  // Continue logging for 30 seconds after fragmentation detected
 
 // Degradation detection - detect NEW fragmentation over time
 #define FRAG_DEGRADATION_THRESHOLD_PERCENT 20  // Alert if largest_block degrades by 20%
@@ -88,6 +90,19 @@ public:
     static void logOperation(const char* file, int line, const char* operation, bool forceLog = false);
     
     /**
+     * @brief Create a snapshot of the current operation buffer
+     */
+    static void createSnapshot();
+    
+    /**
+     * @brief Log an operation to the active buffer during fragmentation monitoring
+     * @param file Source file (use __FILE__)
+     * @param line Line number (use __LINE__)
+     * @param operation Operation description
+     */
+    static void logToActiveBuffer(const char* file, int line, const char* operation);
+    
+    /**
      * @brief Check if heap is currently fragmented (NEW fragmentation detected)
      * @return true if fragmented, false otherwise
      */
@@ -109,6 +124,13 @@ private:
     static int operationCount;                // Total operations logged (for wraparound tracking)
     static SemaphoreHandle_t bufferMutex;     // Protect buffer access
     
+    // Snapshot and active logging buffers (allocated when fragmentation detected)
+    static MemoryOperation* snapshotBuffer;   // PSRAM buffer for frozen snapshot (200 entries)
+    static int snapshotCount;                 // Number of entries in snapshot
+    static MemoryOperation* activeBuffer;     // PSRAM buffer for active logging period
+    static int activeBufferIndex;             // Current write position in active buffer
+    static int activeBufferCount;             // Number of entries in active buffer
+    
     // Baseline tracking for detecting NEW fragmentation
     static uint32_t baselineLargestBlock;     // Baseline largest contiguous block
     static uint32_t baselineFreeBytes;        // Baseline total free bytes
@@ -120,6 +142,9 @@ private:
     unsigned long lastDumpTime;               // Last time we dumped a log file (for cooldown)
     uint32_t fragmentedAtLargestBlock;        // largestBlock value when fragmentation was first detected
     uint32_t lastDumpedLargestBlock;          // largestBlock value when we last dumped (to detect worsening)
+    unsigned long activeLoggingStartTime;     // millis() when active logging period started (0 if not active)
+    bool activeLoggingMode;                   // true if we're in the 30-second active logging period
+    unsigned long lastActiveLogTime;          // Last time we logged during active period (for throttling)
     
     /**
      * @brief Dump current buffer and heap state to filesystem
