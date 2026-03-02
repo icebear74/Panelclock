@@ -574,7 +574,12 @@ void AnimationsModule::periodicTick() {
         } else if (mode == ChristmasDisplayMode::Fireplace) {
             _showFireplace = fireplaceActive;
         } else if (mode == ChristmasDisplayMode::Wreath) {
-            // Kranz-Modus: alle Flags bleiben false (Kranz ist der Default)
+            // Kranz-Modus: alle Flags bleiben false (Kranz ist der Default).
+            // Ausnahme: Wenn der Adventskranz nicht aktiv ist (z.B. außerhalb der Adventszeit),
+            // aber eine Seasonal-Animation aktiv ist, zeige stattdessen die Seasonal-Animation.
+            if (!wreathActive && seasonalActive) {
+                _showSeasonalAnimation = true;
+            }
         }
         
         // Alle Animationen verwenden die gleiche Display-Duration aus den globalen Einstellungen

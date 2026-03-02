@@ -74,6 +74,10 @@ static PsramString decodeHtmlEntities(const PsramString& input) {
                         output += "\xC3\xA2"; // â
                     } else if (code == 39) {
                         output += '\''; // Apostroph
+                    } else if (code == 96) {
+                        output += '`'; // Backtick/Gravis
+                    } else if (code == 180) {
+                        output += '\''; // ´ (Akut/Apostrophe) → Apostroph
                     } else if (code == 34) {
                         output += '"'; // Anführungszeichen
                     } else if (code >= 32 && code < 127) {
@@ -157,7 +161,8 @@ static PsramString sanitizeString(const PsramString& input) {
         bool isAllowed = (c1 >= 'a' && c1 <= 'z') ||
                          (c1 >= 'A' && c1 <= 'Z') ||
                          (c1 >= '0' && c1 <= '9') ||
-                         c1 == ' ' || c1 == '-' || c1 == '.';
+                         c1 == ' ' || c1 == '-' || c1 == '.' ||
+                         c1 == '\'' || c1 == '`';  // Apostroph und Backtick
 
         if (isAllowed) {
             output += c1;
@@ -173,6 +178,18 @@ static PsramString sanitizeString(const PsramString& input) {
                 } else {
                     output += ' '; // Unerlaubtes UTF-8 Zeichen
                 }
+            }
+        } else if (c1 == 0xC2) { // UTF-8 Startbyte für U+0080..U+00BF (z.B. ´ = U+00B4)
+            if (i + 1 < input.length()) {
+                unsigned char c2 = input[i+1];
+                if (c2 == 0xB4) { // ´ (U+00B4) → als Apostroph ausgeben
+                    output += '\'';
+                    i++; // Zwei Bytes verarbeitet
+                } else {
+                    output += ' '; // Unerlaubtes UTF-8 Zeichen
+                }
+            } else {
+                output += ' '; // Unvollständige UTF-8 Sequenz
             }
         } else {
             output += ' '; // Alle anderen unerlaubten Zeichen

@@ -110,6 +110,10 @@ public:
     void setUserAgent(const String& userAgent);
     String getUserAgent() const;
 
+    // Processing-active flag: set true while module processData() runs to prevent
+    // concurrent downloads and avoid parallel heap allocations causing fragmentation.
+    void setProcessingActive(bool active) { _processingActive = active; }
+
 private:
     char* _downloadBuffer = nullptr;
     size_t _bufferCapacity = 0;
@@ -121,6 +125,10 @@ private:
     // Timing control: start delay and minimum pause between downloads (ms)
     unsigned long _startMs = 0;
     unsigned long _lastDownloadMs = 0;
+    
+    // Flag set by the main loop while module processData() is running; prevents
+    // new downloads starting in parallel to avoid heap fragmentation.
+    volatile bool _processingActive = false;
     
     // Configurable User-Agent string (initialized with default from define)
     PsramString _userAgent = DEFAULT_USER_AGENT;
