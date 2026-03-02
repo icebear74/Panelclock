@@ -1,6 +1,7 @@
 #include "CuriousHolidaysModule.hpp"
 #include "webconfig.hpp"
 #include "FragmentationMonitor.hpp"
+#include "MultiLogger.hpp"
 #include <algorithm>
 #include <cctype>
 #include <LittleFS.h>
