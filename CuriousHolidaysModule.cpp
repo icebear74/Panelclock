@@ -3,6 +3,7 @@
 #include "FragmentationMonitor.hpp"
 #include <algorithm>
 #include <cctype>
+#include <LittleFS.h>
 
 // Deutsche Monatsnamen
 static const char* GERMAN_MONTH_NAMES[] = {
@@ -203,6 +204,77 @@ static uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b) {
     return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3); 
 }
 
+// Writes a JSON-escaped string directly to a File, one byte at a time (no heap alloc)
+static void writeJsonString(File& f, const PsramString& s) {
+    for (size_t i = 0; i < s.length(); ++i) {
+        unsigned char c = (unsigned char)s[i];
+        if      (c == '"')  f.print("\\\"");
+        else if (c == '\\') f.print("\\\\");
+        else if (c == '\n') f.print("\\n");
+        else if (c == '\r') f.print("\\r");
+        else if (c == '\t') f.print("\\t");
+        else                f.write(c);
+    }
+}
+
+// Returns the display lines joined by the literal string "#13", replicating the
+// word-wrap logic of drawAndCountLines so the JSON reflects actual on-screen breaks.
+static const char* const DISPLAY_LINE_SEP = "#13";
+
+static PsramString getDisplayLines(U8G2_FOR_ADAFRUIT_GFX& u8g2, PsramString text, int maxWidth, bool capitalizeFirst) {
+    if (text.empty()) return "";
+    text = trim(text);
+    if (capitalizeFirst && !text.empty())
+        text[0] = std::toupper(static_cast<unsigned char>(text[0]));
+    if (text.empty()) return "";
+
+    PsramString result, currentLine;
+    int breakPos = -1, pos = 0;
+
+    while (pos < (int)text.length()) {
+        int spacePos  = text.find(' ', pos);
+        int hyphenPos = text.find('-', pos);
+        bool brokeAtHyphen = false;
+
+        if (spacePos == (int)PsramString::npos && hyphenPos == (int)PsramString::npos) {
+            breakPos = text.length();
+        } else if (spacePos == (int)PsramString::npos) {
+            breakPos = hyphenPos + 1; brokeAtHyphen = true;
+        } else if (hyphenPos == (int)PsramString::npos) {
+            breakPos = spacePos;
+        } else {
+            if (spacePos < hyphenPos) { breakPos = spacePos; }
+            else { breakPos = hyphenPos + 1; brokeAtHyphen = true; }
+        }
+
+        PsramString word = text.substr(pos, breakPos - pos);
+        PsramString potentialLine = currentLine.empty() ? word
+            : (currentLine.back() == '-' ? currentLine + word : currentLine + " " + word);
+
+        if (u8g2.getUTF8Width(potentialLine.c_str()) <= maxWidth) {
+            currentLine = potentialLine;
+        } else {
+            if (!currentLine.empty()) {
+                if (!result.empty()) result += DISPLAY_LINE_SEP;
+                result += currentLine;
+            }
+            currentLine = word;
+            if (u8g2.getUTF8Width(currentLine.c_str()) > maxWidth) {
+                if (!result.empty()) result += DISPLAY_LINE_SEP;
+                result += currentLine;
+                currentLine = "";
+            }
+        }
+        pos = brokeAtHyphen ? breakPos : breakPos + 1;
+    }
+
+    if (!currentLine.empty()) {
+        if (!result.empty()) result += DISPLAY_LINE_SEP;
+        result += currentLine;
+    }
+    return result;
+}
+
 static int drawAndCountLines(U8G2_FOR_ADAFRUIT_GFX& u8g2, PsramString text, int x, int& y, int maxWidth, int lineHeight, bool doDraw, bool capitalizeFirst) {
     if (text.empty()) return 0;
 
@@ -394,6 +466,9 @@ void CuriousHolidaysModule::processData() {
 
 void CuriousHolidaysModule::parseAndProcessHtml(const char* buffer, size_t size) {
     PsramVector<HolidayEntry> today, tomorrow;
+    // Parallel vectors holding the pre-sanitize text (used for the monthly JSON debug file)
+    PsramVector<PsramString> todayRawNames,    todayRawDescs;
+    PsramVector<PsramString> tomorrowRawNames, tomorrowRawDescs;
     PsramString html(buffer, size);
 
     time_t now = time(nullptr);
@@ -495,8 +570,16 @@ void CuriousHolidaysModule::parseAndProcessHtml(const char* buffer, size_t size)
 
 
             if (!entry.name.empty()) {
-                if (isToday) today.push_back(entry);
-                if (isTomorrow) tomorrow.push_back(entry);
+                if (isToday) {
+                    today.push_back(entry);
+                    todayRawNames.push_back(trim(rawName));
+                    todayRawDescs.push_back(trim(rawDescription));
+                }
+                if (isTomorrow) {
+                    tomorrow.push_back(entry);
+                    tomorrowRawNames.push_back(trim(rawName));
+                    tomorrowRawDescs.push_back(trim(rawDescription));
+                }
             }
             liPos = liEnd + 5;
         }
@@ -508,6 +591,88 @@ void CuriousHolidaysModule::parseAndProcessHtml(const char* buffer, size_t size)
         holidaysTomorrow = tomorrow;
         xSemaphoreGive(dataMutex);
     }
+
+    // --- Debug: save raw HTML + parsed JSON once per calendar month ---
+    {
+        char rawFilename[48], jsonFilename[48];
+        snprintf(rawFilename,  sizeof(rawFilename),  "/curiousholidays_%04d_%02d.html",
+                 tm_today.tm_year + 1900, tm_today.tm_mon + 1);
+        snprintf(jsonFilename, sizeof(jsonFilename), "/curiousholidays_%04d_%02d.json",
+                 tm_today.tm_year + 1900, tm_today.tm_mon + 1);
+
+        // Raw HTML — only if not written yet for this month
+        if (!LittleFS.exists(rawFilename)) {
+            File f = LittleFS.open(rawFilename, "w");
+            if (f) {
+                f.write((const uint8_t*)buffer, size);
+                f.close();
+                Log.printf("[CuriousHolidays] Raw HTML saved: %s\n", rawFilename);
+            } else {
+                Log.printf("[CuriousHolidays] WARN: could not write %s\n", rawFilename);
+            }
+        }
+
+        // Parsed JSON — only if not written yet for this month
+        if (!LittleFS.exists(jsonFilename)) {
+            File f = LittleFS.open(jsonFilename, "w");
+            if (f) {
+                const int maxWidth = canvas.width() - 10;
+                u8g2.setFont(u8g2_font_6x10_tf);
+
+                char buf[80];
+                f.print("{\n");
+                f.print("  \"url\": \""); writeJsonString(f, resourceUrl); f.print("\",\n");
+                snprintf(buf, sizeof(buf), "  \"date_today\": \"%d. %s\",\n",
+                         tm_today.tm_mday,    GERMAN_MONTH_NAMES[tm_today.tm_mon]);
+                f.print(buf);
+                snprintf(buf, sizeof(buf), "  \"date_tomorrow\": \"%d. %s\",\n",
+                         tm_tomorrow.tm_mday, GERMAN_MONTH_NAMES[tm_tomorrow.tm_mon]);
+                f.print(buf);
+
+                // Helper lambda: write one entries array to the open file
+                auto writeDay = [&](const PsramVector<HolidayEntry>& entries,
+                                    const PsramVector<PsramString>& rawNames,
+                                    const PsramVector<PsramString>& rawDescs,
+                                    const char* key, bool addComma) {
+                    f.print("  \""); f.print(key); f.print("\": [\n");
+                    for (size_t i = 0; i < entries.size(); ++i) {
+                        f.print("    {\n");
+
+                        f.print("      \"name_raw\": \"");
+                        if (i < rawNames.size()) writeJsonString(f, rawNames[i]);
+                        f.print("\",\n");
+
+                        f.print("      \"description_raw\": \"");
+                        if (i < rawDescs.size()) writeJsonString(f, rawDescs[i]);
+                        f.print("\",\n");
+
+                        PsramString nd = getDisplayLines(u8g2, entries[i].name,        maxWidth, false);
+                        PsramString dd = getDisplayLines(u8g2, entries[i].description, maxWidth, true);
+
+                        f.print("      \"name_display\": \"");        writeJsonString(f, nd); f.print("\",\n");
+                        f.print("      \"description_display\": \""); writeJsonString(f, dd); f.print("\"\n");
+
+                        f.print("    }");
+                        if (i + 1 < entries.size()) f.print(",");
+                        f.print("\n");
+                    }
+                    f.print("  ]");
+                    if (addComma) f.print(",");
+                    f.print("\n");
+                };
+
+                writeDay(today,    todayRawNames,    todayRawDescs,    "today",    true);
+                writeDay(tomorrow, tomorrowRawNames, tomorrowRawDescs, "tomorrow", false);
+                f.print("}\n");
+                f.close();
+                Log.printf("[CuriousHolidays] Parsed JSON saved: %s\n", jsonFilename);
+            } else {
+                Log.printf("[CuriousHolidays] WARN: could not write %s\n", jsonFilename);
+            }
+        }
+    }
+    // --- End debug file saving ---
+
     calculatePages();
 }
 
