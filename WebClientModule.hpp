@@ -64,6 +64,7 @@ struct ManagedResource {
     ManagedResource(const PsramString& u, const PsramString& headers, uint32_t interval, const char* ca);
     ~ManagedResource();
     ManagedResource(ManagedResource&& other) noexcept;
+    ManagedResource& operator=(ManagedResource&& other) noexcept;
 };
 
 struct WebJob {
