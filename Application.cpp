@@ -387,34 +387,37 @@ void Application::update() {
         return;
     }
 
-    if (connectionManager) connectionManager->update();
-    
     time_t now_utc;
     time(&now_utc);
     if(mwaveSensorModule) mwaveSensorModule->update(now_utc);
 
     ArduinoOTA.handle();
 
-    // KORREKTUR: Aufrufe für das Wetter-Modul hinzugefügt
+    // FIXED: Set processingActive BEFORE any module touches the resources vector.
+    // This prevents race conditions with webWorkerTask on Core 1 during queueData().
+    // NTP update is also moved inside the protected block so that WiFiUDP heap
+    // allocations cannot run in parallel with downloads on Core 1.
+    if (webClient) webClient->setProcessingActive(true);
+
+    // NTP update is safe here: webWorkerTask is paused while _processingActive is true,
+    // so WiFiUDP allocs won't race with ongoing downloads. At a 60-min interval this is uncritical.
+    if (connectionManager) connectionManager->update();
+
     if(_tankerkoenigMod) _tankerkoenigMod->queueData();
     if(_dartsMod) _dartsMod->queueData();
     if(_sofascoreMod) _sofascoreMod->queueData();
     if(_calendarMod) _calendarMod->queueData();
     if(_curiousMod) _curiousMod->queueData();
-    if(_weatherMod) _weatherMod->queueData(); // HINZUGEFÜGT
-    if(_themeParkMod) _themeParkMod->queueData(); // HINZUGEFÜGT
-    
-    // Signal the WebClient worker that processing is about to start so it will
-    // not launch a new download in parallel (avoids concurrent heap allocations).
-    if (webClient) webClient->setProcessingActive(true);
-    // KORREKTUR: Aufrufe für das Wetter-Modul hinzugefügt
+    if(_weatherMod) _weatherMod->queueData();
+    if(_themeParkMod) _themeParkMod->queueData();
+
     if(_tankerkoenigMod) _tankerkoenigMod->processData();
     if(_dartsMod) _dartsMod->processData();
     if(_sofascoreMod) _sofascoreMod->processData();
     if(_calendarMod) _calendarMod->processData();
     if(_curiousMod) _curiousMod->processData();
-    if(_weatherMod) _weatherMod->processData(); // HINZUGEFÜGT
-    if(_themeParkMod) _themeParkMod->processData(); // HINZUGEFÜGT
+    if(_weatherMod) _weatherMod->processData();
+    if(_themeParkMod) _themeParkMod->processData();
     if (webClient) webClient->setProcessingActive(false);
 
     if (_panelManager) _panelManager->tick();

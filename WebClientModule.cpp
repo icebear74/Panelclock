@@ -342,6 +342,23 @@ void WebClientModule::resumeResourceWithHeaders(const String& url, const String&
     }
 }
 
+void WebClientModule::removeResourcesByPrefix(const String& urlPrefix) {
+    int removed = 0;
+    auto it = resources.begin();
+    while (it != resources.end()) {
+        if (it->url.rfind(urlPrefix.c_str(), 0) == 0) {
+            Log.printf("[WebDataManager] Ressource entfernt (Prefix-Cleanup): %s\n", it->url.c_str());
+            it = resources.erase(it);
+            removed++;
+        } else {
+            ++it;
+        }
+    }
+    if (removed > 0) {
+        Log.printf("[WebDataManager] %d Ressource(n) mit Prefix '%s' entfernt.\n", removed, urlPrefix.c_str());
+    }
+}
+
 void WebClientModule::accessResource(const String& url, std::function<void(const char* data, size_t size, time_t last_update, bool is_stale)> callback) {
     LOG_MEM_OP("WebClient::accessResource");
     for (auto& resource : resources) {
