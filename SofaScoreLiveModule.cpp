@@ -1116,10 +1116,14 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
             const char* liveUrl = "https://api.sofascore.com/api/v1/sport/darts/events/live";
             webClient->registerResourceSeconds(liveUrl, 60, false, false);
             
+            // Clean up all event-specific statistics resources to prevent heap fragmentation.
+            // These zombie resources hold semaphores + data buffers and are never fetched again.
+            webClient->removeResourcesByPrefix("https://api.sofascore.com/api/v1/event/");
+            
             // Clear registered event IDs for statistics
             _registeredEventIds.clear();
             
-            Log.println("[SofaScore] Live events ended - Resuming daily schedules, switched to 60s polling");
+            Log.println("[SofaScore] Live events ended - Cleaned up statistics resources, resuming daily schedules");
         }
         
         return;
@@ -1269,6 +1273,10 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
         const char* liveUrl = "https://api.sofascore.com/api/v1/sport/darts/events/live";
         webClient->registerResourceSeconds(liveUrl, _liveCheckIntervalMs / 1000, false, false);
         
+        // Clean up all event-specific statistics resources to prevent heap fragmentation.
+        // These zombie resources hold semaphores + data buffers and are never fetched again.
+        webClient->removeResourcesByPrefix("https://api.sofascore.com/api/v1/event/");
+        
         // Clear registered event IDs
         _registeredEventIds.clear();
         
@@ -1278,7 +1286,7 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
         _currentTournamentIndex = 0;
         _currentTournamentPage = 0;
         
-        Log.printf("[SofaScore] Live events ended - Resuming daily schedules, switched to %d sec check interval, reset to DAILY_RESULTS mode\n", _liveCheckIntervalMs / 1000);
+        Log.printf("[SofaScore] Live events ended - Cleaned up statistics resources, resuming daily schedules, switched to %d sec check interval, reset to DAILY_RESULTS mode\n", _liveCheckIntervalMs / 1000);
     }
     
     // Update scores in dailyMatches from live data

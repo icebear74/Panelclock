@@ -64,6 +64,7 @@ struct ManagedResource {
     ManagedResource(const PsramString& u, const PsramString& headers, uint32_t interval, const char* ca);
     ~ManagedResource();
     ManagedResource(ManagedResource&& other) noexcept;
+    ManagedResource& operator=(ManagedResource&& other) noexcept;
 };
 
 struct WebJob {
@@ -100,6 +101,11 @@ public:
     void pauseResourceWithHeaders(const String& url, const String& customHeaders);
     void resumeResource(const String& url);
     void resumeResourceWithHeaders(const String& url, const String& customHeaders);
+
+    // Remove all resources whose URL starts with the given prefix.
+    // IMPORTANT: Must only be called when _processingActive is true (i.e., webWorkerTask is paused)
+    // so the resources vector is not being iterated on the other core.
+    void removeResourcesByPrefix(const String& urlPrefix);
     
     void getRequest(const PsramString& url, std::function<void(const char* buffer, size_t size)> callback);
     void getRequest(const PsramString& url, std::function<void(int httpCode, const char* payload, size_t len)> detailed_callback);

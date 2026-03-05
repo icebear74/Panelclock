@@ -122,6 +122,33 @@ ManagedResource::ManagedResource(ManagedResource&& other) noexcept
     other.data_buffer = nullptr; other.mutex = nullptr;
 }
 
+ManagedResource& ManagedResource::operator=(ManagedResource&& other) noexcept {
+    if (this != &other) {
+        if (data_buffer) free(data_buffer);
+        if (mutex) vSemaphoreDelete(mutex);
+        url = std::move(other.url);
+        customHeaders = std::move(other.customHeaders);
+        update_interval_ms = other.update_interval_ms;
+        root_ca_fallback = other.root_ca_fallback;
+        cert_filename = std::move(other.cert_filename);
+        data_buffer = other.data_buffer;
+        data_size = other.data_size;
+        last_successful_update = other.last_successful_update;
+        last_check_attempt = other.last_check_attempt;
+        last_check_attempt_ms = other.last_check_attempt_ms;
+        mutex = other.mutex;
+        retry_count = other.retry_count;
+        is_in_retry_mode = other.is_in_retry_mode;
+        is_data_stale = other.is_data_stale;
+        is_paused = other.is_paused;
+        has_priority = other.has_priority;
+        use_ms_timing = other.use_ms_timing;
+        other.data_buffer = nullptr;
+        other.mutex = nullptr;
+    }
+    return *this;
+}
+
 
 // --- WebClientModule Implementierung ---
 
@@ -339,6 +366,23 @@ void WebClientModule::resumeResourceWithHeaders(const String& url, const String&
             }
             return;
         }
+    }
+}
+
+void WebClientModule::removeResourcesByPrefix(const String& urlPrefix) {
+    int removed = 0;
+    auto it = resources.begin();
+    while (it != resources.end()) {
+        if (it->url.rfind(urlPrefix.c_str(), 0) == 0) {
+            Log.printf("[WebDataManager] Ressource entfernt (Prefix-Cleanup): %s\n", it->url.c_str());
+            it = resources.erase(it);
+            removed++;
+        } else {
+            ++it;
+        }
+    }
+    if (removed > 0) {
+        Log.printf("[WebDataManager] %d Ressource(n) mit Prefix '%s' entfernt.\n", removed, urlPrefix.c_str());
     }
 }
 
