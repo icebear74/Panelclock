@@ -100,6 +100,10 @@ public:
     void pauseResourceWithHeaders(const String& url, const String& customHeaders);
     void resumeResource(const String& url);
     void resumeResourceWithHeaders(const String& url, const String& customHeaders);
+
+    // Remove all resources whose URL starts with the given prefix.
+    // IMPORTANT: Must only be called when _processingActive is true
+    void removeResourcesByPrefix(const String& urlPrefix);
     
     void getRequest(const PsramString& url, std::function<void(const char* buffer, size_t size)> callback);
     void getRequest(const PsramString& url, std::function<void(int httpCode, const char* payload, size_t len)> detailed_callback);
