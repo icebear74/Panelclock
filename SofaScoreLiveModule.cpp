@@ -1116,6 +1116,10 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
             const char* liveUrl = "https://api.sofascore.com/api/v1/sport/darts/events/live";
             webClient->registerResourceSeconds(liveUrl, 60, false, false);
             
+            // Clean up all event-specific statistics resources to prevent heap fragmentation
+            // These zombie resources hold semaphores + data buffers that are never needed again
+            webClient->removeResourcesByPrefix("https://api.sofascore.com/api/v1/event/");
+
             // Clear registered event IDs for statistics
             _registeredEventIds.clear();
             
@@ -1269,6 +1273,9 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
         const char* liveUrl = "https://api.sofascore.com/api/v1/sport/darts/events/live";
         webClient->registerResourceSeconds(liveUrl, _liveCheckIntervalMs / 1000, false, false);
         
+        // Clean up all event-specific statistics resources to prevent heap fragmentation
+        webClient->removeResourcesByPrefix("https://api.sofascore.com/api/v1/event/");
+
         // Clear registered event IDs
         _registeredEventIds.clear();
         
