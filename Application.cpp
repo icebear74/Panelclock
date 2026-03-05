@@ -404,6 +404,9 @@ void Application::update() {
     if(_weatherMod) _weatherMod->queueData(); // HINZUGEFÜGT
     if(_themeParkMod) _themeParkMod->queueData(); // HINZUGEFÜGT
     
+    // Signal the WebClient worker that processing is about to start so it will
+    // not launch a new download in parallel (avoids concurrent heap allocations).
+    if (webClient) webClient->setProcessingActive(true);
     // KORREKTUR: Aufrufe für das Wetter-Modul hinzugefügt
     if(_tankerkoenigMod) _tankerkoenigMod->processData();
     if(_dartsMod) _dartsMod->processData();
@@ -412,6 +415,7 @@ void Application::update() {
     if(_curiousMod) _curiousMod->processData();
     if(_weatherMod) _weatherMod->processData(); // HINZUGEFÜGT
     if(_themeParkMod) _themeParkMod->processData(); // HINZUGEFÜGT
+    if (webClient) webClient->setProcessingActive(false);
 
     if (_panelManager) _panelManager->tick();
 

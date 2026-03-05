@@ -771,6 +771,13 @@ void WebClientModule::webWorkerTask(void* param) {
         }
 
         if (WiFi.status() == WL_CONNECTED) {
+            // Don't start new downloads while the main loop is processing data;
+            // concurrent heap allocations on both cores cause heap fragmentation.
+            if (self->_processingActive) {
+                vTaskDelay(pdMS_TO_TICKS(50));
+                continue;
+            }
+
             // Process queued jobs, but ensure minimum pause between downloads
             if (xQueueReceive(self->jobQueue, &receivedJob, 0) == pdTRUE) {
                 // If last download happened too recently, push job back to front and wait

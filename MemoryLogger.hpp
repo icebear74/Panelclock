@@ -12,7 +12,7 @@ extern SemaphoreHandle_t serialMutex;
 // 0: Logging komplett deaktiviert. Kein Code wird kompiliert.
 // 1: Nur strategische Punkte (Anfang/Ende wichtiger Funktionen).
 // 2: Volle Details (jeder einzelne Schritt zum Debuggen).
-#define LOG_LEVEL 2
+#define LOG_LEVEL 0
 // ====================================================================================
 
 #if LOG_LEVEL > 0
