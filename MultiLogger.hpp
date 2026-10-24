@@ -43,6 +43,13 @@ public:
      * @return Number of bytes written
      */
     size_t write(const uint8_t* buffer, size_t size) override;
+
+    /**
+     * @brief printf replacement: Print::printf() mallocs a temporary buffer on the internal
+     * heap for every line longer than 63 chars (from all tasks/cores -> fragmentation).
+     * This version uses a larger stack buffer and falls back to PSRAM.
+     */
+    size_t printf(const char* format, ...) __attribute__((format(printf, 2, 3)));
     
     /**
      * @brief Check if there are new log lines available

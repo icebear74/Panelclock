@@ -194,7 +194,11 @@ void FragmentationMonitor::periodicTick() {
                 hasWorsened = (worseningPercent >= 5.0f);  // 5% threshold for worsening
                 isSevereWorsening = (worseningPercent >= FRAG_SEVERE_DEGRADATION_PERCENT);  // >50% = severe
                 
-                if (hasWorsened) {
+                // Rate-limited: this branch runs every ~100ms; logging each time (incl. debug
+                // file writes) would itself churn the heap and flood the log.
+                static unsigned long lastWorsenedLogMs = 0;
+                if (hasWorsened && (lastWorsenedLogMs == 0 || millis() - lastWorsenedLogMs >= 10000UL)) {
+                    lastWorsenedLogMs = millis();
                     Log.printf("[FragMon] Fragmentation WORSENED: %u -> %u bytes (%.1f%% worse)\n",
                                compareBlock, largestBlock, worseningPercent);
                 }
@@ -219,8 +223,12 @@ void FragmentationMonitor::periodicTick() {
                 lastDumpTime = millis();
                 lastDumpedLargestBlock = largestBlock;
             } else if (hasWorsened && !cooldownExpired) {
-                Log.printf("[FragMon] Fragmentation worsening but in cooldown period (%lu ms remaining)\n",
-                           FRAG_DUMP_COOLDOWN_MS - timeSinceLastDump);
+                static unsigned long lastCooldownLogMs = 0;
+                if (lastCooldownLogMs == 0 || millis() - lastCooldownLogMs >= 10000UL) {
+                    lastCooldownLogMs = millis();
+                    Log.printf("[FragMon] Fragmentation worsening but in cooldown period (%lu ms remaining)\n",
+                               FRAG_DUMP_COOLDOWN_MS - timeSinceLastDump);
+                }
             }
             // If not worsening, don't log anything (prevents spam when fragmentation is stable)
         }

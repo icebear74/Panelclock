@@ -98,6 +98,7 @@ public:
     // Removes a resource (without custom headers) completely and frees its data buffer.
     // Safe to call while the worker is downloading this resource (deletion is deferred).
     void unregisterResource(const String& url);
+    void unregisterResourceWithHeaders(const String& url, const String& customHeaders);
     void accessResource(const String& url, std::function<void(const char* data, size_t size, time_t last_update, bool is_stale)> callback);
     void accessResource(const String& url, const String& customHeaders, std::function<void(const char* data, size_t size, time_t last_update, bool is_stale)> callback);
     void updateResourceCertificateByHost(const String& host, const String& cert_filename);

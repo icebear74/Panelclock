@@ -1,4 +1,5 @@
 #include "MultiLogger.hpp"
+#include <stdarg.h>
 #include "GeneralTimeConverter.hpp"
 
 // External time converter
@@ -92,6 +93,36 @@ size_t MultiLogger::write(const uint8_t* buffer, size_t size) {
     }
     
     return size;
+}
+
+size_t MultiLogger::printf(const char* format, ...) {
+    char locBuf[160];
+    va_list args;
+    va_start(args, format);
+    va_list argsCopy;
+    va_copy(argsCopy, args);
+    int len = vsnprintf(locBuf, sizeof(locBuf), format, argsCopy);
+    va_end(argsCopy);
+    if (len < 0) {
+        va_end(args);
+        return 0;
+    }
+    size_t written;
+    if ((size_t)len < sizeof(locBuf)) {
+        written = write((const uint8_t*)locBuf, (size_t)len);
+    } else {
+        char* temp = (char*)ps_malloc((size_t)len + 1);
+        if (!temp) {
+            va_end(args);
+            // Output truncated line instead of allocating on the internal heap
+            return write((const uint8_t*)locBuf, sizeof(locBuf) - 1);
+        }
+        vsnprintf(temp, (size_t)len + 1, format, args);
+        written = write((const uint8_t*)temp, (size_t)len);
+        free(temp);
+    }
+    va_end(args);
+    return written;
 }
 
 void MultiLogger::_finalizeLine() {

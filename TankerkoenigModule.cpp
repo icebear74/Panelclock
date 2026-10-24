@@ -10,6 +10,13 @@
 #include "webconfig.hpp"
 
 #define PRICE_CACHE_FILENAME "/last_prices.json"
+
+// Allocator for PSRAM (keeps JSON parsing off the internal heap -> less fragmentation)
+struct SpiRamAllocator : ArduinoJson::Allocator {
+    void* allocate(size_t size) override { return ps_malloc(size); }
+    void deallocate(void* pointer) override { free(pointer); }
+    void* reallocate(void* ptr, size_t new_size) override { return ps_realloc(ptr, new_size); }
+};
 #define FAILSAFE_BUFFER_MS 10000 // 10 Sekunden Puffer
 
 StationData::StationData() : e5(0.0f), e10(0.0f), diesel(0.0f), isOpen(false), lastPriceChange(0) {}
@@ -251,7 +258,8 @@ void TankerkoenigModule::processData() {
 }
 
 void TankerkoenigModule::parseAndProcessJson(const char* buffer, size_t size) {
-    JsonDocument doc;
+    SpiRamAllocator allocator;
+    JsonDocument doc(&allocator);
     PsramVector<StationData> new_station_data_list;
     DeserializationError error = deserializeJson(doc, buffer, size);
 
@@ -619,7 +627,8 @@ void TankerkoenigModule::loadPriceCache() {
     if (LittleFS.exists(PRICE_CACHE_FILENAME)) {
         File file = LittleFS.open(PRICE_CACHE_FILENAME, "r");
         if (file) {
-            JsonDocument doc;
+            SpiRamAllocator allocator;
+            JsonDocument doc(&allocator);
             if (deserializeJson(doc, file) == DeserializationError::Ok) {
                 _lastPriceCache.clear();
                 for (JsonObject obj : doc.as<JsonArray>()) {
@@ -636,7 +645,8 @@ void TankerkoenigModule::loadPriceCache() {
 void TankerkoenigModule::savePriceCache() {
     File file = LittleFS.open(PRICE_CACHE_FILENAME, "w");
     if (file) {
-        JsonDocument doc;
+        SpiRamAllocator allocator;
+        JsonDocument doc(&allocator);
         JsonArray arr = doc.to<JsonArray>();
         for (const auto& entry : _lastPriceCache) {
             JsonObject obj = arr.add<JsonObject>();
@@ -1011,7 +1021,9 @@ void TankerkoenigModule::savePriceStatistics() {
     return;
     #endif
     
-    JsonDocument doc;
+    SpiRamAllocator allocator;
+    
+    JsonDocument doc(&allocator);
     doc["version"] = STATION_PRICE_STATS_VERSION;
     JsonObject prices = doc["prices"].to<JsonObject>();
 
@@ -1037,7 +1049,8 @@ void TankerkoenigModule::loadPriceStatistics() {
     }
     File file = LittleFS.open("/station_price_stats.json", "r");
     if(file) {
-        JsonDocument doc;
+        SpiRamAllocator allocator;
+        JsonDocument doc(&allocator);
         if (deserializeJson(doc, file) == DeserializationError::Ok) {
             if (migratePriceStatistics(doc)) {
                 price_statistics.clear();
@@ -1070,7 +1083,8 @@ void TankerkoenigModule::loadStationCache() {
     if (!LittleFS.exists("/station_cache.json")) { return; }
     File file = LittleFS.open("/station_cache.json", "r");
     if(file) {
-        JsonDocument doc;
+        SpiRamAllocator allocator;
+        JsonDocument doc(&allocator);
         if (deserializeJson(doc, file) == DeserializationError::Ok && doc["ok"] == true) {
             station_cache.clear();
             for(JsonObject station_json : doc["stations"].as<JsonArray>()) {

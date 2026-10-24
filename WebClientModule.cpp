@@ -367,6 +367,18 @@ void WebClientModule::unregisterResource(const String& url) {
     unlockResources();
 }
 
+void WebClientModule::unregisterResourceWithHeaders(const String& url, const String& customHeaders) {
+    if (url.isEmpty() || !lockResources()) return;
+    for (size_t i = resources.size(); i-- > 0;) {
+        ManagedResource* res = resources[i];
+        if (res->url.compare(url.c_str()) == 0 && res->customHeaders.compare(customHeaders.c_str()) == 0) {
+            Log.printf("[WebDataManager] Ressource mit Headers entfernt: %s\n", url.c_str());
+            deleteResourceLocked(i);
+        }
+    }
+    unlockResources();
+}
+
 static void setPausedLocked(ManagedResource* resource, bool paused, const char* url, bool withHeaders) {
     if (!resource) return;
     if (xSemaphoreTake(resource->mutex, pdMS_TO_TICKS(1000)) == pdTRUE) {

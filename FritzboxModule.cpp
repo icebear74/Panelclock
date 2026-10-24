@@ -4,6 +4,13 @@
 #include <ArduinoJson.h>
 #include <WiFi.h>
 
+// Allocator for PSRAM (keeps JSON parsing off the internal heap -> less fragmentation)
+struct SpiRamAllocator : ArduinoJson::Allocator {
+    void* allocate(size_t size) override { return ps_malloc(size); }
+    void deallocate(void* pointer) override { free(pointer); }
+    void* reallocate(void* ptr, size_t new_size) override { return ps_realloc(ptr, new_size); }
+};
+
 FritzboxModule::FritzboxModule(U8G2_FOR_ADAFRUIT_GFX &u8g2, GFXcanvas16 &canvas, WebClientModule* webClient)
      : u8g2(u8g2), canvas(canvas), webClient(webClient), enabled(false), callActive(false), lastConnectionAttempt(0) {
     dataMutex = xSemaphoreCreateMutex();
@@ -122,6 +129,7 @@ void FritzboxModule::taskLoop() {
             if (millis() - lastConnectionAttempt > 10000) { 
                 //Log.printf("[Fritzbox] Verbinde mit Call Monitor auf %s...\n", currentFritzIp.c_str());
                 lastConnectionAttempt = millis();
+                client.stop();  // release a half-closed socket/rx buffer before reconnecting
                 if (client.connect(currentFritzIp.c_str(), FRITZ_PORT)) {
                    // Log.println("[Fritzbox] Verbunden!");
                 } else {
@@ -207,7 +215,8 @@ void FritzboxModule::queryCallerInfo(const PsramString& number) {
 }
 
 void FritzboxModule::parseCallerInfo(const char* buffer, size_t size) {
-    JsonDocument doc;
+    SpiRamAllocator allocator;
+    JsonDocument doc(&allocator);
     DeserializationError error = deserializeJson(doc, buffer, size);
 
     if (error) {

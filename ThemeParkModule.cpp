@@ -68,7 +68,9 @@ void ThemeParkModule::setConfig(const DeviceConfig* config) {
     if (!_webClient || !_config) return;
     
     // Parse park IDs from config
+    PsramVector<PsramString> previousParkIds;
     if (xSemaphoreTake(_dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        previousParkIds = _parkIds;
         _parkIds.clear();
         if (!_config->themeParkIds.empty()) {
             PsramString parkIds = _config->themeParkIds;
@@ -96,6 +98,19 @@ void ThemeParkModule::setConfig(const DeviceConfig* config) {
         xSemaphoreGive(_dataMutex);
     }
     
+    // Remove web resources of parks that are no longer configured - otherwise they would
+    // still be downloaded periodically and their data kept in memory forever.
+    for (const auto& oldId : previousParkIds) {
+        if (std::find(_parkIds.begin(), _parkIds.end(), oldId) != _parkIds.end()) continue;
+        _webClient->unregisterResourceWithHeaders("https://api.wartezeiten.app/v1/waitingtimes",
+            String(("accept: application/json\npark: " + oldId + "\nlanguage: de").c_str()));
+        _webClient->unregisterResourceWithHeaders("https://api.wartezeiten.app/v1/openingtimes",
+            String(("accept: application/json\npark: " + oldId).c_str()));
+        _webClient->unregisterResourceWithHeaders("https://api.wartezeiten.app/v1/crowdlevel",
+            String(("accept: application/json\npark: " + oldId + "\nlanguage: de").c_str()));
+        Log.printf("[ThemePark] Unregistered resources for removed park %s\n", oldId.c_str());
+    }
+
     // Register resources for each configured park
     // Each park needs wait times data from the /waitingtimes endpoint
     unsigned long updateIntervalMinutes = (_config && _config->themeParkFetchIntervalMin > 0) 
