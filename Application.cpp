@@ -395,27 +395,29 @@ void Application::update() {
 
     ArduinoOTA.handle();
 
-    // KORREKTUR: Aufrufe für das Wetter-Modul hinzugefügt
-    if(_tankerkoenigMod) _tankerkoenigMod->queueData();
-    if(_dartsMod) _dartsMod->queueData();
-    if(_sofascoreMod) _sofascoreMod->queueData();
-    if(_calendarMod) _calendarMod->queueData();
-    if(_curiousMod) _curiousMod->queueData();
-    if(_weatherMod) _weatherMod->queueData(); // HINZUGEFÜGT
-    if(_themeParkMod) _themeParkMod->queueData(); // HINZUGEFÜGT
-    
-    // Signal the WebClient worker that processing is about to start so it will
-    // not launch a new download in parallel (avoids concurrent heap allocations).
-    if (webClient) webClient->setProcessingActive(true);
-    // KORREKTUR: Aufrufe für das Wetter-Modul hinzugefügt
-    if(_tankerkoenigMod) _tankerkoenigMod->processData();
-    if(_dartsMod) _dartsMod->processData();
-    if(_sofascoreMod) _sofascoreMod->processData();
-    if(_calendarMod) _calendarMod->processData();
-    if(_curiousMod) _curiousMod->processData();
-    if(_weatherMod) _weatherMod->processData(); // HINZUGEFÜGT
-    if(_themeParkMod) _themeParkMod->processData(); // HINZUGEFÜGT
-    if (webClient) webClient->setProcessingActive(false);
+    // Strikte Reihenfolge: Download -> Verarbeitung -> naechster Download.
+    // Waehrend der WebClient-Worker einen Download ausfuehrt, wird in diesem Zyklus
+    // nichts verarbeitet (keine parallelen Heap-Allokationen auf beiden Cores).
+    // Nach jedem Download wartet der Worker, bis hier ein kompletter Zyklus gelaufen ist.
+    if (!webClient || webClient->tryBeginProcessing()) {
+        if(_tankerkoenigMod) _tankerkoenigMod->queueData();
+        if(_dartsMod) _dartsMod->queueData();
+        if(_sofascoreMod) _sofascoreMod->queueData();
+        if(_calendarMod) _calendarMod->queueData();
+        if(_curiousMod) _curiousMod->queueData();
+        if(_weatherMod) _weatherMod->queueData();
+        if(_themeParkMod) _themeParkMod->queueData();
+
+        if(_tankerkoenigMod) _tankerkoenigMod->processData();
+        if(_dartsMod) _dartsMod->processData();
+        if(_sofascoreMod) _sofascoreMod->processData();
+        if(_calendarMod) _calendarMod->processData();
+        if(_curiousMod) _curiousMod->processData();
+        if(_weatherMod) _weatherMod->processData();
+        if(_themeParkMod) _themeParkMod->processData();
+
+        if (webClient) webClient->endProcessing();
+    }
 
     if (_panelManager) _panelManager->tick();
 

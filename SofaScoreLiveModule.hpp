@@ -236,6 +236,8 @@ private:
     void parseLiveEventsJson(const char* json, size_t len);  // NEW: Parse live events endpoint
     void parseMatchStatistics(int eventId, const char* json, size_t len);
     void updateLiveMatchStats();
+    void unregisterAllStatsResources();
+    static void buildStatsUrl(int eventId, char* buf, size_t bufSize);
     void checkAndFetchLiveEvents();  // NEW: Check for live events every minute
     void fetchLiveData();  // NEW: Fetch live events + statistics
     void switchToNextMode();

@@ -368,6 +368,16 @@ void SofaScoreLiveModule::setConfig(bool enabled, uint32_t fetchIntervalMinutes,
         
         // Daily events will be fetched dynamically in queueData()
         // Live match statistics will be fetched on-demand in queueData()
+    } else {
+        // Module disabled: remove all web resources, otherwise they would still be
+        // downloaded periodically and their buffers kept in memory.
+        webClient->unregisterResource("https://api.sofascore.com/api/v1/sport/darts/events/live");
+        if (!_lastRegisteredDailyUrl.empty()) {
+            webClient->unregisterResource(_lastRegisteredDailyUrl.c_str());
+            _lastRegisteredDailyUrl.clear();
+        }
+        unregisterAllStatsResources();
+        _liveEventsRegistered = false;
     }
     
     // Update scroll configuration
@@ -669,6 +679,11 @@ void SofaScoreLiveModule::queueData() {
         if (dailyUrl != _lastRegisteredDailyUrl) {
             uint32_t fetchInterval = config->dartsSofascoreFetchIntervalMin > 0 ? config->dartsSofascoreFetchIntervalMin : 60;
             // Convert minutes to seconds and use registerResourceSeconds for consistency with live events
+            // Remove the resource of the previous day - otherwise it would be polled
+            // forever and its data buffer would never be freed
+            if (!_lastRegisteredDailyUrl.empty()) {
+                webClient->unregisterResource(_lastRegisteredDailyUrl.c_str());
+            }
             webClient->registerResourceSeconds(dailyUrl.c_str(), fetchInterval * 60, false, false);
             _lastRegisteredDailyUrl = dailyUrl;
             Log.printf("[SofaScore] Registered daily events: interval=%d min (%d sec)\n", fetchInterval, fetchInterval * 60);
@@ -758,11 +773,26 @@ void SofaScoreLiveModule::fetchLiveData() {
         });
 }
 
+void SofaScoreLiveModule::buildStatsUrl(int eventId, char* buf, size_t bufSize) {
+    snprintf(buf, bufSize, "https://api.sofascore.com/api/v1/event/%d/statistics", eventId);
+}
+
+void SofaScoreLiveModule::unregisterAllStatsResources() {
+    if (!webClient) return;
+    for (int eventId : _registeredEventIds) {
+        char statsUrl[128];
+        buildStatsUrl(eventId, statsUrl, sizeof(statsUrl));
+        webClient->unregisterResource(statsUrl);
+    }
+    _registeredEventIds.clear();
+}
+
 void SofaScoreLiveModule::updateLiveMatchStats() {
     LOG_MEM_OP("SofaScore::updateStats");
     // Collect live event IDs while holding mutex, then fetch stats without holding mutex
     std::vector<int, PsramAllocator<int>> liveEventIds;
     std::vector<int, PsramAllocator<int>> eventIdsToRegister;
+    std::vector<int, PsramAllocator<int>> eventIdsToUnregister;
     
     if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
         // Collect all live event IDs that need statistics updates
@@ -785,26 +815,46 @@ void SofaScoreLiveModule::updateLiveMatchStats() {
                 }
             }
         }
+
+        // Statistics resources of matches that are no longer live must be removed,
+        // otherwise they would be polled (with priority) and kept in memory forever.
+        for (auto it = _registeredEventIds.begin(); it != _registeredEventIds.end();) {
+            bool stillLive = false;
+            for (int liveId : liveEventIds) {
+                if (liveId == *it) { stillLive = true; break; }
+            }
+            if (!stillLive) {
+                eventIdsToUnregister.push_back(*it);
+                it = _registeredEventIds.erase(it);
+            } else {
+                ++it;
+            }
+        }
         xSemaphoreGive(dataMutex);
     }
+
+    for (int eventId : eventIdsToUnregister) {
+        char statsUrl[128];
+        buildStatsUrl(eventId, statsUrl, sizeof(statsUrl));
+        webClient->unregisterResource(statsUrl);
+        Log.printf("[SofaScore] Unregistered statistics for finished match: eventId=%d\n", eventId);
+    }
     
-    // Register new resources with PRIORITY mode and force_new=true (outside mutex to avoid holding mutex during registration)
-    // force_new=true allows multiple statistics resources with same base URL but different event IDs
-    // Statistics are only fetched during live events at configured interval
+    // Register new resources with PRIORITY mode (outside mutex to avoid holding mutex during registration).
+    // Each event has its own URL, so no force_new is needed (prevents duplicate resources).
     uint32_t statsIntervalSec = _liveDataFetchIntervalMs / 1000;
     
     for (int eventId : eventIdsToRegister) {
         char statsUrl[128];
-        snprintf(statsUrl, sizeof(statsUrl), "https://api.sofascore.com/api/v1/event/%d/statistics", eventId);
-        // Use registerResourceSeconds with priority=true and force_new=true for live data fetch interval
-        webClient->registerResourceSeconds(statsUrl, statsIntervalSec, true, true, nullptr);  // Priority pull, live data interval, force new
+        buildStatsUrl(eventId, statsUrl, sizeof(statsUrl));
+        webClient->registerResourceSeconds(statsUrl, statsIntervalSec, true, false, nullptr);
         Log.printf("[SofaScore] Registered PRIORITY live match statistics: eventId=%d (%d sec interval)\n", eventId, statsIntervalSec);
     }
     
     // Fetch statistics for all live matches WITHOUT holding dataMutex to avoid nested mutex locks
     for (int eventId : liveEventIds) {
         char statsUrl[128];
-        snprintf(statsUrl, sizeof(statsUrl), "https://api.sofascore.com/api/v1/event/%d/statistics", eventId);
+        buildStatsUrl(eventId, statsUrl, sizeof(statsUrl));
         
         // Access the statistics data - callback will acquire dataMutex as needed
         webClient->accessResource(statsUrl,
@@ -1117,7 +1167,7 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
             webClient->registerResourceSeconds(liveUrl, 60, false, false);
             
             // Clear registered event IDs for statistics
-            _registeredEventIds.clear();
+            unregisterAllStatsResources();
             
             Log.println("[SofaScore] Live events ended - Resuming daily schedules, switched to 60s polling");
         }
@@ -1270,7 +1320,7 @@ void SofaScoreLiveModule::parseLiveEventsJson(const char* json, size_t len) {
         webClient->registerResourceSeconds(liveUrl, _liveCheckIntervalMs / 1000, false, false);
         
         // Clear registered event IDs
-        _registeredEventIds.clear();
+        unregisterAllStatsResources();
         
         // Reset mode to DAILY_RESULTS to avoid showing empty live page
         _currentMode = SofaScoreDisplayMode::DAILY_RESULTS;

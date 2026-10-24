@@ -59,6 +59,8 @@ struct ManagedResource {
     bool is_paused = false;          // When true, resource polling is paused
     bool has_priority = false;       // When true, resource is checked with priority when due
     bool use_ms_timing = false;      // When true, use millisecond-precise timing
+    bool in_use = false;             // Set by worker while a download for this resource is running
+    bool pending_delete = false;     // Unregistered while in use -> worker deletes it after the download
 
     ManagedResource(const PsramString& u, uint32_t interval, const char* ca);
     ManagedResource(const PsramString& u, const PsramString& headers, uint32_t interval, const char* ca);
@@ -91,6 +93,10 @@ public:
     void registerResourceSecondsWithHeaders(const String& url, const String& customHeaders, uint32_t update_interval_seconds, bool with_priority = false, const char* root_ca = nullptr);
     
     void updateResourceUrl(const String& old_url, const String& new_url);
+
+    // Removes a resource (without custom headers) completely and frees its data buffer.
+    // Safe to call while the worker is downloading this resource (deletion is deferred).
+    void unregisterResource(const String& url);
     void accessResource(const String& url, std::function<void(const char* data, size_t size, time_t last_update, bool is_stale)> callback);
     void accessResource(const String& url, const String& customHeaders, std::function<void(const char* data, size_t size, time_t last_update, bool is_stale)> callback);
     void updateResourceCertificateByHost(const String& host, const String& cert_filename);
@@ -110,15 +116,27 @@ public:
     void setUserAgent(const String& userAgent);
     String getUserAgent() const;
 
-    // Processing-active flag: set true while module processData() runs to prevent
-    // concurrent downloads and avoid parallel heap allocations causing fragmentation.
-    void setProcessingActive(bool active) { _processingActive = active; }
+    // Strict sequencing "Download -> Verarbeitung -> naechster Download":
+    // The main loop must wrap queueData()/processData() of all modules with
+    // tryBeginProcessing()/endProcessing(). tryBeginProcessing() returns false while a
+    // download is running (the caller must then skip processing for this cycle).
+    // After every completed download the worker waits until one complete processing
+    // cycle has finished before it starts the next download.
+    bool tryBeginProcessing();
+    void endProcessing();
 
 private:
     char* _downloadBuffer = nullptr;
     size_t _bufferCapacity = 0;
     PsramBufferStream _downloadStream;
-    std::vector<ManagedResource, PsramAllocator<ManagedResource>> resources;
+    // Resources are stored as pointers so that registering new resources (vector growth)
+    // never invalidates a resource the worker is currently downloading.
+    // All structural access to the vector is guarded by _resourcesMutex (recursive).
+    std::vector<ManagedResource*, PsramAllocator<ManagedResource*>> resources;
+    SemaphoreHandle_t _resourcesMutex = nullptr;
+    // Held by the worker for the whole duration of a download (+ synchronous callbacks)
+    // and by the main loop while modules process data -> never both at the same time.
+    SemaphoreHandle_t _busyMutex = nullptr;
     TaskHandle_t workerTaskHandle;
     QueueHandle_t jobQueue;
 
@@ -126,12 +144,19 @@ private:
     unsigned long _startMs = 0;
     unsigned long _lastDownloadMs = 0;
     
-    // Flag set by the main loop while module processData() is running; prevents
-    // new downloads starting in parallel to avoid heap fragmentation.
-    volatile bool _processingActive = false;
+    // Set by the worker after a resource download; cleared by endProcessing() once the
+    // main loop has processed the new data. The next resource download waits for it.
+    volatile bool _awaitingProcessing = false;
+    volatile unsigned long _awaitingSinceMs = 0;
     
     // Configurable User-Agent string (initialized with default from define)
     PsramString _userAgent = DEFAULT_USER_AGENT;
+
+    bool lockResources(TickType_t timeout = portMAX_DELAY);
+    void unlockResources();
+    ManagedResource* findResourceLocked(const char* url, const char* customHeaders);
+    void deleteResourceLocked(size_t index);
+    void runResourceUpdate(ManagedResource* resource, bool download);
 
     bool reallocateBuffer(size_t new_size);
     void performJob(const WebJob& job);
