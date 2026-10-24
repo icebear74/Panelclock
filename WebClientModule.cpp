@@ -1005,8 +1005,8 @@ void WebClientModule::performUpdate(ManagedResource& resource) {
         Log.println("[WebDataManager] Timeout beim Warten auf Ressourcen-Mutex, Update übersprungen.");
         return;
     }
-    url = url;
-    customHeaders = customHeaders;
+    url = resource.url;
+    customHeaders = resource.customHeaders;
     configuredCertFilename = resource.cert_filename;
     xSemaphoreGive(resource.mutex);
 
