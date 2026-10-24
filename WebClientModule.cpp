@@ -543,6 +543,35 @@ void WebClientModule::postRequest(const PsramString& url, const PsramString& pos
     }
 }
 
+namespace {
+struct SyncRequestState {
+    SemaphoreHandle_t sem = nullptr;
+    int httpCode = 0;
+    PsramString payload;
+    SyncRequestState() { sem = xSemaphoreCreateBinary(); }
+    ~SyncRequestState() { if (sem) vSemaphoreDelete(sem); }
+};
+}
+
+bool WebClientModule::getRequestSync(const PsramString& url, const PsramString& customHeaders, SyncResult& result, uint32_t timeoutMs) {
+    std::shared_ptr<SyncRequestState> state = std::make_shared<SyncRequestState>();
+    if (!state->sem) {
+        result.httpCode = -1;
+        return false;
+    }
+    getRequest(url, customHeaders, [state](int httpCode, const char* payload, size_t len) {
+        state->httpCode = httpCode;
+        if (payload && len > 0) state->payload.assign(payload, len);
+        xSemaphoreGive(state->sem);
+    });
+    if (xSemaphoreTake(state->sem, pdMS_TO_TICKS(timeoutMs)) != pdTRUE) {
+        return false;
+    }
+    result.httpCode = state->httpCode;
+    result.payload = std::move(state->payload);
+    return true;
+}
+
 bool WebClientModule::reallocateBuffer(size_t new_size) {
     if (new_size <= _bufferCapacity) return true;
     LOG_MEMORY_DETAILED("WebClient: Vor Puffer-Allokation");
@@ -852,6 +881,7 @@ void WebClientModule::webWorkerTask(void* param) {
     WebJob* receivedJob;
     const unsigned long MIN_PAUSE_BETWEEN_DOWNLOADS_MS = 10000UL;   // 10 seconds (normal resources + jobs)
     const unsigned long MIN_PAUSE_PRIORITY_MS = 2000UL;             // priority (live) resources
+    const unsigned long MIN_PAUSE_JOB_MS = 1000UL;                  // on-demand jobs (callers wait synchronously)
     const unsigned long MAX_WAIT_FOR_PROCESSING_MS = 5000UL;        // safety net if main loop does not process
     const TickType_t BUSY_LOCK_TIMEOUT = pdMS_TO_TICKS(10000);
 
@@ -870,7 +900,7 @@ void WebClientModule::webWorkerTask(void* param) {
             // while waiting for the result), but they are strictly serialized with all other
             // downloads and with the module processing via _busyMutex.
             if (uxQueueMessagesWaiting(self->jobQueue) > 0 &&
-                (self->_lastDownloadMs == 0 || millisElapsed(self->_lastDownloadMs, nowMs) >= MIN_PAUSE_BETWEEN_DOWNLOADS_MS)) {
+                (self->_lastDownloadMs == 0 || millisElapsed(self->_lastDownloadMs, nowMs) >= MIN_PAUSE_JOB_MS)) {
                 if (xQueueReceive(self->jobQueue, &receivedJob, 0) == pdTRUE) {
                     if (xSemaphoreTake(self->_busyMutex, BUSY_LOCK_TIMEOUT) == pdTRUE) {
                         self->_lastDownloadMs = millis();
@@ -925,15 +955,15 @@ void WebClientModule::webWorkerTask(void* param) {
                 if (selected) {
                     selected->in_use = true;  // protects against deletion while downloading
                     if (selected->use_ms_timing) selected->last_check_attempt_ms = nowMs;
+                    if (selected->has_priority) {
+                        Log.printf("[WebDataManager] Prioritäts-Ressource wird ausgeführt: %s\n", selected->url.c_str());
+                    }
                 }
                 self->unlockResources();
             }
 
             if (selected) {
                 if (xSemaphoreTake(self->_busyMutex, BUSY_LOCK_TIMEOUT) == pdTRUE) {
-                    if (selected->has_priority) {
-                        Log.printf("[WebDataManager] Prioritäts-Ressource wird ausgeführt: %s\n", selected->url.c_str());
-                    }
                     self->_lastDownloadMs = millis();
                     self->runResourceUpdate(selected, true);
                     self->_lastDownloadMs = millis();

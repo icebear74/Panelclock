@@ -45,6 +45,13 @@ private:
     int lastChannel = 0;
     unsigned long ntpUpdateIntervalMs;
     unsigned long lastNtpSyncTime = 0;
+
+    // WLAN-Reconnect-Handling
+    unsigned long disconnectedSinceMs = 0;
+    unsigned long lastReconnectAttemptMs = 0;
+    uint16_t reconnectAttempts = 0;
+    void handleDisconnected();
+    void startReconnect(bool fullReset);
 };
 
 #endif // CONNECTION_MANAGER_HPP

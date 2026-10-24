@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include <functional>
 #include <vector>
+#include <memory>
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
@@ -111,6 +112,12 @@ public:
     void getRequest(const PsramString& url, std::function<void(int httpCode, const char* payload, size_t len)> detailed_callback);
     void getRequest(const PsramString& url, const PsramString& customHeaders, std::function<void(int httpCode, const char* payload, size_t len)> detailed_callback);
     void postRequest(const PsramString& url, const PsramString& postBody, const PsramString& contentType, std::function<void(const char* buffer, size_t size)> callback);
+
+    // Synchronous GET (blocks the caller up to timeoutMs). Safe against late callbacks:
+    // the result state is reference-counted, so a response arriving after the timeout
+    // does not write into a stack frame that no longer exists.
+    struct SyncResult { int httpCode = 0; PsramString payload; };
+    bool getRequestSync(const PsramString& url, const PsramString& customHeaders, SyncResult& result, uint32_t timeoutMs);
     
     // User-Agent configuration
     void setUserAgent(const String& userAgent);

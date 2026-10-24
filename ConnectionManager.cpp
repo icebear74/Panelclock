@@ -13,7 +13,10 @@ bool ConnectionManager::begin() {
     if (deviceConfig.ssid.empty()) { return false; }
     status = ConnectionStatus::CONNECTING;
     displayStatus("Suche WLANs...");
+    WiFi.persistent(false);
     WiFi.mode(WIFI_STA);
+    WiFi.setSleep(false);          // Modem-Sleep fuehrt bei manchen APs zu Verbindungsabbruechen
+    WiFi.setAutoReconnect(true);   // Treiber-Reconnect; zusaetzlich eigene Ueberwachung in update()
     WiFi.disconnect();
     delay(100);
     int n = WiFi.scanNetworks();
@@ -112,20 +115,100 @@ bool ConnectionManager::begin() {
     }
 }
 
-void ConnectionManager::update() {
+// Reconnect-Strategie:
+//  - erste Versuche alle 15s: neu verbinden mit beliebigem AP der SSID (nicht mehr an BSSID/Kanal gebunden)
+//  - danach alle 60s: kompletter Reset des WLAN-Stacks (WIFI_OFF -> WIFI_STA) und neu verbinden
+//  - nach 30 Minuten ohne Verbindung: Neustart des ESP als letzte Massnahme
+static const unsigned long RECONNECT_FAST_INTERVAL_MS = 15000UL;
+static const unsigned long RECONNECT_FULL_INTERVAL_MS = 60000UL;
+static const uint16_t RECONNECT_FAST_ATTEMPTS = 4;
+static const unsigned long RECONNECT_RESTART_AFTER_MS = 30UL * 60UL * 1000UL;
+
+void ConnectionManager::startReconnect(bool fullReset) {
+    if (fullReset) {
+        Log.printf("[ConnectionManager] WLAN-Reconnect (Versuch %u): kompletter Reset des WLAN-Stacks...\n", reconnectAttempts);
+        WiFi.disconnect(true);
+        WiFi.mode(WIFI_OFF);
+        delay(200);
+        WiFi.mode(WIFI_STA);
+        WiFi.setSleep(false);
+        WiFi.setAutoReconnect(true);
+    } else {
+        Log.printf("[ConnectionManager] WLAN-Reconnect (Versuch %u)...\n", reconnectAttempts);
+        WiFi.disconnect();
+        delay(50);
+    }
+    // Ohne BSSID/Kanal verbinden, damit auch ein anderer AP (Mesh/Repeater) bzw. ein
+    // geaenderter Kanal gefunden wird.
+    WiFi.begin(deviceConfig.ssid.c_str(), deviceConfig.password.c_str());
+}
+
+void ConnectionManager::handleDisconnected() {
+    unsigned long now = millis();
+
     if (status == ConnectionStatus::CONNECTED) {
-        if (millis() - lastNtpSyncTime > ntpUpdateIntervalMs) {
-            Log.println("[ConnectionManager] Führe periodisches NTP-Update aus...");
-            ntpClient.setPoolServerName(DEFAULT_NTP_SERVER_PRIMARY);
-            if (ntpClient.forceUpdate()) {
-                time_t utc_time = ntpClient.getEpochTime();
-                timeval tv = { utc_time, 0 };
-                settimeofday(&tv, nullptr);
-                Log.println("[ConnectionManager] Periodisches NTP-Update erfolgreich.");
-                lastNtpSyncTime = millis();
-            } else {
-                Log.println("[ConnectionManager] Periodisches NTP-Update fehlgeschlagen.");
-            }
+        Log.printf("[ConnectionManager] WLAN-Verbindung verloren (Status %d). Starte Reconnect...\n", (int)WiFi.status());
+        status = ConnectionStatus::RECONNECTING_FAST;
+        disconnectedSinceMs = now;
+        lastReconnectAttemptMs = now;  // dem Treiber-Autoreconnect kurz Zeit geben
+        reconnectAttempts = 0;
+        return;
+    }
+
+    if (now - disconnectedSinceMs >= RECONNECT_RESTART_AFTER_MS) {
+        Log.println("[ConnectionManager] WLAN seit 30 Minuten nicht verfuegbar - starte ESP neu.");
+        delay(500);
+        ESP.restart();
+        return;
+    }
+
+    unsigned long interval = (reconnectAttempts < RECONNECT_FAST_ATTEMPTS) ? RECONNECT_FAST_INTERVAL_MS : RECONNECT_FULL_INTERVAL_MS;
+    if (now - lastReconnectAttemptMs < interval) return;
+
+    lastReconnectAttemptMs = now;
+    reconnectAttempts++;
+    bool fullReset = reconnectAttempts > RECONNECT_FAST_ATTEMPTS;
+    status = fullReset ? ConnectionStatus::RECONNECTING_FULL_SCAN : ConnectionStatus::RECONNECTING_FAST;
+    startReconnect(fullReset);
+}
+
+void ConnectionManager::update() {
+    if (status == ConnectionStatus::CONNECTING || status == ConnectionStatus::DISCONNECTED) {
+        // begin() noch nicht erfolgreich -> kein Monitoring (Konfig-Portal)
+        return;
+    }
+
+    if (WiFi.status() != WL_CONNECTED) {
+        handleDisconnected();
+        return;
+    }
+
+    if (status != ConnectionStatus::CONNECTED) {
+        Log.printf("[ConnectionManager] WLAN wieder verbunden nach %lu s (IP: %s, RSSI: %d dBm).\n",
+                   (millis() - disconnectedSinceMs) / 1000UL, WiFi.localIP().toString().c_str(), WiFi.RSSI());
+        status = ConnectionStatus::CONNECTED;
+        reconnectAttempts = 0;
+        memcpy(lastBssid, WiFi.BSSID(), 6);
+        lastChannel = WiFi.channel();
+        // NTP-Socket nach Reset des WLAN-Stacks neu oeffnen und Zeit zeitnah synchronisieren
+        ntpClient.end();
+        ntpClient.begin();
+        lastNtpSyncTime = millis() - ntpUpdateIntervalMs - 1;
+    }
+
+    if (millis() - lastNtpSyncTime > ntpUpdateIntervalMs) {
+        Log.println("[ConnectionManager] Führe periodisches NTP-Update aus...");
+        ntpClient.setPoolServerName(DEFAULT_NTP_SERVER_PRIMARY);
+        if (ntpClient.forceUpdate()) {
+            time_t utc_time = ntpClient.getEpochTime();
+            timeval tv = { utc_time, 0 };
+            settimeofday(&tv, nullptr);
+            Log.println("[ConnectionManager] Periodisches NTP-Update erfolgreich.");
+            lastNtpSyncTime = millis();
+        } else {
+            Log.println("[ConnectionManager] Periodisches NTP-Update fehlgeschlagen.");
+            // nicht in jedem Loop erneut versuchen -> in 5 Minuten wieder
+            lastNtpSyncTime = millis() - ntpUpdateIntervalMs + 5UL * 60UL * 1000UL;
         }
     }
 }

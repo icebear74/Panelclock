@@ -854,20 +854,13 @@ void handleTankerkoenigSearchLive() {
     url += coord_buf;
     url += "&rad="; url += radiusStr.c_str(); url += "&sort="; url += sortStr.c_str(); url += "&type=all&apikey="; url += deviceConfig->tankerApiKey.c_str();
 
-    struct Result { int httpCode; PsramString payload; } result;
-    SemaphoreHandle_t sem = xSemaphoreCreateBinary();
+    WebClientModule::SyncResult result;
 
-    webClient->getRequest(url, [&](int httpCode, const char* payload, size_t len) {
-        result.httpCode = httpCode;
-        if (payload) { result.payload.assign(payload, len); }
-        xSemaphoreGive(sem);
-    });
-
-    if (xSemaphoreTake(sem, pdMS_TO_TICKS(20000)) == pdTRUE) {
+    if (webClient->getRequestSync(url, "", result, 20000)) {
         if (result.httpCode == 200) {
             const size_t JSON_DOC_SIZE = 32768; 
             void* docMem = ps_malloc(JSON_DOC_SIZE);
-            if (!docMem) { Log.println("[WebServer] FATAL: PSRAM für JSON-Merge fehlgeschlagen!"); server->send(500, "application/json", "{\"ok\":false,\"message\":\"Interner Speicherfehler\"}"); vSemaphoreDelete(sem); return; }
+            if (!docMem) { Log.println("[WebServer] FATAL: PSRAM für JSON-Merge fehlgeschlagen!"); server->send(500, "application/json", "{\"ok\":false,\"message\":\"Interner Speicherfehler\"}"); return; }
             
             JsonDocument* currentCacheDoc = new (docMem) JsonDocument();
             
@@ -925,7 +918,6 @@ void handleTankerkoenigSearchLive() {
             server->send(result.httpCode > 0 ? result.httpCode : 500, "application/json", error_msg.c_str());
         }
     } else { server->send(504, "application/json", "{\"ok\":false, \"message\":\"Timeout bei der Anfrage an den WebClient-Task.\"}"); }
-    vSemaphoreDelete(sem);
 }
 
 void handleNotFound() {
@@ -1184,23 +1176,11 @@ void handleThemeParksList() {
     PsramString url = "https://api.wartezeiten.app/v1/parks";
     PsramString headers = "accept: application/json\nlanguage: de";
     
-    struct Result { int httpCode; PsramString payload; } result;
-    result.httpCode = 0;
-    SemaphoreHandle_t sem = xSemaphoreCreateBinary();
-    
-    webClient->getRequest(url, headers, [&](int httpCode, const char* payload, size_t len) {
-        Log.printf("[ThemePark] Callback received - HTTP %d, payload size: %d\n", httpCode, len);
-        result.httpCode = httpCode;
-        if (payload && len > 0) { 
-            result.payload.assign(payload, len); 
-            Log.printf("[ThemePark] Payload first 100 chars: %.100s\n", payload);
-        }
-        xSemaphoreGive(sem);
-    });
+    WebClientModule::SyncResult result;
     
     Log.println("[ThemePark] Waiting for response (20s timeout)...");
     
-    if (xSemaphoreTake(sem, pdMS_TO_TICKS(20000)) == pdTRUE) {
+    if (webClient->getRequestSync(url, headers, result, 20000)) {
         Log.printf("[ThemePark] Response received, HTTP code: %d\n", result.httpCode);
         
         if (result.httpCode == 200) {
@@ -1218,7 +1198,6 @@ void handleThemeParksList() {
             if (error) {
                 Log.printf("[ThemePark] JSON parse error: %s\n", error.c_str());
                 server->send(500, "application/json", "{\"ok\":false, \"message\":\"Failed to parse API response\"}");
-                vSemaphoreDelete(sem);
                 return;
             }
             
@@ -1270,11 +1249,9 @@ void handleThemeParksList() {
             error_msg += "\"}";
             server->send(result.httpCode > 0 ? result.httpCode : 500, "application/json", error_msg.c_str());
         }
-        vSemaphoreDelete(sem);
     } else {
         Log.println("[ThemePark] TIMEOUT waiting for API response");
         server->send(504, "application/json", "{\"ok\":false, \"message\":\"Timeout waiting for API response\"}");
-        vSemaphoreDelete(sem);
     }
 }
 
@@ -1301,41 +1278,18 @@ void handleSofascoreTournamentsList() {
     
     Log.printf("[SofaScore] Fetching tournaments for today: %s\n", dateStr);
     
-    struct Result { 
-        int httpCode; 
-        PsramString payload; 
-    } result;
-    result.httpCode = 0;
-    
-    SemaphoreHandle_t sem = xSemaphoreCreateBinary();
-    if (!sem) {
-        Log.println("[SofaScore] Failed to create semaphore");
-        server->send(500, "application/json", "{\"ok\":false, \"message\":\"Failed to create semaphore\"}");
-        return;
-    }
-    
-    webClient->getRequest(url, headers, [&](int httpCode, const char* payload, size_t len) {
-        Log.printf("[SofaScore] Callback received - HTTP %d, payload size: %d\n", httpCode, len);
-        result.httpCode = httpCode;
-        if (payload && len > 0) {
-            result.payload.assign(payload, len);
-            Log.printf("[SofaScore] Payload first 100 chars: %.100s\n", payload);
-        }
-        xSemaphoreGive(sem);
-    });
+    WebClientModule::SyncResult result;
     
     Log.println("[SofaScore] Waiting for response (20s timeout)...");
     
-    // Wait for response with 20 second timeout (same as ThemePark to avoid race conditions)
-    if (xSemaphoreTake(sem, pdMS_TO_TICKS(20000)) != pdTRUE) {
+    // Wait for response with 20 second timeout (late responses are handled safely by getRequestSync)
+    if (!webClient->getRequestSync(url, headers, result, 20000)) {
         Log.println("[SofaScore] TIMEOUT waiting for API response");
-        vSemaphoreDelete(sem);
         server->send(504, "application/json", "{\"ok\":false, \"message\":\"Timeout waiting for API response\"}");
         return;
     }
     
     Log.printf("[SofaScore] Response received, HTTP code: %d\n", result.httpCode);
-    vSemaphoreDelete(sem);
     
     if (result.httpCode != 200) {
         Log.printf("[SofaScore] HTTP error: %d\n", result.httpCode);

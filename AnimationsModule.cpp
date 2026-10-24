@@ -3028,6 +3028,34 @@ void AnimationsModule::drawSummerAnimation() {
     }
 }
 
+// Helper: leaf palette for autumn (saturated, warm colors)
+static uint16_t autumnLeafColor(uint32_t seed) {
+    static const uint16_t colors[] = {
+        ((230 & 0xF8) << 8) | ((60 & 0xFC) << 3) | (20 >> 3),    // Scarlet
+        ((255 & 0xF8) << 8) | ((120 & 0xFC) << 3) | (0 >> 3),    // Orange
+        ((255 & 0xF8) << 8) | ((170 & 0xFC) << 3) | (0 >> 3),    // Amber
+        ((250 & 0xF8) << 8) | ((210 & 0xFC) << 3) | (40 >> 3),   // Golden yellow
+        ((180 & 0xF8) << 8) | ((30 & 0xFC) << 3) | (30 >> 3),    // Dark red
+        ((200 & 0xF8) << 8) | ((90 & 0xFC) << 3) | (20 >> 3),    // Rust
+        ((150 & 0xF8) << 8) | ((150 & 0xFC) << 3) | (20 >> 3)    // Olive (last green)
+    };
+    return colors[seed % (sizeof(colors) / sizeof(colors[0]))];
+}
+
+static void respawnLeaf(float& x, float& y, float& vx, float& vy, float& phase, int& size, uint16_t& color,
+                        int canvasW, int canopyTop, int canopyBottom, int treeCount, int index) {
+    // Leaves start inside one of the tree canopies
+    int tree = index % (treeCount > 0 ? treeCount : 1);
+    int treeX = (treeCount > 0) ? (canvasW * (2 * tree + 1)) / (2 * treeCount) : canvasW / 2;
+    x = (float)(treeX + (rand() % 24) - 12);
+    y = (float)(canopyTop + (rand() % (canopyBottom - canopyTop + 1)));
+    vx = ((rand() % 21) - 10) * 0.02f;
+    vy = 0.25f + (float)(rand() % 10) / 25.0f;
+    phase = (float)(rand() % 628) / 100.0f;
+    size = 1 + (rand() % 3);
+    color = autumnLeafColor(rand());
+}
+
 void AnimationsModule::initAutumnAnimation() {
     if (!_leaves) {
         Log.println("[AnimationsModule] Kann Herbstanimation nicht initialisieren - PSRAM-Allokation fehlgeschlagen");
@@ -3036,37 +3064,15 @@ void AnimationsModule::initAutumnAnimation() {
     
     int canvasW = _currentCanvas->width();
     int canvasH = _currentCanvas->height();
-    
-    // Get count from config
     int leafCount = config ? config->seasonalAutumnLeafCount : 15;
+    int canopyTop = canvasH / 5;
+    int canopyBottom = canvasH / 2;
     
-    // Tree positions for leaves to fall from
-    int leftTreeX = canvasW / 4;
-    int rightTreeX = 3 * canvasW / 4;
-    int treeTop = canvasH / 3;  // Trees are in upper portion
-    
-    // Initialize falling leaves FROM TREE POSITIONS
     for (int i = 0; i < leafCount && i < MAX_LEAVES; i++) {
-        // Alternate between left and right tree
-        int treeX = (i % 2 == 0) ? leftTreeX : rightTreeX;
-        
-        // Start leaves near tree canopy position
-        _leaves[i].x = (float)(treeX + (rand() % 20) - 10);  // Within tree canopy width
-        _leaves[i].y = (float)(treeTop + (rand() % 15));  // Starting from tree height
-        _leaves[i].vx = ((rand() % 3) - 1) * 0.2f;
-        _leaves[i].vy = 0.3f + (float)(rand() % 10) / 20.0f;
-        _leaves[i].rotation = (float)(rand() % 360);
-        _leaves[i].size = 2 + (rand() % 2);
-        
-        // Autumn leaf colors (brown, orange, red, yellow)
-        uint16_t leafColors[] = {
-            rgb565(139, 69, 19),   // Brown
-            rgb565(255, 140, 0),   // Orange
-            rgb565(200, 50, 50),   // Red
-            rgb565(255, 215, 0),   // Yellow
-            rgb565(178, 34, 34)    // Dark red
-        };
-        _leaves[i].color = leafColors[rand() % 5];
+        respawnLeaf(_leaves[i].x, _leaves[i].y, _leaves[i].vx, _leaves[i].vy, _leaves[i].rotation,
+                    _leaves[i].size, _leaves[i].color, canvasW, canopyTop, canopyBottom, 3, i);
+        // Spread initial leaves over the whole height so the scene starts "in motion"
+        _leaves[i].y = (float)(canopyTop + (rand() % (canvasH - canopyTop)));
     }
     
     _leavesInitialized = true;
@@ -3078,131 +3084,214 @@ void AnimationsModule::drawAutumnAnimation() {
     int canvasW = _currentCanvas->width();
     int canvasH = _currentCanvas->height();
     
-    // Initialize on first call
     if (!_leavesInitialized) {
         initAutumnAnimation();
         _lastLeafUpdate = millis();
     }
     
-    // Draw MUCH LARGER autumn trees with brown foliage
-    uint16_t trunkColor = rgb565(101, 67, 33); // Brown trunk
-    uint16_t foliageColors[] = {
-        rgb565(139, 69, 19),   // Brown
-        rgb565(255, 140, 0),   // Orange
-        rgb565(200, 50, 50),   // Red
-        rgb565(178, 34, 34)    // Dark red
-    };
+    unsigned long nowMs = millis();
+    float t = (float)(nowMs % 600000UL) / 1000.0f;   // seconds, wraps every 10 min
+    bool isNight = TimeUtilities::isNightTime();
     
-    // Left tree - MUCH LARGER
-    int leftTreeX = canvasW / 4;
-    int treeBase = canvasH - 2;
-    int treeTop = canvasH / 3;  // Taller tree (reaches 1/3 up screen)
+    int groundTop = canvasH - canvasH / 6;           // meadow / leaf carpet
+    int hillBase = groundTop;
     
-    // THICKER Trunk (3-4 pixels wide)
-    for (int y = treeBase; y > treeTop; y--) {
-        _currentCanvas->drawPixel(leftTreeX - 2, y, trunkColor);
-        _currentCanvas->drawPixel(leftTreeX - 1, y, rgb565(80, 53, 26));
-        _currentCanvas->drawPixel(leftTreeX, y, trunkColor);
-        _currentCanvas->drawPixel(leftTreeX + 1, y, rgb565(80, 53, 26));
-        _currentCanvas->drawPixel(leftTreeX + 2, y, trunkColor);
-    }
-    
-    // MUCH LARGER Foliage (autumn colored) - 20 pixels wide
-    for (int y = treeTop - 12; y < treeTop + 5; y++) {
-        for (int x = leftTreeX - 10; x <= leftTreeX + 10; x++) {
-            int dx = x - leftTreeX;
-            int dy = y - (treeTop - 4);
-            // Rounded canopy shape
-            if (dx*dx + dy*dy < 100) {  // Increased radius
-                uint32_t seed = simpleRandom(x * 17 + y * 23);
-                if (seed % 3 != 0) { // Sparse for autumn look
-                    uint16_t color = foliageColors[seed % 4];
-                    _currentCanvas->drawPixel(x, y, color);
-                }
-            }
-        }
-    }
-    
-    // Right tree - MUCH LARGER
-    int rightTreeX = 3 * canvasW / 4;
-    
-    // THICKER Trunk
-    for (int y = treeBase; y > treeTop; y--) {
-        _currentCanvas->drawPixel(rightTreeX - 2, y, trunkColor);
-        _currentCanvas->drawPixel(rightTreeX - 1, y, rgb565(80, 53, 26));
-        _currentCanvas->drawPixel(rightTreeX, y, trunkColor);
-        _currentCanvas->drawPixel(rightTreeX + 1, y, rgb565(80, 53, 26));
-        _currentCanvas->drawPixel(rightTreeX + 2, y, trunkColor);
-    }
-    
-    // MUCH LARGER Foliage
-    for (int y = treeTop - 12; y < treeTop + 5; y++) {
-        for (int x = rightTreeX - 10; x <= rightTreeX + 10; x++) {
-            int dx = x - rightTreeX;
-            int dy = y - (treeTop - 4);
-            if (dx*dx + dy*dy < 100) {
-                uint32_t seed = simpleRandom(x * 19 + y * 29);
-                if (seed % 3 != 0) {
-                    uint16_t color = foliageColors[seed % 4];
-                    _currentCanvas->drawPixel(x, y, color);
-                }
-            }
-        }
-    }
-    
-    // Draw leaves on the ground (accumulated)
-    for (int x = 0; x < canvasW; x += 2) {
-        uint32_t seed = simpleRandom(x * 7 + 100);
-        if (seed % 4 < 2) {
-            int groundY = canvasH - 1 - (seed % 2);
-            _currentCanvas->drawPixel(x, groundY, foliageColors[seed % 4]);
-        }
-    }
-    
-    // Update falling leaves
-    unsigned long now = millis();
-    int leafCount = config ? config->seasonalAutumnLeafCount : 15;
-    
-    if (now - _lastLeafUpdate > 60) {
-        for (int i = 0; i < leafCount && i < MAX_LEAVES; i++) {
-            _leaves[i].x += _leaves[i].vx;
-            _leaves[i].y += _leaves[i].vy;
-            _leaves[i].rotation += 5.0f;
-            
-            // Gentle sideways drift (wind effect)
-            if (rand() % 10 < 2) {
-                _leaves[i].vx = ((rand() % 3) - 1) * 0.3f;
-            }
-            
-            // Reset at bottom - RESPAWN FROM TREE POSITION
-            if (_leaves[i].y > canvasH) {
-                // Choose tree to fall from
-                int treeX = (i % 2 == 0) ? leftTreeX : rightTreeX;
-                _leaves[i].y = (float)(treeTop + (rand() % 15));  // From tree height
-                _leaves[i].x = (float)(treeX + (rand() % 20) - 10);  // Within canopy
-                _leaves[i].vx = ((rand() % 3) - 1) * 0.2f;
-                _leaves[i].vy = 0.3f + (float)(rand() % 10) / 20.0f;
-            }
-            
-            // Wrap horizontally
-            if (_leaves[i].x < -5) _leaves[i].x = canvasW + 5;
-            if (_leaves[i].x > canvasW + 5) _leaves[i].x = -5;
-        }
-        _lastLeafUpdate = now;
-    }
-    
-    // Draw falling leaves (LARGER)
-    for (int i = 0; i < leafCount && i < MAX_LEAVES; i++) {
-        int lx = (int)_leaves[i].x;
-        int ly = (int)_leaves[i].y;
-        
-        // Larger leaf shape
-        if (_leaves[i].size >= 2) {
-            _currentCanvas->fillCircle(lx, ly, 2, _leaves[i].color);
-            _currentCanvas->drawPixel(lx, ly + 1, rgb565(100, 69, 19)); // Stem
-            _currentCanvas->drawPixel(lx + 1, ly, _leaves[i].color);  // Make wider
+    // --- Sky: warm autumn gradient (day) or deep blue night sky ---
+    for (int y = 0; y < hillBase; y++) {
+        float f = (float)y / (float)hillBase;      // 0 = top, 1 = horizon
+        uint8_t r, g, b;
+        if (isNight) {
+            r = (uint8_t)(5 + 20 * f);
+            g = (uint8_t)(8 + 15 * f);
+            b = (uint8_t)(35 + 35 * f);
         } else {
-            _currentCanvas->fillCircle(lx, ly, 1, _leaves[i].color);
+            // dusky violet-blue at the top -> soft orange/peach at the horizon
+            r = (uint8_t)(70 + 170 * f);
+            g = (uint8_t)(80 + 70 * f);
+            b = (uint8_t)(150 - 80 * f);
+        }
+        _currentCanvas->drawFastHLine(0, y, canvasW, rgb565(r, g, b));
+    }
+    
+    // --- Sun (low, warm) or moon with stars ---
+    int sunX = canvasW * 2 / 3;
+    int sunY = hillBase - canvasH / 4;
+    if (isNight) {
+        for (int i = 0; i < 25; i++) {
+            uint32_t s = simpleRandom(i * 97 + 11);
+            int sx = s % canvasW;
+            int sy = (s / canvasW) % (hillBase > 1 ? hillBase / 2 : 1);
+            bool twinkle = ((simpleRandom(i * 13 + (nowMs / 400)) % 7) == 0);
+            _currentCanvas->drawPixel(sx, sy, twinkle ? rgb565(120, 120, 140) : rgb565(220, 220, 255));
+        }
+        int moonX = canvasW - canvasW / 6;
+        int moonY = canvasH / 6;
+        _currentCanvas->fillCircle(moonX, moonY, 5, rgb565(245, 240, 200));
+        _currentCanvas->fillCircle(moonX + 2, moonY - 1, 4, rgb565(10, 14, 45));  // crescent
+    } else {
+        _currentCanvas->fillCircle(sunX, sunY, 9, rgb565(255, 170, 70));   // glow
+        _currentCanvas->fillCircle(sunX, sunY, 6, rgb565(255, 210, 110));  // sun disc
+    }
+    
+    // --- Migrating birds (V-formation) crossing the sky every ~40s (day only) ---
+    if (!isNight) {
+        unsigned long cycle = nowMs % 40000UL;
+        if (cycle < 20000UL) {
+            int leadX = canvasW + 10 - (int)((cycle * (unsigned long)(canvasW + 40)) / 20000UL);
+            int leadY = canvasH / 8;
+            int wing = ((nowMs / 250) % 2) ? 1 : 0;
+            uint16_t birdColor = rgb565(40, 30, 40);
+            for (int b = -3; b <= 3; b++) {
+                int bx = leadX + abs(b) * 4;
+                int by = leadY + b * 3;
+                _currentCanvas->drawPixel(bx, by, birdColor);
+                _currentCanvas->drawPixel(bx - 1, by - wing, birdColor);
+                _currentCanvas->drawPixel(bx + 1, by - wing, birdColor);
+            }
+        }
+    }
+    
+    // --- Two layers of rolling hills ---
+    for (int x = 0; x < canvasW; x++) {
+        int farH = (int)(canvasH / 6 + sin(x * 0.045f) * 4 + sin(x * 0.11f + 1.3f) * 2);
+        int nearH = (int)(canvasH / 10 + sin(x * 0.07f + 2.0f) * 3 + sin(x * 0.19f) * 1.5f);
+        uint16_t farColor = isNight ? rgb565(25, 25, 40) : rgb565(150, 95, 70);
+        uint16_t nearColor = isNight ? rgb565(20, 30, 20) : rgb565(110, 100, 40);
+        _currentCanvas->drawFastVLine(x, hillBase - farH, farH, farColor);
+        _currentCanvas->drawFastVLine(x, hillBase - nearH, nearH, nearColor);
+    }
+    
+    // --- Meadow with colorful leaf carpet ---
+    for (int y = groundTop; y < canvasH; y++) {
+        for (int x = 0; x < canvasW; x++) {
+            uint32_t s = simpleRandom(x * 31 + y * 57 + 7);
+            uint16_t c;
+            if (s % 5 < 3) {
+                c = autumnLeafColor(s / 5);
+            } else {
+                int v = (int)(s % 30);
+                c = rgb565(90 + v, 80 + v, 25);
+            }
+            if (isNight) c = (c >> 1) & 0x7BEF;   // darken at night
+            _currentCanvas->drawPixel(x, y, c);
+        }
+    }
+    
+    // --- Trees with dense, multi-colored canopies swaying in the wind ---
+    const int treeCount = 3;
+    int canopyTop = canvasH / 5;
+    int canopyBottom = canvasH / 2;
+    float wind = sin(t * 0.6f) * 0.6f + sin(t * 1.7f) * 0.3f;   // -0.9 .. 0.9
+    uint16_t trunkColor = isNight ? rgb565(45, 30, 15) : rgb565(95, 60, 30);
+    uint16_t trunkShade = isNight ? rgb565(30, 20, 10) : rgb565(65, 40, 20);
+    
+    for (int tr = 0; tr < treeCount; tr++) {
+        int tx = (canvasW * (2 * tr + 1)) / (2 * treeCount);
+        int trunkTop = (canopyTop + canopyBottom) / 2;
+        int trunkBottom = groundTop + 2;
+        // trunk (slightly wider at the bottom)
+        for (int y = trunkTop; y < trunkBottom; y++) {
+            int w = 2 + ((y - trunkTop) * 2) / (trunkBottom - trunkTop + 1);
+            for (int dx = -w; dx <= w; dx++) {
+                _currentCanvas->drawPixel(tx + dx, y, (dx < 0) ? trunkShade : trunkColor);
+            }
+        }
+        // branches
+        _currentCanvas->drawLine(tx, trunkTop + 6, tx - 8, trunkTop - 2, trunkColor);
+        _currentCanvas->drawLine(tx, trunkTop + 4, tx + 9, trunkTop - 3, trunkColor);
+        
+        // canopy: several overlapping blobs, each pixel colored by noise
+        int sway = (int)(wind * 2.0f);
+        const int blobs[5][3] = { {0, -2, 11}, {-8, 3, 8}, {8, 3, 8}, {-4, -9, 7}, {5, -8, 7} };
+        int cy = (canopyTop + canopyBottom) / 2 - 2;
+        for (int bI = 0; bI < 5; bI++) {
+            int bx = tx + blobs[bI][0] + sway;
+            int by = cy + blobs[bI][1];
+            int r = blobs[bI][2];
+            for (int y = by - r; y <= by + r; y++) {
+                if (y < 0 || y >= canvasH) continue;
+                for (int x = bx - r; x <= bx + r; x++) {
+                    if (x < 0 || x >= canvasW) continue;
+                    int dx = x - bx, dy = y - by;
+                    int d2 = dx * dx + dy * dy;
+                    if (d2 > r * r) continue;
+                    uint32_t s = simpleRandom(x * 17 + y * 23 + tr * 1000);
+                    // ragged edge
+                    if (d2 > (r - 2) * (r - 2) && (s % 3) == 0) continue;
+                    uint16_t c = autumnLeafColor(s + tr * 2);
+                    // light from upper right: highlight, shadow lower left
+                    if (!isNight && dx > 0 && dy < 0 && (s % 4) == 0) c = rgb565(255, 230, 120);
+                    else if (dx < -r / 2 && dy > 0 && (s % 3) == 0) c = (c >> 1) & 0x7BEF;
+                    if (isNight) c = (c >> 1) & 0x7BEF;
+                    _currentCanvas->drawPixel(x, y, c);
+                }
+            }
+        }
+    }
+    
+    // --- Pumpkins and a mushroom in the meadow ---
+    int pumpkinY = canvasH - 4;
+    int pumpkinXs[2] = { canvasW / 3, canvasW - canvasW / 3 + 4 };
+    for (int p = 0; p < 2; p++) {
+        int px = pumpkinXs[p];
+        uint16_t pc = isNight ? rgb565(150, 70, 0) : rgb565(255, 130, 0);
+        uint16_t rib = isNight ? rgb565(110, 50, 0) : rgb565(200, 90, 0);
+        _currentCanvas->fillCircle(px, pumpkinY, 3, pc);
+        _currentCanvas->fillCircle(px - 3, pumpkinY, 2, pc);
+        _currentCanvas->fillCircle(px + 3, pumpkinY, 2, pc);
+        _currentCanvas->drawFastVLine(px - 2, pumpkinY - 2, 5, rib);
+        _currentCanvas->drawFastVLine(px + 2, pumpkinY - 2, 5, rib);
+        _currentCanvas->drawFastVLine(px, pumpkinY - 5, 2, rgb565(40, 110, 30));
+    }
+    {
+        int mx = canvasW / 2 + 6;
+        int my = canvasH - 3;
+        _currentCanvas->drawFastVLine(mx, my - 2, 3, rgb565(230, 220, 200));
+        _currentCanvas->fillCircle(mx, my - 3, 2, isNight ? rgb565(120, 20, 20) : rgb565(220, 30, 30));
+        _currentCanvas->drawPixel(mx - 1, my - 4, rgb565(255, 255, 255));
+        _currentCanvas->drawPixel(mx + 1, my - 3, rgb565(255, 255, 255));
+    }
+    
+    // --- Update falling leaves (fluttering, wind gusts) ---
+    int leafCount = config ? config->seasonalAutumnLeafCount : 15;
+    if (nowMs - _lastLeafUpdate > 50) {
+        for (int i = 0; i < leafCount && i < MAX_LEAVES; i++) {
+            Leaf& l = _leaves[i];
+            l.rotation += 0.15f + l.size * 0.03f;                 // flutter phase
+            if (l.rotation > 6.2832f) l.rotation -= 6.2832f;
+            l.x += l.vx + wind * 0.5f + sin(l.rotation) * 0.35f;  // pendulum-like swing
+            l.y += l.vy * (0.6f + 0.4f * fabsf(cos(l.rotation)));
+            
+            if (l.y > canvasH + 2) {
+                respawnLeaf(l.x, l.y, l.vx, l.vy, l.rotation, l.size, l.color,
+                            canvasW, canopyTop, canopyBottom, treeCount, i);
+            }
+            if (l.x < -5) l.x = canvasW + 4;
+            if (l.x > canvasW + 5) l.x = -4;
+        }
+        _lastLeafUpdate = nowMs;
+    }
+    
+    // --- Draw falling leaves (small leaf shapes, orientation follows the flutter) ---
+    for (int i = 0; i < leafCount && i < MAX_LEAVES; i++) {
+        const Leaf& l = _leaves[i];
+        int lx = (int)l.x;
+        int ly = (int)l.y;
+        uint16_t c = isNight ? ((l.color >> 1) & 0x7BEF) : l.color;
+        bool tilt = sin(l.rotation) > 0;
+        if (l.size >= 3) {
+            // larger leaf: diamond with stem
+            _currentCanvas->drawPixel(lx, ly - 1, c);
+            _currentCanvas->drawFastHLine(lx - 1, ly, 3, c);
+            _currentCanvas->drawPixel(lx, ly + 1, c);
+            _currentCanvas->drawPixel(tilt ? lx + 1 : lx - 1, ly + 2, rgb565(90, 55, 20));
+        } else if (l.size == 2) {
+            _currentCanvas->drawPixel(lx, ly, c);
+            _currentCanvas->drawPixel(tilt ? lx + 1 : lx - 1, ly, c);
+            _currentCanvas->drawPixel(lx, ly + 1, c);
+        } else {
+            _currentCanvas->drawPixel(lx, ly, c);
+            _currentCanvas->drawPixel(tilt ? lx + 1 : lx - 1, ly + 1, c);
         }
     }
 }
